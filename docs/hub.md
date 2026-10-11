@@ -671,7 +671,11 @@ each turn that changed it, to the project the session's directory belongs to, de
 no project, and the session of a run's agent, whose trace is on the hub already, push none. A digest
 (`evo_agents/hub/digest.py`) counts the calls and failures of each tool (under `gen_ai.tool.name`) and of each program
 Bash ran, and keeps what the person wrote, the Bash commands and the text of failed results, each cut short, with the
-model, the tokens, the session's id and its directory. Before it leaves the machine every string that looks like a
+model, the tokens, the session's id and its directory. It also holds the largest context one message of the model read
+(`peak_context_tokens`: its input, cache creation and cache read tokens), how many times the context was compacted
+(`compactions`, the `compact_boundary` lines of the transcript) and the characters of each tool's results
+(`tool_result_chars`); the hub keeps them, and `digest_show` returns them, null in a digest an older client pushed.
+Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
 of any variable or key named as a secret, which is how a lease's value shows in a session; the machine's own hub

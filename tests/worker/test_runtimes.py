@@ -207,6 +207,15 @@ def test_killing_the_group_never_signals_the_daemons_own(monkeypatch):
     assert sent == []
 
 
+def test_a_runs_usage_holds_its_peak_context_or_null_never_zero():
+    assert common.with_peak(None, None) is None and common.with_peak({}, None) is None, "nothing reported"
+    assert common.with_peak({"output_tokens": 1}, None) == {"output_tokens": 1, "peak_context_tokens": None}
+    assert common.with_peak(None, 7, context_window=None) == {"peak_context_tokens": 7}
+    assert common.larger(None, None) is None and common.larger(5, None) == 5 and common.larger(5, 3) == 5
+    assert common.larger(None, 0) == 0 and common.larger(5, 9) == 9
+    assert common.token_sum(None, "1", True, -2) is None and common.token_sum(1, None, 2) == 3
+
+
 def test_the_model_and_effort_come_from_the_run_then_the_environment(tmp_path):
     context = _context(tmp_path, "codex", env={"EVO_WORKER_CODEX_MODEL": "gpt-x", "EVO_WORKER_CODEX_EFFORT": "low"})
     assert common.run_setting(context, "codex", "model") == "gpt-x"
@@ -412,7 +421,63 @@ def test_claude_codes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "cache_read_input_tokens": 59938,
         "output_tokens": 405,
         "total_cost_usd": 0.2041276,
+        "peak_context_tokens": 2 + 16832 + 21553,  # the first message's; the second's usage was cut from the sample
     }
+
+
+def _used(message_id: str, usage: dict, *, parent: str | None = None, model: str = "claude-opus-5-5") -> dict:
+    """A message of the model as stream-json prints it, with the usage of its API message."""
+    message = {
+        "id": message_id,
+        "role": "assistant",
+        "model": model,
+        "content": [{"type": "text", "text": f"from {message_id}"}],
+        "usage": usage,
+    }
+    return {"type": "assistant", "message": message, "parent_tool_use_id": parent, "session_id": SESSION}
+
+
+def test_claude_codes_usage_holds_the_largest_context_of_the_main_thread(tmp_path):
+    first = {
+        "input_tokens": 5,
+        "cache_creation_input_tokens": 1000,
+        "cache_read_input_tokens": 20000,
+        "output_tokens": 7,
+    }
+    second = {"input_tokens": 3, "cache_read_input_tokens": 30000, "output_tokens": 2}
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        cli.print(_used("msg_a", first))
+        cli.print(_used("msg_a", first))  # a second block of the same message
+        cli.print(_used("msg_sub", {"input_tokens": 900_000}, parent="toolu_task"))  # a subagent's own context
+        cli.print(_used("msg_err", {"input_tokens": 800_000}, model="<synthetic>"))  # no model sent it
+        cli.print(_used("msg_b", second))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    events, outcome = asyncio.run(_collect(_claude(tmp_path, behaviour)))
+    assert outcome.completed
+    assert outcome.usage == {
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "total_cost_usd": 0.01,
+        "peak_context_tokens": 30003,
+    }
+
+
+def test_claude_codes_usage_says_null_for_a_peak_context_the_stream_did_not_report(tmp_path):
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(_assistant({"type": "text", "text": "DONE"}))  # no usage on the message
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    events, outcome = asyncio.run(_collect(_claude(tmp_path, behaviour)))
+    assert outcome.usage == {"input_tokens": 2, "output_tokens": 3, "total_cost_usd": 0.01, "peak_context_tokens": None}
 
 
 def test_a_message_during_a_claude_turn_goes_in_before_the_result_and_none_after_it(tmp_path):
@@ -1130,7 +1195,42 @@ def test_codexs_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "output_tokens": 50,
         "reasoning_output_tokens": 0,
         "total_tokens": 63245,
+        "peak_context_tokens": 63195,  # the last request's input, its cached part in it
     }
+
+
+def _codex_tokens(input_tokens: int, cached: int) -> dict:
+    return {
+        "inputTokens": input_tokens,
+        "cachedInputTokens": cached,
+        "cacheWriteInputTokens": 0,
+        "outputTokens": 10,
+        "reasoningOutputTokens": 0,
+        "totalTokens": input_tokens + 10,
+    }
+
+
+def test_codexs_usage_holds_the_largest_input_of_one_request_and_the_context_window(tmp_path):
+    async def behaviour(codex: FakeCodex, turn: FakeTurn) -> None:
+        ids = {"threadId": THREAD, "turnId": turn.id}
+        for last, total in (((50_000, 40_000), (50_000, 40_000)), ((12_000, 0), (62_000, 40_000))):
+            usage = {"last": _codex_tokens(*last), "total": _codex_tokens(*total), "modelContextWindow": 258_400}
+            turn.send("thread/tokenUsage/updated", {"tokenUsage": usage, **ids})
+        turn.send(*turn_completed(turn.id))
+
+    events, outcome = asyncio.run(_collect(_codex(tmp_path, behaviour)))
+    assert outcome.completed
+    assert outcome.usage["input_tokens"] == 62_000, "the thread's total, the latest"
+    assert outcome.usage["peak_context_tokens"] == 50_000, "the largest request, not the last one"
+    assert outcome.usage["context_window"] == 258_400
+
+
+def test_codexs_usage_is_none_when_it_reported_no_tokens(tmp_path):
+    async def behaviour(codex: FakeCodex, turn: FakeTurn) -> None:
+        turn.send(*turn_completed(turn.id))
+
+    events, outcome = asyncio.run(_collect(_codex(tmp_path, behaviour)))
+    assert outcome.completed and outcome.usage is None
 
 
 def test_a_message_during_a_codex_turn_steers_it(tmp_path):
@@ -1496,6 +1596,7 @@ def test_opencodes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "cache_write": 0,
         "cache_read": 89984,
         "cost": 0,
+        "peak_context_tokens": 171 + 89984,  # the second step's input and cache read; the first read 90,010
     }
 
 

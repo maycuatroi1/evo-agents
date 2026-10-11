@@ -1052,6 +1052,12 @@ The events take the shapes of ACP's `session/update`: `agent_message_chunk` and 
 meanings goes as `output` `{"raw": ...}`, except the ones that only repeat others: text deltas, the start of a hook,
 Claude Code's list of slash commands.
 
+The `usage` a run reports with its end also holds `peak_context_tokens`, the largest context one request of the model
+read in the agent's main thread: for Claude Code the input, cache creation and cache read tokens of a message of the
+model, as the stream's `assistant` messages carry them (a subagent's left out); for Codex the input of a request
+(`last.inputTokens` of `thread/tokenUsage/updated`, its cached part in it), with the model's `context_window`; for
+opencode a step's `input`, `cache.read` and `cache.write`. It is null, never 0, when the runtime reported none.
+
 A runtime is available when its binary answers `--version` with at least the version the adapter was checked with,
 and the package the adapter needs is installed at least at the version checked: Claude Code 2.1.289 with
 claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 0.160.0 (whose bundled codex is not
