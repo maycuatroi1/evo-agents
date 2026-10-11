@@ -383,7 +383,7 @@ def plugin_hooks() -> dict:
 
 def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget():
     found = plugin_hooks()
-    assert sorted(found) == ["SessionStart", "Stop"]
+    assert sorted(found) == ["PostToolUse", "SessionStart", "Stop"]  # PostToolUse: tests/hub/test_spool.py
     (start,) = found["SessionStart"]
     assert start["matcher"] == "startup|resume|clear"
     (stop,) = found["Stop"]

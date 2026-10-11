@@ -682,6 +682,29 @@ may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.
 the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
 days.
 
+**Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
+result out of the model's context. A successful result of Bash, Read, Grep or an MCP tool longer than 10,000
+characters is written whole to `~/.evo/tool-output/<session>/<tool_use_id>.txt` (directories 0700, file 0600), and
+the model gets, in the tool's own output shape, its first and last 1,500 characters around one line that names the
+size and the file. A Read keeps whole first lines instead, since Claude Code numbers them, and its line says from which
+line to Read on. The threshold sits near the 95th percentile of the tool results on one laptop over 30 days
+(2026-10-11: 104,186 results, median 830 characters, 95th percentile 11,080): about 6% of the results go to a file,
+and they hold about 41% of the characters. `EVO_SPOOL_THRESHOLD` changes it (`0` or `off` turns the hook off) and
+`EVO_SPOOL_DAYS` how long a file is kept (7 days); the hook deletes older files, at most once an hour. A Bash output
+over 30,000 characters, which Claude Code already saves in its session directory with a 2,000-character preview, is
+copied from that file, so the spool file holds all of it. A failed call (PostToolUseFailure, whose output Claude Code
+already cuts to about 10,000 characters of head and tail), an image, a Read with an offset or a limit, and a call that
+names `~/.evo/tool-output` pass unchanged. The hook runs in worker runs too, talks to no hub, never sends a spool
+file anywhere, and adds the start of `uvx` and the interpreter, about 0.15 seconds, to each Bash, Read, Grep or MCP
+call.
+
+Codex does not take this hook. Tried with codex-cli 0.153.4 on 2026-10-12: a command that printed 51,013 characters
+reached the model as about 40,000, cut in the middle (`Warning: truncated output (original token count: 13026)` and
+`…3026 tokens truncated…`), with no file; a PostToolUse hook gets that cut output, not the whole; Codex ignores
+`updatedToolOutput`; and `decision: "block"` does replace the result, but as `Script failed` with the hook's text as
+the script's error. The hook therefore leaves a payload from Codex (it carries a `turn_id`) unchanged, and Codex's
+own limit, `tool_output_token_limit` in its `config.toml`, is the only knob there.
+
 **Skills.** `evo-agents hub skills publish skills/house-style --scope global` packs a skill directory (10 MiB at
 most) and publishes a new version; `--scope project:demo` publishes it to a project. `evo-agents hub skills sync`
 writes the latest version of every skill you see into the skills directories of each runtime on the machine
