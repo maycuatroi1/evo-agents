@@ -29,6 +29,9 @@ def _print_runs(results) -> None:
             f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
             f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
         )
+        if r.redactions:
+            redacted = sum(sum(kinds.values()) for kinds in r.redactions.values())
+            print(f"     redacted: {redacted} secret(s) in {len(r.redactions)} item(s), counted in audit.jsonl")
         for h in r.held:
             print(f"     held: {h['count']} removal(s) in {h['scope']}: {h['reason']}")
             print("           review, then run: evo-agents kg sync --accept-removals --source " + r.source)

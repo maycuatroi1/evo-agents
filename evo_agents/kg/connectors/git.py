@@ -25,6 +25,11 @@ run: it logs a warning and reads the ref as the clone has it. Without the key no
 
 Item IDs are ``<source>:file:<path>``; the revision is the blob SHA, so it changes exactly when the
 content does. A git ref can be force-pushed; then the order of revisions is the order syncs observed.
+
+Before a file's text becomes an item, ``evo_agents.kg.redact`` replaces each secret in it (a private key in PEM, a
+provider's key, the password of a URI, the literal value of a variable named as a secret) with a marker that names
+its kind, ``[redacted:password]``; the rest of the text stays, so the file's structure still enters the graph. The
+item's ``props.redactions`` counts the markers by kind, and the sync's audit line repeats those counts by item id.
 """
 
 from __future__ import annotations
@@ -35,6 +40,7 @@ from evo_agents import __version__
 from evo_agents.kg.connectors import _git
 from evo_agents.kg.connectors._files import asset_item, decode, excluded, file_item, selected
 from evo_agents.kg.protocol import finalize_item, hello
+from evo_agents.kg.redact import redact_file
 
 
 def repo_dir(ctx) -> Path:
@@ -65,6 +71,19 @@ def _fetch(repo: Path, ref: str):
         _git.fetch(repo, remote, branch)
     except (_git.GitError, OSError) as exc:
         yield {"type": "log", "level": "warning", "message": f"fetch failed, reading {ref} as the clone has it: {exc}"}
+
+
+def blob_item(item_id: str, path: str, sha: str, data: bytes, *, rev_time: str, uri: str | None, assets: bool):
+    """The item of a selected file: its text with its secrets redacted, or, when there is no text to read (binary, too
+    large, not UTF-8), a path-only asset, or None without ``assets``."""
+    text = decode(data)
+    if text is None:
+        return asset_item(item_id, path, rev=sha, rev_time=rev_time, uri=uri, size=len(data)) if assets else None
+    text, redactions = redact_file(text, path)
+    item = file_item(item_id, path, text, rev=sha, rev_time=rev_time, uri=uri)
+    if redactions:
+        item["props"]["redactions"] = redactions
+    return item
 
 
 def run(ctx):
@@ -109,16 +128,17 @@ def run(ctx):
         chunk = files[start : start + batch]
         blobs = _git.cat_blobs(repo, [sha for sha, _ in chunk])
         for sha, path in chunk:
-            data = blobs.get(sha, b"")
-            text = decode(data)
-            uri = _git.web_url(origin, branch, path) if origin else None
-            rev_time = times.get(path, fallback_time)
-            if text is None:
-                if not assets:
-                    continue  # binary, too large or not UTF-8: outside the listing, like a deleted file
-                item = asset_item(f"{sid}:file:{path}", path, rev=sha, rev_time=rev_time, uri=uri, size=len(data))
-            else:
-                item = file_item(f"{sid}:file:{path}", path, text, rev=sha, rev_time=rev_time, uri=uri)
+            item = blob_item(
+                f"{sid}:file:{path}",
+                path,
+                sha,
+                blobs.get(sha, b""),
+                rev_time=times.get(path, fallback_time),
+                uri=_git.web_url(origin, branch, path) if origin else None,
+                assets=assets,
+            )
+            if item is None:
+                continue  # binary, too large or not UTF-8: outside the listing, like a deleted file
             # No commit in props: it would change every item's hash on every commit.
             item["props"]["repo"] = ctx.source.get("repo") or repo.name
             yield finalize_item(item)
