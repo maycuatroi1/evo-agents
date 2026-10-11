@@ -5,7 +5,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.harness import Harness
-from evo_agents.kg.connectors import _git
+from evo_agents.kg.connectors import _files, _git
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol.conformance import run_conformance
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
@@ -116,6 +116,31 @@ def test_git_allow_reopens_exactly_the_allowed_path(tmp_path):
     claude = items[".claude/CLAUDE.md"]
     assert claude["kind"] == "markdown" and "Run tests with uv." in claude["body"]["text"]
     assert msgs[-2]["count"] == 5
+
+
+@pytest.mark.parametrize(
+    ("path", "dropped"),
+    [
+        ("subjects/DBS401/.claude/settings.json", True),
+        ("subjects/DBS401/.claude/settings.local.json", True),
+        ("apps/web/.agents/skills/x/SKILL.md", True),
+        ("apps/web/.playwright-mcp/page.yml", True),
+        ("services/api/venv/lib/site.py", True),
+        ("web/yarn.lock", True),
+        ("services/api/uv.lock", True),
+        ("services/api/poetry.lock", True),
+        ("state/run.json", True),
+        ("src/state/store.ts", False),
+        ("docs/claude.md", False),
+    ],
+)
+def test_default_exclude_drops_agent_folders_venvs_and_locks_at_any_depth(path, dropped):
+    assert _files.excluded(path, [], []) is dropped
+
+
+def test_allow_brings_a_nested_agent_file_back():
+    assert _files.excluded("subjects/DBS401/.claude/CLAUDE.md", [], ["*/.claude/CLAUDE.md"]) is False
+    assert _files.excluded("subjects/DBS401/.claude/settings.json", [], ["*/.claude/CLAUDE.md"]) is True
 
 
 def test_git_source_exclude_wins_over_allow(tmp_path):
