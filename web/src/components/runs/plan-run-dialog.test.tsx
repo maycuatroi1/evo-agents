@@ -123,7 +123,9 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-function answer(post: (request: Request) => Response | Promise<Response>, ready: object = READY) {
+const WORKERS = [worker(7, "lab-ws-01", "octo"), worker(9, "laptop", "octo", { checkouts: { "demo/api": { path: "~/api" } } }), worker(8, "theirs", "someone-else")];
+
+function answer(post: (request: Request) => Response | Promise<Response>, ready: object = READY, workers: object[] = WORKERS) {
   return (request: Request) => {
     const url = new URL(request.url);
     if (url.pathname === "/v1/projects/demo/plans/rollout") return json(PLAN);
@@ -131,7 +133,7 @@ function answer(post: (request: Request) => Response | Promise<Response>, ready:
     if (url.pathname === "/v1/projects/demo") return json({ name: "demo", repos: [{ name: "api", default_branch: "main" }, { name: "harness", default_branch: "main" }] });
     if (url.pathname === "/v1/auth/whoami") return json({ login: "octo", admin: false, token: {}, grants: [] });
     if (url.pathname === "/v1/workers") {
-      return json([worker(7, "lab-ws-01", "octo"), worker(9, "laptop", "octo", { checkouts: { "demo/api": { path: "~/api" } } }), worker(8, "theirs", "someone-else")]);
+      return json(workers);
     }
     if (url.pathname === "/v1/projects/demo/plan-runs" && request.method === "POST") return post(request);
     return json({ error: "not_found", message: url.pathname }, 404);
@@ -226,5 +228,47 @@ describe("PlanRunDialog", () => {
     expect(screen.getByTestId("open-state")).toHaveTextContent("open");
     expect(dispatched).not.toHaveBeenCalled();
     expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).toMatchObject({ worker_id: null, model: null, timeout_h: 4 });
+  });
+
+  it("runs each step in a new session only when switched on, says which workers run that, and sends it only then", async () => {
+    const user = userEvent.setup();
+    const queued = { id: 53, kind: "plan", project: "demo", plan_id: "rollout", state: "queued", session_per_step: true } as Run;
+    const workers = [worker(7, "lab-ws-01", "octo", { features: ["session_per_step"] }), worker(9, "old-box", "octo", { features: [] })];
+    api.answer = answer(() => json(queued, 201), READY, workers);
+    renderVi(<Harness onDispatched={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Chạy plan" });
+    await within(dialog).findByTestId("plan-run-summary");
+    const sessions = within(dialog).getByTestId("plan-run-sessions");
+    const toggle = within(sessions).getByRole("switch", { name: "Mỗi bước một phiên mới" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(sessions).toHaveTextContent("Tắt: một phiên agent làm mọi bước");
+    expect(dialog).toHaveTextContent("theo thứ tự depends_on và trong một phiên");
+    // Both workers take a plan run in one session.
+    await waitFor(() => expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("Phù hợp ngay: lab-ws-01"));
+    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("old-box");
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-checked", "true");
+    expect(toggle).toHaveAccessibleDescription(/Mỗi bước bắt đầu một phiên agent mới/);
+    expect(within(sessions).getByTestId("plan-run-sessions-reach")).toHaveTextContent("Worker của bạn cho dự án này chạy được: 1 trên 2.");
+    expect(dialog).toHaveTextContent("theo thứ tự depends_on và mỗi bước một phiên mới");
+    expect(within(dialog).getByTestId("dispatch-outlook")).not.toHaveTextContent("old-box");
+    await user.click(within(dialog).getByRole("radio", { name: /^Ghim vào một worker/ }));
+    await user.selectOptions(within(dialog).getByLabelText("Worker được ghim"), "9");
+    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent(
+      "old-box chưa nhận được plan run này (daemon của nó chỉ chạy một phiên cho mọi bước)",
+    );
+    await user.selectOptions(within(dialog).getByLabelText("Worker được ghim"), "7");
+    await user.click(within(dialog).getByTestId("plan-run-submit"));
+    await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
+    expect(await api.seen.find((request) => request.method === "POST")?.clone().json()).toEqual({
+      plan_id: "rollout",
+      worker_id: 7,
+      runtime: "any",
+      model: null,
+      mode: "headless",
+      timeout_h: 4,
+      session_per_step: true,
+    });
   });
 });

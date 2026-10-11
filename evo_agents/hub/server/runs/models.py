@@ -122,6 +122,12 @@ class PlanRunDispatch(BaseModel):
     timeout_h: Literal[runs.PLAN_TIMEOUT_CHOICES] = Field(
         4, description="hours of agent time the run may take; waiting for a decision and parked do not count"
     )
+    session_per_step: bool = Field(
+        False,
+        description="true: the worker starts a new agent session for each step, whose prompt is the step's with the "
+        "handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; "
+        "false: one session does every step",
+    )
 
 
 class RunBudget(BaseModel):
@@ -237,6 +243,11 @@ class Run(BaseModel):
         "runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run "
         "from before schema 0024",
     )
+    session_per_step: bool = Field(
+        False,
+        description="a plan run whose worker starts a new agent session for each step; its usage lists the sessions "
+        "(usage.sessions). False for any other run",
+    )
 
 
 class ClaimRequest(BaseModel):
@@ -332,6 +343,11 @@ class RunSpec(BaseModel):
         "worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other "
         "kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)",
     )
+    session_per_step: bool = Field(
+        False,
+        description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
+        "and the handoff of the plan; false: one session does every step, with the prompt above",
+    )
 
 
 class Claim(BaseModel):
@@ -382,6 +398,12 @@ class HeartbeatRequest(BaseModel):
         max_length=MAX_RUN_KINDS,
         description="the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does "
         "not know is left out",
+    )
+    features: list[Annotated[str, Field(pattern=RUN_KIND)]] | None = Field(
+        None,
+        max_length=MAX_RUN_KINDS,
+        description="what the daemon does besides its kinds of run: session_per_step, a plan run with a session for "
+        "each step. One that says none takes no such run. A feature this hub does not know is left out",
     )
 
     def stored(self) -> tuple[dict, dict]:

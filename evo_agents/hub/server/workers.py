@@ -281,6 +281,11 @@ class Worker(BaseModel):
         "dispatched from a web session"
     )
     held_runs: int = Field(description="runs it holds now (leased, running, interactive or verifying)")
+    features: list[str] = Field(
+        default_factory=list,
+        description="what its daemon said it does besides its kinds of run: session_per_step, a plan run with a "
+        "session for each step; empty for a daemon that said none",
+    )
     created_at: datetime
     last_heartbeat_at: datetime | None
     drained_at: datetime | None
@@ -337,6 +342,7 @@ def _listed(*where):
             w.c.allow_web_terminal,
             w.c.dispatch_from,
             held_runs.label("held_runs"),
+            w.c.features,
             w.c.created_at,
             w.c.last_heartbeat_at,
             w.c.drained_at,
@@ -352,6 +358,7 @@ def _listed(*where):
 def _worker(row) -> Worker:
     fields = dict(row._mapping)
     now = fields.pop("now")
+    fields["features"] = list(fields["features"] or ())  # NULL: its daemon said none
     status = runs.worker_status(
         last_heartbeat_at=fields["last_heartbeat_at"],
         drained_at=fields["drained_at"],

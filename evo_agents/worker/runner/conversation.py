@@ -75,16 +75,20 @@ class Conversation:
         self.reply_prompt = reply_prompt
         self.resume_prompt = resume_prompt
         self.after_turn = after_turn or self.wait_for_decisions
+        self.usages: list[dict | None] = []  # the usage each turn's agent ended with, in order (``sessions``)
         run.record["resume_of_run_id"] = self.resume_of
         run.daemon.home.save_run(run.record)
 
     def adopt(self) -> None:
-        """Take over the directory, worktrees, session and decisions of the parked run this run resumes; its record no
-        longer names them, so the cleanup of that run leaves them alone."""
+        """Take over the directory, worktrees, session and decisions of the parked run this run resumes, and the
+        sessions of its steps when it ran a session for each; its record no longer names them, so the cleanup of that
+        run leaves them alone."""
         run, old_id = self.run, self.resume_of
         home = run.daemon.home
         record = home.load_run(old_id)
         resumable = record is not None and record.get("kind") in runs.RESUME_KINDS
+        if resumable and isinstance(record.get("step_sessions"), list):  # a plan run with a session for each step
+            run.record["step_sessions"] = list(record["step_sessions"])
         directory = Path(record["dir"]) if resumable and record.get("dir") else None
         if directory is None or not directory.is_dir():
             run.note(
@@ -144,6 +148,7 @@ class Conversation:
         terminal_first = run.mode == "interactive"
         while True:
             run.outcome, session_id = await run.agent.turns(cls, prompt, session_id, terminal_first=terminal_first)
+            self.usages.append(run.outcome.usage)
             terminal_first = False
             self.session_id = session_id or self.session_id
             run.record["session_id"] = self.session_id

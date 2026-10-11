@@ -2618,7 +2618,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -2756,7 +2757,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -2843,7 +2845,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3088,7 +3091,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3175,7 +3179,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3262,7 +3267,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3533,6 +3539,14 @@
         },
         {
           "flags": [
+            "--session-per-step"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -3594,7 +3608,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3681,7 +3696,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3817,7 +3833,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3904,7 +3921,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -23070,6 +23088,23 @@
               ],
               "title": "Run Kinds",
               "description": "the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does not know is left out"
+            },
+            "features": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Features",
+              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step. One that says none takes no such run. A feature this hub does not know is left out"
             }
           },
           "type": "object",
@@ -26498,6 +26533,12 @@
               "title": "Timeout H",
               "description": "hours of agent time the run may take; waiting for a decision and parked do not count",
               "default": 4
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "true: the worker starts a new agent session for each step, whose prompt is the step's with the handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; false: one session does every step",
+              "default": false
             }
           },
           "type": "object",
@@ -29101,6 +29142,12 @@
               ],
               "title": "Failure Cause",
               "description": "why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024"
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "a plan run whose worker starts a new agent session for each step; its usage lists the sessions (usage.sessions). False for any other run",
+              "default": false
             }
           },
           "type": "object",
@@ -30292,6 +30339,12 @@
               ],
               "title": "Verify",
               "description": "the verify of the step of a run of one step, as the plan it was dispatched from has it: the worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)"
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "a plan run to run with a new agent session for each step not done yet, each with its prompt and the handoff of the plan; false: one session does every step, with the prompt above",
+              "default": false
             }
           },
           "type": "object",
@@ -33199,6 +33252,14 @@
               "type": "integer",
               "title": "Held Runs",
               "description": "runs it holds now (leased, running, interactive or verifying)"
+            },
+            "features": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Features",
+              "description": "what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; empty for a daemon that said none"
             },
             "created_at": {
               "type": "string",

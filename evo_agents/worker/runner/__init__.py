@@ -11,7 +11,8 @@
   (the result file and the verify commands) and ``push`` (the commit and the owner's notices).
 - Parts the kinds over several repos share (plan, review, judge, author): ``directory`` (the run's directory and its
   worktrees, the review's read-only ones among them) and ``conversation`` (the turns of the agent in one session, and
-  the waits for the owner between them).
+  the waits for the owner between them). ``sessions`` is a plan run's with a session for each step: one conversation
+  after another, each with the step's prompt and the handoff of the plan.
 - ``common``: the exceptions that end a run or one of its steps, and the small helpers every part uses.
 - ``transitions``: the decisions of a run that need no I/O (how it ends, what it reports, which branch it works on,
   when the watchdog stops it), each a pure function a test calls without a daemon or a hub.
