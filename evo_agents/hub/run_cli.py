@@ -1,7 +1,8 @@
 """``evo-agents hub run``: dispatch plan steps to your own workers, and follow, steer and end their runs.
 
 ``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a
-plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), and ``author``
+plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent
+session or with ``--session-per-step`` in a new session for each step, and ``author``
 queues an author run, a plan written from your request with the create-exec-plan skill on a worker of yours (POST
 /v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the
 project. ``list`` and ``show`` read runs of every kind. ``logs``
@@ -59,6 +60,7 @@ from evo_agents.hub.runs import (
     STEADY_SECONDS,
     TERMINAL_STATES,
 )
+from evo_agents.hub.sse import sse_messages
 
 EXIT_USAGE = 2
 REQUESTED_RUNTIMES = ("any", *RUNTIMES)
@@ -124,6 +126,7 @@ RUN_KEYS = (
     "finish_requested_at",
     "steady_wait",
     "failure_cause",
+    "session_per_step",
 )
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
@@ -279,35 +282,6 @@ def read_events(hub, project: str, run_id: int, after: int = 0, kinds: Iterable[
         after = page["events"][-1]["seq"]
 
 
-def sse_messages(lines: Iterable[bytes | str]) -> Iterator[tuple[str, str, str | None]]:
-    """``(event, data, id)`` of each message in the lines of a text/event-stream, read as the SSE standard says:
-    comments skipped, ``data`` lines joined with newlines, a message without data dropped, and ``event`` 'message'
-    when the message names none. ``id`` is the last id the stream set. ``retry`` and unknown fields are ignored."""
-    event, data, last_id = "", [], None
-    for raw in lines:
-        text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
-        if text.endswith("\n"):
-            text = text[:-1]
-        if text.endswith("\r"):
-            text = text[:-1]
-        for line in text.split("\r"):
-            if not line:
-                if data:
-                    yield event or "message", "\n".join(data), last_id
-                event, data = "", []
-                continue
-            if line.startswith(":"):
-                continue
-            name, _, value = line.partition(":")
-            value = value[1:] if value.startswith(" ") else value
-            if name == "event":
-                event = value
-            elif name == "data":
-                data.append(value)
-            elif name == "id" and "\0" not in value:
-                last_id = value
-
-
 def _refusal(hub, status: int, payload) -> HubError:
     """The HubError ``Hub.call`` raises for the same answer."""
     if 300 <= status < 400:
@@ -460,8 +434,9 @@ def cmd_plan(args) -> int:
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"plan_id": _plan_id(args.plan)}
+    each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
-    body.update({key: value for key, value in chosen.items() if value is not None})
+    body.update({key: value for key, value in {**chosen, "session_per_step": each}.items() if value is not None})
     if args.worker is not None:
         body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
     run = hub.call("POST", f"{_project_path(project)}/plan-runs", body)
@@ -469,8 +444,9 @@ def cmd_plan(args) -> int:
         _print_json(run)
         return 0
     pinned = f", on worker #{run['pinned_worker_id']} only" if run["pinned_worker_id"] else ""
+    each = ", each in a new session" if run.get("session_per_step") else ""
     print(
-        f"Queued plan run #{run['id']}: {_step(run)}, every step not done yet, in {_repos(run)}; runtime "
+        f"Queued plan run #{run['id']}: {_step(run)}, every step not done yet{each}, in {_repos(run)}; runtime "
         f"{_runtime(run)}, {run['mode']}, timeout {_timeout(run)} of agent time{pinned}."
     )
     where = _with_project(args, project)
@@ -547,6 +523,11 @@ def cmd_list(args) -> int:
     return 0
 
 
+def _plan_run_kind(run: dict) -> str:
+    each = "a new session for each step" if run.get("session_per_step") else "one session"
+    return f"plan run: every step of the plan not done yet, in {each}"
+
+
 def _describe(run: dict) -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs."""
     plan_run = run["kind"] in ("plan", "review", "judge", "author")  # these have repos too, and no step
@@ -567,7 +548,7 @@ def _describe(run: dict) -> list[tuple[str, str]]:
         if run["title"]:
             lines.append(("title", run["title"]))
     elif plan_run:
-        lines.append(("kind", "plan run: every step of the plan not done yet, in one session"))
+        lines.append(("kind", _plan_run_kind(run)))
         if run["title"]:
             lines.append(("title", run["title"]))
     else:
@@ -864,6 +845,32 @@ def _control(action: str, said: Callable[[dict], str]):
     return command
 
 
+def _plan_options(plan, with_model) -> None:
+    """The options of `hub run plan` after its plan and --project: where, how and how long the plan run runs."""
+    plan.add_argument(
+        "--worker", help="pin the run to this worker of yours, by id or name (default: any of yours with every repo)"
+    )
+    plan.add_argument("--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has")
+    with_model(plan)
+    plan.add_argument(
+        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
+    )
+    plan.add_argument(
+        "--timeout-h",
+        type=int,
+        choices=PLAN_TIMEOUT_CHOICES,
+        metavar="HOURS",
+        help=f"hours of agent time, one of {', '.join(map(str, PLAN_TIMEOUT_CHOICES))} (default 4); waiting for a "
+        "decision and parked do not count",
+    )
+    plan.add_argument(
+        "--session-per-step",
+        action="store_true",
+        help="start a new agent session for each step, its prompt the step's with the handoff of the plan, rather "
+        "than one session for every step; a worker takes it once its daemon says it runs one",
+    )
+
+
 def register_runs(hsub) -> None:
     run = hsub.add_parser(
         "run", help="dispatch plan steps, or a whole plan, to your workers, and follow, steer and end their runs"
@@ -918,22 +925,7 @@ def register_runs(hsub) -> None:
     )
     plan.add_argument("plan", metavar="PLAN", help="the plan's id")
     with_project(plan)
-    plan.add_argument(
-        "--worker", help="pin the run to this worker of yours, by id or name (default: any of yours with every repo)"
-    )
-    plan.add_argument("--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has")
-    with_model(plan)
-    plan.add_argument(
-        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
-    )
-    plan.add_argument(
-        "--timeout-h",
-        type=int,
-        choices=PLAN_TIMEOUT_CHOICES,
-        metavar="HOURS",
-        help=f"hours of agent time, one of {', '.join(map(str, PLAN_TIMEOUT_CHOICES))} (default 4); waiting for a "
-        "decision and parked do not count",
-    )
+    _plan_options(plan, with_model)
     json_option(plan, RUN)
     plan.set_defaults(func=cmd_plan)
 

@@ -87,6 +87,7 @@ async def record_heartbeat(
                 free_slots=func.least(body.free_slots, w.c.slots),
                 agent_version=func.coalesce(body.agent_version, w.c.agent_version),
                 run_kinds=None if body.run_kinds is None else [k for k in body.run_kinds if k in runs.RUN_KINDS],
+                features=None if body.features is None else [k for k in body.features if k in runs.WORKER_FEATURES],
             )
             .where(w.c.id == worker_id)
         )
