@@ -368,6 +368,23 @@ def _chain(call: dict, scopes: Scopes) -> list[str] | None:
     return [callee]
 
 
+def name_via(chain: list[str], scopes: Scopes) -> list[list]:
+    """The ``via`` entries of a type name written in this file, ``Base`` or ``a.b.Base``: what an import binds
+    to its head, else the whole name as a fully qualified one, then the scopes the language gives without
+    an import. Unlike a call, the last segment is the definition itself, not a member of it."""
+    head, rest = chain[0], chain[1:]
+    via = []
+    for kind, value, prefix in scopes.names.get(head, []):
+        qual = ".".join(p for p in (prefix, *rest) if p)
+        if qual:
+            via.append([kind, value, qual])
+    if head in scopes.names:
+        return via
+    if scopes.family and len(chain) > 1:
+        via += _splits(scopes.family, chain, [])
+    return via + [[kind, value, prefix + ".".join(chain)] for kind, value, prefix in scopes.implicit]
+
+
 def call_via(call: dict, scopes: Scopes) -> list[list]:
     """The ``via`` entries of one raw call, most specific first; empty when nothing is evidence."""
     chain = _chain(call, scopes)

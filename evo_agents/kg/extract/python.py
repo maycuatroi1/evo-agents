@@ -7,6 +7,10 @@ module becomes an ``xref`` only when the file's imports name it: ``from m import
 imports, imports inside a function body and star imports. Each xref lists ``via`` entries,
 ``["module", module, qualname]``, that the link stage resolves against the identifier index; a name the
 imports do not bind gets none.
+
+A class lists its ``bases`` as such ``via`` lists, ``["local", "", qualname]`` for a class of the same
+file. ``self.m()`` or ``cls.m()`` to a method the class does not define, and ``super().m()``, become xrefs
+``["self" | "super", class, "m"]`` that the link stage looks up along the class's chain.
 """
 
 from __future__ import annotations
@@ -115,6 +119,19 @@ def _assigned(func: ast.AST) -> set[str]:
     return names
 
 
+def _super_member(func: ast.expr, cls: str) -> str | None:
+    """``super().m`` or ``super(C, self).m`` in a method of class ``C``: the member's name."""
+    if not (isinstance(func, ast.Attribute) and isinstance(func.value, ast.Call)):
+        return None
+    inner = func.value
+    if not (isinstance(inner.func, ast.Name) and inner.func.id == "super"):
+        return None
+    first = inner.args[0] if inner.args else None
+    if first is not None and not (isinstance(first, ast.Name) and first.id == cls.rpartition(".")[2]):
+        return None  # super(Other, self): the chain of another class, not followed
+    return func.attr
+
+
 def _chain(func: ast.expr) -> list[str] | None:
     """``a.b.f`` -> [a, b, f]; None for anything that is not a dotted name."""
     parts = []
@@ -134,6 +151,7 @@ class _Extractor:
         self.calls: list[dict] = []
         self.xrefs: list[dict] = []
         self.top_names = {n.name for n in tree.body if isinstance(n, DEFS)}
+        self.quals: set[str] = set()
         self.module_env = _Env()
         for node in _imports_in(tree.body):
             self.module_env.bind(node, path)
@@ -149,15 +167,32 @@ class _Extractor:
         qual = f"{parent}.{node.name}" if parent else node.name
         kind = "class" if isinstance(node, ast.ClassDef) else ("method" if cls else "function")
         anchor = top if parent else node.name
-        self.symbols.append(
-            {"qualname": qual, "name": node.name, "kind": kind, "top": anchor, "line": node.lineno, "parent": parent}
-        )
+        sym = {"qualname": qual, "name": node.name, "kind": kind, "top": anchor, "line": node.lineno, "parent": parent}
+        self.symbols.append(sym)
+        self.quals.add(qual)
         if isinstance(node, ast.ClassDef):
+            bases = [via for base in node.bases if (via := self.base_via(base, node.name, parent, env))]
+            if bases:
+                sym["bases"] = bases
             self.visit_body(node.body, anchor, qual, qual, env)
             return
         inner = env.child(node, self.path)
         self.collect_calls(node, qual, anchor, cls, inner)
         self.visit_body(node.body, anchor, qual, None, inner)
+
+    def base_via(self, base: ast.expr, name: str, parent: str | None, env: _Env) -> list[list[str]]:
+        """``via`` entries of one base of a class: a class of this file (in the enclosing class's body, or
+        at the top), else what the imports bind."""
+        while isinstance(base, ast.Subscript):  # Generic[T], Base[int]
+            base = base.value
+        chain = _chain(base)
+        if chain is None:
+            return []
+        if parent and f"{parent}.{chain[0]}" in self.quals:
+            return [["local", "", ".".join([parent, *chain])]]
+        if chain[0] in self.top_names and chain[0] != name:
+            return [["local", "", ".".join(chain)]]
+        return env.via(chain)
 
     def collect_import(self, node, top: str) -> None:
         if isinstance(node, ast.Import):
@@ -175,14 +210,18 @@ class _Extractor:
         for node in ast.walk(func):
             if not isinstance(node, ast.Call):
                 continue
+            call = {"caller": qual, "line": node.lineno, "top": top}
+            member = _super_member(node.func, cls) if cls else None
+            if member:
+                self.xrefs.append({**call, "via": [["super", cls, member]]})
+                continue
             chain = _chain(node.func)
             if chain is None:
                 continue
-            call = {"caller": qual, "line": node.lineno, "top": top}
             if len(chain) == 1 and chain[0] in self.top_names:
                 self.calls.append({**call, "callee": chain[0]})
-            elif len(chain) == 2 and chain[0] == "self" and cls:
-                self.calls.append({**call, "callee": f"{cls}.{chain[1]}"})
+            elif len(chain) == 2 and chain[0] in ("self", "cls") and cls:
+                self.calls.append({**call, "callee": f"{cls}.{chain[1]}", "member": [cls, chain[1]]})
             elif chain[0] not in self.top_names and chain[0] != "self":
                 via = env.via(chain)
                 if via:
@@ -190,9 +229,14 @@ class _Extractor:
 
     def result(self) -> dict:
         known = {s["qualname"] for s in self.symbols}
-        calls = [c for c in self.calls if c["callee"] in known]
+        calls = [{k: v for k, v in c.items() if k != "member"} for c in self.calls if c["callee"] in known]
+        inherited = [  # self.m() to a method the class does not define: up its chain, in the link stage
+            {k: c[k] for k in ("caller", "line", "top")} | {"via": [["self", *c["member"]]]}
+            for c in self.calls
+            if c["callee"] not in known and "member" in c
+        ]
         xrefs, seen = [], set()
-        for x in self.xrefs:  # one per caller and target: the first line stands for the others
+        for x in self.xrefs + inherited:  # one per caller and target: the first line stands for the others
             key = (x["caller"], repr(x["via"]))
             if key not in seen:
                 seen.add(key)
@@ -203,7 +247,7 @@ class _Extractor:
 def extract(text: str, path: str) -> dict | None:
     """Return {"symbols", "imports", "calls", "xrefs"} or None if the file does not parse.
 
-    symbols: {qualname, name, kind (class|function|method), top (top-level anchor), line, parent}
+    symbols: {qualname, name, kind (class|function|method), top (top-level anchor), line, parent, [bases]}
     imports: {module, top}; calls: {caller, callee, line, top}; xrefs: {caller, line, top, via}
     """
     try:
