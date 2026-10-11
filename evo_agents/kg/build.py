@@ -40,7 +40,7 @@ from evo_agents.kg.schema import known_kinds
 from evo_agents.kg.store import SCHEMA_VERSION, Graph, Store, edge_id, key_conflicts
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
-STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown"}
+STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config"}  # config: tsconfig.json aliases
 DEFINITION_SAMPLES = 15
 STAT_KEYS = (
     "mentions",
