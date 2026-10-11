@@ -13,6 +13,7 @@ SEARCH = "symbol:app:app/search.py::search"
 TEST_SEARCH = "symbol:app:tests/test_search.py::test_search"
 SEARCH_PY = "app:file:app/search.py"
 SERVER_PY = "app:file:app/server.py"
+HANDLE = "symbol:app:app/server.py::Server.handle"
 
 DIFF = """diff --git a/app/search.py b/app/search.py
 index 1111111..2222222 100644
@@ -200,6 +201,7 @@ def test_impact_by_id_walks_back_to_dependents_and_groups_documents(tmp_path, kg
     assert got == {
         SEARCH: (1, "calls", "resolved"),
         SEARCH_PY: (1, "defines", "parsed"),
+        HANDLE: (2, "calls", "resolved"),  # server.py imports search from app.search and calls it
         SERVER_PY: (2, "imports", "parsed"),
         "app:file:tests/test_search.py": (2, "imports", "parsed"),
         TEST_SEARCH: (2, "verifies", "declared"),
@@ -251,13 +253,15 @@ def test_impact_reads_changed_lines_from_a_diff():
 
 def test_impact_follows_no_proposed_edge(tmp_path, kg_env):
     project = built(tmp_path, kg_env)
-    add_edge(project, "symbol:app:app/server.py::Server.handle", "calls", SEARCH, "proposed")
+    # Server.handle calls search for real (resolved by the build); rank_results does not call it.
+    add_edge(project, RANK, "calls", SEARCH, "proposed")
     add_edge(project, "symbol:app:app/server.py::Server", "calls", SEARCH, "introspected")
     add_edge(project, "harness:file:CLUSTER.md#demo", "mentions", SEARCH, "proposed")
     result = Session(project, "agent").call("kg_impact", {"id": SEARCH, "depth": 1})
     got = impacted(result)
     assert got["symbol:app:app/server.py::Server"] == (1, "calls", "introspected")
-    assert "symbol:app:app/server.py::Server.handle" not in got
+    assert got[HANDLE] == (1, "calls", "resolved")
+    assert RANK not in got
     docs = {d["node"]["id"] for d in result["structuredContent"]["documents"]}
     assert "app:file:docs/guide.md#guide" in docs and "harness:file:CLUSTER.md#demo" not in docs
 

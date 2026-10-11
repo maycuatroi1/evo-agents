@@ -18,6 +18,8 @@ Directory nodes are ``dir:<repo>:<path>``: one per directory of a repo, whicheve
 
 from __future__ import annotations
 
+import json
+import posixpath
 import re
 from collections.abc import Sequence
 from pathlib import PurePosixPath
@@ -28,7 +30,7 @@ from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
 MAP_VERSION = "2"
-STRUCTURE_VERSION = "4"
+STRUCTURE_VERSION = "5"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
@@ -360,6 +362,67 @@ def symbol_key(record: dict, source_id: str, path: str, qualname: str) -> list[s
     return [(record.get("props") or {}).get("repo") or source_id, path, qualname]
 
 
+def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: dict[str, str]) -> list[dict]:
+    """The Symbol node of one definition, its ``member_of`` or ``defines`` edge, and its ident. The ident
+    names the file, and the package the definition is in when its language has packages: the link stage
+    finds a symbol by file or package and qualified name."""
+    item_id = record["id"]
+    props = record.get("props") or {}
+    path = props.get("path") or ""
+    sid = f"symbol:{source_id}:{path}::{sym['qualname']}"
+    by_qual[sym["qualname"]] = sid
+    facts = [
+        node(
+            sid,
+            "Symbol",
+            sym["qualname"],
+            [unit],
+            props={
+                "kind": sym["kind"],
+                "path": path,
+                "line": sym["line"],
+                "file": item_id,
+                "key": symbol_key(record, source_id, path, sym["qualname"]),
+            },
+            where=[[unit, f"line {sym['line']}"]],
+        )
+    ]
+    parent = by_qual.get(sym["parent"]) if sym["parent"] else None
+    if parent:
+        facts.append(edge(sid, "member_of", parent, [unit]))
+    else:
+        facts.append(edge(item_id, "defines", sid, [unit]))
+    facts.append(
+        {
+            "t": "ident",
+            "type": "symbol",
+            "key": f"{path}::{sym['qualname']}",
+            "name": sym["name"],
+            "qualname": sym["qualname"],
+            "source": source_id,
+            "repo": props.get("repo"),
+            "file": item_id,
+            "node": sid,
+            **({"package": sym["package"]} if sym.get("package") else {}),
+        }
+    )
+    return facts
+
+
+def _xref_facts(record: dict, source_id: str, xrefs: list[dict], by_qual: dict[str, str], unit_for) -> list[dict]:
+    """A ``calls`` reference per call into another file, for the link stage to resolve through the index.
+    ``via`` holds the evidence the file's imports give, most specific first (see ``extract.xref``)."""
+    repo = (record.get("props") or {}).get("repo")
+    facts = []
+    for x in xrefs:
+        caller = by_qual.get(x["caller"])
+        if caller:
+            unit = unit_for(x.get("top"))
+            target = {"type": "call", "via": x["via"], "source": source_id, "repo": repo}
+            facts.append(ref(caller, "calls", target, [unit], status="resolved", where=[[unit, f"line {x['line']}"]]))
+    return facts
+
+
 def _python(record: dict, source_id: str, text: str) -> list[dict]:
     item_id = record["id"]
     path = (record.get("props") or {}).get("path") or ""
@@ -372,44 +435,9 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
     def unit_for(top: str) -> str:
         return frag_unit(item_id, top) if top in anchors else item_unit(item_id)
 
-    by_qual = {}
+    by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
-        sid = f"symbol:{source_id}:{path}::{sym['qualname']}"
-        by_qual[sym["qualname"]] = sid
-        unit = unit_for(sym["top"])
-        facts.append(
-            node(
-                sid,
-                "Symbol",
-                sym["qualname"],
-                [unit],
-                props={
-                    "kind": sym["kind"],
-                    "path": path,
-                    "line": sym["line"],
-                    "file": item_id,
-                    "key": symbol_key(record, source_id, path, sym["qualname"]),
-                },
-                where=[[unit, f"line {sym['line']}"]],
-            )
-        )
-        parent = by_qual.get(sym["parent"]) if sym["parent"] else None
-        if parent:
-            facts.append(edge(sid, "member_of", parent, [unit]))
-        else:
-            facts.append(edge(item_id, "defines", sid, [unit]))
-        facts.append(
-            {
-                "t": "ident",
-                "type": "symbol",
-                "key": f"{path}::{sym['qualname']}",
-                "name": sym["name"],
-                "qualname": sym["qualname"],
-                "source": source_id,
-                "repo": (record.get("props") or {}).get("repo"),
-                "node": sid,
-            }
-        )
+        facts += _symbol_facts(record, source_id, sym, unit_for(sym["top"]), by_qual)
     for imp in result["imports"]:
         facts.append(
             ref(
@@ -428,7 +456,7 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
                     caller, "calls", callee, [unit], status="resolved", conf=0.8, where=[[unit, f"line {call['line']}"]]
                 )
             )
-    return facts
+    return facts + _xref_facts(record, source_id, result["xrefs"], by_qual, unit_for)
 
 
 def code_extractor(record: dict, backend: str) -> str:
@@ -500,43 +528,10 @@ def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
     unit = item_unit(item_id)
     if result is None:
         return [{"t": "issue", "message": f"{path}: graphify could not extract it", "unit": unit}]
-    facts, by_qual = [], {}
+    facts: list[dict] = []
+    by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
-        sid = f"symbol:{source_id}:{path}::{sym['qualname']}"
-        by_qual[sym["qualname"]] = sid
-        facts.append(
-            node(
-                sid,
-                "Symbol",
-                sym["qualname"],
-                [unit],
-                props={
-                    "kind": sym["kind"],
-                    "path": path,
-                    "line": sym["line"],
-                    "file": item_id,
-                    "key": symbol_key(record, source_id, path, sym["qualname"]),
-                },
-                where=[[unit, f"line {sym['line']}"]],
-            )
-        )
-        parent = by_qual.get(sym["parent"]) if sym["parent"] else None
-        if parent:
-            facts.append(edge(sid, "member_of", parent, [unit]))
-        else:
-            facts.append(edge(item_id, "defines", sid, [unit]))
-        facts.append(
-            {
-                "t": "ident",
-                "type": "symbol",
-                "key": f"{path}::{sym['qualname']}",
-                "name": sym["name"],
-                "qualname": sym["qualname"],
-                "source": source_id,
-                "repo": props.get("repo"),
-                "node": sid,
-            }
-        )
+        facts += _symbol_facts(record, source_id, sym, unit, by_qual)
     for call in result["calls"]:
         caller, callee = by_qual.get(call["caller"]), by_qual.get(call["callee"])
         if caller and callee and caller != callee:
@@ -555,7 +550,57 @@ def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
         facts.append(
             ref(item_id, "imports", {"type": "paths", "values": candidates, "repo": props.get("repo")}, [unit])
         )
-    return facts
+    return facts + _xref_facts(record, source_id, result["xrefs"], by_qual, lambda _top: unit)
+
+
+TSCONFIG_NAMES = ("tsconfig.json", "jsconfig.json")
+
+
+def _jsonc(text: str):
+    """JSON with the comments and trailing commas tsconfig files allow; None when it still does not parse."""
+    out, i, n = [], 0, len(text)
+    while i < n:
+        ch = text[i]
+        if ch == '"':
+            j = i + 1
+            while j < n and text[j] != '"':
+                j += 2 if text[j] == "\\" else 1
+            out.append(text[i : j + 1])
+            i = j + 1
+        elif text.startswith("//", i):
+            end = text.find("\n", i)
+            i = n if end < 0 else end
+        elif text.startswith("/*", i):
+            end = text.find("*/", i + 2)
+            i = n if end < 0 else end + 2
+        else:
+            out.append(ch)
+            i += 1
+    try:
+        return json.loads(re.sub(r",(\s*[}\]])", r"\1", "".join(out)))
+    except ValueError:
+        return None
+
+
+def _tsconfig(record: dict, text: str) -> list[dict]:
+    """The module aliases of a ``tsconfig.json`` (``baseUrl`` and ``paths``), as an ident the link stage
+    reads to resolve a non-relative import of a file under its directory. ``extends`` is not followed."""
+    props = record.get("props") or {}
+    path = props.get("path") or ""
+    data = _jsonc(text)
+    options = data.get("compilerOptions") if isinstance(data, dict) else None
+    if not isinstance(options, dict) or not ({"baseUrl", "paths"} & set(options)):
+        return []
+    directory = posixpath.dirname(path)
+    base_url = options.get("baseUrl")
+    base = posixpath.normpath(posixpath.join(directory, base_url)) if isinstance(base_url, str) else None
+    root = base if base is not None else directory
+    paths = {}
+    for pattern, targets in sorted((options.get("paths") or {}).items()):
+        if isinstance(targets, list):
+            paths[pattern] = [posixpath.normpath(posixpath.join(root, t)) for t in targets if isinstance(t, str)]
+    ident = {"t": "ident", "type": "tsconfig", "key": f"{props.get('repo')}:{directory}", "node": record["id"]}
+    return [{**ident, "base": base, "paths": paths}]
 
 
 def structure_item(
@@ -573,6 +618,9 @@ def structure_item(
         if kind == "manifest":
             return _manifest(item_id, data, unit, record)
         return {"contracts": _contracts, "plan": _plan}[kind](item_id, data, unit)
+    if kind == "config" and text is not None:
+        name = PurePosixPath((record.get("props") or {}).get("path") or "").name
+        return _tsconfig(record, text) if name in TSCONFIG_NAMES else []
     if kind == "code" and text is not None:
         extractor = code_extractor(record, code_backend)
         if extractor == "python-ast":

@@ -30,7 +30,6 @@
     "evo_agents/hub/server/run_state.py::write_step": {"complexity": 16},
     "evo_agents/kg/build.py::run_pipeline": {"complexity": 56, "statements": 171},
     "evo_agents/kg/connectors/git.py::run": {"statements": 56},
-    "evo_agents/kg/extract/python.py::extract": {"complexity": 21},
     "evo_agents/kg/pipeline/binding.py::binding_item": {"complexity": 16},
     "evo_agents/kg/pipeline/link.py::Linker.scan": {"complexity": 43, "statements": 120},
     "evo_agents/kg/protocol/__init__.py::StreamChecker.feed": {"complexity": 21},
