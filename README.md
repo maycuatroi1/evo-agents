@@ -99,6 +99,23 @@ source sync and every build appends one line to `audit.jsonl` there: ids, times,
 never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
 never their values.
 
+A corpus synced before its git connector redacted keeps the old copies: in the blobs of earlier runs, in memo rows,
+and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
+them with the connector's patterns and lists each blob that holds a secret by hash, path, item id and kind of
+secret, never the value. A blob is old when nothing uses it, live when an item of the corpus refers to it now (a
+sync of its source replaces it with a redacted copy, so sync and build first), and kept when only an older record of
+a run still in use names it. Counting changes nothing. `--purge` says what it is about to delete and asks first
+(`--yes` when no terminal can answer). It then deletes the old blobs, the run logs of old runs that name them and
+the memo rows holding a secret, compacts the memo and the graph so no free page keeps the text, and appends a
+`scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus uses, and it holds every source's
+lock meanwhile, so a sync started then stops at once instead of writing:
+
+```sh
+evo-agents kg sync --build                   # live copies become old ones
+evo-agents kg scrub                          # count, change nothing
+evo-agents kg scrub --all --purge            # delete the old copies of every project, after a yes
+```
+
 To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg sync --due` runs only
 the sources whose interval has passed since their last ok run; `--all` does that for every project that
 has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent that runs
