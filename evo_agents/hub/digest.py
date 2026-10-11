@@ -1,5 +1,6 @@
-"""The digest of a Claude Code session: what the Stop hook of the evo-hub plugin tells the hub about a session, built
-on this machine from the session's transcript.
+"""The digest of a Claude Code or Codex session: what the Stop hook of the evo-hub plugin tells the hub about a session,
+built on this machine from the session's transcript. A Codex session's transcript is a rollout (``codex exec`` / the
+app-server session log); ``_CodexTally`` reads it to the same fields, so one digest shape serves both runtimes.
 
 A session counts once its transcript holds MIN_MESSAGES messages: lines from the person or the model, meta lines left
 out, as the ``digest`` of the harness-engineering skill counts them (``harness.py``), so the two agree on which
@@ -87,6 +88,22 @@ STATE_FILE = "digest-state.json"
 STATE_VERSION = 1
 KEEP_SECONDS = 90 * 86400  # a session the state remembers, after its last push
 MAX_SESSIONS = 500  # sessions the state remembers per hub, the newest
+
+# A Codex rollout (``codex exec`` / the app-server session log a Codex session's transcript_path names): one JSON object
+# a line, ``type`` and ``payload``, the first line ``session_meta``. The digest is read through the normalized item
+# stream (``event_msg`` of ``item_completed``), the token counts (``token_count``) and the compactions, so a Codex
+# session's digest has the shape of a Claude Code one.
+CODEX_META = "session_meta"  # the first line of a Codex rollout
+CODEX_SHELL_TOOL = "shell"  # a Codex command execution in the tools tally (its programs are in ``bash``)
+CODEX_PATCH_TOOL = "apply_patch"  # a Codex file change in the tools tally
+CODEX_SEARCH_TOOL = "web_search"  # a Codex web search in the tools tally
+CODEX_LC = ("-lc", "-c", "-ic")  # a login shell's flag before the command it runs
+# A Codex ``total_token_usage`` key mapped to a digest usage key; ``input_tokens`` is handled apart (cached removed).
+CODEX_USAGE = {
+    "output_tokens": "output_tokens",
+    "cached_input_tokens": "cache_read_input_tokens",
+    "cache_write_input_tokens": "cache_creation_input_tokens",
+}
 
 
 def _cut(text, limit: int) -> str:
@@ -335,12 +352,211 @@ class _Tally:
         }
 
 
+# A Codex session
+
+
+def is_codex(line) -> bool:
+    """True for the first line of a Codex rollout, which a Codex session's transcript is: ``type`` is session_meta."""
+    return isinstance(line, dict) and line.get("type") == CODEX_META
+
+
+def _codex_text(content) -> str:
+    """The text of a Codex item's content, a string or a list of ``{type, text}`` (the type in any case)."""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        return "\n".join(str(part.get("text") or "") for part in content if isinstance(part, dict) and part.get("text"))
+    return ""
+
+
+def codex_command(item: dict) -> str:
+    """The shell command a CommandExecution ran: Codex's parsed form when it gives one, else the command a login shell
+    ran after its ``-lc`` flag, else the argv joined."""
+    parsed = item.get("parsed_cmd")
+    if isinstance(parsed, list):
+        cmds = [str(part["cmd"]) for part in parsed if isinstance(part, dict) and part.get("cmd")]
+        if cmds:
+            return " && ".join(cmds)
+    command = item.get("command")
+    if isinstance(command, list) and command:
+        if len(command) >= 2 and command[-2] in CODEX_LC:
+            return str(command[-1])
+        return " ".join(str(word) for word in command)
+    return str(command or "")
+
+
+def _codex_failed(item: dict) -> bool:
+    """A Codex item that did not succeed: a non-zero exit code, or a failed, declined or error status."""
+    exit_code = item.get("exit_code")
+    if isinstance(exit_code, int) and not isinstance(exit_code, bool) and exit_code != 0:
+        return True
+    return str(item.get("status") or "") in ("failed", "declined", "error")
+
+
+class _CodexTally:
+    """What a Codex rollout holds, one line at a time. The same fields as ``_Tally``, built from the normalized item
+    stream instead of a Claude Code transcript; usage comes from the running ``total_token_usage`` (cumulative, so the
+    largest per key is the session's) and the peak from the largest ``last_token_usage.input_tokens`` (the context of
+    one request, the cached part counted in it, as the Codex runtime measures a run's peak)."""
+
+    def __init__(self):
+        self.messages = 0
+        self.first: datetime | None = None
+        self.last: datetime | None = None
+        self.user_turns: list[str] = []
+        self.commands: Counter = Counter()
+        self.calls: Counter = Counter()
+        self.failed: Counter = Counter()
+        self.bash_calls: Counter = Counter()
+        self.bash_failed: Counter = Counter()
+        self.errors: Counter = Counter()
+        self.edited: set[str] = set()
+        self.models: Counter = Counter()  # the models of the turns, as a Counter of names
+        self.totals: dict = dict.fromkeys(USAGE_KEYS, 0)
+        self.peak: int | None = None
+        self.compactions: set[str] = set()
+        self.chars: Counter = Counter()  # per tool, the characters of its results the model read
+
+    def add(self, line) -> None:
+        if not isinstance(line, dict):
+            return
+        at = _timestamp(line.get("timestamp"))
+        if at is not None:
+            self.first = at if self.first is None or at < self.first else self.first
+            self.last = at if self.last is None or at > self.last else self.last
+        kind = line.get("type")
+        payload = line.get("payload") if isinstance(line.get("payload"), dict) else {}
+        if kind == "turn_context":
+            model = payload.get("model")
+            if isinstance(model, str) and model:
+                self.models[_cut(model, MAX_NAME)] += 1
+        elif kind == "event_msg":
+            inner = payload.get("type")
+            if inner == "token_count":
+                self._tokens(payload.get("info") or {})
+            elif inner == "item_completed":
+                self._item(payload.get("item") or {})
+
+    def _tokens(self, info: dict) -> None:
+        last = info.get("last_token_usage")
+        if isinstance(last, dict):
+            value = _count(last.get("input_tokens"))
+            if value:  # a request that read no context (an aborted or empty turn) does not set the peak, never 0
+                self.peak = value if self.peak is None else max(self.peak, value)
+        total = info.get("total_token_usage")
+        if isinstance(total, dict):
+            cached = _count(total.get("cached_input_tokens")) or 0
+            fresh = max((_count(total.get("input_tokens")) or 0) - cached, 0)  # as Claude Code counts input apart
+            mapped = {"input_tokens": fresh, **{dst: _count(total.get(src)) or 0 for src, dst in CODEX_USAGE.items()}}
+            for key, found in mapped.items():
+                self.totals[key] = min(max(self.totals[key], found), MAX_COUNT)
+
+    def _item(self, item: dict) -> None:
+        kind = item.get("type")
+        if kind == "UserMessage":
+            self.messages += 1
+            text = _codex_text(item.get("content")).strip()
+            if text and not text.startswith("<") and len(self.user_turns) < MAX_USER_TURNS:
+                self.user_turns.append(_cut(text, USER_TURN_CHARS))
+        elif kind == "AgentMessage":
+            self.messages += 1
+        elif kind == "CommandExecution":
+            self._command(item)
+        elif kind == "McpToolCall":
+            self._mcp(item)
+        elif kind == "FileChange":
+            self._file(item)
+        elif kind == "WebSearch":
+            self.messages += 1
+            self.calls[CODEX_SEARCH_TOOL] += 1
+        elif kind == "ContextCompaction":
+            self.compactions.add(str(item.get("id") or f"item {len(self.compactions)}"))
+
+    def _command(self, item: dict) -> None:
+        self.messages += 1
+        self.calls[CODEX_SHELL_TOOL] += 1
+        failed = _codex_failed(item)
+        command = codex_command(item).strip()
+        if command:
+            self.commands[_cut(command, COMMAND_CHARS)] += 1
+            ran = program(command) or "unknown"
+            self.bash_calls[ran] += 1
+            if failed:
+                self.bash_failed[ran] += 1
+        output = str(item.get("aggregated_output") or "")
+        self.chars[CODEX_SHELL_TOOL] = min(self.chars[CODEX_SHELL_TOOL] + len(output), MAX_COUNT)
+        if failed:
+            self.failed[CODEX_SHELL_TOOL] += 1
+            self.errors[(CODEX_SHELL_TOOL, _cut(output.strip(), ERROR_CHARS))] += 1
+
+    def _mcp(self, item: dict) -> None:
+        self.messages += 1
+        server, name = item.get("server"), item.get("tool")
+        tool = _cut(f"mcp__{server}__{name}" if server else f"mcp__{name}", MAX_NAME)
+        self.calls[tool] += 1
+        content = item.get("result")
+        text = _codex_text(content.get("content")) if isinstance(content, dict) else _codex_text(content)
+        self.chars[tool] = min(self.chars[tool] + len(text), MAX_COUNT)
+        if _codex_failed(item):
+            self.failed[tool] += 1
+            self.errors[(tool, _cut(text.strip(), ERROR_CHARS))] += 1
+
+    def _file(self, item: dict) -> None:
+        self.messages += 1
+        self.calls[CODEX_PATCH_TOOL] += 1
+        changes = item.get("changes")
+        if isinstance(changes, dict):
+            for path in changes:
+                if isinstance(path, str) and path:
+                    self.edited.add(_cut(path, PATH_CHARS))
+        if _codex_failed(item):
+            self.failed[CODEX_PATCH_TOOL] += 1
+
+    def digest(self, cwd: str) -> dict:
+        per_model = _ranked(self.models)
+        commands = _ranked(self.commands)
+        return {
+            "cwd": _cut(cwd, MAX_CWD),
+            "messages": min(self.messages, MAX_COUNT),
+            "started_at": self.first.isoformat() if self.first else None,
+            "ended_at": self.last.isoformat() if self.last else None,
+            "model": per_model[0][0] if per_model else None,
+            "models": [{"model": name, "messages": n} for name, n in per_model[:MAX_MODELS]],
+            "usage": dict(self.totals),
+            "tools": [
+                {TOOL_NAME: name, "calls": n, "errors": min(self.failed[name], n)}
+                for name, n in _ranked(self.calls)[:MAX_TOOLS]
+            ],
+            "bash": [
+                {"program": name, "calls": n, "errors": min(self.bash_failed[name], n)}
+                for name, n in _ranked(self.bash_calls)[:MAX_PROGRAMS]
+            ],
+            "user_turns": self.user_turns,
+            "commands": [command for command, _ in commands[:MAX_COMMANDS]],
+            "repeated_commands": [{"command": c, "n": n} for c, n in commands if n > 1][:MAX_REPEATED],
+            "errors": [{TOOL_NAME: tool, "text": text, "n": n} for (tool, text), n in _ranked(self.errors) if text][
+                :MAX_ERRORS
+            ],
+            "files_read": 0,  # Codex reads files through the shell, which the commands already hold
+            "files_edited": sorted(self.edited)[:MAX_FILES],
+            "peak_context_tokens": self.peak,
+            "compactions": min(len(self.compactions), MAX_COUNT),
+            "tool_result_chars": [{TOOL_NAME: name, "chars": n} for name, n in _ranked(self.chars)[:MAX_TOOLS]],
+        }
+
+
 def build(transcript: Path, cwd: str) -> dict | None:
     """The digest of the session whose transcript is ``transcript`` and whose directory is ``cwd``; None when it holds
-    fewer than MIN_MESSAGES messages or cannot be read. The transcript is read a line at a time."""
-    tally = _Tally()
+    fewer than MIN_MESSAGES messages or cannot be read. The transcript is read a line at a time, as a Claude Code
+    transcript or, when its first line is a Codex ``session_meta``, as a Codex rollout."""
+    tally: _Tally | _CodexTally = _Tally()
+    decided = False
     try:
         for line in read_lines(transcript):
+            if not decided:
+                decided = True
+                if is_codex(line):
+                    tally = _CodexTally()
             tally.add(line)
     except OSError:
         return None

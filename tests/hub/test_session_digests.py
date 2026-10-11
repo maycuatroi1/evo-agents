@@ -389,6 +389,58 @@ def test_stop_pushes_the_redacted_digest_of_a_session_to_the_project_of_its_dire
         assert secret not in log
 
 
+def codex_rollout_with_secret(token: str) -> list[dict]:
+    """A Codex rollout (the session's transcript_path) of 6 messages whose person and a command's output hold a secret,
+    the machine's own hub token among them, and whose token counts give a peak."""
+    from tests.hub.test_digest import CODEX_META, cx, item, tokens
+
+    total = {"input_tokens": 50_000, "cached_input_tokens": 30_000, "cache_write_input_tokens": 0, "output_tokens": 900}
+    prompt = f"Use {ANTHROPIC_KEY}; my token is {token}."
+    lines = [
+        cx(CODEX_META, {"session_id": SESSION, "cwd": "/work"}, 0),
+        cx("turn_context", {"model": "gpt-6-astra"}, 1),
+        item(1, type="UserMessage", id="i1", content=[{"type": "text", "text": prompt}]),
+    ]
+    lines += [item(n, type="AgentMessage", id=f"a{n}", content=[{"type": "Text", "text": "w"}]) for n in range(2, 6)]
+    lines += [
+        item(
+            6,
+            type="CommandExecution",
+            id="c1",
+            command=["/bin/zsh", "-lc", "gh auth status"],
+            exit_code=1,
+            status="completed",
+            aggregated_output=f"HTTP 401 for token {HUB_TOKEN}",
+        ),
+        tokens(6, 250_000, total),
+    ]
+    return lines
+
+
+def test_stop_pushes_a_codex_session_digest_with_its_peak_context_and_redacted(hub_db, tmp_path):
+    with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
+        admin = hub_client.Hub(served.url, live.insert_token(hub_db, live.ADMIN))
+        admin.call("PUT", "/v1/projects/demo", live_project())
+        admin.call("PUT", "/v1/admin/projects/demo/grants/alice", {"role": "writer", "max_level": "internal"})
+        token = live.insert_token(hub_db, "alice")
+        home, root = machine(tmp_path, "laptop", served.url, "alice", token)
+        rollout = write_transcript(home / "rollout.jsonl", codex_rollout_with_secret(token))
+
+        pushed = stop_hook(home, root, SESSION, rollout)
+        assert (pushed.returncode, pushed.stdout, pushed.stderr) == (0, "", "")
+        held = stored(hub_db)
+        assert list(held) == [SESSION] and held[SESSION][3] == 6
+        body = held[SESSION][1]
+        assert body["peak_context_tokens"] == 250_000 and body["model"] == "gpt-6-astra"
+        assert body["tools"][0] == {"gen_ai.tool.name": "shell", "calls": 1, "errors": 1}
+        text = json.dumps(body)
+        for secret in (ANTHROPIC_KEY, token, HUB_TOKEN):
+            assert secret not in text
+        assert "***" in text
+        shown_ = hub_client.Hub(served.url, token).call("GET", f"/v1/projects/demo/digests/{SESSION}")
+        assert shown_["digest"]["peak_context_tokens"] == 250_000
+
+
 def test_a_digest_that_waited_while_the_hub_was_down_goes_with_a_later_stop(hub_db, tmp_path):
     with live.running_hub(hub_db, tmp_path, EVO_HUB_ADMINS=live.ADMIN) as served:
         admin = hub_client.Hub(served.url, live.insert_token(hub_db, live.ADMIN))

@@ -63,6 +63,14 @@ HEADLESS_NOTE = (
     "session or answers questions while it runs: decide reasonably on your own and finish the task. The owner may "
     "send you messages while you work; take them into account."
 )
+# Appended, after HEADLESS_NOTE, to the prompt of a runtime whose agent can spawn subagents (``{fork}`` names the
+# runtime's way to keep a subagent's context off this session's history). A subagent starts fresh and takes a plan
+# handoff instead of the transcript, so each one's context stays small.
+SUBAGENT_NOTE = (
+    "When you hand part of the task to a subagent, start it with a fresh context, not a fork of this session, and give "
+    "it a plan handoff (the evo-hub plan_handoff tool, or `evo-agents hub plan handoff PLAN --step KEY`) instead of "
+    "your own history, so each subagent's context stays small. {fork}"
+)
 INTERRUPT_TIMEOUT = 10.0  # seconds for the runtime to answer an interrupt request
 KILL_AFTER = 20.0  # seconds an interrupted agent has to end before its process group is killed
 CLOSE_TIMEOUT = 30.0  # seconds for an SDK client to close

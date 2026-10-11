@@ -38,6 +38,7 @@ from evo_agents.worker import adapter as adapter_module
 from evo_agents.worker import selftest as selftest_module
 from evo_agents.worker.adapter import Adapter, AgentEvent, Detection, Outcome, RunContext
 from evo_agents.worker.runtimes import claude_code as claude_module
+from evo_agents.worker.runtimes import codex as codex_module
 from evo_agents.worker.runtimes import common
 from evo_agents.worker.runtimes import opencode as opencode_module
 from evo_agents.worker.runtimes.claude_code import ClaudeCodeAdapter, events_of
@@ -56,6 +57,15 @@ except ImportError:
 
 PROMPT = "Do step 9."
 MESSAGE = "Reply with the single word SECOND."
+
+
+def test_the_runtime_notes_tell_the_agent_to_spawn_fresh_subagents_with_a_plan_handoff():
+    for note in (codex_module.DEVELOPER_NOTE, claude_module.SYSTEM_NOTE):
+        assert common.HEADLESS_NOTE in note
+        assert "plan_handoff" in note and "not a fork" in note
+    assert 'fork_turns to "none"' in codex_module.DEVELOPER_NOTE  # Codex's spawn_agent way
+    assert "Task tool" in claude_module.SYSTEM_NOTE  # Claude Code's way
+    assert "plan_handoff" not in common.HEADLESS_NOTE, "the headless note itself is unchanged for opencode"
 
 
 def _script(path: Path, body: str) -> Path:
@@ -374,7 +384,7 @@ def test_claude_code_runs_with_full_permissions_in_the_worktree_under_the_daemon
     assert options.permission_mode == "bypassPermissions"
     assert options.session_id == session and options.resume is None
     assert options.cwd == str(tmp_path / "worktree")
-    append = f"{common.HEADLESS_NOTE}\n\n{claude_module.BACKGROUND_NOTE}"
+    append = f"{common.HEADLESS_NOTE}\n\n{claude_module.BACKGROUND_NOTE}\n\n{claude_module.SUBAGENT}"
     assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": append}
     assert "CLAUDECODE" not in options.env, "the agent is no child of a Claude Code session the daemon runs in"
     # The flags the SDK gives the CLI with these options (its own transport builds them; the fake took its place).
@@ -1149,7 +1159,7 @@ def test_codex_starts_a_thread_with_full_access_in_the_worktree_through_its_app_
         "approval_mode": ApprovalMode.deny_all,
         "sandbox": Sandbox.full_access,
         "cwd": worktree,
-        "developer_instructions": common.HEADLESS_NOTE,
+        "developer_instructions": codex_module.DEVELOPER_NOTE,
         "model": None,
         "config": {"model_reasoning_effort": "low"},
     }
