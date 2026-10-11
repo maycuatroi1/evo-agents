@@ -3,17 +3,18 @@ proxy ``evo-agents hub mcp`` answers with it too while the hub cannot be reached
 either way.
 
 The seven kg_* tools are ``evo_agents.kg.serve.TOOLS`` unchanged, names and schemas, so a session reads the graph of
-its project the same way whether ``kg serve`` answers on the machine or the hub does. The fourteen others read and write
-what the hub holds: memories, plans, skills, the caller's projects, the tool figures of runs, and what the Curator's
-review run reads: the night's figures, session digests, the events of a run and decisions. Those about a project take
-an optional ``project``; without it the session's project counts (X-Evo-Project, which the proxy sends). Their
-arguments are checked against these schemas before anything is read.
+its project the same way whether ``kg serve`` answers on the machine or the hub does. The fifteen others read and
+write what the hub holds: memories, plans and their handoffs, skills, the caller's projects, the tool figures of
+runs, and what the Curator's review run reads: the night's figures, session digests, the events of a run and
+decisions. Those about a project take an optional ``project``; without it the session's project counts (X-Evo-Project,
+which the proxy sends). Their arguments are checked against these schemas before anything is read.
 
 Standard library only, besides ``evo_agents.kg.serve`` and the hub's pure modules: the proxy runs on a core install.
 """
 
 from __future__ import annotations
 
+from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
 from evo_agents.hub.memory import TYPES
 from evo_agents.hub.plans import AREAS, STEP_STATUSES
 from evo_agents.hub.runs import DECISION_STATES, EVENT_KINDS, RUNTIMES
@@ -154,6 +155,33 @@ HUB_TOOLS = [
             "properties": {
                 "plan_id": {"type": "string", "pattern": NAME_PATTERN},
                 "step": _STEP,
+                "project": _PROJECT,
+            },
+            "required": ["plan_id"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "plan_handoff",
+        "description": (
+            "The handoff of a plan for a new session or a subagent, built by the hub from the plan it holds: its goal, "
+            "each step done with its title, commits, Decision lines verbatim and evidence cut, and the steps not done "
+            "with status and depends_on, within budget_tokens. With step, the evidence of the steps it depends on "
+            "comes first. A note names what was left out; plan_show has it whole. Same revision, same budget, same "
+            "text as `evo-agents hub plan handoff`."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "plan_id": {"type": "string", "pattern": NAME_PATTERN},
+                "step": {**_STEP, "description": "the step the handoff is for: its dependencies' evidence first"},
+                "budget_tokens": {
+                    "type": "integer",
+                    "minimum": MIN_BUDGET_TOKENS,
+                    "maximum": MAX_BUDGET_TOKENS,
+                    "default": DEFAULT_BUDGET_TOKENS,
+                    "description": "the most tokens the text may take, as UTF-8 bytes / 3",
+                },
                 "project": _PROJECT,
             },
             "required": ["plan_id"],
