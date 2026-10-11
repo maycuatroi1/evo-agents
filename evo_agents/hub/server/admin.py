@@ -19,6 +19,9 @@ to reader, gives back the credential leases still out of every run the member di
 POST /v1/admin/kg/prune runs the retention of built graphs now (``evo_agents.hub.kg_prune``), as the worker does every
 hour: for one project or every one, keeping the artifacts of the ``keep`` newest graphs of each (default
 EVO_HUB_KG_KEEP_ARTIFACTS). With ``dry_run`` it answers what it would delete and changes nothing.
+
+POST /v1/admin/kg/scrub reads a page of a project's built graphs and source blobs and answers those holding a secret,
+never a value, and POST /v1/admin/kg/scrub/purge deletes the old ones of them (``evo_agents.hub.server.kg_scrub``).
 """
 
 from __future__ import annotations
@@ -52,7 +55,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.config import MAX_KG_KEEP_ARTIFACTS, HubConfig
 from evo_agents.hub.runs import OFFLINE_AFTER_SECONDS
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, kg_scrub
 from evo_agents.hub.server.auth import GrantInfo
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -61,6 +64,7 @@ from evo_agents.kg.policy import Policy
 
 PROJECT_NAME = r"^[a-z0-9][a-z0-9-]{0,99}$"  # as the projects table accepts it
 LOGIN_NAME = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+SHA256 = r"^[0-9a-f]{64}$"
 MISSING = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 ACTIVE_DAYS = 30  # a member the hub saw within this many days is active
@@ -124,6 +128,21 @@ class PruneRequest(BaseModel):
         description="the newest graphs of each project whose artifact stays; default EVO_HUB_KG_KEEP_ARTIFACTS",
     )
     dry_run: bool = Field(False, description="answer what would be deleted, and change nothing")
+
+
+class ScrubRequest(BaseModel):
+    project: str = Field(pattern=PROJECT_NAME)
+    after: str | None = Field(None, pattern=SHA256, description="next of the page before; left out for the first page")
+    limit: int = Field(
+        kg_scrub.DEFAULT_LIMIT, ge=1, le=kg_scrub.MAX_LIMIT, description="objects this page reads at most"
+    )
+
+
+class ScrubPurgeRequest(BaseModel):
+    project: str = Field(pattern=PROJECT_NAME)
+    sha256: list[Annotated[str, Field(pattern=SHA256)]] = Field(
+        min_length=1, max_length=kg_scrub.MAX_PURGE, description="hashes a scan found old"
+    )
 
 
 class ProjectPruned(BaseModel):
@@ -606,3 +625,15 @@ async def prune_kg(request: Request, body: PruneRequest, user: AdminUser) -> KgP
             "prune",
         ) from None
     return KgPruned(**report.to_json())
+
+
+@router.post("/kg/scrub", response_model=kg_scrub.ScrubPage, responses={**MISSING, 503: {"model": ErrorBody}})
+async def scrub_kg(request: Request, body: ScrubRequest) -> kg_scrub.ScrubPage:
+    """Read a page of a project's built graphs and source blobs and say which hold a secret; changes nothing."""
+    return await kg_scrub.scan(request.app.state, body.project, body.after, body.limit)
+
+
+@router.post("/kg/scrub/purge", response_model=kg_scrub.ScrubPurged, responses={**MISSING, 503: {"model": ErrorBody}})
+async def purge_kg_secrets(request: Request, body: ScrubPurgeRequest, user: AdminUser) -> kg_scrub.ScrubPurged:
+    """Delete the old graphs and source blobs of ``sha256`` that hold a secret; the others stay, with the reason."""
+    return await kg_scrub.purge(request.app.state, body.project, body.sha256, user)

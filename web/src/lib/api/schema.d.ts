@@ -331,6 +331,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/admin/kg/scrub": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Scrub Kg
+         * @description Read a page of a project's built graphs and source blobs and say which hold a secret; changes nothing.
+         */
+        post: operations["scrub_kg_v1_admin_kg_scrub_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/admin/kg/scrub/purge": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Purge Kg Secrets
+         * @description Delete the old graphs and source blobs of ``sha256`` that hold a secret; the others stay, with the reason.
+         */
+        post: operations["purge_kg_secrets_v1_admin_kg_scrub_purge_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects": {
         parameters: {
             query?: never;
@@ -7859,6 +7899,123 @@ export interface components {
              */
             pause_reason?: string | null;
         };
+        /** ScrubFound */
+        ScrubFound: {
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "kg-graph" | "kg-blob";
+            /** Size */
+            size: number;
+            /**
+             * State
+             * @description newest: the graph the kg tools read; live: a source blob a run in use refers to; old: neither
+             * @enum {string}
+             */
+            state: "old" | "live" | "newest";
+            /**
+             * Secrets
+             * @description the secrets it holds, by kind; never a value
+             */
+            secrets: {
+                [key: string]: number;
+            };
+            /**
+             * Builds
+             * @description for a graph, the builds pointing at it
+             */
+            builds: number[];
+        };
+        /** ScrubKept */
+        ScrubKept: {
+            /** Sha256 */
+            sha256: string;
+            /**
+             * Reason
+             * @description why it stays: in use, holds no secret now, not in the bucket, or not the project's
+             * @enum {string}
+             */
+            reason: "newest" | "live" | "clean" | "missing" | "not held";
+        };
+        /** ScrubPage */
+        ScrubPage: {
+            /** Project */
+            project: string;
+            /**
+             * Scanned
+             * @description objects read on this page
+             */
+            scanned: number;
+            /** Scanned Bytes */
+            scanned_bytes: number;
+            /**
+             * Missing
+             * @description objects the bucket lacks or holds with other bytes, not read
+             */
+            missing: number;
+            /** Found */
+            found: components["schemas"]["ScrubFound"][];
+            /**
+             * Next
+             * @description pass as after for the next page; null after the last
+             */
+            next: string | null;
+        };
+        /** ScrubPurgeRequest */
+        ScrubPurgeRequest: {
+            /** Project */
+            project: string;
+            /**
+             * Sha256
+             * @description hashes a scan found old
+             */
+            sha256: string[];
+        };
+        /** ScrubPurged */
+        ScrubPurged: {
+            /** Project */
+            project: string;
+            /** Purged */
+            purged: components["schemas"]["ScrubFound"][];
+            /** Kept */
+            kept: components["schemas"]["ScrubKept"][];
+            /**
+             * Builds
+             * @description builds whose graph was deleted: they keep their row, content hash and counts
+             */
+            builds: number;
+            /**
+             * Deleted
+             * @description objects deleted from the bucket by this request
+             */
+            deleted: number;
+            /** Deleted Bytes */
+            deleted_bytes: number;
+            /**
+             * Pending
+             * @description objects that still wait to be deleted; the next prune or purge tries again
+             */
+            pending: number;
+        };
+        /** ScrubRequest */
+        ScrubRequest: {
+            /** Project */
+            project: string;
+            /**
+             * After
+             * @description next of the page before; left out for the first page
+             */
+            after?: string | null;
+            /**
+             * Limit
+             * @description objects this page reads at most
+             * @default 200
+             */
+            limit: number;
+        };
         /**
          * Secret
          * @description A secret as its owner sees it: everything but the value.
@@ -9841,6 +9998,144 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["KgPruned"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    scrub_kg_v1_admin_kg_scrub_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScrubRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScrubPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    purge_kg_secrets_v1_admin_kg_scrub_purge_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScrubPurgeRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScrubPurged"];
                 };
             };
             /** @description Unauthorized */
