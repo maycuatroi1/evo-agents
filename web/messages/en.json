@@ -1959,7 +1959,8 @@
         "draining": "draining",
         "runtime": "no {runtime}",
         "runtimeAny": "no runtime reported",
-        "checkout": "no checkout of {repos}"
+        "checkout": "no checkout of {repos}",
+        "sessionPerStep": "its daemon runs one session for every step"
       },
       "errors": {
         "forbidden": "The hub refused: dispatching needs the writer role on this project, and a pinned worker must be one of yours.",
@@ -1973,12 +1974,20 @@
       "kind": "Plan run",
       "button": "Run plan",
       "title": "Run plan",
-      "description": "One run on one of your workers does every step of <name>{plan}</name> not done yet, in depends_on order and in one session, and asks you only the decisions that matter.",
+      "description": "One run on one of your workers does every step of <name>{plan}</name> not done yet, in depends_on order and {sessions, select, step {with a new session for each step} other {in one session}}, and asks you only the decisions that matter.",
       "loading": "Loading the plan's steps",
       "loadFailed": "The plan's steps could not be loaded. Close the dialog and try again.",
       "timeout": "Timeout",
       "timeoutValue": "{hours} h",
       "timeoutHint": "Agent time the run may take. Time spent waiting for your answer, or parked, does not count.",
+      "sessions": {
+        "legend": "Sessions",
+        "label": "A new session for each step",
+        "hintOff": "Off: one agent session does every step, so what it read for one step stays in its context for the next.",
+        "hintOn": "Each step starts a new agent session. Its prompt is the step and a handoff of the plan: the goal, what the steps before it did, their Decision lines and commits. Each session's context stays small; a decision is still answered in the session of its step.",
+        "reach": "Your workers for this project that run it: {count} of {total}.",
+        "reachNone": "None of your workers for this project runs it yet: upgrade evo-agents on one and restart its daemon."
+      },
       "submit": "Run plan",
       "submitting": "Queuing…",
       "holds": "<link>Plan run #{id}</link> ({state}, dispatched by {login}) holds every step of this plan until it ends.",
@@ -2196,6 +2205,21 @@
         "noneYet": "Nothing reported yet",
         "noneEnded": "Nothing reported"
       },
+      "stepSessions": {
+        "title": "Step sessions",
+        "count": "{count, plural, one {# session} other {# sessions}}",
+        "pending": "Listed when the run ends",
+        "none": "None reported",
+        "step": "Step {step}",
+        "noSession": "no session id",
+        "copy": "Copy the session id of step {step}",
+        "peak": "peak context {tokens}",
+        "peakUnknown": "peak context not reported",
+        "cacheRead": "cache read {tokens}",
+        "inRun": "in run #{id}",
+        "leftOut": "{count, plural, one {# earlier session is} other {# earlier sessions are}} left out of this list.",
+        "note": "The log notes each step's session as it starts."
+      },
       "planSteps": {
         "title": "Steps of the plan",
         "count": "{done} of {total} done ({percent}%)",
@@ -2364,6 +2388,8 @@
         "repos": "Repos",
         "on": "on",
         "session": "Session",
+        "sessions": "Sessions",
+        "sessionsValue": "{each, select, step {A new one for each step} other {One for every step}}",
         "none": "none yet",
         "lease": "Lease",
         "leaseLeft": "expires in {minutes} min {seconds} s",

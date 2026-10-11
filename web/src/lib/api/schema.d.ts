@@ -4552,6 +4552,11 @@ export interface components {
              * @description the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does not know is left out
              */
             run_kinds?: string[] | null;
+            /**
+             * Features
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step. One that says none takes no such run. A feature this hub does not know is left out
+             */
+            features?: string[] | null;
         };
         /** HiddenResult */
         HiddenResult: {
@@ -6087,6 +6092,12 @@ export interface components {
              * @enum {integer}
              */
             timeout_h: 2 | 4 | 8 | 24;
+            /**
+             * Session Per Step
+             * @description true: the worker starts a new agent session for each step, whose prompt is the step's with the handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; false: one session does every step
+             * @default false
+             */
+            session_per_step: boolean;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -7148,6 +7159,12 @@ export interface components {
              * @description why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024
              */
             failure_cause?: string | null;
+            /**
+             * Session Per Step
+             * @description a plan run whose worker starts a new agent session for each step; its usage lists the sessions (usage.sessions). False for any other run
+             * @default false
+             */
+            session_per_step: boolean;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -7739,6 +7756,12 @@ export interface components {
              * @description the verify of the step of a run of one step, as the plan it was dispatched from has it: the worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)
              */
             verify?: string[] | null;
+            /**
+             * Session Per Step
+             * @description a plan run to run with a new agent session for each step not done yet, each with its prompt and the handoff of the plan; false: one session does every step, with the prompt above
+             * @default false
+             */
+            session_per_step: boolean;
         };
         /** RunState */
         RunState: {
@@ -9004,6 +9027,11 @@ export interface components {
              * @description runs it holds now (leased, running, interactive or verifying)
              */
             held_runs: number;
+            /**
+             * Features
+             * @description what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; empty for a daemon that said none
+             */
+            features?: string[];
             /**
              * Created At
              * Format: date-time
