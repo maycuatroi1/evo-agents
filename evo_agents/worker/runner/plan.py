@@ -1,4 +1,5 @@
-"""A plan run (kind ``plan``, ``PlanRun``): every step of a plan not done yet, in one session.
+"""A plan run (kind ``plan``, ``PlanRun``): every step of a plan not done yet, in one session, or in a session for
+each step when it was dispatched with ``session_per_step`` (``sessions``).
 
 1. ``leased``: the daemon takes the run's leases for all its repos, then makes the directory
    ``~/.evo/worker/worktrees/<project>-<run>`` with a worktree of each repo of the run in it (``directory``), each on
@@ -47,6 +48,7 @@ from evo_agents.worker.runner import access, origin, push, verify
 from evo_agents.worker.runner.common import Parked, RunFailed, log, push_cause
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
+from evo_agents.worker.runner.sessions import StepSessions
 from evo_agents.worker.runner.transitions import start_refs
 
 if TYPE_CHECKING:
@@ -65,6 +67,8 @@ class PlanRun:
         run.title = run.spec.get("title") or f"plan {run.spec.get('plan_id')}"
         self.directory = RunDirectory(run)
         self.conversation = Conversation(run, self.directory)
+        # a new session of the agent for each step (``sessions``), or None: one session for every step
+        self.sessions = StepSessions(self) if run.spec.get("session_per_step") is True else None
         self.targets: dict[str, str] = {}  # a Builder's repo -> the default branch its merge request goes into
         self.push_lock = asyncio.Lock()  # one push of the run at a time, the daemon's own or one its agent asked for
         if self.builder:  # its agent pushes nothing itself: `evo-agents worker step` asks the daemon
@@ -87,9 +91,10 @@ class PlanRun:
         names = ", ".join(str(entry.get("repo")) for entry in repos) or "no repo"
         resume_of = self.conversation.resume_of
         resumes = f", going on from parked run #{resume_of}" if resume_of else ""
+        each = ", a new session for each step" if self.sessions is not None else ""
         run.note(
             f"Run #{run.id} claimed by worker {run.daemon.config.name}: plan {spec.get('plan_id')} over {names}, "
-            f"{run.runtime}, {run.mode}, timeout {run.timeout_s // 60} min of agent time{resumes}."
+            f"{run.runtime}, {run.mode}{each}, timeout {run.timeout_s // 60} min of agent time{resumes}."
         )
         cls = run.agent.runtime_class()
         run.agent.check_interactive(cls)
@@ -103,16 +108,19 @@ class PlanRun:
         run.check()
         await self.prepare(repos)
         run.check()
-        prompt, session_id = await self.conversation.first_turn(self.prompt())
-        await self.conversation.turns(cls, prompt, session_id)
-        run.summary = verify.read_summary(run, self.directory.path)
+        if self.sessions is not None:
+            await self.sessions.work(cls)
+            usage = self.sessions.usage()
+        else:
+            prompt, session_id = await self.conversation.first_turn(self.prompt())
+            await self.conversation.turns(cls, prompt, session_id)
+            run.summary = verify.read_summary(run, self.directory.path)
+            usage = run.outcome.usage if run.outcome else None
         await self.conversation.ensure_running()
         await run.reports.report("verifying")
         run.check()
         diffstat = await self.push_repos()
-        await run.reports.end(
-            "done", diffstat=diffstat, summary=run.summary, usage=run.outcome.usage if run.outcome else None
-        )
+        await run.reports.end("done", diffstat=diffstat, summary=run.summary, usage=usage)
 
     # The directory and its worktrees
 
