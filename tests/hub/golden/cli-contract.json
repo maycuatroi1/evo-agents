@@ -1426,6 +1426,50 @@
         ]
       }
     },
+    "hub kg scrub": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--purge"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "purge",
+          "projects"
+        ]
+      }
+    },
     "hub login": {
       "positionals": [],
       "options": [
@@ -5573,6 +5617,170 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/KgPruned"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/kg/scrub": {
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Scrub Kg",
+          "description": "Read a page of a project's built graphs and source blobs and say which hold a secret; changes nothing.",
+          "operationId": "scrub_kg_v1_admin_kg_scrub_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrubRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ScrubPage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "503": {
+              "description": "Service Unavailable",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/kg/scrub/purge": {
+        "post": {
+          "tags": [
+            "admin"
+          ],
+          "summary": "Purge Kg Secrets",
+          "description": "Delete the old graphs and source blobs of ``sha256`` that hold a secret; the others stay, with the reason.",
+          "operationId": "purge_kg_secrets_v1_admin_kg_scrub_purge_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ScrubPurgeRequest"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ScrubPurged"
                   }
                 }
               }
@@ -30440,6 +30648,252 @@
             "paused_by"
           ],
           "title": "Schedule"
+        },
+        "ScrubFound": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "kg-graph",
+                "kg-blob"
+              ],
+              "title": "Kind"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "old",
+                "live",
+                "newest"
+              ],
+              "title": "State",
+              "description": "newest: the graph the kg tools read; live: a source blob a run in use refers to; old: neither"
+            },
+            "secrets": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Secrets",
+              "description": "the secrets it holds, by kind; never a value"
+            },
+            "builds": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "title": "Builds",
+              "description": "for a graph, the builds pointing at it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "kind",
+            "size",
+            "state",
+            "secrets",
+            "builds"
+          ],
+          "title": "ScrubFound"
+        },
+        "ScrubKept": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "reason": {
+              "type": "string",
+              "enum": [
+                "newest",
+                "live",
+                "clean",
+                "missing",
+                "not held"
+              ],
+              "title": "Reason",
+              "description": "why it stays: in use, holds no secret now, not in the bucket, or not the project's"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "reason"
+          ],
+          "title": "ScrubKept"
+        },
+        "ScrubPage": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "scanned": {
+              "type": "integer",
+              "title": "Scanned",
+              "description": "objects read on this page"
+            },
+            "scanned_bytes": {
+              "type": "integer",
+              "title": "Scanned Bytes"
+            },
+            "missing": {
+              "type": "integer",
+              "title": "Missing",
+              "description": "objects the bucket lacks or holds with other bytes, not read"
+            },
+            "found": {
+              "items": {
+                "$ref": "#/components/schemas/ScrubFound"
+              },
+              "type": "array",
+              "title": "Found"
+            },
+            "next": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Next",
+              "description": "pass as after for the next page; null after the last"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "scanned",
+            "scanned_bytes",
+            "missing",
+            "found",
+            "next"
+          ],
+          "title": "ScrubPage"
+        },
+        "ScrubPurgeRequest": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Project"
+            },
+            "sha256": {
+              "items": {
+                "type": "string",
+                "pattern": "^[0-9a-f]{64}$"
+              },
+              "type": "array",
+              "maxItems": 1000,
+              "minItems": 1,
+              "title": "Sha256",
+              "description": "hashes a scan found old"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "sha256"
+          ],
+          "title": "ScrubPurgeRequest"
+        },
+        "ScrubPurged": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "purged": {
+              "items": {
+                "$ref": "#/components/schemas/ScrubFound"
+              },
+              "type": "array",
+              "title": "Purged"
+            },
+            "kept": {
+              "items": {
+                "$ref": "#/components/schemas/ScrubKept"
+              },
+              "type": "array",
+              "title": "Kept"
+            },
+            "builds": {
+              "type": "integer",
+              "title": "Builds",
+              "description": "builds whose graph was deleted: they keep their row, content hash and counts"
+            },
+            "deleted": {
+              "type": "integer",
+              "title": "Deleted",
+              "description": "objects deleted from the bucket by this request"
+            },
+            "deleted_bytes": {
+              "type": "integer",
+              "title": "Deleted Bytes"
+            },
+            "pending": {
+              "type": "integer",
+              "title": "Pending",
+              "description": "objects that still wait to be deleted; the next prune or purge tries again"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "purged",
+            "kept",
+            "builds",
+            "deleted",
+            "deleted_bytes",
+            "pending"
+          ],
+          "title": "ScrubPurged"
+        },
+        "ScrubRequest": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Project"
+            },
+            "after": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[0-9a-f]{64}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After",
+              "description": "next of the page before; left out for the first page"
+            },
+            "limit": {
+              "type": "integer",
+              "maximum": 1000.0,
+              "minimum": 1.0,
+              "title": "Limit",
+              "description": "objects this page reads at most",
+              "default": 200
+            }
+          },
+          "type": "object",
+          "required": [
+            "project"
+          ],
+          "title": "ScrubRequest"
         },
         "Secret": {
           "properties": {

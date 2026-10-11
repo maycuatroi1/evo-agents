@@ -31,6 +31,9 @@ KG_CONFIG = "kg.config"  # the knowledge config a project's graph is built with 
 KG_INGEST = "kg.ingest"  # a pushed run became part of the project's corpus; the target is the project, never the run
 KG_BUILD = "kg.build"  # a member queued a build; the target is the project
 KG_PRUNE = "kg.prune"  # the retention deleted artifacts of a project's older graphs; the target is "<project> keep=<n>"
+# An admin deleted old graphs and source blobs of a project that hold a secret (evo_agents.hub.server.kg_scrub); the
+# target counts them, "<project> artifacts=<n> blobs=<n>", never a hash or a value.
+KG_SCRUB = "kg.scrub"
 # Workers belong to no project; a target names the pairing or the worker by id and name, never a code or a token.
 WORKER_PAIR = "worker.pair"  # a member created a pairing code: "pairing:<id> name=<worker name>"
 WORKER_JOIN = "worker.join"  # a machine joined with a code, as its owner with the new worker token
