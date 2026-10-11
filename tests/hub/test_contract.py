@@ -34,6 +34,7 @@ BUILT_HERE = {
     "hub memory pull": lambda: memory.Report("pull", HUB_URL).as_json(),
     "hub skills sync": lambda: skill_sync.Report(HUB_URL, False).as_json(),
     "hub kg push": lambda: kg_cli.push_json([]),
+    "hub kg scrub": lambda: kg_cli.scrub_json(False, []),
 }
 
 
