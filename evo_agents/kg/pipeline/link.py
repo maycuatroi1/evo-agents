@@ -11,7 +11,9 @@ A call into another file (a ``calls`` reference of the structure stage) links it
 the file's imports name, ``resolved``: each ``via`` entry names the files to look in (a module, candidate
 paths, a package, a Go import path, a JS or TS specifier read through the nearest tsconfig) and the
 qualified name to find there. The first entry that finds a definition decides; two definitions are
-ambiguous and link nothing.
+ambiguous and link nothing. A call through ``this``, ``self`` or ``super`` names a class of its own file
+instead; the index's class hierarchy (``pipeline.hierarchy``) finds the method up that class's chain, and
+gives each class its ``inherits`` edges and each method its ``overrides`` edges.
 """
 
 from __future__ import annotations
@@ -22,11 +24,12 @@ from collections import defaultdict
 from urllib.parse import unquote
 
 from evo_agents.kg.extract.xref import module_files
+from evo_agents.kg.pipeline import hierarchy
 from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, normalize_url
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "8"
+LINK_VERSION = "9"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -59,17 +62,22 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "def": {},  # "<file item>::<qualname>" -> the symbol it defines there
         "pkgdef": defaultdict(list),  # "<package>::<qualname>" -> the symbols there, "jvm:com.acme.a::A.f"
         "tsconfig": {},  # "<repo>:<dir>" -> baseUrl and paths of the tsconfig.json there
+        "classes": {},  # class symbol -> (its file item, its qualname)
     }
+    with_bases: list[dict] = []
     for facts in facts_by_item.values():
         for f in facts:
             if f["t"] == "node":
                 index["ids"].add(f["id"])
             elif f["t"] == "ident":
                 _learn(index, f)
+                if f["type"] == "symbol" and f.get("bases"):
+                    with_bases.append(f)
     index["gosuffix"] = _go_suffixes({key.partition("::")[0] for key in index["pkgdef"]})
     # Once per build, not once per item: a project with thousands of known URLs spent most of a link run here.
     index["url_prefix"] = {_url_prefix(u) for u in index["url"]}
     index["identifiers"] = [{"kind": i["kind"], "pattern": i["pattern"]} for i in identifiers]
+    hierarchy.resolve(index, with_bases, lambda file, repo, path: Linker(index, file, repo, path))
     return index
 
 
@@ -103,6 +111,8 @@ def _learn_symbol(index: dict, f: dict) -> None:
         index["symname"][f["name"]].append(f["node"])
     if f.get("file"):
         index["def"].setdefault(f"{f['file']}::{f['qualname']}", f["node"])
+        if f.get("kind") == "class":
+            index["classes"].setdefault(f["node"], (f["file"], f["qualname"]))
     if f.get("package"):
         index["pkgdef"][f"{f['package']}::{f['qualname']}"].append(entry)
 
@@ -251,7 +261,7 @@ class Linker:
         """Link a caller to the one symbol the first ``via`` entry with a definition finds."""
         target = f["target"]
         for kind, value, qual in target["via"]:
-            found = sorted(set(self._definitions(kind, value, qual, target)))
+            found = sorted(set(self.definitions(kind, value, qual, target)))
             if not found:
                 continue
             key = (f["src"], "calls", found[0])
@@ -261,9 +271,18 @@ class Linker:
                 )
             return
 
-    def _definitions(self, kind: str, value, qual: str, target: dict) -> list[str]:
-        """The symbols named ``qual`` in the scope one ``via`` entry names, same repo or source first."""
+    def definitions(self, kind: str, value, qual: str, target: dict) -> list[str]:
+        """The symbols named ``qual`` in the scope one ``via`` entry names, same repo or source first.
+        ``local`` is a definition of this file; ``self`` and ``super`` the method ``qual`` up the chain of
+        the class ``value`` of this file, ``super`` past the class itself."""
         repo = target.get("repo")
+        if kind == "local":
+            found = self.index["def"].get(f"{self.item_id}::{qual}")
+            return [found] if found else []
+        if kind in ("self", "super"):
+            cls = self.index["def"].get(f"{self.item_id}::{value}")
+            member = hierarchy.find_member(self.index, cls, qual, skip=kind == "super") if cls else None
+            return [member[0]] if member else []
         if kind in ("package", "gopkg"):
             keys = [value] if kind == "package" else [f"go:{d}" for d in self._go_dirs(value)]
             entries = [e for key in keys for e in self.index["pkgdef"].get(f"{key}::{qual}", [])]
@@ -564,4 +583,4 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
             linker.scan(src, frag_unit(item_id, anchor), frag["text"], heading=frag.get("title"))
     elif body:
         linker.scan(item_id, item_unit(item_id), body)
-    return linker.facts()
+    return linker.facts() + hierarchy.item_facts(item_id, structure, index)

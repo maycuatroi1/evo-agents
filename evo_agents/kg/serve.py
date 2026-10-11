@@ -28,7 +28,17 @@ CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude 
 HANDLE_TTL = 1800
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
-IMPACT_RELS = ("calls", "imports", "member_of", "defines", "depends_on", "implements", "verifies")
+IMPACT_RELS = (
+    "calls",
+    "imports",
+    "member_of",
+    "defines",
+    "depends_on",
+    "implements",
+    "verifies",
+    "inherits",
+    "overrides",
+)
 IMPACT_MIN_RANK = STATUS_RANK["resolved"]  # impact follows declared, parsed, introspected, resolved: never proposed
 CHAIN_RELS = ("implements", "schedules", "verifies", "has_step", "touches")
 PATH_SKIP = ("in_source",)  # every item hangs off its source: a path through one says nothing
