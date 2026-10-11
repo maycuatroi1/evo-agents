@@ -695,3 +695,71 @@ def test_a_plan_run_prompt_of_an_odd_plan():
     assert "- evo-agents: branch the branch checked out, worktree evo-agents" in named
     assert "- web: branch feat/x, worktree web" in named
     assert "# Steps not done yet: 0 of 0" in build_plan_prompt({"id": "empty"}, [], {})
+
+
+# A plan run with a session for each step (criterion a3 of the context-economy plan)
+
+
+def test_a_plan_run_with_a_session_per_step_takes_the_next_step_in_plan_order():
+    body = {
+        "steps": [
+            {"id": 1, "status": "done"},
+            {"id": 2, "status": "in_progress", "depends_on": [1]},
+            {"id": 3, "depends_on": [1]},
+            {"id": 4, "status": "pending", "depends_on": [2]},
+            {"id": 5, "status": "blocked"},
+            "a bare string",
+        ]
+    }
+    assert runs.next_session_step(body)[0] == "2", "a step left started is taken up first, in plan order"
+    assert runs.next_session_step(body, {"2"})[0] == "3"
+    assert runs.next_session_step(body, {"2", "3"}) is None, "step 4 waits for step 2, step 5 is blocked"
+    body["steps"][1]["status"] = "done"
+    key, found = runs.next_session_step(body, {"2", "3"})
+    assert key == "4" and found is body["steps"][3], "the step is the plan's own mapping"
+    assert runs.next_session_step({"steps": "none"}) is None
+
+
+def test_a_plan_run_step_session_prompt_holds_the_rules_the_step_and_the_handoff(plan):
+    target = step(plan, 2)
+    worktrees = {entry["repo"]: entry["repo"] for entry in plan.get("repos") or []}
+    bare = runs.build_step_session_prompt(plan, target, plan.get("repos") or [], worktrees)
+    key = step_key(target, plan["steps"].index(target))
+    assert bare.startswith(f"You are running step {key} of the plan {plan['id']} from the evo-agents hub")
+    for text in (
+        "Rules for this session:",
+        f"`evo-agents worker step {key} in_progress --repo REPO`",
+        f"--recommended KEY --step {key}`",
+        "  - scope: ",
+        '"summary" says what you did of step',
+        f"# Step {key}: ",
+        "## What to do",
+    ):
+        assert text in bare, text
+    assert "Do not record progress in the plan" not in bare, "a step run's rules are not a step session's"
+    assert "# Goal of the plan" not in bare, "the handoff carries the goal"
+    handoff = "# Handoff of plan x\n" + "evidence line\n" * 10
+    whole = runs.build_step_session_prompt(plan, target, plan.get("repos") or [], worktrees, handoff)
+    assert whole == bare + "\n" + handoff, "the handoff closes the prompt, whole"
+
+
+def test_a_plan_run_step_session_prompt_fits_a_handoff_of_its_room_whole():
+    body = {"id": "big", "context": "c" * 10_000, "steps": [{"id": 1, "what": "w" * 20_000, "note": "n" * 5_000}]}
+    bare = runs.build_step_session_prompt(body, body["steps"][0], [], {})
+    room = runs.handoff_room(bare)
+    assert 0 < room < MAX_PROMPT_BYTES - len(bare.encode())
+    handoff = "# Handoff\n" + "đ" * ((room - 10) // 2)
+    whole = runs.build_step_session_prompt(body, body["steps"][0], [], {}, handoff)
+    assert size(whole) <= MAX_PROMPT_BYTES and whole.endswith(handoff.strip() + "\n"), "not cut"
+    over = runs.build_step_session_prompt(body, body["steps"][0], [], {}, handoff + "đđ")
+    assert size(over) <= MAX_PROMPT_BYTES and "cut by the hub" in over
+
+
+def test_a_plan_run_step_session_prompt_stays_within_32_kib_whatever_the_plan_holds(plan):
+    huge = "Nội dung rất dài, có dấu tiếng Việt và ký tự 𝔘𝔫𝔦𝔠𝔬𝔡𝔢. " * 10_000
+    plan["context"] = plan["id"] = huge
+    plan["steps"] = [{"id": huge[:300], "title": huge, "what": huge, "verify": huge, "note": huge}]
+    repos = [{"repo": f"{n}{huge[:500]}", "branch": huge} for n in range(100)]
+    prompt = runs.build_step_session_prompt(plan, plan["steps"][0], repos, {}, huge)
+    assert size(prompt) <= MAX_PROMPT_BYTES and "�" not in prompt
+    assert "Rules for this session:" in prompt and "more repos, which .evo-run/plan.yaml lists" in prompt

@@ -361,6 +361,7 @@ evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step
 evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
 evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
 evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
+evo-agents hub run plan rollout --session-per-step            # the same, each step in a new session with the handoff
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
 evo-agents hub run show 41
 evo-agents hub run logs 41 --follow                           # the live log, until the run ends
@@ -401,7 +402,11 @@ hub; the hub itself does not check the pair.
 does every step of the plan not done yet, in a worktree of each repo those steps name, and reports each step as it
 goes (`docs/workers.md`, Plan runs). It takes `--worker`, `--runtime`, `--model` and `--mode` as `dispatch` does, and
 `--timeout-h`, the hours of agent time the run may use: 2, 4, 8 or 24 (4 by default); the time it waits for your
-answer to a decision, or parked, does not count. The hub refuses a plan with no pending step, a plan with an active
+answer to a decision, or parked, does not count. With `--session-per-step` the worker gives each step a new agent
+session, whose prompt is the step's with the handoff of the plan (`hub plan handoff`), instead of one session for every
+step; only a worker whose daemon says it does that takes the run, and one pinned with `--worker` that does not is
+refused (409). The flag is sent only when given, and `show` says which of the two a plan run is; the run's usage
+lists each step's session once it ends (`docs/workers.md`, A plan run with a session for each step). The hub refuses a plan with no pending step, a plan with an active
 run of any kind, and a step not done that names no repo when the plan lists more than one. `dispatch`, `rerun` and
 `plan` are refused (409, naming the repo, nothing dispatched) when a repo the run needs is one the project lists no
 origin for: no credential is leased for it, and the worker's preflight would fail the run anyway. `list` shows each run's

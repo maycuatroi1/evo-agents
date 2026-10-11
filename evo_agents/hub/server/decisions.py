@@ -412,8 +412,8 @@ def _resume_run(new_id: int, parked_id: int):
     """The run that resumes parked run ``parked_id`` (a plan run or an author run, ``runs.RESUME_KINDS``), with id
     ``new_id``, of its kind: pinned to its worker, in its session, with the agent time it used and the credential it
     was dispatched with, at the plan's current revision (the one it was dispatched from when the plan is gone; none for
-    an author run that has put no plan); a run the night shift queued keeps its schedule, night and caps, and an author
-    run its request."""
+    an author run that has put no plan); a run the night shift queued keeps its schedule, night and caps, an author
+    run its request, and a plan run its session per step."""
     r, pl = tables.runs, tables.plans
     source = _OverridingSystemValue(
         literal(new_id, BigInteger).label("id"),
@@ -440,6 +440,7 @@ def _resume_run(new_id: int, parked_id: int):
         r.c.schedule_night,
         r.c.budget,
         r.c.request,
+        r.c.session_per_step,
     )
     source = source.select_from(
         r.outerjoin(pl, (pl.c.project_id == r.c.project_id) & (pl.c.plan_id == r.c.plan_id))
