@@ -98,12 +98,18 @@ def _run(text: str, path: str) -> tuple[dict, Path, bool] | None:
     return result, target, getattr(fn, "__name__", "") in STRUCTURAL
 
 
+def _in_file(source_file: object, path: str) -> bool:
+    """Whether graphify's ``source_file`` names the file at ``path``. graphify writes ``str(path)`` of the
+    file it ran on, an OS path, so its separators are backslashes on Windows; ``path`` is a repo path."""
+    return str(source_file).replace("\\", "/").endswith("/" + path.replace("\\", "/"))
+
+
 def _defines(node: dict, path: str, structural: bool) -> bool:
     """A definition of this file: marked ``_callable`` by graphify's engine, or, for an extractor that marks
     nothing, a node of this file with a location that is neither its file nor its script entry point."""
     if node.get("_callable"):
         return True
-    if not structural or not node.get("source_location") or not str(node.get("source_file")).endswith("/" + path):
+    if not structural or not node.get("source_location") or not _in_file(node.get("source_file"), path):
         return False
     return (node.get("metadata") or {}).get("kind") != "bash_entrypoint"
 
