@@ -72,6 +72,13 @@ at any depth, and `state/` at the root only (a nested `src/state/` is ordinary c
 timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
 is fetched.
+Before a file enters the corpus, the git connector replaces each secret in its text with a marker naming
+its kind: a private key in PEM (`[redacted:pem]`), a provider's key (Anthropic, OpenAI, AWS, Slack, Google,
+GitHub, hub tokens), the password of a URI, and the literal value of a variable or key named as a password,
+secret, token, API key or private key (`DB_PASSWORD: [redacted:password]`). References such as `${VAR}`,
+`os.environ[...]` or `process.env.X`, empty values, placeholders and descriptive words stay, and so does the
+rest of the file, so its structure still enters the graph. The patterns favour precision over recall;
+`evo_agents/kg/redact.py` lists what they take and leave.
 
 A markdown file whose frontmatter `id:` matches an identifier pattern is where that code is defined;
 a copy says `derived_from:` in its frontmatter, and `kg status` lists codes defined in more than one place.
@@ -89,7 +96,8 @@ evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
 
 Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
 source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
-never item content.
+never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
+never their values.
 
 To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg sync --due` runs only
 the sources whose interval has passed since their last ok run; `--all` does that for every project that
