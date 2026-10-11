@@ -17,8 +17,8 @@ hook of the evo-hub plugin sends it to the hub. In this order:
    run as ``GITHUB_TOKEN=...``; it also takes an AWS secret key (``AWS_SECRET_ACCESS_KEY=``,
    ``aws_secret_access_key =``) and keys such as ``"client_secret": "..."``.
 
-It errs on the side of removing: a value that only looks like a secret goes too. Standard library only: the hook runs
-on a core install.
+It errs on the side of removing: a value that only looks like a secret goes too. The PEM and key patterns are shared
+with the knowledge graph (``evo_agents.secret_patterns``). Standard library only: the hook runs on a core install.
 """
 
 from __future__ import annotations
@@ -28,10 +28,15 @@ from collections.abc import Iterable
 from urllib.parse import quote, unquote
 
 from evo_agents.hub.log import MASK, MIN_SECRET_LENGTH, scrub
-
-_PEM = re.compile(
-    r"-----BEGIN (?P<kind>[A-Z0-9 ]*?)PRIVATE KEY-----(?:[\s\S]*?-----END (?P=kind)PRIVATE KEY-----|[\s\S]*\Z)"
+from evo_agents.secret_patterns import (
+    ANTHROPIC_KEY,
+    AWS_ACCESS_KEY_ID,
+    GOOGLE_API_KEY,
+    OPENAI_KEY,
+    PEM_PRIVATE_KEY,
+    SLACK_TOKEN,
 )
+
 # Names of variables and keys that hold a secret: an environment variable in upper case with one of these words in
 # it, or a key in any case that ends with one.
 _SECRET_WORDS = r"TOKEN|SECRET|PASSWORD|PASSWD|PASSPHRASE|API_?KEY|ACCESS_?KEY|SECRET_?KEY|PRIVATE_?KEY|CREDENTIALS?"
@@ -52,15 +57,15 @@ _NAMED = re.compile(
 )
 SECRET_PATTERNS = (
     # Anthropic: API keys (sk-ant-api03-), OAuth tokens (sk-ant-oat01-), admin keys
-    (re.compile(r"\b(?P<head>sk-ant-)[A-Za-z0-9_-]{8,}"), r"\g<head>" + MASK),
+    (ANTHROPIC_KEY, r"\g<head>" + MASK),
     # OpenAI: sk-, sk-proj-, sk-svcacct-, sk-admin- and a long tail
-    (re.compile(r"\b(?P<head>sk-)(?!ant-)[A-Za-z0-9_-]{20,}"), r"\g<head>" + MASK),
+    (OPENAI_KEY, r"\g<head>" + MASK),
     # AWS access key ids: long-term (AKIA), temporary (ASIA) and the others of the family
-    (re.compile(r"\b(?:AKIA|ASIA|ABIA|ACCA|A3T[A-Z0-9])[A-Z0-9]{16}\b"), MASK),
+    (AWS_ACCESS_KEY_ID, MASK),
     # Slack tokens: bot, user, app, refresh
-    (re.compile(r"\b(?P<head>xox[abposr]-)[A-Za-z0-9-]{10,}"), r"\g<head>" + MASK),
+    (SLACK_TOKEN, r"\g<head>" + MASK),
     # Google API keys
-    (re.compile(r"\bAIza[0-9A-Za-z_-]{35}"), MASK),
+    (GOOGLE_API_KEY, MASK),
     # Basic credentials of an Authorization header
     (re.compile(r"(?P<head>\bAuthorization\s*:\s*Basic\s+)[A-Za-z0-9+/=]{8,}", re.IGNORECASE), r"\g<head>" + MASK),
     # The value of a variable or key named as a secret
@@ -100,7 +105,7 @@ def _redact(text: str, forms: list[str]) -> str:
     for form in forms:
         if form in text:
             text = text.replace(form, MASK)
-    text = scrub(_PEM.sub(_pem, text))
+    text = scrub(PEM_PRIVATE_KEY.sub(_pem, text))
     for pattern, replacement in SECRET_PATTERNS:
         text = pattern.sub(replacement, text)
     return text
