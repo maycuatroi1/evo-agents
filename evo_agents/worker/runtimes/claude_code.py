@@ -4,9 +4,9 @@ here.
 - The session id is the daemon's: a new UUID for a new run (``session_id``), the run's session when it goes on with
   one (``resume``), so the daemon reports it from the start and a takeover resumes it with ``claude --resume``.
 - The agent works in the worktree (``cwd``) with ``permission_mode="bypassPermissions"``, the SDK's form of
-  ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE and
-  BACKGROUND_NOTE appended (``--append-system-prompt``). The owner's settings, hooks, plugins and CLAUDE.md load as
-  for ``claude`` itself.
+  ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE, BACKGROUND_NOTE
+  and SUBAGENT (a fresh subagent with a plan handoff) appended (``--append-system-prompt``). The owner's settings,
+  hooks, plugins and CLAUDE.md load as for ``claude`` itself.
 - The input stream the client is connected with stays open while the agent may take input: the prompt and each of
   the owner's messages go in with ``query()``. Claude Code takes a message that arrives mid-turn at the next tool
   boundary, and may fold it into the same ``result`` (research_notes/worker-runtimes.md of the harness).
