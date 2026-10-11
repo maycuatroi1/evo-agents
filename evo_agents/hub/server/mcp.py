@@ -26,16 +26,16 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 21 tools are ``evo_agents.hub.mcp_tools.TOOLS``. The kg_* tools are those of ``kg serve``, names, schemas,
+The 22 tools are ``evo_agents.hub.mcp_tools.TOOLS``. The kg_* tools are those of ``kg serve``, names, schemas,
 arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them; kg_more
 continues any cut result of the same user and session project, with or without a graph. The others call the hub's
-routes for memories, plans, skills, projects, the tool figures of runs, and what the Curator's review run reads (the
-night's figures, session digests, the events of a run, decisions) in this process, so they read and write under the
-same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write rule, revisions,
-conflicts and audit rows. Their arguments are checked against their schema first, and their text goes through the
-envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. A refusal of the hub becomes a tool
-error carrying its message, an unexpected failure one carrying the request id only. The log has one line per tool call
-with its name, project, outcome and duration, never its arguments or its result.
+routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
+review run reads (the night's figures, session digests, the events of a run, decisions) in this process, so they read
+and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write
+rule, revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text
+goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. A refusal of the hub
+becomes a tool error carrying its message, an unexpected failure one carrying the request id only. The log has one
+line per tool call with its name, project, outcome and duration, never its arguments or its result.
 """
 
 from __future__ import annotations
@@ -67,6 +67,7 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
+from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
 from evo_agents.hub.mcp_tools import (
     INSTRUCTIONS,
     KG_TOOL_NAMES,
@@ -411,6 +412,7 @@ class HubMcp(MCPServer):
             "memory_write": self._memory_write,
             "plan_list": self._plan_list,
             "plan_show": self._plan_show,
+            "plan_handoff": self._plan_handoff,
             "plan_step": self._plan_step,
             "skill_list": self._skill_list,
             "hub_projects": self._hub_projects,
@@ -617,6 +619,24 @@ class HubMcp(MCPServer):
         header = f"# Step {arguments['step']} of plan {plan['plan_id']}, revision {plan['revision']}\n"
         text = header + yaml.safe_dump(step, allow_unicode=True, sort_keys=False, width=PLAN_WIDTH)
         return text, {**meta, "step": step, "summary": f"step {arguments['step']} of plan {plan['plan_id']}"}
+
+    async def _plan_handoff(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        """The text of GET .../plans/{plan_id}/handoff, as `evo-agents hub plan handoff` prints it."""
+        project = self._project(caller, arguments)
+        await self._readable(caller, project)
+        step = str(arguments["step"]) if "step" in arguments else None
+        budget = arguments.get("budget_tokens", DEFAULT_BUDGET_TOKENS)
+        found = await plans.handoff(
+            caller.request,
+            project,
+            arguments["plan_id"],
+            caller.user,
+            step=step,
+            budget_tokens=budget,
+            sink=caller.sink,
+        )
+        data = found.model_dump(mode="json", exclude={"text"})
+        return found.text, {**data, "summary": f"handoff of plan {found.plan_id}, {found.tokens} tokens"}
 
     async def _plan_step(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)
