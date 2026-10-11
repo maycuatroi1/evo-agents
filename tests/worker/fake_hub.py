@@ -324,8 +324,9 @@ class FakeHub:
         run = self.runs[run_id]
         if run["state"] == "parked":
             spec = run["spec"]
+            kept = {"session_per_step": True} if spec.get("session_per_step") else {}  # as the hub's resume keeps it
             new_id = self.queue_plan_run(
-                spec["plan_id"], spec["repos"], resume_of=run_id, session_id=run.get("session_id")
+                spec["plan_id"], spec["repos"], resume_of=run_id, session_id=run.get("session_id"), **kept
             )
             self._move(run_id, "done")
             run["resumed_by"] = new_id
