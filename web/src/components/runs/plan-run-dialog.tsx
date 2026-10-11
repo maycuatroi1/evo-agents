@@ -1,7 +1,8 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { Layers, Play, X } from "lucide-react";
+import { Play, X } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
@@ -11,20 +12,17 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Label } from "@/components/ui/label";
-import { Switch } from "@/components/ui/switch";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
-import { type Worker, workersQuery } from "@/components/workers/queries";
+import { workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { planQuery } from "@/lib/plan-queries";
 import { parsePlan } from "@/lib/plans";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 
 import { Choice, ModelField, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
 import { useDispatchPlanRun } from "./hooks";
-import { dispatchOutlook, dispatchWorkers, modelSuggestions, planRunScope, readModel, runsSessionPerStep } from "./model";
+import { dispatchOutlook, dispatchWorkers, modelSuggestions, planRunScope, readModel } from "./model";
 import { Blockers, blockersOf, ScopeSummary } from "./plan-run-scope";
 import {
   DEFAULT_PLAN_TIMEOUT,
@@ -37,6 +35,17 @@ import {
   type RunMode,
   RUNTIMES,
 } from "./queries";
+
+/**
+ * The switch between one session for every step and a new session for each step (plan-run-sessions.tsx). Its code
+ * loads when the dialog opens, with the dialog's data. The plan pages load the dialog with the page, and the kit's
+ * switch imported here regrouped the chunks of every page, each 0.2 kB over its First Load JS budget
+ * (web/bundle-budget.json).
+ */
+const SessionsField = dynamic(() => import("./plan-run-sessions").then((module) => module.SessionsField), {
+  ssr: false,
+  loading: () => <Skeleton className="h-24 w-full" data-testid="plan-run-sessions-loading" />,
+});
 
 type Props = {
   project: string;
@@ -288,53 +297,5 @@ function PlanRunForm({
         </div>
       </div>
     </form>
-  );
-}
-
-/**
- * The switch between one session for every step and a new session for each step, with what that means and how many
- * of the visitor's workers for the project run it (a worker whose daemon is older runs only one session).
- */
-function SessionsField({
-  on,
-  onChange,
-  disabled,
-  workers,
-  loaded,
-}: {
-  on: boolean;
-  onChange: (on: boolean) => void;
-  disabled: boolean;
-  workers: Worker[];
-  loaded: boolean;
-}) {
-  const t = useTranslations("runs.planRun.sessions");
-  const ids = useId();
-  const count = workers.filter(runsSessionPerStep).length;
-  return (
-    <Section legend={t("legend")} testId="plan-run-sessions">
-      <div className={cn("flex min-h-11 items-center gap-3 rounded-md border px-3 py-2 transition-colors", on && "border-brand/40 bg-surface-selected")}>
-        <Layers className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <Label htmlFor={`${ids}-switch`} className="min-w-0 flex-1 cursor-pointer font-normal">
-          {t("label")}
-        </Label>
-        <Switch
-          id={`${ids}-switch`}
-          checked={on}
-          onCheckedChange={onChange}
-          disabled={disabled}
-          aria-describedby={`${ids}-hint`}
-          data-testid="plan-run-session-per-step"
-        />
-      </div>
-      <p id={`${ids}-hint`} className="text-xs text-pretty text-muted-foreground">
-        {on ? t("hintOn") : t("hintOff")}
-        {on && loaded && workers.length > 0 ? (
-          <span className="block" data-testid="plan-run-sessions-reach" data-count={count}>
-            {count === 0 ? t("reachNone") : t("reach", { count, total: workers.length })}
-          </span>
-        ) : null}
-      </p>
-    </Section>
   );
 }

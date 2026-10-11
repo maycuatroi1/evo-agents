@@ -3,33 +3,30 @@ import { describe, expect, it } from "vitest";
 import type { Worker } from "@/components/workers/queries";
 import { parsePlan } from "@/lib/plans";
 
-import { authorWorker, harnessRepo, readRequest } from "./author-model";
+import { readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
 import {
   activePlanRun,
+  authorWorker,
   dispatchOutlook,
   dispatchWorkers,
   durationParts,
-  facetCount,
-  filtersSearch,
   fitWorker,
+  harnessRepo,
   isCheckpoint,
-  listQuery,
   modelSuggestions,
   planRunLock,
   planRunPhase,
   planRunScope,
-  readFilters,
   readModel,
-  readySelection,
+  readRequest,
   runTiming,
   runtimeAvailable,
   runtimeCount,
-  selectedRepos,
-  splitSteps,
-  summarizeRuns,
   workerRuntimes,
 } from "./model";
 import { hasActiveRuns, type Run, type RunList, type StateCounts, type StepReadiness } from "./queries";
+import { facetCount, filtersSearch, listQuery, readFilters } from "./run-filters";
+import { summarizeRuns } from "./runs-summary";
 
 const ZERO: StateCounts = {
   queued: 0,

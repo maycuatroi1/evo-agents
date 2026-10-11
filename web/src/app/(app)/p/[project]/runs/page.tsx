@@ -3,7 +3,7 @@ import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
 import { fromRecord } from "@/components/admin/data";
-import { listQuery, readFilters } from "@/components/runs/model";
+import { listQuery, readFilters } from "@/components/runs/run-filters";
 import { runsQuery, runsSummaryQuery } from "@/components/runs/queries";
 import { RunsPage } from "@/components/runs/runs-page";
 import { NotFoundState } from "@/components/states/states";
