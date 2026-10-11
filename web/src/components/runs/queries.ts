@@ -20,7 +20,7 @@ export type StateCounts = Schemas["StateCounts"];
 export type ReadySteps = Schemas["ReadySteps"];
 export type StepReadiness = Schemas["StepReadiness"];
 export type DispatchRequest = Schemas["Dispatch"];
-export type PlanRunRequest = Schemas["PlanRunDispatch"];
+export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step"> & { session_per_step?: true }; // sent only when on
 export type RequestedRuntime = DispatchRequest["runtime"];
 export type RunMode = DispatchRequest["mode"];
 export type Approval = DispatchRequest["approval"];
@@ -193,7 +193,7 @@ export async function dispatchRuns(api: ApiClient, project: string, body: Dispat
  */
 export async function dispatchPlanRun(api: ApiClient, project: string, body: PlanRunRequest): Promise<Run> {
   const headers = await csrfHeaders(api);
-  return call(api.POST("/v1/projects/{project}/plan-runs", { params: { path: { project } }, body, headers }));
+  return call(api.POST("/v1/projects/{project}/plan-runs", { params: { path: { project } }, body: body as Schemas["PlanRunDispatch"], headers }));
 }
 
 /** The active runs of one plan (its plan run, or the runs of its steps), for the plan page's banner and Run plan. */
