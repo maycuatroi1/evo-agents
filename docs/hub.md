@@ -78,7 +78,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
-| plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../complete` |
+| plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
@@ -98,10 +98,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 21 tools are the seven `kg_*` tools of `evo-agents kg serve`
-plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`,
-`hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`, `digest_list`,
-`digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 22 tools are the seven `kg_*` tools of `evo-agents kg serve`
+plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
+`skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
+`digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
 sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
@@ -252,6 +252,7 @@ evo-agents hub plan show rollout                      # the plan as its copy rea
 evo-agents hub plan step rollout 2 done --evidence "pytest: 12 passed"
 evo-agents hub plan patch rollout --step 2 --set note="merged at abc1234"
 evo-agents hub plan history rollout
+evo-agents hub plan handoff rollout --step 3          # what a new session needs to take step 3 up
 evo-agents hub plan complete rollout                  # every step done: move it to completed
 evo-agents hub plan export . --commit                 # write the copies, commit exactly the ones that changed
 ```
@@ -260,6 +261,17 @@ evo-agents hub plan export . --commit                 # write the copies, commit
 read. When someone else wrote in between, the hub answers 409 with the current plan, and `plan step` and `plan patch`
 read it again and retry; pass `--if-revision N` to fail instead. `plan put FILE --if-revision N` replaces a whole
 plan from a file.
+
+`plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
+it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
+with its title, the commit hashes its evidence names, its lines that start with `Decision:` verbatim and the rest of
+its evidence cut, then the steps not done with their status and depends_on. `--step KEY` puts the evidence of the
+steps that step depends on first. The text stays within `--budget-tokens N` (1000 to 8000, default 4000), counted as
+UTF-8 bytes / 3, which is more than a tokenizer counts for English or Vietnamese prose. When it does not all fit, the
+goal, the steps it depends on and the steps not done go first, then the other steps done with their Decision lines,
+then the rest of the evidence; a part is left out whole, never cut in the middle of a Decision line, and a note at the
+end names what was left out and points to `plan_show`. The same revision and budget give the same text, and reading it needs what reading the
+plan needs: a grant on the project and a sink that clears the plan's label.
 
 A copy looks like this:
 

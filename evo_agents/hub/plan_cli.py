@@ -4,7 +4,8 @@
 left alone, one that differs is reported, never overwritten). ``put`` creates a plan from a draft, or replaces one
 with ``--if-revision``, then rewrites the file as the hub's copy. ``patch``, ``step`` and ``complete`` change one
 plan on the hub; ``export`` writes the copies back into the harness (``evo_agents.hub.mirror``). ``list``,
-``show`` and ``history`` read.
+``show`` and ``history`` read, and ``handoff`` prints what a new session needs to take a plan up, as the hub builds
+it within a token budget (``evo_agents.hub.handoff``), the same text as the MCP tool plan_handoff.
 
 A write the hub refuses with a revision conflict (someone changed the plan since it was read) is retried for
 ``patch``, ``step`` and ``complete`` on the new revision, at most ATTEMPTS times, and only when the retry cannot
@@ -21,10 +22,12 @@ import sys
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlencode
 
 from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
+from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
 from evo_agents.hub.mirror import (
     PLAN_ID,
     export,
@@ -67,7 +70,9 @@ SUMMARY_KEYS = (
     "updated_at",
     "updated_by",
 )
+HANDOFF_KEYS = ("project", "plan_id", "revision", "step", "budget_tokens", "tokens", "cut", "text")
 WRITTEN = returns_object(*WRITTEN_KEYS, schema="evo_agents__hub__server__plans__Written")
+PROJECT_HELP = "hub project (default: hub.project in the harness.yaml around the current directory)"
 
 
 def _project(args) -> str:
@@ -321,6 +326,20 @@ def cmd_show(args) -> int:
     return 0
 
 
+@_client_command
+def cmd_handoff(args) -> int:
+    if not MIN_BUDGET_TOKENS <= args.budget_tokens <= MAX_BUDGET_TOKENS:
+        raise HubError(f"--budget-tokens is {MIN_BUDGET_TOKENS} to {MAX_BUDGET_TOKENS}, not {args.budget_tokens}")
+    hub, _ = _signed_in()
+    query = {"budget_tokens": args.budget_tokens, **({"step": args.step} if args.step is not None else {})}
+    handoff = hub.call("GET", f"{plans_path(_project(args), _plan_id(args.plan))}/handoff?{urlencode(query)}")
+    if args.json:
+        _print_json(handoff)
+        return 0
+    sys.stdout.write(handoff["text"])
+    return 0
+
+
 def _by(revision: dict) -> str:
     """Who wrote a revision: the member, and the author run that wrote it as them."""
     run_id = revision.get("run_id")
@@ -468,45 +487,55 @@ def cmd_export(args) -> int:
     return 0
 
 
-def register_plans(hsub) -> None:
-    plan = hsub.add_parser("plan", help="plans on the hub, and their read-only copies in a harness")
-    psub = plan.add_subparsers(dest="plan_command", required=True)
-    project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
+def _common(parser, output: JsonOutput) -> None:
+    parser.add_argument("--project", help=PROJECT_HELP)
+    json_option(parser, output)
 
-    def common(parser, output: JsonOutput) -> None:
-        parser.add_argument("--project", help=project_help)
-        json_option(parser, output)
 
-    imported = psub.add_parser(
-        "import", help="push every plans/*/*.yaml of a harness the hub does not hold yet (same digest: left alone)"
-    )
-    imported.add_argument("root", metavar="HARNESS_ROOT", nargs="?", help="the harness (default: the cwd)")
-    common(imported, returns_object("root", "project", "plans"))
-    imported.set_defaults(func=cmd_import)
-
+def _register_reads(psub) -> None:
+    """``list``, ``show``, ``history`` and ``handoff``."""
     listed = psub.add_parser("list", help="the plans of a project you can see, with revision and progress")
     listed.add_argument("--area", choices=AREAS)
-    common(listed, returns_array(*SUMMARY_KEYS, schema="PlanSummary"))
+    _common(listed, returns_array(*SUMMARY_KEYS, schema="PlanSummary"))
     listed.set_defaults(func=cmd_list)
 
     show = psub.add_parser("show", help="a plan as its copy in git reads (with --json, as the hub answers)")
     show.add_argument("plan", metavar="PLAN")
     show.add_argument("--revision", type=int, help="an earlier revision")
     revision_body = returns_object(*REVISION_KEYS, "label", "body", schema="RevisionBody")
-    common(show, returns_object(*PLAN_KEYS, schema="Plan", variants=[("--revision", revision_body)]))
+    _common(show, returns_object(*PLAN_KEYS, schema="Plan", variants=[("--revision", revision_body)]))
     show.set_defaults(func=cmd_show)
 
     history = psub.add_parser("history", help="the revisions of a plan: who changed it, when and what")
     history.add_argument("plan", metavar="PLAN")
-    common(history, returns_array(*REVISION_KEYS, "run_id", schema="Revision"))
+    _common(history, returns_array(*REVISION_KEYS, "run_id", schema="Revision"))
     history.set_defaults(func=cmd_history)
 
+    handoff = psub.add_parser(
+        "handoff", help="what a new session needs to take a plan up: goal, steps done with decisions, steps left"
+    )
+    handoff.add_argument("plan", metavar="PLAN")
+    handoff.add_argument("--step", metavar="KEY", help="for this step: the evidence of the steps it depends on first")
+    handoff.add_argument(
+        "--budget-tokens",
+        type=int,
+        default=DEFAULT_BUDGET_TOKENS,
+        metavar="N",
+        help=f"the most tokens the text may take, {MIN_BUDGET_TOKENS} to {MAX_BUDGET_TOKENS} "
+        f"(default {DEFAULT_BUDGET_TOKENS})",
+    )
+    _common(handoff, returns_object(*HANDOFF_KEYS, schema="PlanHandoff"))
+    handoff.set_defaults(func=cmd_handoff)
+
+
+def _register_writes(psub) -> None:
+    """``put``, ``patch``, ``step`` and ``complete``."""
     put = psub.add_parser(
         "put", help="create a plan from a file, or replace it with --if-revision; the file becomes the hub's copy"
     )
     put.add_argument("file", metavar="FILE")
     put.add_argument("--if-revision", type=int, help="the revision on the hub this file replaces")
-    common(put, WRITTEN)
+    _common(put, WRITTEN)
     put.set_defaults(func=cmd_put)
 
     patch = psub.add_parser("patch", help="set keys of one item of a plan (status, done_at, note, evidence, ...)")
@@ -516,7 +545,7 @@ def register_plans(hsub) -> None:
     patch.add_argument("--step", help="for steps: the step id instead of --index")
     patch.add_argument("--set", action="append", default=[], required=True, metavar="KEY=VALUE")
     patch.add_argument("--if-revision", type=int, help="fail on a conflict instead of retrying on the latest revision")
-    common(patch, WRITTEN)
+    _common(patch, WRITTEN)
     patch.set_defaults(func=cmd_patch)
 
     step = psub.add_parser("step", help="set the status of one step, as `evo harness step` does")
@@ -527,14 +556,29 @@ def register_plans(hsub) -> None:
     step.add_argument("--note")
     step.add_argument("--no-date", action="store_true", help="do not set done_at")
     step.add_argument("--if-revision", type=int, help="fail on a conflict instead of retrying on the latest revision")
-    common(step, WRITTEN)
+    _common(step, WRITTEN)
     step.set_defaults(func=cmd_step)
 
     complete = psub.add_parser("complete", help="move a plan whose steps are all done to completed")
     complete.add_argument("plan", metavar="PLAN")
     complete.add_argument("--if-revision", type=int)
-    common(complete, WRITTEN)
+    _common(complete, WRITTEN)
     complete.set_defaults(func=cmd_complete)
+
+
+def register_plans(hsub) -> None:
+    plan = hsub.add_parser("plan", help="plans on the hub, and their read-only copies in a harness")
+    psub = plan.add_subparsers(dest="plan_command", required=True)
+
+    imported = psub.add_parser(
+        "import", help="push every plans/*/*.yaml of a harness the hub does not hold yet (same digest: left alone)"
+    )
+    imported.add_argument("root", metavar="HARNESS_ROOT", nargs="?", help="the harness (default: the cwd)")
+    _common(imported, returns_object("root", "project", "plans"))
+    imported.set_defaults(func=cmd_import)
+
+    _register_reads(psub)
+    _register_writes(psub)
 
     exported = psub.add_parser(
         "export", help="write the copy of every plan of the project into the harness, and commit them with --commit"
@@ -543,5 +587,5 @@ def register_plans(hsub) -> None:
     exported.add_argument(
         "--commit", action="store_true", help="commit the copies that changed, and nothing else in the checkout"
     )
-    common(exported, returns_object("root", "project", "plans", "removed", "notes", "commit"))
+    _common(exported, returns_object("root", "project", "plans", "removed", "notes", "commit"))
     exported.set_defaults(func=cmd_export)
