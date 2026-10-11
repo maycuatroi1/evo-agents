@@ -1,8 +1,10 @@
 import json
+import re
 from pathlib import Path
 
 from evo_agents.kg import serve
 from evo_agents.kg.build import build_project
+from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of
 from evo_agents.kg.serve import Session, diff_lines, handle
 from evo_agents.kg.store import Store, edge_id
 from evo_agents.kg.sync import sync_project
@@ -63,6 +65,25 @@ def built_wider(tmp_path, home, **kw):
         + "  - from: app:tests/test_search.py::test_search\n    rel: verifies\n    to: app:app/search.py::search\n"
         + "  - from: demo#2\n    rel: schedules\n    to: usecase:KB-02\n",
     )
+    sync_project(project)
+    report = build_project(project)
+    assert report.ok, report.errors
+    return project
+
+
+def built_kin(tmp_path, home):
+    """The demo project plus a class and its subclasses in another file, and a Swift file."""
+    project = make_project(tmp_path, home)
+    app = tmp_path / "demo-app"
+    write(app / "app/shapes.py", "class Base:\n    def run(self):\n        return 1\n")
+    write(
+        app / "app/kids.py",
+        "from app.shapes import Base\n\n\nclass Child(Base):\n    def run(self):\n        return super().run()\n\n\n"
+        "class Plain(Base):\n    def go(self):\n        return self.run()\n\n\n"
+        "class Quiet(Base):\n    def run(self):\n        return 0\n",
+    )
+    write(app / "app/Shape.swift", "class Shape {\n    func area() -> Int {\n        return 1\n    }\n}\n")
+    commit(app, "kin")
     sync_project(project)
     report = build_project(project)
     assert report.ok, report.errors
@@ -354,3 +375,104 @@ def test_impact_and_path_truncate_behind_a_handle(tmp_path, kg_env, monkeypatch)
                 break
         assert "".join(pieces) == full
         monkeypatch.undo()
+
+
+def kin(name: str) -> str:
+    return f"symbol:app:app/{name}"
+
+
+def test_impact_follows_inherits_and_overrides_and_names_every_relation(tmp_path, kg_env):
+    project = built_kin(tmp_path, kg_env)
+    session = Session(project, "agent")
+    result = session.call("kg_impact", {"id": kin("shapes.py::Base.run"), "depth": 1})
+    rows = {r["node"]["id"]: (r["rel"], r["rels"], r["to"]) for r in result["structuredContent"]["impacted"]}
+    base_run = kin("shapes.py::Base.run")
+    assert rows == {
+        kin("kids.py::Child.run"): ("calls", ["calls", "overrides"], base_run),  # super().run() in an override
+        kin("kids.py::Plain.go"): ("calls", ["calls"], base_run),  # self.run() in a subclass that keeps run
+        kin("kids.py::Quiet.run"): ("overrides", ["overrides"], base_run),
+    }
+    text = result["content"][0]["text"]
+    assert f"-calls-> [{base_run}] (resolved) (also overrides)" in text
+    assert f"-overrides-> [{base_run}] (resolved)\n" in text + "\n"
+    subclasses = session.call("kg_impact", {"id": kin("shapes.py::Base"), "depth": 1})["structuredContent"]
+    inherits = {r["node"]["id"] for r in subclasses["impacted"] if r["rel"] == "inherits"}
+    assert inherits == {kin("kids.py::Child"), kin("kids.py::Plain"), kin("kids.py::Quiet")}
+
+
+def test_impact_notes_the_coverage_of_its_seeds_languages(tmp_path, kg_env):
+    project = built_kin(tmp_path, kg_env)
+    session = Session(project, "agent")
+    result = session.call("kg_impact", {"id": RANK, "paths": ["app:app/Shape.swift"]})
+    coverage = {row["language"]: row for row in result["structuredContent"]["coverage"]}
+    assert sorted(coverage) == ["python", "swift"]
+    assert coverage["python"] == {"language": "python", **coverage_of("python")}
+    assert all(coverage["python"][key]["supported"] for key in TABLES)
+    swift = coverage["swift"]
+    assert not any(swift[key]["supported"] for key in TABLES)
+    assert swift["calls_across_files"]["note"] == CROSS_FILE_CALLS["swift"].note
+    text = result["content"][0]["text"]
+    assert "coverage of python seeds: calls across files yes; inheritance yes; overrides yes" in text
+    assert f"coverage of swift seeds: calls across files no ({CROSS_FILE_CALLS['swift'].note});" in text
+    # A seed that is no code gets no note; the field is there all the same, for clients that read it.
+    plain = session.call("kg_impact", {"id": "usecase:KB-01"})
+    assert plain["structuredContent"]["coverage"] == [] and "coverage of" not in plain["content"][0]["text"]
+
+
+def test_impact_reads_every_edge_into_a_seed_and_says_when_it_cuts(tmp_path, kg_env, monkeypatch):
+    project = built(tmp_path, kg_env)
+    add_edge(project, "harness:file:knowledge.yaml", "depends_on", RANK, "parsed", level=2)  # hidden from agent
+    add_edge(project, SERVER_PY, "calls", RANK, "proposed")  # never followed, never counted
+    agent, wide = Session(project, "agent"), Session(project, "wide")
+    whole = agent.call("kg_impact", {"id": RANK})
+    assert whole["structuredContent"]["cut"] == [] and "cut:" not in whole["content"][0]["text"]
+
+    monkeypatch.setattr(serve, "SEED_EDGES", 1)  # a page of one edge: every edge is still read
+    assert agent.call("kg_impact", {"id": RANK}) == whole
+
+    # RANK has a calls, a defines and a mentions edge the agent sink sees, and a fourth only the wide one does.
+    monkeypatch.setattr(serve, "IMPACT_SEED_EDGES", 1)
+    cut = agent.call("kg_impact", {"id": RANK})
+    data = cut["structuredContent"]
+    assert data["cut"] == [{"seed": RANK, "read": 1, "total": 3}]
+    # Only the first edge by rel, calls from search, was read: search.py comes back through search, not RANK.
+    assert impacted(cut) == {
+        SEARCH: (1, "calls", "resolved"),
+        HANDLE: (2, "calls", "resolved"),
+        SEARCH_PY: (2, "defines", "parsed"),
+    }
+    assert f"cut: 3 edges lead into [{RANK}] and the first 1 were read" in cut["content"][0]["text"]
+    assert data["summary"].endswith("; 1 seed(s) cut")
+    assert wide.call("kg_impact", {"id": RANK})["structuredContent"]["cut"][0]["total"] == 4
+    # The old fields keep their shape: a client that reads only these sees what it saw before.
+    entry = whole["structuredContent"]["impacted"][0]
+    assert {"hop", "node", "rel", "status", "to", "hub"} <= set(entry)
+
+
+def test_docs_and_skill_print_the_coverage_tables():
+    root = Path(__file__).parents[2]
+    names = {
+        "Python": "python",
+        "TypeScript": "typescript",
+        "JavaScript": "javascript",
+        "Vue": "vue",
+        "Go": "go",
+        "Java": "java",
+        "Kotlin": "kotlin",
+        "Rust": "rust",
+        "Ruby": "ruby",
+        "PHP": "php",
+        "C#": "csharp",
+        "Swift": "swift",
+        "Dart": "dart",
+        "Shell": "shell",
+        "SQL": "sql",
+    }
+    expected = {
+        lang: tuple("yes" if TABLES[key][lang].supported else "no" for key in TABLES) for lang in names.values()
+    }
+    for path in (root / "docs" / "kg.md", root / "plugins/evo-kg/skills/using-project-graph/SKILL.md"):
+        rows = re.findall(
+            r"^\| (\S+) \| (yes|no)\b[^|]*\| (yes|no)\b[^|]*\| (yes|no)\b[^|]*\|$", path.read_text("utf-8"), re.M
+        )
+        assert {names[name]: cells for name, *cells in rows} == {k: list(v) for k, v in expected.items()}, path
