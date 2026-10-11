@@ -10,6 +10,8 @@ import pytest
 from evo_agents.worker.logs import QUIET
 from tests.hub.conftest import github, hub_db, hub_template, pg_server, s3  # noqa: F401
 
+collect_ignore_glob = ["test_*.py"] if os.name == "nt" else []
+
 
 @pytest.fixture(autouse=True)
 def _no_worker_of_this_machine(monkeypatch):

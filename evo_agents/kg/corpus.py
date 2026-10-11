@@ -26,13 +26,9 @@ from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
 from pathlib import Path
 
+from evo_agents import filelock
 from evo_agents.kg.ids import normalize_time, rev_key, utc_now
 from evo_agents.kg.protocol import canonical_json, sha256, source_of
-
-try:  # POSIX advisory locks; Windows runs without them for now.
-    import fcntl
-except ImportError:  # pragma: no cover
-    fcntl = None
 
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS items (
@@ -346,17 +342,13 @@ class Corpus:
     @contextlib.contextmanager
     def lock(self, source: str):
         path = self.lock_dir / f"{source}.lock"
-        with open(path, "w") as fh:
-            if fcntl is not None:
-                try:
-                    fcntl.flock(fh, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                except BlockingIOError as exc:
-                    raise RuntimeError(f"another sync of source {source!r} is running") from exc
+        with open(path, "a", encoding="utf-8") as fh:
+            if not filelock.try_lock(fh.fileno()):
+                raise RuntimeError(f"another sync of source {source!r} is running")
             try:
                 yield
             finally:
-                if fcntl is not None:
-                    fcntl.flock(fh, fcntl.LOCK_UN)
+                filelock.unlock(fh.fileno())
 
 
 class LogWriter:

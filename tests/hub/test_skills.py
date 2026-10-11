@@ -36,6 +36,7 @@ from evo_agents.hub.skill_sync import (
     sync,
 )
 from evo_agents.hub.skills import (
+    EXEC_BITS,
     MARKER,
     MAX_BUNDLE,
     BundleError,
@@ -159,9 +160,10 @@ def test_packing_the_same_directory_twice_gives_the_same_sha256(tmp_path):
     assert first.data[:2] == b"\x1f\x8b" and first.data[4:8] == b"\0\0\0\0"  # gzip, mtime 0
     assert read_bundle(first.data, "demo-skill").tree == first.contents.tree == tree_digest(source)
 
-    os.chmod(copy / "z.txt", 0o755)  # the execute bit is part of the bundle
-    assert pack(copy).sha256 != first.sha256
-    os.chmod(copy / "z.txt", 0o644)
+    if EXEC_BITS:
+        os.chmod(copy / "z.txt", 0o755)  # the execute bit is part of the bundle
+        assert pack(copy).sha256 != first.sha256
+        os.chmod(copy / "z.txt", 0o644)
     (copy / "z.txt").write_text("y\n")
     assert pack(copy).sha256 != first.sha256
 
@@ -187,9 +189,10 @@ def test_packing_refuses_links_odd_names_and_what_is_too_large(tmp_path):
     (no_name / "SKILL.md").write_text("# a skill without frontmatter\n")
     with pytest.raises(BundleError, match="no frontmatter name"):
         pack(no_name)
-    slashed = write_skill(tmp_path, "slashed", files={"a\\b.md": "x"})
-    with pytest.raises(BundleError, match="backslash"):
-        pack(slashed)
+    if os.name != "nt":
+        slashed = write_skill(tmp_path, "slashed", files={"a\\b.md": "x"})
+        with pytest.raises(BundleError, match="backslash"):
+            pack(slashed)
     if case_sensitive(tmp_path):
         cased = write_skill(tmp_path, "cased", files={"Read.md": "a", "read.md": "b"})
         with pytest.raises(BundleError, match="one path on macOS and Windows"):
@@ -271,7 +274,7 @@ def _with(pair: tuple) -> tuple:
         (b"not gzip at all", "not a gzip-compressed tar"),
         (gzip.compress(b"\x01" * 2048, mtime=0), "not a gzip-compressed tar"),
         (tarball(entry("x.md"))[:-40], "not a gzip-compressed tar"),
-        (b"\0" * (MAX_BUNDLE + 1), "over 10 MiB"),
+        pytest.param(b"\0" * (MAX_BUNDLE + 1), "over 10 MiB", id="over-10-MiB"),
     ],
 )
 def test_a_bundle_is_refused_whole_for_any_entry_that_could_land_outside_or_mislead(bundle, problem):
@@ -314,7 +317,8 @@ def test_writing_never_follows_a_link_and_never_overwrites(tmp_path):
     fresh.mkdir()
     write_tree(contents, fresh)
     assert tree_digest(fresh) == contents.tree
-    assert stat.S_IMODE(os.stat(fresh / "scripts" / "run.sh").st_mode) == 0o644  # the bundle said 0644
+    if EXEC_BITS:
+        assert stat.S_IMODE(os.stat(fresh / "scripts" / "run.sh").st_mode) == 0o644  # the bundle said 0644
 
 
 def test_scopes_and_the_managed_gitignore_block():

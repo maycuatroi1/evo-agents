@@ -86,12 +86,12 @@ identifiers:
 sources:
   - id: docs
     connector: "python:tests.kg.fakes:run"
-    config: {{file: "{docs}"}}
+    config: {{file: '{docs}'}}
     label: {{level: internal, integrity: U}}
     deletion: {{max_removal_ratio: 1.0, min_scope: 0}}
   - id: vault
     connector: "python:tests.kg.fakes:run"
-    config: {{file: "{vault}"}}
+    config: {{file: '{vault}'}}
     label: {{level: secret, integrity: U}}
 """
 SECRET_TEXT = "the vault combination is 4-8-15-16-23-42"  # must never reach the hub

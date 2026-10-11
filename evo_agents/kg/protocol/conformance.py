@@ -7,6 +7,7 @@ derives no deletion), golden output (diffable summary), labels (a connector neve
 
 from __future__ import annotations
 
+import contextlib
 import json
 import random
 import sqlite3
@@ -109,8 +110,7 @@ def run_conformance(
     same = summary(first) == summary(second)
     checks.append(Check("determinism", same, [] if same else ["two runs gave different IDs, hashes or listings"]))
 
-    with tempfile.TemporaryDirectory() as tmp:
-        corpus = Corpus("conformance", Path(tmp))
+    with tempfile.TemporaryDirectory() as tmp, contextlib.closing(Corpus("conformance", Path(tmp))) as corpus:
         records = [corpus.to_log_record(m) for m in first if m.get("type") in ("item", "tombstone")]
         base = _digest_after(corpus, [("run-1", records)])
         shuffled = list(records) * 2
@@ -132,9 +132,10 @@ def run_conformance(
             )
             from evo_agents.kg.sync import sync_source
 
-            full = sync_source(project, source["id"], env=env)
-            cut = sync_source(project, source["id"], kill_after=1 + len(items) // 2, env=env)
-            alive = len(project.corpus().items(source["id"]))
+            with contextlib.closing(project.corpus()) as synced:
+                full = sync_source(project, source["id"], env=env, corpus=synced)
+                cut = sync_source(project, source["id"], kill_after=1 + len(items) // 2, env=env, corpus=synced)
+                alive = len(synced.items(source["id"]))
             ok = full.ok and not cut.ok and cut.removals == 0 and alive == full.items
             details = (
                 []

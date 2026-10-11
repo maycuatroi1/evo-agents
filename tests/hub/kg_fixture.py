@@ -43,11 +43,11 @@ identifiers:
 sources:
   - id: docs
     connector: "python:tests.kg.fakes:run"
-    config: {{file: "{docs}"}}
+    config: {{file: '{docs}'}}
     label: {{level: internal, integrity: U}}
   - id: deals
     connector: "python:tests.kg.fakes:run"
-    config: {{file: "{deals}"}}
+    config: {{file: '{deals}'}}
     label: {{level: customer, integrity: U}}
 """
 

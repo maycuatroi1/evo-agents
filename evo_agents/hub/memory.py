@@ -55,6 +55,7 @@ from urllib.parse import quote, urlencode
 
 import yaml
 
+from evo_agents import filelock
 from evo_agents.hub.client import Hub, HubError, host_name, hub_dir, write_atomic
 from evo_agents.hub.registry import cluster_of, default_registry, read_registry
 from evo_agents.kg.project import binding_of, bound_project, read_bindings
@@ -450,9 +451,11 @@ class LeftAlone(Exception):
 def read_regular(path: Path, limit: int = MAX_BODY) -> bytes | None:
     """The bytes of regular file ``path``, at most ``limit`` + 1 of them; None when nothing is there. A symlink is
     never followed and a FIFO never waited on."""
-    flags = os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_NONBLOCK", 0)
+    nofollow = getattr(os, "O_NOFOLLOW", 0)
+    if not nofollow and os.path.islink(path):
+        raise LeftAlone("a symlink")
     try:
-        fd = os.open(path, flags)
+        fd = os.open(path, os.O_RDONLY | nofollow | getattr(os, "O_NONBLOCK", 0))
     except FileNotFoundError:
         return None
     except OSError as exc:
@@ -536,26 +539,17 @@ class State:
 @contextlib.contextmanager
 def sync_lock(directory: Path, timeout: float = LOCK_TIMEOUT):
     """Hold the memory sync lock of this machine; HubError after ``timeout`` seconds of waiting."""
-    try:
-        import fcntl
-    except ImportError:  # no flock here: syncs are not serialized
-        yield
-        return
     directory.mkdir(mode=DIR_MODE, parents=True, exist_ok=True)
     fd = os.open(directory / LOCK_FILE, os.O_RDWR | os.O_CREAT, FILE_MODE)
     try:
         deadline = time.monotonic() + timeout
-        while True:
-            try:
-                fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    raise HubError(
-                        f"another `evo-agents hub memory` run on this machine held {directory / LOCK_FILE} for "
-                        f"{timeout:g}s; try again when it is done"
-                    ) from None
-                time.sleep(0.2)
+        while not filelock.try_lock(fd):
+            if time.monotonic() >= deadline:
+                raise HubError(
+                    f"another `evo-agents hub memory` run on this machine held {directory / LOCK_FILE} for "
+                    f"{timeout:g}s; try again when it is done"
+                ) from None
+            time.sleep(0.2)
         yield
     finally:
         os.close(fd)  # releases the lock

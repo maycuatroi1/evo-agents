@@ -19,6 +19,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from evo_agents import filelock
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import memory as hub_memory
 from evo_agents.hub.client import Hub, HubError
@@ -264,6 +265,8 @@ def lister(*repos: str, name: str = "omega", level: str = "internal", harness: s
 
 
 def placed(projects: list, bindings: dict | None = None) -> Places:
+    if bindings is not None:
+        bindings = {str(Path(key).resolve()): entry for key, entry in bindings.items()}
     return Places.from_hub(projects, {"clusters": []}, "https://hub.test", SOMEONE, bindings)
 
 
@@ -361,6 +364,7 @@ def test_a_customer_project_never_takes_the_harness_root_of_another_project_by_a
         assert places.directory(Place("project", "vault", HARNESS)) == own
 
 
+@pytest.mark.skipif(os.name == "nt", reason="the spelling finder lists directories from / down")
 def test_the_spelling_finder_of_the_opt_in_check_is_looser_than_the_rule(tmp_path):
     """The opt-in check finds paths by words and separators, so a path whose separators the rule would count
     differently is found, and then fails the rule: the check is not the rule checking itself."""
@@ -1108,13 +1112,10 @@ def test_a_hub_failing_midway_keeps_what_was_done(client, who, hub_db, tmp_path,
 
 
 def test_one_sync_at_a_time_and_a_state_file_it_cannot_read_stops_it(tmp_path, own_home):
-    import fcntl
-
     directory = own_home / ".evo" / "hub"
     with hub_memory.sync_lock(directory):
         held = os.open(directory / "memory.lock", os.O_RDWR)
-        with pytest.raises(BlockingIOError):
-            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        assert filelock.try_lock(held) is False
         os.close(held)
         with pytest.raises(HubError, match="held .*memory.lock for 0.3s"):
             with hub_memory.sync_lock(directory, timeout=0.3):

@@ -44,6 +44,7 @@ WORD_KINDS = ("Repo", "Plan", "Seam", "Requirement", "UseCase")
 PATH_KINDS = ("Directory", "Document", "File")
 STATUSES = ("declared", "parsed")
 SAFE = re.compile(r"[A-Za-z0-9._:/#@-]{1,160}")  # what an id or a path may look like to be printed at all
+MSYS_DRIVE = re.compile(r"/([A-Za-z])(?=/|$)")
 # Requirement, use case and section codes: KB-01, P1, REQ_7, UC-1.10.6.
 CODE = re.compile(r"[A-Za-z]{1,8}[-_]?\d{1,6}(?:[.-]\d{1,6}){0,3}")
 IDENT = re.compile(r"[^\W_][-_./:@#][^\W_]|[a-z][A-Z]")  # a separator inside a name, or camelCase
@@ -267,11 +268,19 @@ def command_search(command, only: str | None, base: str | None) -> Search | None
     return None
 
 
+def _native(path: str) -> str:
+    if os.name == "nt":
+        found = MSYS_DRIVE.match(path)
+        if found:
+            return f"{found.group(1).upper()}:{path[2:] or '/'}"
+    return os.path.expanduser(path)
+
+
 def _chdir(base: str | None, args: list[str]) -> str | None:
     target = args[0] if args else "~"
     if target == "-" or "$" in target or "`" in target:
         return None  # somewhere the hook cannot know
-    target = os.path.expanduser(target)
+    target = _native(target)
     if os.path.isabs(target):
         return os.path.normpath(target)
     return os.path.normpath(os.path.join(base, target)) if base else None
@@ -378,7 +387,7 @@ def scope_of(project, search: Search) -> list[tuple[str, str]]:
     for raw in search.paths or [""]:
         if "$" in raw or "`" in raw:
             continue
-        raw = os.path.expanduser(raw)
+        raw = _native(raw)
         if not os.path.isabs(raw):
             if not search.base:
                 continue

@@ -1,5 +1,6 @@
 import io
 import json
+import os
 import re
 import sqlite3
 import stat
@@ -197,8 +198,9 @@ def test_post_tool_file_permissions(kg_env, monkeypatch, capsys, unbound):
     assert post(monkeypatch, capsys, payload)[0] == 0
     assert post(monkeypatch, capsys, payload)[0] == 0
     path = sessions.session_path(payload["session_id"])
-    assert stat.S_IMODE(folder.stat().st_mode) == 0o700
-    assert stat.S_IMODE(path.stat().st_mode) == 0o600
+    if os.name != "nt":
+        assert stat.S_IMODE(folder.stat().st_mode) == 0o700
+        assert stat.S_IMODE(path.stat().st_mode) == 0o600
     assert sorted(p.name for p in folder.iterdir()) == [".lock", path.name]  # no temporary file left behind
 
 
@@ -441,7 +443,7 @@ def test_pre_search_one_word_needs_an_exact_entity_or_the_file_searched(hinted, 
         "- Section app:file:docs/guide.md#setup (docs/guide.md)"
     ]
     # A repo goes by its name alone, never by a path.
-    command = f"grep -n -A3 app {project.harness.root / 'harness.yaml'}"
+    command = f"grep -n -A3 app {(project.harness.root / 'harness.yaml').as_posix()}"
     assert hint_lines(pre_search(event("Bash", command=command), only="grep")) == ["- Repo repo:app"]
 
 
@@ -493,7 +495,7 @@ def test_pre_search_never_echoes_source_text(hinted, tmp_path):
 
 def test_pre_search_past_the_deadline_prints_nothing(hinted, monkeypatch):
     project = hinted()
-    monkeypatch.setattr(search_hint, "BUDGET", 0.0)
+    monkeypatch.setattr(search_hint, "BUDGET", -1.0)
     assert pre_search(event("Grep", pattern="search-api")) is None
     # The progress handler aborts a query that runs past the deadline.
     with pytest.raises((search_hint.Timeout, sqlite3.OperationalError)):

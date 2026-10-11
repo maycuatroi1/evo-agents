@@ -451,7 +451,9 @@ def export(
 def _git(root: Path, *args: str, check: bool = True) -> subprocess.CompletedProcess:
     command = ["git", "-C", str(root), *args]
     try:
-        done = subprocess.run(command, capture_output=True, text=True, timeout=GIT_TIMEOUT)
+        done = subprocess.run(
+            command, capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=GIT_TIMEOUT
+        )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise HubError(f"git {args[0]} failed in {root}: {exc}") from None
     if check and done.returncode != 0:

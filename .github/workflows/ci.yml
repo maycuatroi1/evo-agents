@@ -135,6 +135,23 @@ jobs:
       - run: ruff format --check .
       - run: pytest -q
 
+  test-windows:
+    name: test (windows-latest, ${{ matrix.python }})
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12"]
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -e ".[test,graphify]"
+      - run: python -m pytest -q -n 4 --durations=20
+
   # The web under web/ without a browser: lint, types, unit tests, and the drift check of the API types against the
   # FastAPI OpenAPI, which needs this checkout's Python but no database.
   web-check:
@@ -254,7 +271,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, test, test-macos, web-check, web-e2e]
+    needs: [changes, test, test-macos, test-windows, web-check, web-e2e]
     runs-on: ubuntu-latest
     steps:
       - env:

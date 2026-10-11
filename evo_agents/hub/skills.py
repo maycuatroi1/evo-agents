@@ -55,6 +55,7 @@ NAME = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")
 FILE_MODE = 0o644
 EXEC_MODE = 0o755
 DIR_MODE = 0o755
+EXEC_BITS = os.name != "nt"
 _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 _FIELD = re.compile(r"([A-Za-z0-9_-]+):(?:[ \t]+(.*))?")
 
@@ -125,7 +126,9 @@ class Contents:
     @property
     def tree(self) -> str:
         """The digest ``tree_digest`` gives the directory these files are written into."""
-        return _digest((e.path, f"F {int(e.executable)} {hashlib.sha256(e.data).hexdigest()}") for e in self.files)
+        return _digest(
+            (e.path, f"F {int(e.executable and EXEC_BITS)} {hashlib.sha256(e.data).hexdigest()}") for e in self.files
+        )
 
 
 @dataclass(frozen=True)
@@ -272,7 +275,8 @@ def pack(directory: str | os.PathLike) -> Bundle:
         total += len(data)
         if total > MAX_UNPACKED:
             raise BundleError(f"the files of {root} are over {MAX_UNPACKED // MiB} MiB together")
-        entries.append(Entry(path, bool(stat.S_IMODE(info.st_mode) & 0o111), data))
+        executable = bool(stat.S_IMODE(info.st_mode) & 0o111) if EXEC_BITS else data.startswith(b"#!")
+        entries.append(Entry(path, executable, data))
     entries.sort(key=lambda entry: entry.path)
     _check_paths([entry.path for entry in entries])
     top = next((entry for entry in entries if entry.path == SKILL_FILE), None)
@@ -389,7 +393,7 @@ def tree_digest(directory: str | os.PathLike) -> str:
             with open(entry.path, "rb") as handle:
                 for chunk in iter(lambda: handle.read(MiB), b""):  # noqa: B023 - consumed right here
                     digest.update(chunk)
-            executable = bool(stat.S_IMODE(entry.stat(follow_symlinks=False).st_mode) & 0o111)
+            executable = EXEC_BITS and bool(stat.S_IMODE(entry.stat(follow_symlinks=False).st_mode) & 0o111)
             found.append((path, f"F {int(executable)} {digest.hexdigest()}"))
         else:
             found.append((path, "O"))
@@ -420,4 +424,5 @@ def write_tree(contents: Contents, directory: Path) -> None:
         fd = os.open(target, os.O_WRONLY | os.O_CREAT | os.O_EXCL | nofollow, entry.mode)
         with os.fdopen(fd, "wb") as handle:
             handle.write(entry.data)
-            os.fchmod(handle.fileno(), entry.mode)  # the umask applied to os.open's mode
+            if EXEC_BITS:
+                os.fchmod(handle.fileno(), entry.mode)  # the umask applied to os.open's mode
