@@ -1558,7 +1558,9 @@ reach their timeout, and the daemon exits 0. A second signal interrupts the agen
 a machine that is not a worker, such as one `evo-agents worker revoke` left: starting the daemon again changes
 nothing, so a service does not (see [In the background](#in-the-background)). `EVO_WORKER_REVOKED_EXIT` names
 another status for both. A 426 (a protocol the hub no longer speaks) stops the daemon with exit status 1, which an
-upgrade of evo-agents mends.
+upgrade of evo-agents mends. The other `evo-agents worker` commands exit as every `evo-agents` command does
+(`docs/hub.md`, "Exit status"): 69 when the hub or the network could not be reached, 75 when the hub answered 5xx or
+429, 1 for another refusal, 2 for a wrong command line.
 
 A daemon that dies without ending its runs (SIGKILL, or a service manager whose 60 seconds ran out, which can happen
 while a plan run waits up to a day for its owner's answer) leaves each run's `agent.json`, and may leave the agents

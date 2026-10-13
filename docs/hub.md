@@ -160,6 +160,25 @@ subcommand or option that does not exist, an option without its value, or a valu
 other `evo-agents worker` commands are not in the contract and are not read. It needs only the core package;
 `--contract FILE` checks against a saved `contract print` output instead.
 
+### Exit status
+
+Every `evo-agents` command that talks to the hub ends with one of these statuses, so a script, evo-cli or the
+Curator's figures can tell a wrong call from a hub that was down (`evo_agents/hub/client.py`, `exit_status`):
+
+| Status | When |
+| --- | --- |
+| 0 | the command did what it says |
+| 1 | any other failure: the hub refused the request (4xx other than 429), not signed in, a file that cannot be read |
+| 2 | the command line is wrong: argparse's own status, with `invalid choice` or `unrecognized arguments` in its message, and the option combinations a command refuses |
+| 69 | the hub or the network could not be reached: refused, reset, no answer in time (`EX_UNAVAILABLE`) |
+| 75 | the hub answered 5xx or 429: try again later (`EX_TEMPFAIL`) |
+
+evo-cli reads status 2 with `invalid choice` or `unrecognized arguments` as an evo-agents too old for the command it
+ran, and asks for an upgrade; that meaning stays. The worker's daemon keeps its own statuses (`docs/workers.md`): 3,
+or `EVO_WORKER_REVOKED_EXIT`, once its token is revoked, and 1 when the hub answers 426. `evo-agents worker doctor`
+exits 2 when a finding is high, and a command that needs the worker extra and lacks it exits 2 too. The commands of
+`evo-agents kg` that work on this machine alone keep 1 and 2 as they are.
+
 ## Signing in
 
 Sign-in goes through a GitHub OAuth App that belongs to the deployment. In the App's settings, turn on the device
