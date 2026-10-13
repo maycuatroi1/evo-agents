@@ -994,14 +994,15 @@ nothing; a `v*` tag pushes them to GHCR with the version as tag:
   `next build` fixes the `/v1` rewrite into the image, and the build argument `EVO_HUB_API_INTERNAL_URL` sets its
   target, `http://api:8080` by default. Build with `--build-arg EVO_HUB_API_INTERNAL_URL=<url>` for another address.
 
-`deploy/hub/docker-compose.yml` runs the three services from those images and builds nothing. Postgres is not in it:
+`deploy/hub/docker-compose.yml` builds the three services from the checkout it is in and gives the images those names,
+tagged `EVO_HUB_VERSION`; `docker compose up` without `--build` pulls that release from GHCR instead. Postgres is not in it:
 point `EVO_HUB_DSN` at a database the platform manages, reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK`
 (default `dokploy-network`). The volumes `api-cache` and `worker-cache` are caches; deleting them loses nothing. Set
 the variables in the platform's environment, never in a committed file. `deploy/hub/.env.example` lists them:
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag: a release's tag without the `v` |
+| `EVO_HUB_VERSION` | compose | image tag: a release's tag without the `v` to pull it, or a name such as `main` for images built from the checkout |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
@@ -1049,10 +1050,29 @@ every join for 10 minutes. List the address or network the proxy reaches the api
 the shared network, and nothing wider: a listed address can claim any client address in `X-Forwarded-For`, and `*`
 lets every client do that. The default trusts nobody new.
 
+### Deploying main
+
+`.github/workflows/deploy.yml` deploys every push to main once `ci` passes on it. The platform (Dokploy) holds the
+compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds the three images there with
+`docker compose up -d --build`; no image of main goes through GHCR. The job:
+
+1. stops when main has moved past its commit, since the platform clones main as it is and the newer commit's own `ci`
+   run deploys it;
+2. reads the schema the hub runs from `/v1/health`, fails when this commit does not know it, and runs the platform's
+   Postgres backup first when the newest file under `evo_agents/hub/migrations/versions/` is another revision, or
+   when the hub does not answer, since api and worker migrate as they start;
+3. asks the platform to deploy, waits for the deployment to end `done`, then for `/v1/health` to report `status` ok
+   and this commit's schema.
+
+The environment `production` of the repository, open to main only, holds the secret `DOKPLOY_API_KEY` and the
+variables `DOKPLOY_URL`, `DOKPLOY_COMPOSE_ID`, `DOKPLOY_BACKUP_ID` and `EVO_HUB_URL`. A run of the workflow by hand
+(`workflow_dispatch`) deploys main again. `/v1/health` reports the version of the last release on main, not the
+commit: the Dokploy deployment's title (`main <short sha>`) and description (the run's URL) name the commit.
+
 ### Running the stack locally
 
-`deploy/hub/docker-compose.dev.yml` adds, on top of the production file, image builds from this checkout, Postgres
-16, moto as the S3 store, and a one-off service that creates the bucket. `deploy/hub/.env.example` works with it as
+`deploy/hub/docker-compose.dev.yml` adds, on top of the production file, which builds the images from this checkout,
+Postgres 16, moto as the S3 store, and a one-off service that creates the bucket. `deploy/hub/.env.example` works with it as
 it is:
 
 ```sh
