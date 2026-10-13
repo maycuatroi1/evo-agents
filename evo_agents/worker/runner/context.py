@@ -151,11 +151,12 @@ class Run:
             self.stop_reason = "timeout"
             raise Stopped("timeout")
 
-    def spawn(self, coro) -> None:
-        """Run ``coro`` next to the run, cancelled once the run is over here."""
+    def spawn(self, coro) -> asyncio.Task:
+        """Run ``coro`` next to the run, cancelled once the run is over here; its task."""
         task = asyncio.create_task(coro)
         self._background.add(task)
         task.add_done_callback(self._background.discard)
+        return task
 
     def unsupported(self, what: str, why: str) -> None:
         """The owner asked for something this worker cannot do: say so once in the run's log."""
