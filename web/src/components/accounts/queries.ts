@@ -35,10 +35,15 @@ export const DEFAULT_POLICY: AccountPolicyWrite = {
   max_failovers: 3,
 };
 
+/** The variable a Claude account sets: the token of `claude setup-token` (docs/credentials.md, section "Accounts"). */
+export const CLAUDE_TOKEN_VAR = "CLAUDE_CODE_OAUTH_TOKEN";
+
 export const accountKeys = {
   all: ["accounts"] as const,
   list: ["accounts", "list"] as const,
   policies: ["accounts", "policies"] as const,
+  secrets: ["accounts", "secrets"] as const,
+  workers: ["accounts", "workers"] as const,
 };
 
 /** The visitor's own accounts with their figures, by variable and name, without their values. */
