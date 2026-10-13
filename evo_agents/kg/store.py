@@ -447,6 +447,38 @@ class Store:
         )
         return [_edge_row(r) for r in rows]
 
+    @staticmethod
+    def _into(node_id: str, b: int, rels, statuses, ceiling: tuple[int, int]) -> tuple[str, dict]:
+        """The WHERE clause of the live edges into a node with one of ``rels`` and ``statuses`` whose label is at
+        most ``ceiling`` (level, location), and its parameters."""
+        params = {"id": node_id, "b": b, "lvl": ceiling[0], "loc": ceiling[1]}
+        marks = []
+        for name, values in (("r", rels), ("s", statuses)):
+            params.update({f"{name}{i}": v for i, v in enumerate(values)})
+            marks.append(", ".join(f":{name}{i}" for i in range(len(values))))
+        where = (
+            f"dst = :id AND {LIVE} AND rel IN ({marks[0]}) AND status IN ({marks[1]})"
+            " AND label_lvl <= :lvl AND label_loc <= :loc"
+        )
+        return where, params
+
+    def edges_into(
+        self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int], *, limit: int, offset: int = 0
+    ) -> list[dict]:
+        """One page of the edges ``count_into`` counts, in the order of ``edges_of``."""
+        where, params = self._into(node_id, b, rels, statuses, ceiling)
+        rows = self.db.execute(
+            f"SELECT edge_id, src, rel, dst, props, status, conf, label_lvl, label_loc, label_int FROM edges"
+            f" WHERE {where} ORDER BY rel, src, dst LIMIT :lim OFFSET :off",
+            {**params, "lim": limit, "off": offset},
+        )
+        return [_edge_row(r) for r in rows]
+
+    def count_into(self, node_id: str, b: int, rels, statuses, ceiling: tuple[int, int]) -> int:
+        """How many live edges lead into a node with one of ``rels`` and ``statuses``, under ``ceiling``."""
+        where, params = self._into(node_id, b, rels, statuses, ceiling)
+        return self.db.execute(f"SELECT count(*) FROM edges WHERE {where}", params).fetchone()[0]
+
     def path_nodes(self, b: int) -> list[dict]:
         """Live File and Document nodes that carry a path: what a changed path can name."""
         rows = self.db.execute(

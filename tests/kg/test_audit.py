@@ -35,6 +35,7 @@ SYNC_KEYS = [
     "errors",
     "issues",
     "held",
+    "redactions",
 ]
 BUILD_KEYS = [
     "v",
@@ -104,6 +105,7 @@ def test_audit_sync_line_has_counts_and_ids_only(fake_project):
         "errors": 0,
         "issues": 0,
         "held": 0,
+        "redactions": {},
     }
     raw = path.read_text(encoding="utf-8")
     for leak in ("confidential", "Private body", "example.test", "docs:doc:"):
