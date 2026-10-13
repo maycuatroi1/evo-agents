@@ -14,7 +14,7 @@ from evo_agents.kg import audit
 from evo_agents.kg.corpus import Corpus, LogWriter, kg_home
 from evo_agents.kg.ids import parse_utc, utc_now, uuid7
 from evo_agents.kg.project import Project, ProjectError, load_project_at, read_index, remember
-from evo_agents.kg.protocol import StreamChecker
+from evo_agents.kg.protocol import StreamChecker, sha256
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorError, ConnectorRun, credential_env
 
 if TYPE_CHECKING:
@@ -30,6 +30,26 @@ DUE_SLACK_SECONDS = 300
 # A kind of secret a connector redacted from an item (props.redactions): only these names and positive counts go into
 # the run's result and audit line, whatever else a connector puts there.
 REDACTION_KIND = re.compile(r"[a-z][a-z0-9_]{0,39}")
+# Keys of a source that say how or when it runs, what it may delete, how it is labelled, or which of the files it
+# reads become items, not where it reads from. Every other key (a git source's repo, path or ref, an exec source's
+# command, a connector's config) is part of its lineage, so changing one starts a new epoch (evo_agents.kg.corpus).
+NOT_LINEAGE = frozenset(
+    {
+        "id",
+        "label",
+        "refresh",
+        "deletion",
+        "credentials",
+        "timeout",
+        "fetch",
+        "include",
+        "exclude",
+        "allow",
+        "assets",
+        "code",
+        "branch",
+    }
+)
 
 
 @dataclass
@@ -84,6 +104,33 @@ def count_item(result: SyncResult, item: dict) -> None:
     }
     if counts:
         result.redactions[item["id"]] = counts
+
+
+def source_lineage(source: dict) -> str:
+    """Digest of where ``source`` reads from: its config without the keys in NOT_LINEAGE. Run logs hold only the
+    digest, so the config itself still never leaves the machine."""
+    where = {key: value for key, value in source.items() if key not in NOT_LINEAGE}
+    return sha256(json.dumps(where, sort_keys=True, separators=(",", ":"), ensure_ascii=False, default=str))
+
+
+def _open_log(project: Project, corpus: Corpus, source: dict, run_id: str) -> LogWriter:
+    """Start the log of run ``run_id`` of ``source``; its header names the source's lineage and the run's epoch."""
+    lineage = source_lineage(source)
+    header = {
+        "source": source["id"],
+        "connector": source["connector"],
+        "project": project.name,
+        "lineage": lineage,
+        "epoch": corpus.epoch_for(source["id"], lineage, run_id),
+    }
+    return LogWriter(corpus, run_id, header)
+
+
+def _merge_run(corpus: Corpus, writer: LogWriter) -> None:
+    """Merge the records of a sync into the state and record the lineage it read, in the caller's transaction."""
+    header = writer.header
+    corpus.merge(writer.records, header["run_id"])
+    corpus.record_lineage(header["source"], header["lineage"], header["epoch"], header["run_id"])
 
 
 def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str | None, started: str) -> str:
@@ -143,9 +190,7 @@ def sync_source(
             return result
 
         ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env)
-        writer = LogWriter(
-            corpus, run_id, {"source": source_id, "connector": source["connector"], "project": project.name}
-        )
+        writer = _open_log(project, corpus, source, run_id)
         checker = StreamChecker(source_id)
         run = ConnectorRun(ctx, kill_after=kill_after)
         cursor, got_cursor = None, False
@@ -230,7 +275,7 @@ def sync_source(
         hello = checker.hello or {}
         connector, version = hello.get("connector", source["connector"]), hello.get("version")
         with corpus.db:
-            corpus.merge(writer.records, run_id)
+            _merge_run(corpus, writer)
             if got_cursor:
                 corpus.db.execute(
                     "INSERT OR REPLACE INTO cursors VALUES (?, ?, ?)",
@@ -253,16 +298,21 @@ def sync_source(
 
 
 def accept_removals(project: Project, source_id: str, corpus: Corpus | None = None) -> int:
-    """Apply deletions a guard held back. Only items still alive and not seen since the held run go."""
+    """Apply deletions a guard held back. Only items still alive and not seen since the held run go. The tombstones
+    take the source's current epoch, which no record of the source exceeds."""
     corpus = corpus or project.corpus()
     held = corpus.held(source_id)
     if not held:
         return 0
     with corpus.lock(source_id):
         run_id = uuid7()
-        writer = LogWriter(
-            corpus, run_id, {"source": source_id, "connector": "evo:accept-removals", "project": project.name}
-        )
+        header = {
+            "source": source_id,
+            "connector": "evo:accept-removals",
+            "project": project.name,
+            "epoch": corpus.current_epoch(source_id),
+        }
+        writer = LogWriter(corpus, run_id, header)
         removed = 0
         for entry in held:
             for item_id in entry["ids"]:
