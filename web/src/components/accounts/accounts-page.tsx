@@ -1,8 +1,9 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronRight, CircleCheck, CirclePause, Hourglass, Pause, Pencil, Play, Snowflake, UserRoundCog } from "lucide-react";
+import { CalendarClock, ChevronRight, Pause, Pencil, Play, RefreshCw, UserRoundCog, UserRoundPlus } from "lucide-react";
 import type { Route } from "next";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useCallback, useMemo, useState } from "react";
@@ -19,13 +20,20 @@ import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
+import { Day, StateCell, UsageCell } from "./account-cells";
 import { AccountDialog } from "./account-dialog";
 import { useChangeAccount, useFailure } from "./hooks";
-import { policyRows, usagePercent, usageResetsAt } from "./model";
-import { type Account, accountListQuery, type AccountState, policiesQuery } from "./queries";
+import { isClaudeAccount, policyRows, renewalDue } from "./model";
+import { type Account, accountListQuery, policiesQuery } from "./queries";
 import { PolicySection } from "./policy-section";
 
 const SECRETS_HREF = "/secrets" as Route;
+
+// The Add Claude account and Renew token dialog loads the first time it opens, so it stays out of the page's first
+// load; the buttons that open it ask for it as soon as the pointer or focus reaches them.
+const loadLogin = () => import("./login-dialog");
+const LazyLoginDialog = dynamic(() => loadLogin().then((module) => module.LoginDialog), { ssr: false });
+const preloadLogin = () => void loadLogin();
 
 const NARROW_HIDDEN = {
   projects: "hidden lg:table-cell",
@@ -36,71 +44,18 @@ const NARROW_HIDDEN = {
   heldBy: "hidden sm:table-cell",
 };
 
-const STATES: Record<AccountState, { icon: typeof CircleCheck; variant: "success" | "warning" | "secondary" | "destructive" }> = {
-  ready: { icon: CircleCheck, variant: "success" },
-  cooling: { icon: Snowflake, variant: "warning" },
-  paused: { icon: CirclePause, variant: "secondary" },
-  expired: { icon: Hourglass, variant: "destructive" },
-};
-
-/** A time in the visitor's short format, the full one as its tooltip. */
-function At({ value }: { value: string }) {
-  const format = useFormatter();
-  const date = new Date(value);
-  return (
-    <time dateTime={value} title={format.dateTime(date, { dateStyle: "medium", timeStyle: "short" })} className="whitespace-nowrap tabular-nums">
-      {format.dateTime(date, { dateStyle: "short", timeStyle: "short" })}
-    </time>
-  );
-}
-
-/** Ready, cooling until when, paused or expired, as the hub read it when it answered. */
-function StateCell({ account }: { account: Account }) {
-  const t = useTranslations("accounts");
-  const { icon: Icon, variant } = STATES[account.state];
-  return (
-    <span className="inline-flex flex-col items-start gap-0.5">
-      <Badge variant={variant} data-testid="account-state" data-state={account.state}>
-        <Icon aria-hidden="true" />
-        {t(`state.${account.state}`)}
-      </Badge>
-      {account.state === "cooling" && account.cooldown_until ? (
-        <span className="text-xs text-fg-subtle" title={account.cooldown_reason ?? undefined} data-testid="account-cooling-until">
-          {t.rich("until", { time: () => <At value={account.cooldown_until ?? ""} /> })}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-/** The last usage a run's CLI reported for the account: the share of its limit used, what it said, when it resets. */
-function UsageCell({ account }: { account: Account }) {
-  const t = useTranslations("accounts.usage");
-  const usage = account.last_usage;
-  if (!usage) return <span className="text-fg-subtle">{t("none")}</span>;
-  const percent = usagePercent(usage);
-  const resets = usageResetsAt(usage);
-  return (
-    <span className="inline-flex flex-col items-start gap-0.5" data-testid="account-usage" data-status={usage.status}>
-      <span className={usage.status === "allowed" ? "text-foreground" : "font-medium text-attention"}>
-        {percent === null ? t(`status.${usage.status}`) : t("percent", { percent })}
-      </span>
-      <span className="text-xs text-fg-subtle">
-        {account.last_usage_at ? t.rich("reported", { time: () => <At value={account.last_usage_at ?? ""} /> }) : null}
-        {resets ? <> · {t.rich("resets", { time: () => <At value={resets} /> })}</> : null}
-      </span>
-    </span>
-  );
-}
-
 function AccountsTable({
   accounts,
+  now,
   onEdit,
   onPause,
+  onRenew,
 }: {
   accounts: Account[];
+  now: number;
   onEdit: (account: Account) => void;
   onPause: (account: Account) => void;
+  onRenew: (account: Account) => void;
 }) {
   const t = useTranslations("accounts");
   const format = useFormatter();
@@ -124,7 +79,7 @@ function AccountsTable({
           );
         },
       }),
-      helper.accessor("state", { header: () => t("columns.state"), sortFn: "text", cell: (info) => <StateCell account={info.row.original} /> }),
+      helper.accessor("state", { header: () => t("columns.state"), sortFn: "text", cell: (info) => <StateCell account={info.row.original} now={now} /> }),
       helper.display({
         id: "projects",
         header: () => t("columns.projects"),
@@ -198,6 +153,21 @@ function AccountsTable({
           const paused = account.paused_at !== null;
           return (
             <>
+              {isClaudeAccount(account) ? (
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  aria-label={t("renewLabel", { name: account.name })}
+                  onClick={() => onRenew(account)}
+                  onPointerEnter={preloadLogin}
+                  onFocus={preloadLogin}
+                  data-testid="account-renew"
+                >
+                  <RefreshCw aria-hidden="true" />
+                  <span className="hidden sm:inline">{t("renew")}</span>
+                </Button>
+              ) : null}
               <Button
                 type="button"
                 variant="ghost"
@@ -225,7 +195,7 @@ function AccountsTable({
         },
       }),
     ]);
-  }, [t, format, onEdit, onPause]);
+  }, [t, format, now, onEdit, onPause, onRenew]);
 
   return (
     <DataTable
@@ -255,20 +225,74 @@ function Policies({ accounts }: { accounts: Account[] }) {
   return <PolicySection rows={policyRows(accounts, policies.data)} />;
 }
 
+/** The accounts whose token ends within 30 days, soonest first, each with its day and a way to renew it. */
+function RenewNotice({ accounts, now, onRenew }: { accounts: Account[]; now: number; onRenew: (account: Account) => void }) {
+  const t = useTranslations("accounts.renewNotice");
+  const due = accounts
+    .flatMap((account) => {
+      const when = isClaudeAccount(account) && account.state !== "expired" ? renewalDue(account, now) : null;
+      return when ? [{ account, when }] : [];
+    })
+    .sort((a, b) => a.when.at.localeCompare(b.when.at));
+  if (due.length === 0) return null;
+  return (
+    <section
+      aria-labelledby="accounts-renew-title"
+      className="flex items-start gap-2.5 rounded-md border border-attention/20 bg-attention-soft px-3 py-2.5 text-sm text-attention"
+      data-testid="accounts-renew-notice"
+    >
+      <CalendarClock className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+      <div className="flex min-w-0 flex-col gap-1.5">
+        <h2 id="accounts-renew-title" className="font-medium">
+          {t("title", { count: due.length })}
+        </h2>
+        <ul className="flex flex-col gap-1">
+          {due.map(({ account, when }) => (
+            <li key={account.name} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+              <span className="font-mono text-[13px] [overflow-wrap:anywhere]">{account.name}</span>
+              <span>{t.rich("ends", { day: () => <Day value={when.at} /> })}</span>
+              <Button
+                type="button"
+                variant="link"
+                size="sm"
+                className="h-auto px-0 text-attention underline underline-offset-4"
+                onClick={() => onRenew(account)}
+                onPointerEnter={preloadLogin}
+                onFocus={preloadLogin}
+                aria-label={t("renewLabel", { name: account.name })}
+                data-testid="accounts-renew-notice-renew"
+              >
+                {t("renew")}
+              </Button>
+            </li>
+          ))}
+        </ul>
+      </div>
+    </section>
+  );
+}
+
 /**
  * The visitor's accounts (docs/credentials.md, section "Accounts"): each one's variable, bindings, state, the last
- * usage a run reported, its runs and their estimated cost over 24 hours and 7 days, and the runs holding it now; Pause
- * or Resume and Edit (weight and priority) on each; then the rotation policy of each project. Never a value.
+ * usage a run reported, its runs and their estimated cost over 24 hours and 7 days, and the runs holding it now; Renew
+ * token (a Claude account's), Pause or Resume and Edit (weight and priority) on each, and a reminder for each token
+ * that ends within 30 days; then the rotation policy of each project. Add Claude account opens the same dialog as
+ * Renew token, empty. Never a value.
  */
 export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | null }) {
   const t = useTranslations("accounts");
   const state = useHubQuery(accountListQuery(browserApi), initialError);
   const accounts = state.status === "success" ? state.data : null;
   const [editing, setEditing] = useState<{ open: boolean; account: Account | null }>({ open: false, account: null });
+  // Null until the dialog first opens: it mounts, and loads, only then.
+  const [login, setLogin] = useState<{ open: boolean; account: Account | null } | null>(null);
+  const [now] = useState(() => Date.now());
   const failureOf = useFailure();
   const { mutateAsync } = useChangeAccount();
 
   const edit = useCallback((account: Account) => setEditing({ open: true, account }), []);
+  const add = () => setLogin({ open: true, account: null });
+  const renew = useCallback((account: Account) => setLogin({ open: true, account }), []);
   const pause = useCallback(
     async (account: Account) => {
       const paused = account.paused_at === null;
@@ -291,12 +315,18 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
         title={t("title")}
         tags={accounts ? <Badge variant="secondary">{t("count", { count: accounts.length })}</Badge> : null}
         actions={
-          <Button asChild variant="outline">
-            <Link href={SECRETS_HREF} data-testid="accounts-secrets-link">
-              {t("secrets")}
-              <ChevronRight aria-hidden="true" />
-            </Link>
-          </Button>
+          <>
+            <Button asChild variant="outline">
+              <Link href={SECRETS_HREF} data-testid="accounts-secrets-link">
+                {t("secrets")}
+                <ChevronRight aria-hidden="true" />
+              </Link>
+            </Button>
+            <Button onClick={add} onPointerEnter={preloadLogin} onFocus={preloadLogin} data-testid="accounts-add">
+              <UserRoundPlus aria-hidden="true" />
+              {t("add")}
+            </Button>
+          </>
         }
         sub={accounts && accounts.length > 0 ? <span data-testid="accounts-list-summary">{t("listSummary")}</span> : null}
       />
@@ -309,22 +339,38 @@ export function AccountsPage({ initialError }: { initialError: ApiErrorInfo | nu
               description={t.rich("empty.description", {
                 code: (chunks) => <code className="rounded-xs bg-muted px-1 font-mono text-xs text-foreground">{chunks}</code>,
               })}
-            />
+            >
+              <Button onClick={add} onPointerEnter={preloadLogin} onFocus={preloadLogin} data-testid="accounts-empty-add">
+                <UserRoundPlus aria-hidden="true" />
+                {t("add")}
+              </Button>
+            </EmptyState>
           ) : (
             <div className="flex flex-col gap-8">
-              <section aria-labelledby="accounts-list-title">
-                <h2 id="accounts-list-title" className="sr-only">
-                  {t("caption")}
-                </h2>
-                <DataCard>
-                  <AccountsTable accounts={list} onEdit={edit} onPause={onPause} />
-                </DataCard>
-              </section>
+              <div className="flex flex-col gap-4">
+                <RenewNotice accounts={list} now={now} onRenew={renew} />
+                <section aria-labelledby="accounts-list-title">
+                  <h2 id="accounts-list-title" className="sr-only">
+                    {t("caption")}
+                  </h2>
+                  <DataCard>
+                    <AccountsTable accounts={list} now={now} onEdit={edit} onPause={onPause} onRenew={renew} />
+                  </DataCard>
+                </section>
+              </div>
               <Policies accounts={list} />
             </div>
           )
         }
       </QueryView>
+      {login ? (
+        <LazyLoginDialog
+          open={login.open}
+          onOpenChange={(open) => setLogin((current) => (current ? { ...current, open } : current))}
+          account={login.account}
+          accounts={accounts ?? []}
+        />
+      ) : null}
       <AccountDialog
         account={editing.account}
         open={editing.open}
