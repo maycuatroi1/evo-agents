@@ -2539,7 +2539,15 @@
       },
       "reviewSub": "The night's review of the project by the <curatorLink>Curator</curatorLink>: it reads and changes nothing. <proposalsLink>Its proposals</proposalsLink>",
       "authorPlanSub": "Plan <planLink>{plan}</planLink>: {title}. Written from your request in a chat with the agent.",
-      "authorNewSub": "A new plan: {title}. Written from the request in a chat with the agent."
+      "authorNewSub": "A new plan: {title}. Written from the request in a chat with the agent.",
+      "rerun": {
+        "title": "Rerun run #{id}?",
+        "description": "The run again, with the same runtime, model, mode, approval, timeout and worker, at the plan's current revision.",
+        "confirm": "Rerun",
+        "pending": "Rerunning…",
+        "cancel": "Keep it",
+        "hubSays": "The hub says: {message}"
+      }
     },
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
@@ -2688,6 +2696,18 @@
           "toastAfterTurn": "The run ends done after the agent's turn."
         }
       }
+    },
+    "account": {
+      "label": "Account",
+      "byRules": "Auto, by the rules of your policy",
+      "option": "{name} ({variable})",
+      "onWorkers": "{name} ({variable}), on {workers} only",
+      "paused": "{name} ({variable}), paused",
+      "keep": "As run #{id}: its account picked by hand, if any",
+      "hint": "The run takes the account you pick and keeps it, with no failover to another one. Auto lets your policy for the project pick when a worker takes the run.",
+      "none": "None of your accounts is bound to project {project}, so your policy picks among the workers' own credentials. Bind one on the Secrets page.",
+      "rerunHint": "By default the rerun takes the account picked by hand for run #{id}, or the rules when none was. An account picked by hand is kept, with no failover.",
+      "expired": "{name} ({variable}), expired"
     }
   },
   "insights": {
