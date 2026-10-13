@@ -1619,7 +1619,7 @@
       },
       "scope": {
         "title": "Scope",
-        "description": "What it may run, set when it was registered.",
+        "description": "What it may run. Its projects are set when it is registered.",
         "projects": "Projects",
         "slots": "Slots",
         "slotsValue": "{held} of {slots} in use",
@@ -1688,6 +1688,31 @@
       "anySuccess": "{name} takes runs from the command line again",
       "anySuccessText": "It claims runs dispatched with any of your credentials, from the command line and the web.",
       "failed": "Couldn't change who dispatches to {name}"
+    },
+    "settings": {
+      "title": "Settings",
+      "description": "Only you, its owner, change these. The worker takes them at its next heartbeat, without a restart.",
+      "name": "Name",
+      "nameHint": "Unique among your workers: letters, digits, dots, dashes and underscores.",
+      "nameRequired": "Enter a name for the worker.",
+      "nameInvalid": "Start with a letter or digit, then use letters, digits, dots, dashes or underscores, at most 100 in all.",
+      "nameTaken": "You have a worker named {name} already. Choose another name, or revoke that worker first.",
+      "slots": "Slots",
+      "slotsHint": "Runs it holds at the same time, {min} to {max}. Fewer slots than the runs it holds stops none of them: it claims again once it holds fewer.",
+      "slotsInvalid": "Enter a whole number from {min} to {max}.",
+      "labels": "Labels",
+      "labelsPlaceholder": "macos, gpu",
+      "labelsHint": "Optional. Separate them with commas or spaces.",
+      "labelsInvalid": "Not a valid label: {labels}. A label starts with a letter or digit and holds letters, digits, dots, dashes or underscores, at most 40 in all.",
+      "labelsTooMany": "At most {max} labels.",
+      "save": "Save",
+      "saving": "Saving",
+      "discard": "Discard changes",
+      "saved": "Settings of {name} saved",
+      "savedText": "The worker takes them at its next heartbeat.",
+      "failed": "Couldn't save the settings of {name}",
+      "revoked": "The worker was revoked, so its settings no longer change. The page was reloaded.",
+      "requestId": "Request id: {id}"
     }
   },
   "secrets": {

@@ -3,14 +3,16 @@ import type { Page } from "@playwright/test";
 import { signOut } from "./support/auth";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
+import { claimRun, dispatch, liveWorker, READY_STEPS, seedRunPlan } from "./support/runs";
 import { toast } from "./support/toast";
 import { CHECKOUTS, heartbeat, joinWithCode, registerWorker, RUNTIMES, workersOf } from "./support/workers";
 
 /**
  * The workers pages against the real API: the list with its summary, facets, search and 10-second refresh; the
  * Register dialog from the form to the machine joining with its pairing code; a worker's page with its runtimes,
- * scope, checkouts and heartbeat strip; drain, resume and revoke behind a typed name; the owner's switch that keeps a
- * worker to runs dispatched from the web; and a worker token on the admin tokens page. Pages render in English, the
+ * scope, checkouts and heartbeat strip; drain, resume and revoke behind a typed name; the owner's settings (name, slots
+ * and labels); the owner's switch that keeps a worker to runs dispatched from the web; and a worker token on the admin
+ * tokens page. Pages render in English, the
  * default.
  */
 test.skip(isDeployed, "registers workers through the local stack");
@@ -240,6 +242,7 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only, from the web`);
   await expect(main.getByTestId("worker-as-admin")).toBeVisible();
   await expect(main.getByTestId("worker-dispatch-from")).toHaveCount(0);
+  await expect(main.getByTestId("worker-settings")).toHaveCount(0); // the values show in Scope, without the form
 
   // The owner turns it off again, from its label.
   await signOut(page);
@@ -251,6 +254,71 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   await expect(toast(page, `${worker.name} takes runs from the command line again`)).toContainText("any of your credentials");
   await expect(main.getByTestId("worker-dispatch")).toHaveText(`${me.login} only`);
   expect(await dispatchFromOf()).toBe("any");
+});
+
+test("the owner changes a worker's slots, labels and name, and the hub's refusals show at the form", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const live = await liveWorker(me, project, uniqueName("busy"));
+  const other = await registerWorker(me, { name: uniqueName("taken"), projects: [project] });
+  await dispatch(me, project, READY_STEPS);
+  expect(await claimRun(live)).not.toBeNull();
+  expect(await claimRun(live)).toBeNull(); // its one slot is taken
+
+  await page.goto(`/workers/${live.worker.id}`);
+  const main = page.locator("#main");
+  const settings = main.getByTestId("worker-settings");
+  const name = settings.getByLabel("Name");
+  const slots = settings.getByLabel("Slots");
+  const labels = settings.getByLabel("Labels");
+  await expect(name).toHaveValue(live.worker.name);
+  await expect(slots).toHaveValue("1");
+  await expect(main.getByTestId("worker-scope")).toContainText("1 of 1 in use");
+  await expect(main.getByTestId("worker-runs")).toContainText("Holds 1 run now, no slot free.");
+  await expect(settings.getByTestId("worker-settings-save")).toBeDisabled(); // nothing changed yet
+
+  // Out of range: said at the field, and nothing is sent.
+  await slots.fill("17");
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText("Enter a whole number from 1 to 16.");
+  await expect(slots).toHaveAttribute("aria-invalid", "true");
+  await expect(slots).toBeFocused();
+
+  // A name another worker of mine has: the hub's 409 shows at the name field.
+  await slots.fill("2");
+  await name.fill(other.name);
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText(`You have a worker named ${other.name} already.`);
+  await expect(name).toHaveAttribute("aria-invalid", "true");
+  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({ name: live.worker.name, slots: 1 });
+
+  // Discard puts back what the hub holds.
+  await settings.getByTestId("worker-settings-discard").click();
+  await expect(name).toHaveValue(live.worker.name);
+  await expect(settings.getByTestId("worker-settings-discard")).toHaveCount(0);
+
+  const renamed = uniqueName("roomy");
+  await name.fill(renamed);
+  await slots.fill("2");
+  await labels.fill("gpu, linux");
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(toast(page, `Settings of ${renamed} saved`)).toContainText("next heartbeat");
+  await expect(main.getByRole("heading", { level: 1 })).toContainText(renamed);
+  await expect(main.getByTestId("worker-scope")).toContainText("1 of 2 in use");
+  await expect(main.getByTestId("worker-scope")).toContainText("linux");
+  await expect(main.getByTestId("worker-runs")).toContainText("Holds 1 run now, 1 slot free.");
+  await expect(slots).toHaveValue("2");
+  await expect(settings.getByTestId("worker-settings-save")).toBeDisabled();
+  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({ name: renamed, slots: 2, labels: ["gpu", "linux"] });
+  expect(await claimRun(live)).not.toBeNull(); // the hub counts the held runs against the new slots
+
+  // The list shows the new values.
+  await page.goto("/workers");
+  await expect(row(page, renamed)).toContainText("2/2");
+  await page.locator("#main").getByTestId("workers-search").fill("linux"); // a new label
+  await expect(page.locator("#main").getByTestId("workers-table").locator("tbody tr")).toHaveCount(1);
+  await expect(row(page, renamed)).toBeVisible();
 });
 
 test("a worker token on the admin tokens page says so, and revoking it revokes the worker", async ({ page, admin, signInAs }) => {
