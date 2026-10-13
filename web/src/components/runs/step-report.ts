@@ -6,6 +6,8 @@
  * or after it, which stay Markdown. Pure functions, shared by the card and its tests.
  */
 
+import { linesOf, reportStart, START } from "./step-report-start";
+
 const KEYS = [
   "step",
   "result",
@@ -48,8 +50,6 @@ export type StepReport = {
 /** A message that holds a report: the Markdown before it, the report, the Markdown after it. */
 export type ReportMessage = { lead: string; report: StepReport; tail: string };
 
-const START = /^([ \t]*)step:[ \t]*\S/;
-const RESULT = /^[ \t]*result:[ \t]*(pass|fail)\b/i;
 const FIELD = /^([a-z_]+):(?:[ \t]+(.*))?$/;
 const BLOCK = /^[|>][-+]?$/;
 const OPEN_FENCE = /^[ \t]*(`{3,}|~{3,})[^`]*$/;
@@ -105,8 +105,8 @@ function verifyOf(text: string | null): StepReport["verify"] {
 
 /** The report in `text`, or null when it holds none: a line `step: <id>` then a line `result: pass` or `result: fail`. */
 export function parseStepReport(text: string): ReportMessage | null {
-  const lines = text.replace(/\r\n?/g, "\n").split("\n");
-  const start = lines.findIndex((line, index) => START.test(line) && RESULT.test(lines[index + 1] ?? ""));
+  const lines = linesOf(text);
+  const start = reportStart(lines);
   if (start < 0) return null;
   const indent = START.exec(lines[start])?.[1].length ?? 0;
 

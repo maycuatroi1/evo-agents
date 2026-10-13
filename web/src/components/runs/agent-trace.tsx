@@ -31,7 +31,7 @@ import { type RepoWeb, splitLinks } from "./forge";
 import { LinkedText } from "./links";
 import type { DescribeMove } from "./log-model";
 import { decisionAnchor, decisionHref, type RunEvent } from "./queries";
-import { parseStepReport } from "./step-report";
+import { holdsStepReport } from "./step-report-start";
 import {
   buildTrace,
   openByDefault,
@@ -41,7 +41,7 @@ import {
   type TraceItem,
 } from "./trace-model";
 import { KIND_ICON, useTraceDuration } from "./trace-look";
-import { StepReportCard } from "./trace-report";
+import { StepReportMessage } from "./trace-report-lazy";
 import { TermBlock } from "./trace-term";
 import type { LogStatus } from "./use-run-log";
 
@@ -230,13 +230,12 @@ function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: str
 }
 
 const reportProse = (text: string) => <SafeMarkdown className="text-[13px] leading-5" testId="trace-report-text">{text}</SafeMarkdown>;
+const message = (text: string) => <SafeMarkdown className="leading-[21px]" testId="trace-message">{text}</SafeMarkdown>;
 
 function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "agent" }>; context: TraceContext }) {
   const t = useTranslations("runs.detail.trace");
   const short = useTraceDuration();
   const thought = item.thought;
-  // A step's report, which Markdown would fold into one paragraph, shows as a card between the words around it.
-  const found = useMemo(() => parseStepReport(item.text), [item.text]);
   return (
     <Row icon={Bot} look="agent" at={item.at} head={<Who>{t("agent")}</Who>}>
       <div className="flex min-w-0 flex-col gap-2">
@@ -252,14 +251,11 @@ function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "agent" 
             </div>
           </details>
         ) : null}
-        {found ? (
-          <>
-            {found.lead ? <SafeMarkdown className="leading-[21px]" testId="trace-message">{found.lead}</SafeMarkdown> : null}
-            <StepReportCard report={found.report} prose={reportProse} web={context.webOfBranch?.(found.report.branch) ?? null} />
-            {found.tail ? <SafeMarkdown className="leading-[21px]" testId="trace-message">{found.tail}</SafeMarkdown> : null}
-          </>
+        {/* A step's report, which Markdown would fold into one paragraph, shows as a card between the words around it. */}
+        {holdsStepReport(item.text) ? (
+          <StepReportMessage text={item.text} message={message} prose={reportProse} webOf={(branch) => context.webOfBranch?.(branch) ?? null} />
         ) : item.text ? (
-          <SafeMarkdown className="leading-[21px]" testId="trace-message">{item.text}</SafeMarkdown>
+          message(item.text)
         ) : null}
       </div>
     </Row>

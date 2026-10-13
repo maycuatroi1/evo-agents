@@ -112,9 +112,8 @@ jobs:
               --data-urlencode "input=$(jq -nc --arg id "$COMPOSE_ID" '{json: {composeId: $id}}')"
           }
           before=$(deployments | jq -c '[.result.data.json[].deploymentId]')
-          body=$(jq -nc --arg id "$COMPOSE_ID" --arg title "main ${SHA::7}" \
-            --arg description "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
-            '{json: {composeId: $id, title: $title, description: $description}}')
+          # Dokploy titles a deployment of a git source with the commit it cloned ("Commit: <sha>" as description).
+          body=$(jq -nc --arg id "$COMPOSE_ID" '{json: {composeId: $id}}')
           curl -fsS --max-time 60 -X POST "$DOKPLOY_URL/api/trpc/compose.deploy" \
             -H "x-api-key: $DOKPLOY_API_KEY" -H 'Content-Type: application/json' -d "$body" >/dev/null
           # The deployment Dokploy queued is the newest one missing from the list before.

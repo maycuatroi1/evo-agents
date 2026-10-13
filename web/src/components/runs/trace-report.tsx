@@ -2,7 +2,7 @@
 
 import { ChevronRight, FileText, GitBranch, GitCommitHorizontal, Terminal, TriangleAlert } from "lucide-react";
 import { useTranslations } from "next-intl";
-import type { ReactNode } from "react";
+import { type ReactNode, useMemo } from "react";
 
 import { Identifier, Tag } from "@/components/data/identifier";
 import { StatusBadge } from "@/components/status/status-badge";
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 import { branchUrl, commitUrl, type RepoWeb } from "./forge";
 import { useNewTabLabel } from "./links";
-import { shellLines, type StepReport } from "./step-report";
+import { parseStepReport, shellLines, type StepReport } from "./step-report";
 import { TermBlock } from "./trace-term";
 
 /**
@@ -20,7 +20,9 @@ import { TermBlock } from "./trace-term";
  * `prose` (Markdown is another feature's part, so the trace hands it in). The files and the verify are folded rows like
  * a tool call's; the verify starts open when the step failed.
  */
-export function StepReportCard({ report, prose, web }: { report: StepReport; prose: (text: string) => ReactNode; web: RepoWeb | null }) {
+export type StepReportCardProps = { report: StepReport; prose: (text: string) => ReactNode; web: RepoWeb | null };
+
+export function StepReportCard({ report, prose, web }: StepReportCardProps) {
   const t = useTranslations("runs.detail.trace.report");
   const named = useNewTabLabel();
   const branchHref = branchUrl(web, report.branch);
@@ -194,5 +196,26 @@ function Fold({
       </summary>
       {children}
     </details>
+  );
+}
+
+export type StepReportMessageProps = {
+  text: string;
+  /** Markdown of the words around the report, and of the whole message when it holds none after all. */
+  message: (text: string) => ReactNode;
+  prose: (text: string) => ReactNode;
+  webOf: (branch: string | null) => RepoWeb | null;
+};
+
+/** An agent's message that holds a step's report: the words before it, the card, the words after it. */
+export function StepReportMessage({ text, message, prose, webOf }: StepReportMessageProps) {
+  const found = useMemo(() => parseStepReport(text), [text]);
+  if (!found) return message(text);
+  return (
+    <>
+      {found.lead ? message(found.lead) : null}
+      <StepReportCard report={found.report} prose={prose} web={webOf(found.report.branch)} />
+      {found.tail ? message(found.tail) : null}
+    </>
   );
 }
