@@ -597,10 +597,15 @@ Shared pieces built on them:
     for is done, dashed (5 4) when it is not; 2 px `brand` when it joins the selected step.
   - The legend above the canvas (`Legend`): the count of steps in each of the four statuses with their icons, the
     Ready count, a solid sample "Dependency done", a dashed one "Not done yet", and "N dependencies not drawn" with
-    why in its tooltip.
-  - The canvas: `canvas` behind a dot grid in `border-strong` (16 px), zoom in, zoom out and fit as ghost icon
-    buttons at its top right (44 px under 768 px); a drag pans, the wheel scrolls the page and never zooms, and the
-    canvas opens fitted to the whole plan, never past zoom 1.
+    why in its tooltip; at its end, zoom in, zoom out and fit as ghost icon buttons (44 px under 768 px), in the bar
+    rather than over the canvas, so no step ever sits under them.
+  - The canvas: `canvas` behind a dot grid in `border-strong` (16 px); a drag pans, the wheel scrolls the page and
+    never zooms. It opens on the whole plan, centred and never past zoom 1, while that reads at zoom 0.6 or more;
+    a larger plan (agent-hub's 29 steps) opens at 0.6 with its first row at the top and its first step in view,
+    and the rest is a pan, a zoom out or Fit away; Fit always shows the whole plan (`lib/plan-graph/viewport.ts`).
+    A link with `step=` then pans to that step. React Flow's attribution stays in its bottom right corner, 10 px
+    `fg-muted` on `card` at 80 % (`.plan-graph` in `globals.css`: Tailwind's arbitrary variants read the
+    underscores of React Flow's class names as spaces, so its classes are styled in plain CSS).
   - Selecting. A click, Enter or Space on a step selects it: the steps outside its ancestors and descendants dim to
     40 % (their lines to 35 %), and the search and Repo filter dim the steps they do not keep rather than hide them.
     The selected step is the URL's `step` (its key, `step=11`), replaced as `view` is; a link with `step=` and no

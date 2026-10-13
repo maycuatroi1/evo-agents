@@ -9,10 +9,11 @@ import { type FocusEvent, type KeyboardEvent, useCallback, useEffect, useMemo, u
 import { planCriteria, stepCriteria } from "@/lib/plan-graph/criteria";
 import { layoutPlanGraph } from "@/lib/plan-graph/layout";
 import { arrowDirection, neighbour } from "@/lib/plan-graph/navigate";
+import { openingViewport } from "@/lib/plan-graph/viewport";
 import { stepLabel } from "@/lib/plans";
 
 import { useStepStatusText } from "./status";
-import { FIT, Legend, motion, Zoom } from "./step-graph-chrome";
+import { Legend, motion, Zoom } from "./step-graph-chrome";
 import { GRAPH_FRAME, type StepGraphProps } from "./step-graph-frame";
 import { InspectorPanel, InspectorSheet, useWideInspector } from "./step-graph-inspector";
 import { StepEdge, type StepFlowEdge, type StepFlowNode, StepNode } from "./step-graph-parts";
@@ -21,8 +22,9 @@ import { useSelectedStep } from "./step-view";
 /**
  * The Graph view of a plan's steps: the layout of lib/plan-graph drawn by React Flow, read only. A legend above the
  * canvas counts the steps by status and the Ready ones, says what solid and dashed lines mean and how many
- * dependencies are not drawn. The canvas fits the whole plan when it opens, never past zoom 1; a drag pans it, the
- * wheel scrolls the page, and the buttons zoom and fit. Loaded on demand (step-graph-lazy.tsx).
+ * dependencies are not drawn, with the zoom and fit buttons at its end. The canvas opens on the whole plan, never past
+ * zoom 1, unless that would be too small to read: then at zoom 0.6 from the top row (openingViewport), Fit still showing
+ * all of it. A drag pans, the wheel scrolls the page. Loaded on demand (step-graph-lazy.tsx).
  *
  * A click, Enter or Space on a step selects it (the URL's `step`): the steps outside its ancestors and descendants dim,
  * and the inspector shows it (step-graph-inspector.tsx). Tab reaches the steps; the arrows move between them, Up and
@@ -200,11 +202,13 @@ function Graph({ project, planId, steps, acceptance, matching }: StepGraphProps)
 
   return (
     <div className={GRAPH_FRAME} data-testid="step-graph">
-      <Legend graph={graph} />
+      <Legend graph={graph}>
+        <Zoom />
+      </Legend>
       <div className="flex min-h-0 flex-1">
         <div
           ref={canvas}
-          className="relative min-h-0 min-w-0 flex-1 bg-background [&_.react-flow__node:focus-visible]:rounded-md [&_.react-flow__node:focus-visible]:outline-2 [&_.react-flow__node:focus-visible]:outline-offset-2 [&_.react-flow__node:focus-visible]:outline-ring"
+          className="plan-graph relative min-h-0 min-w-0 flex-1 bg-background"
           onKeyDown={onKeyDown}
           onFocus={onFocus}
           data-testid="step-graph-canvas"
@@ -216,8 +220,6 @@ function Graph({ project, planId, steps, acceptance, matching }: StepGraphProps)
             edges={edges}
             nodeTypes={NODE_TYPES}
             edgeTypes={EDGE_TYPES}
-            fitView
-            fitViewOptions={FIT}
             minZoom={0.2}
             maxZoom={2}
             nodesDraggable={false}
@@ -229,7 +231,11 @@ function Graph({ project, planId, steps, acceptance, matching }: StepGraphProps)
             zoomOnScroll={false}
             zoomOnDoubleClick={false}
             preventScrolling={false}
-            onInit={() => setReady(true)}
+            onInit={(instance) => {
+              const frame = canvas.current?.getBoundingClientRect();
+              if (frame) void instance.setViewport(openingViewport(graph, frame));
+              setReady(true);
+            }}
             onNodeClick={(_, node) => open(node.data.node.key)}
             onPaneClick={() => (selected ? select(null) : undefined)}
             ariaLabelConfig={{
@@ -240,7 +246,6 @@ function Graph({ project, planId, steps, acceptance, matching }: StepGraphProps)
             aria-label={t("canvas")}
           >
             <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--border-strong)" />
-            <Zoom />
           </ReactFlow>
         </div>
         {wide ? <InspectorPanel {...inspector} /> : null}
