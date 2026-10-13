@@ -39,6 +39,7 @@ MAX_PRIORITY = 1000
 DEFAULT_WEIGHT = 1
 DEFAULT_PRIORITY = 0
 STRIDE = 1_000_000.0  # how far a run moves an account of weight 1 in the rotation
+RENEW_WITHIN_DAYS = 30  # an account that ends this soon is shown with a reminder to renew it
 
 DEFAULT_POLICY = {
     "strategy": DEFAULT_STRATEGY,
