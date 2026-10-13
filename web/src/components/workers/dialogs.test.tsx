@@ -144,10 +144,10 @@ describe("RegisterDialog", () => {
     await user.type(screen.getByLabelText("Tên worker"), "lab-ws-01");
     await user.click(within(choices).getByRole("checkbox", { name: "demo" }));
     await user.clear(screen.getByLabelText("Slot"));
-    await user.type(screen.getByLabelText("Slot"), "9");
+    await user.type(screen.getByLabelText("Slot"), "17");
     await user.type(screen.getByLabelText("Label"), "gpu, x/y");
     await user.click(within(dialog).getByRole("button", { name: "Tạo pairing code" }));
-    expect(screen.getByText("Nhập một số nguyên từ 1 tới 8.")).toBeInTheDocument();
+    expect(screen.getByText("Nhập một số nguyên từ 1 tới 16.")).toBeInTheDocument();
     expect(screen.getByText(/Label không hợp lệ: x\/y/)).toBeInTheDocument();
     expect(api.seen.some((request) => request.method === "POST")).toBe(false); // nothing sent while the form is wrong
 
