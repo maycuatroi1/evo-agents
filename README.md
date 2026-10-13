@@ -72,6 +72,13 @@ at any depth, and `state/` at the root only (a nested `src/state/` is ordinary c
 timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
 is fetched.
+Before a file enters the corpus, the git connector replaces each secret in its text with a marker naming
+its kind: a private key in PEM (`[redacted:pem]`), a provider's key (Anthropic, OpenAI, AWS, Slack, Google,
+GitHub, hub tokens), the password of a URI, and the literal value of a variable or key named as a password,
+secret, token, API key or private key (`DB_PASSWORD: [redacted:password]`). References such as `${VAR}`,
+`os.environ[...]` or `process.env.X`, empty values, placeholders and descriptive words stay, and so does the
+rest of the file, so its structure still enters the graph. The patterns favour precision over recall;
+`evo_agents/kg/redact.py` lists what they take and leave.
 
 A markdown file whose frontmatter `id:` matches an identifier pattern is where that code is defined;
 a copy says `derived_from:` in its frontmatter, and `kg status` lists codes defined in more than one place.
@@ -89,7 +96,25 @@ evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
 
 Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
 source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
-never item content.
+never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
+never their values.
+
+A corpus synced before its git connector redacted keeps the old copies: in the blobs of earlier runs, in memo rows,
+and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
+them with the connector's patterns and lists each blob that holds a secret by hash, path, item id and kind of
+secret, never the value. A blob is old when nothing uses it, live when an item of the corpus refers to it now (a
+sync of its source replaces it with a redacted copy, so sync and build first), and kept when only an older record of
+a run still in use names it. Counting changes nothing. `--purge` says what it is about to delete and asks first
+(`--yes` when no terminal can answer). It then deletes the old blobs, the run logs of old runs that name them and
+the memo rows holding a secret, compacts the memo and the graph so no free page keeps the text, and appends a
+`scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus uses, and it holds every source's
+lock meanwhile, so a sync started then stops at once instead of writing:
+
+```sh
+evo-agents kg sync --build                   # live copies become old ones
+evo-agents kg scrub                          # count, change nothing
+evo-agents kg scrub --all --purge            # delete the old copies of every project, after a yes
+```
 
 To keep graphs fresh, give sources a `refresh` interval (`30m`, `6h`, `1d`). `kg sync --due` runs only
 the sources whose interval has passed since their last ok run; `--all` does that for every project that
@@ -121,6 +146,12 @@ hub that has a graph of the project, the server answers from the hub with the sa
 | `kg_impact` | what depends on ids, `repo:path` files or a unified diff, before you change them |
 | `kg_status` | bound project, clearance, snapshot age, coverage per source, session label |
 | `kg_more` | continue a truncated result |
+
+`kg_impact` walks back over callers, in other files too when the caller's imports say where the callee lives,
+importers, members, definers, subclasses (`inherits`), overriding methods (`overrides`), implementations and tests.
+Each result notes, per language of its seeds, whether calls across files, inheritance and overrides are covered, and
+names a seed with more incoming edges than it reads (2,000), with their number. [docs/kg.md](docs/kg.md) has the
+coverage table per language and the fields of the result.
 
 Hooks:
 
@@ -335,7 +366,8 @@ scripts/      bump_version.py X.Y.Z: the release version in evo_agents/__init__.
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
-              and size budgets that CI checks, and how to split a module
+              and size budgets that CI checks, and how to split a module; kg.md: what kg_impact follows, and
+              its coverage per language
 ```
 
 ## License

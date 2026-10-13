@@ -6,6 +6,14 @@ but matches exactly one target (a path or symbol name unique across the project)
 link nothing; they are counted, so coverage shows how much prose is still unlinked. A path that names a
 directory of a repo links to its Directory node, always ``parsed``: the directory exists exactly because
 items of that repo sit under it.
+
+A call into another file (a ``calls`` reference of the structure stage) links its caller to the symbol
+the file's imports name, ``resolved``: each ``via`` entry names the files to look in (a module, candidate
+paths, a package, a Go import path, a JS or TS specifier read through the nearest tsconfig) and the
+qualified name to find there. The first entry that finds a definition decides; two definitions are
+ambiguous and link nothing. A call through ``this``, ``self`` or ``super`` names a class of its own file
+instead; the index's class hierarchy (``pipeline.hierarchy``) finds the method up that class's chain, and
+gives each class its ``inherits`` edges and each method its ``overrides`` edges.
 """
 
 from __future__ import annotations
@@ -15,11 +23,13 @@ import re
 from collections import defaultdict
 from urllib.parse import unquote
 
+from evo_agents.kg.extract.xref import module_files
+from evo_agents.kg.pipeline import hierarchy
 from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, normalize_url
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "7"
+LINK_VERSION = "9"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -46,33 +56,78 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "path": defaultdict(list),
         "dir": defaultdict(list),
         "module": defaultdict(list),
+        "modsuffix": defaultdict(list),  # "core.log" -> modules ending with it, "src.core.log": a src/ layout
         "symbol": defaultdict(list),
         "symname": defaultdict(list),
+        "def": {},  # "<file item>::<qualname>" -> the symbol it defines there
+        "pkgdef": defaultdict(list),  # "<package>::<qualname>" -> the symbols there, "jvm:com.acme.a::A.f"
+        "tsconfig": {},  # "<repo>:<dir>" -> baseUrl and paths of the tsconfig.json there
+        "classes": {},  # class symbol -> (its file item, its qualname)
     }
+    with_bases: list[dict] = []
     for facts in facts_by_item.values():
         for f in facts:
             if f["t"] == "node":
                 index["ids"].add(f["id"])
             elif f["t"] == "ident":
-                kind = f["type"]
-                if kind in ("repo", "seam", "plan", "step", "url"):
-                    index[kind].setdefault(f["key"], f["node"])
-                elif kind == "path":
-                    index["path"][f["key"]].append({"node": f["node"], "repo": f.get("repo"), "source": f["source"]})
-                elif kind == "dir":  # every item under a directory names it: keep one entry per node
-                    entry = {"node": f["node"], "repo": f.get("repo")}
-                    if entry not in index["dir"][f["key"]]:
-                        index["dir"][f["key"]].append(entry)
-                elif kind == "module":
-                    index["module"][f["key"]].append({"node": f["node"], "source": f["source"]})
-                elif kind == "symbol":
-                    entry = {"node": f["node"], "repo": f.get("repo"), "source": f["source"]}
-                    index["symbol"][f["key"]].append(entry)
-                    index["symname"][f["qualname"]].append(f["node"])
-                    if f["name"] != f["qualname"]:
-                        index["symname"][f["name"]].append(f["node"])
+                _learn(index, f)
+                if f["type"] == "symbol" and f.get("bases"):
+                    with_bases.append(f)
+    index["gosuffix"] = _go_suffixes({key.partition("::")[0] for key in index["pkgdef"]})
+    # Once per build, not once per item: a project with thousands of known URLs spent most of a link run here.
+    index["url_prefix"] = {_url_prefix(u) for u in index["url"]}
     index["identifiers"] = [{"kind": i["kind"], "pattern": i["pattern"]} for i in identifiers]
+    hierarchy.resolve(index, with_bases, lambda file, repo, path: Linker(index, file, repo, path))
     return index
+
+
+def _learn(index: dict, f: dict) -> None:
+    """Add one ``ident`` fact to the index."""
+    kind = f["type"]
+    if kind in ("repo", "seam", "plan", "step", "url"):
+        index[kind].setdefault(f["key"], f["node"])
+    elif kind == "path":
+        index["path"][f["key"]].append({"node": f["node"], "repo": f.get("repo"), "source": f["source"]})
+    elif kind == "dir":  # every item under a directory names it: keep one entry per node
+        entry = {"node": f["node"], "repo": f.get("repo")}
+        if entry not in index["dir"][f["key"]]:
+            index["dir"][f["key"]].append(entry)
+    elif kind == "module":
+        index["module"][f["key"]].append({"node": f["node"], "source": f["source"]})
+        parts = f["key"].split(".")
+        for i in range(1, len(parts)):
+            index["modsuffix"][".".join(parts[i:])].append({"node": f["node"], "source": f["source"]})
+    elif kind == "symbol":
+        _learn_symbol(index, f)
+    elif kind == "tsconfig":
+        index["tsconfig"].setdefault(f["key"], {"base": f["base"], "paths": f["paths"]})
+
+
+def _learn_symbol(index: dict, f: dict) -> None:
+    entry = {"node": f["node"], "repo": f.get("repo"), "source": f["source"]}
+    index["symbol"][f["key"]].append(entry)
+    index["symname"][f["qualname"]].append(f["node"])
+    if f["name"] != f["qualname"]:
+        index["symname"][f["name"]].append(f["node"])
+    if f.get("file"):
+        index["def"].setdefault(f"{f['file']}::{f['qualname']}", f["node"])
+        if f.get("kind") == "class":
+            index["classes"].setdefault(f["node"], (f["file"], f["qualname"]))
+    if f.get("package"):
+        index["pkgdef"][f"{f['package']}::{f['qualname']}"].append(entry)
+
+
+def _go_suffixes(packages: set[str]) -> dict[str, list[dict]]:
+    """Every trailing run of segments of a Go package directory, to the directories ending with it. A Go
+    import path ends with its package's directory below the module root, which the corpus does not record."""
+    out: dict[str, list[dict]] = defaultdict(list)
+    for key in sorted(packages):
+        if not key.startswith("go:") or key == "go:":
+            continue
+        segments = key[3:].split("/")
+        for i in range(len(segments)):
+            out["/".join(segments[i:])].append({"dir": key[3:], "whole": i == 0})
+    return out
 
 
 def index_digest(index: dict) -> str:
@@ -128,7 +183,7 @@ class Linker:
             "refs_dangling": 0,
         }
         self.samples: dict[str, list[str]] = {"ambiguous": [], "dangling": []}
-        self.url_prefixes = {_url_prefix(u) for u in index["url"]}
+        self.url_prefixes = index["url_prefix"]
         self.patterns = [(i["kind"], re.compile(i["pattern"])) for i in index["identifiers"]]
 
     # -- recording ------------------------------------------------------------------------------
@@ -202,8 +257,105 @@ class Linker:
         target = _unique(entries)
         return (target, "parsed" if is_dir else "resolved") if target else (None, "ambiguous")
 
+    def resolve_call(self, f: dict) -> None:
+        """Link a caller to the one symbol the first ``via`` entry with a definition finds."""
+        target = f["target"]
+        for kind, value, qual in target["via"]:
+            found = sorted(set(self.definitions(kind, value, qual, target)))
+            if not found:
+                continue
+            key = (f["src"], "calls", found[0])
+            if len(found) == 1 and found[0] != f["src"] and key not in self.edges:
+                self.edges[key] = edge(
+                    f["src"], "calls", found[0], f["units"], status="resolved", conf=0.8, needs=found, where=f["where"]
+                )
+            return
+
+    def definitions(self, kind: str, value, qual: str, target: dict) -> list[str]:
+        """The symbols named ``qual`` in the scope one ``via`` entry names, same repo or source first.
+        ``local`` is a definition of this file; ``self`` and ``super`` the method ``qual`` up the chain of
+        the class ``value`` of this file, ``super`` past the class itself."""
+        repo = target.get("repo")
+        if kind == "local":
+            found = self.index["def"].get(f"{self.item_id}::{qual}")
+            return [found] if found else []
+        if kind in ("self", "super"):
+            cls = self.index["def"].get(f"{self.item_id}::{value}")
+            member = hierarchy.find_member(self.index, cls, qual, skip=kind == "super") if cls else None
+            return [member[0]] if member else []
+        if kind in ("package", "gopkg"):
+            keys = [value] if kind == "package" else [f"go:{d}" for d in self._go_dirs(value)]
+            entries = [e for key in keys for e in self.index["pkgdef"].get(f"{key}::{qual}", [])]
+            return [e["node"] for e in [e for e in entries if e["repo"] == repo] or entries]
+        if kind == "module":
+            files = self._module_files(value, target.get("source"))
+        else:
+            files = self._first_file(value if kind == "paths" else self._ts_paths(value, repo), repo)
+        return [d for file in files if (d := self.index["def"].get(f"{file}::{qual}"))]
+
+    def _module_files(self, module: str, source: str | None) -> list[str]:
+        """Files of a Python module: its exact dotted path, else a module whose path ends with it (the
+        directory a ``src/`` layout puts on sys.path); the caller's own source first. Only calls use the
+        second form: the qualified name they look up must then be defined there too."""
+        found = []
+        for table in ("module", "modsuffix"):
+            entries = self.index[table].get(module, [])
+            same = [e["node"] for e in entries if e["source"] == source]
+            if same:
+                return same
+            found = found or [e["node"] for e in entries]
+        return found
+
+    def _first_file(self, candidates: list[str], repo: str | None) -> list[str]:
+        for candidate in candidates:
+            found, _ = self.path_target(candidate, repo)
+            if found:
+                return [found]
+        return []
+
+    def _go_dirs(self, import_path: str) -> list[str]:
+        """The directory a Go import path names: the longest run of its last segments that ends one
+        directory, two segments at least unless that run is the whole directory."""
+        segments = import_path.split("/")
+        for k in range(len(segments), 0, -1):
+            entries = [e for e in self.index["gosuffix"].get("/".join(segments[-k:]), []) if k >= 2 or e["whole"]]
+            dirs = sorted({e["dir"] for e in entries})
+            if dirs:
+                return dirs if len(dirs) == 1 else []
+        return []
+
+    def _ts_paths(self, spec: str, repo: str | None) -> list[str]:
+        """Candidate files of a JS or TS module specifier: relative to the importing file, or through the
+        ``paths`` and ``baseUrl`` of the nearest tsconfig.json above it in the same repo."""
+        if spec.startswith("."):
+            targets = [posixpath.normpath(posixpath.join(self.base_dir, spec))]
+        else:
+            targets = self._ts_alias(spec, repo)
+        return [c for t in targets for c in module_files(t)]
+
+    def _ts_alias(self, spec: str, repo: str | None) -> list[str]:
+        directory = self.base_dir
+        while (config := self.index["tsconfig"].get(f"{repo}:{directory}")) is None:
+            if not directory:
+                return []
+            directory = posixpath.dirname(directory)
+        out = []
+        for pattern in sorted(config["paths"], key=lambda p: (-len(p.partition("*")[0]), p)):
+            prefix, star, suffix = pattern.partition("*")
+            if star and spec.startswith(prefix) and spec.endswith(suffix) and len(spec) >= len(prefix + suffix):
+                middle = spec[len(prefix) : len(spec) - len(suffix)]
+                out += [t.replace("*", middle, 1) for t in config["paths"][pattern]]
+            elif not star and spec == pattern:
+                out += config["paths"][pattern]
+        if not out and config["base"] is not None:
+            out = [posixpath.normpath(posixpath.join(config["base"], spec))]
+        return out
+
     def resolve_ref(self, f: dict) -> None:
         target, ttype = f["target"], f["target"]["type"]
+        if ttype == "call":
+            self.resolve_call(f)
+            return
         unit = f["units"][0]
         found, status = None, f.get("status", "parsed")
         if ttype in ("repo", "seam", "plan"):
@@ -431,4 +583,4 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
             linker.scan(src, frag_unit(item_id, anchor), frag["text"], heading=frag.get("title"))
     elif body:
         linker.scan(item_id, item_unit(item_id), body)
-    return linker.facts()
+    return linker.facts() + hierarchy.item_facts(item_id, structure, index)

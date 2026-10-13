@@ -17,6 +17,7 @@ import uuid
 from collections import deque
 
 from evo_agents import __version__
+from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.sessions import current_session_id, read_session
@@ -28,22 +29,35 @@ CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude 
 HANDLE_TTL = 1800
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
-IMPACT_RELS = ("calls", "imports", "member_of", "defines", "depends_on", "implements", "verifies")
+IMPACT_RELS = (
+    "calls",
+    "imports",
+    "member_of",
+    "defines",
+    "depends_on",
+    "implements",
+    "verifies",
+    "inherits",
+    "overrides",
+)
 IMPACT_MIN_RANK = STATUS_RANK["resolved"]  # impact follows declared, parsed, introspected, resolved: never proposed
+IMPACT_STATUSES = tuple(status for status, rank in STATUS_RANK.items() if rank >= IMPACT_MIN_RANK)
+WALKED_RELS = (*IMPACT_RELS, "mentions")  # what kg_impact reads into a node: mentions name documents to re-check
 CHAIN_RELS = ("implements", "schedules", "verifies", "has_step", "touches")
 PATH_SKIP = ("in_source",)  # every item hangs off its source: a path through one says nothing
 SEED_EDGES = 500  # edges read around a seed or a path's start, which are expanded even when they are hubs
+IMPACT_SEED_EDGES = 2_000  # edges kg_impact reads into a seed, SEED_EDGES at a time; it reports a seed with more
 _SPAN = re.compile(r"lines? (\d+)(?:-(\d+))?")
-_HUNK = re.compile(r"@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@")
 
 INSTRUCTIONS = (
     "Knowledge graph of the bound project: repos, files, symbols, documents and sections, plans and steps, "
     "seams, and the explicit links between them, each with provenance and a sensitivity label. Use kg_search "
     "or kg_context before grepping for a named requirement, plan, document, seam or feature; use grep for exact "
     "strings and code you just edited. Before editing, renaming or changing the signature of a symbol or file, call "
-    "kg_impact (ids, repo:path or a diff) and check every dependent it lists. kg_path traces a requirement to its "
-    "steps, code and tests, or shows how two nodes connect. Status 'resolved' and 'proposed' are weaker than "
-    "'parsed' and 'declared'. The graph can lag the sources: read the live source (uri) before quoting or editing it."
+    "kg_impact (ids, repo:path or a diff) and check every dependent it lists, then grep for what its coverage note "
+    "says the seed's language lacks. kg_path traces a requirement to its steps, code and tests, or shows how two "
+    "nodes connect. Status 'resolved' and 'proposed' are weaker than 'parsed' and 'declared'. The graph can lag the "
+    "sources: read the live source (uri) before quoting or editing it."
 )
 
 TOOLS = [
@@ -81,9 +95,12 @@ TOOLS = [
     {
         "name": "kg_impact",
         "description": (
-            "What a change reaches: give node ids, repo:path paths or a unified diff. Walks back over callers, "
-            "importers, members, definers, dependants, implementations and tests (never proposed edges); "
-            "documents that mention a reached node come back as a separate group to re-check."
+            "What a change reaches: give node ids, repo:path paths or a unified diff. Walks back over callers (in "
+            "other files too), importers, members, definers, dependants, implementations, tests, subclasses "
+            "(inherits) and overriding methods (overrides), never proposed edges; documents that mention a reached "
+            "node come back as a separate group to re-check. Each result notes, per language of its seeds, whether "
+            "calls across files, inheritance and overrides are covered, and names a seed with more incoming edges "
+            "than it reads, with their number."
         ),
         "inputSchema": {
             "type": "object",
@@ -483,145 +500,198 @@ class Session:
         depth: int = 2,
     ) -> tuple[str, dict]:
         store, b = self._store()
-        depth = max(1, min(int(depth), 3))
+        found = Impact(b, max(1, min(int(depth), 3)))
         wanted = ([id] if isinstance(id, str) and id else []) + [i for i in ids or [] if isinstance(i, str)]
         paths = [p for p in ([paths] if isinstance(paths, str) else paths or []) if isinstance(p, str) and p]
         changes = diff_lines(diff) if isinstance(diff, str) else {}
         if not (wanted or paths or changes):
             raise ToolError("give an id, ids, paths (repo:path) or a unified diff")
-
-        seeds: dict[str, dict] = {}
-        missing = 0
         for nid in wanted:
             n = self._lookup(store, nid, b)
             if n is None:
-                missing += 1
+                found.missing += 1
             else:
-                seeds[n["id"]] = n
-        ambiguous: list[dict] = []
-        unmatched: list[str] = []
+                found.seeds[n["id"]] = n
         if paths or changes:
-            # A diff does not say which repo it comes from: a path names a file only when exactly one
-            # visible file matches it; otherwise the candidates go back to the caller.
-            files = [f for f in store.path_nodes(b) if self.visible(f["label"])]
-            changed: dict[str, set[int]] = {}
-            for path, lines in [(p, None) for p in paths] + sorted(changes.items()):
-                repo, sep, rest = path.partition(":")
-                if lines is None and sep and rest:
-                    found = [f for f in files if f["props"].get("repo") == repo and f["props"]["path"] == rest]
-                else:
-                    found = _path_candidates(path, files)
-                if len(found) == 1:
-                    seeds[found[0]["id"]] = found[0]
-                    if lines:
-                        changed.setdefault(found[0]["id"], set()).update(lines)
-                elif found:
-                    ambiguous.append({"path": path, "candidates": [f["id"] for f in found]})
-                else:
-                    unmatched.append(path)
-            symbols = store.file_symbols(changed, b)
-            for fid, lines in changed.items():
-                for s in self._changed_symbols(store, b, symbols.get(fid, []), lines):
-                    seeds[s["id"]] = s
-        if not seeds and not (ambiguous or unmatched):
+            self._seeds_by_path(store, found, paths, changes)
+        if not found.seeds and not (found.ambiguous or found.unmatched):
             raise ToolError("nothing visible matches; try kg_search")
+        self._walk_back(store, found)
+        found.docs = {
+            d: n
+            for d, n in store.nodes(found.mentions, b).items()
+            if self.visible(n["label"]) and d not in found.seeds and d not in found.reached
+        }
+        found.coverage = seed_coverage(found.seeds.values())
+        return "\n".join(self._impact_lines(found)), self._impact_data(found)
 
-        # Walk back from the seeds: whoever has an edge into a reached node depends on it.
-        reached: dict[str, dict] = {}
-        mentions: dict[str, list[dict]] = {}
-        frontier = sorted(seeds)
-        for hop in range(depth + 1):
+    def _seeds_by_path(self, store: Store, found: Impact, paths: list[str], changes: dict[str, set[int]]) -> None:
+        """Seeds from repo:path paths and the files of a diff, and the symbols its changed lines fall in. A diff
+        does not say which repo it comes from: a path names a file only when exactly one visible file matches it;
+        otherwise the candidates go back to the caller."""
+        b = found.build
+        files = [f for f in store.path_nodes(b) if self.visible(f["label"])]
+        changed: dict[str, set[int]] = {}
+        for path, lines in [(p, None) for p in paths] + sorted(changes.items()):
+            repo, sep, rest = path.partition(":")
+            if lines is None and sep and rest:
+                matches = [f for f in files if f["props"].get("repo") == repo and f["props"]["path"] == rest]
+            else:
+                matches = path_candidates(path, files)
+            if len(matches) == 1:
+                found.seeds[matches[0]["id"]] = matches[0]
+                if lines:
+                    changed.setdefault(matches[0]["id"], set()).update(lines)
+            elif matches:
+                found.ambiguous.append({"path": path, "candidates": [f["id"] for f in matches]})
+            else:
+                found.unmatched.append(path)
+        symbols = store.file_symbols(changed, b)
+        for fid, lines in changed.items():
+            for s in self._changed_symbols(store, b, symbols.get(fid, []), lines):
+                found.seeds[s["id"]] = s
+
+    def _walk_back(self, store: Store, found: Impact) -> None:
+        """Walk back from the seeds: whoever has an edge into a reached node depends on it. A node is reached once,
+        through its strongest edge (then the first rel by name); ``rels`` lists every relation it has to that
+        edge's target, so a method that both overrides and calls its parent's shows both."""
+        frontier = sorted(found.seeds)
+        for hop in range(found.depth + 1):
             step: dict[str, tuple] = {}
+            links: dict[tuple[str, str], set[str]] = {}
             for nid in frontier:
-                edges = store.edges_of(nid, b, limit=SEED_EDGES if hop == 0 else HUB_DEGREE + 1)
-                if hop > 0 and len(edges) > HUB_DEGREE:
-                    reached[nid]["hub"] = True  # do not expand hubs: half the graph depends on them
-                    continue
-                for e in edges:
-                    if e["dst"] != nid or e["src"] == nid or not self.visible(e["label"]):
-                        continue
-                    if STATUS_RANK.get(e["status"], 0) < IMPACT_MIN_RANK:
-                        continue
+                for e in self._edges_back(store, found, nid, hop):
                     if e["rel"] == "mentions":
-                        mentions.setdefault(e["src"], []).append(e)
-                    elif e["rel"] in IMPACT_RELS and hop < depth and e["src"] not in seeds and e["src"] not in reached:
+                        found.mentions.setdefault(e["src"], []).append(e)
+                    elif hop < found.depth and e["src"] not in found.seeds and e["src"] not in found.reached:
+                        links.setdefault((e["src"], e["dst"]), set()).add(e["rel"])
                         key = (-STATUS_RANK[e["status"]], e["rel"], e["dst"])
                         if e["src"] not in step or key < step[e["src"]][0]:
                             step[e["src"]] = (key, e)
-            found = store.nodes(step, b)
+            nodes = store.nodes(step, found.build)
             frontier = []
             for other in sorted(step):
-                node = found.get(other)
+                node = nodes.get(other)
                 if node is not None and self.visible(node["label"]):
-                    reached[other] = {"hop": hop + 1, "node": node, "edge": step[other][1], "hub": False}
+                    e = step[other][1]
+                    rels = sorted(links[(other, e["dst"])])
+                    found.reached[other] = {"hop": hop + 1, "node": node, "edge": e, "rels": rels, "hub": False}
                     frontier.append(other)
-        docs = {
-            d: n
-            for d, n in store.nodes(mentions, b).items()
-            if self.visible(n["label"]) and d not in seeds and d not in reached
-        }
 
-        lines = [
-            f"impact of {len(seeds)} seed(s) within {depth} hop(s) (build {b}): {len(reached)} dependent(s),"
-            f" {len(docs)} document(s) to re-check"
+    def _edges_back(self, store: Store, found: Impact, nid: str, hop: int) -> list[dict]:
+        """The visible edges into ``nid`` that kg_impact follows, mentions included, never weaker than resolved.
+        A seed's are all read, a page at a time (``_seed_edges``); a reached node with more than HUB_DEGREE edges
+        is a hub: it is marked and not expanded, since half the graph depends on it."""
+        if hop == 0:
+            edges = self._seed_edges(store, found, nid)
+        else:
+            edges = store.edges_of(nid, found.build, limit=HUB_DEGREE + 1)
+            if len(edges) > HUB_DEGREE:
+                found.reached[nid]["hub"] = True
+                return []
+        return [
+            e
+            for e in edges
+            if e["dst"] == nid
+            and e["src"] != nid
+            and e["rel"] in WALKED_RELS
+            and STATUS_RANK.get(e["status"], 0) >= IMPACT_MIN_RANK
+            and self.visible(e["label"])
         ]
-        if seeds:
+
+    def _seed_edges(self, store: Store, found: Impact, nid: str) -> list[dict]:
+        """The edges into a seed, SEED_EDGES at a time, up to IMPACT_SEED_EDGES; a seed with more is added to
+        ``found.cut`` with the number of edges it has, so no caller is dropped without a word."""
+        query = (nid, found.build, WALKED_RELS, IMPACT_STATUSES, self.clearance)
+        edges: list[dict] = []
+        while len(edges) < IMPACT_SEED_EDGES:
+            want = min(SEED_EDGES, IMPACT_SEED_EDGES - len(edges))
+            page = store.edges_into(*query, limit=want, offset=len(edges))
+            edges += page
+            if len(page) < want:
+                return edges
+        total = store.count_into(*query)
+        if total > len(edges):
+            found.cut.append({"seed": nid, "read": len(edges), "total": total})
+        return edges
+
+    def _impact_lines(self, found: Impact) -> list[str]:
+        lines = [
+            f"impact of {len(found.seeds)} seed(s) within {found.depth} hop(s) (build {found.build}):"
+            f" {len(found.reached)} dependent(s), {len(found.docs)} document(s) to re-check"
+        ]
+        if found.seeds:
             lines.append("seeds:")
-            lines += [f"  {self._line(seeds[s])}" for s in sorted(seeds)]
-        for hop in range(1, depth + 1):
-            group = [r for r in reached.values() if r["hop"] == hop]
+            lines += [f"  {self._line(found.seeds[s])}" for s in sorted(found.seeds)]
+        lines += [coverage_line(row) for row in found.coverage]
+        lines += [
+            f"cut: {c['total']} edges lead into [{c['seed']}] and the first {c['read']} were read; what depends on"
+            " it through the others is not listed"
+            for c in found.cut
+        ]
+        for hop in range(1, found.depth + 1):
+            group = [r for r in found.reached.values() if r["hop"] == hop]
             if group:
                 lines.append(f"hop {hop}:")
             for r in group:
-                e = r["edge"]
+                e, also = r["edge"], [rel for rel in r["rels"] if rel != r["edge"]["rel"]]
                 lines.append(
                     f"  {self._line(r['node'])} -{e['rel']}-> [{e['dst']}] ({e['status']})"
+                    + (f" (also {', '.join(also)})" if also else "")
                     + (" (hub, not expanded)" if r["hub"] else "")
                 )
-        if docs:
+        if found.docs:
             lines.append("documents to re-check:")
-        for d in sorted(docs):
-            targets = sorted(mentions[d], key=lambda e: e["dst"])
+        for d in sorted(found.docs):
+            targets = sorted(found.mentions[d], key=lambda e: e["dst"])
             lines.append(
-                f"  {self._line(docs[d])} -mentions-> " + ", ".join(f"[{e['dst']}] ({e['status']})" for e in targets)
+                f"  {self._line(found.docs[d])} -mentions-> "
+                + ", ".join(f"[{e['dst']}] ({e['status']})" for e in targets)
             )
-        for a in ambiguous:
+        for a in found.ambiguous:
             candidates = ", ".join(f"[{c}]" for c in a["candidates"])
             lines.append(f"ambiguous path {a['path']}: {candidates}; pass repo:path or an id")
-        if unmatched:
-            lines.append("no visible file for: " + ", ".join(unmatched))
-        if missing:
-            lines.append(f"{missing} id(s) not found or not visible")
-        data = {
-            "build": b,
-            "depth": depth,
-            "seeds": [self._node_json(seeds[s]) for s in sorted(seeds)],
+        if found.unmatched:
+            lines.append("no visible file for: " + ", ".join(found.unmatched))
+        if found.missing:
+            lines.append(f"{found.missing} id(s) not found or not visible")
+        return lines
+
+    def _impact_data(self, found: Impact) -> dict:
+        cut = f"; {len(found.cut)} seed(s) cut" if found.cut else ""
+        return {
+            "build": found.build,
+            "depth": found.depth,
+            "seeds": [self._node_json(found.seeds[s]) for s in sorted(found.seeds)],
+            "coverage": found.coverage,
             "impacted": [
                 {
                     "hop": r["hop"],
                     "node": self._node_json(r["node"]),
                     "rel": r["edge"]["rel"],
+                    "rels": r["rels"],
                     "status": r["edge"]["status"],
                     "to": r["edge"]["dst"],
                     "hub": r["hub"],
                 }
-                for r in reached.values()
+                for r in found.reached.values()
             ],
             "documents": [
                 {
-                    "node": self._node_json(docs[d]),
+                    "node": self._node_json(found.docs[d]),
                     "mentions": [
-                        {"node": e["dst"], "status": e["status"]} for e in sorted(mentions[d], key=lambda e: e["dst"])
+                        {"node": e["dst"], "status": e["status"]}
+                        for e in sorted(found.mentions[d], key=lambda e: e["dst"])
                     ],
                 }
-                for d in sorted(docs)
+                for d in sorted(found.docs)
             ],
-            "ambiguous": ambiguous,
-            "unmatched": unmatched,
-            "not_found": missing,
-            "summary": f"{len(reached)} dependents, {len(docs)} documents",
+            "cut": found.cut,
+            "ambiguous": found.ambiguous,
+            "unmatched": found.unmatched,
+            "not_found": found.missing,
+            "summary": f"{len(found.reached)} dependents, {len(found.docs)} documents{cut}",
         }
-        return "\n".join(lines), data
 
     def _walk(
         self, store: Store, b: int, start: dict, max_hops: int, rels: tuple | None, goal: str | None
@@ -773,71 +843,6 @@ class Session:
 
 def _error(message: str) -> dict:
     return {"content": [{"type": "text", "text": f"error: {message}"}], "isError": True}
-
-
-def _diff_path(header: str, prefix: str) -> str | None:
-    path = header.split("\t", 1)[0].strip()
-    if len(path) > 1 and path[0] == path[-1] == '"':
-        path = path[1:-1]
-    if path == "/dev/null":
-        return None
-    return path[len(prefix) :] if path.startswith(prefix) else path
-
-
-def diff_lines(diff: str) -> dict[str, set[int]]:
-    """The files a unified diff touches and their changed lines. A removed line counts in the old numbering
-    and an added one in the new, each with its neighbour in the other numbering, so the lines name the
-    right symbols whether the graph was built before the change or after it."""
-    files: dict[str, set[int]] = {}
-    old_path = None
-    current: set[int] | None = None
-    old = new = old_left = new_left = 0
-    for raw in diff.splitlines():
-        if current is not None and (old_left > 0 or new_left > 0):
-            tag = raw[:1]
-            if tag == "-":
-                current.update((old, max(new - 1, 1)))
-                old, old_left = old + 1, old_left - 1
-            elif tag == "+":
-                current.update((new, max(old - 1, 1)))
-                new, new_left = new + 1, new_left - 1
-            elif tag != "\\":  # a context line, maybe with its leading space stripped
-                old, new, old_left, new_left = old + 1, new + 1, old_left - 1, new_left - 1
-            continue
-        if raw.startswith("diff --git "):
-            # Seen even when no hunk follows (a binary or mode-only change).
-            rest = raw[len("diff --git ") :]
-            current, old_path = None, None
-            if " b/" in rest:
-                files.setdefault(rest[rest.rfind(" b/") + 3 :], set())
-        elif raw.startswith("--- "):
-            old_path = _diff_path(raw[4:], "a/")
-        elif raw.startswith("+++ "):
-            path = _diff_path(raw[4:], "b/") or old_path
-            current = files.setdefault(path, set()) if path else None
-        elif current is not None and (m := _HUNK.match(raw)):
-            old, new = int(m[1]), int(m[3])
-            old_left = int(m[2]) if m[2] is not None else 1
-            new_left = int(m[4]) if m[4] is not None else 1
-    return files
-
-
-def _path_candidates(path: str, files: list[dict]) -> list[dict]:
-    """The files a bare path can name: those with exactly that path, else those sharing its longest
-    suffix at a directory boundary (a diff may be taken from a parent or a child directory)."""
-    exact = [f for f in files if f["props"]["path"] == path]
-    if exact:
-        return exact
-    best, out = 0, []
-    for f in files:
-        p = f["props"]["path"]
-        if p.endswith("/" + path) or path.endswith("/" + p):
-            size = min(len(p), len(path))
-            if size > best:
-                best, out = size, [f]
-            elif size == best:
-                out.append(f)
-    return out
 
 
 def make_session(project: str | None, sink: str) -> Session:

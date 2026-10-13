@@ -140,6 +140,15 @@ class GraphCache:
                 removed.append(path)
         return removed
 
+    def drop(self, project: str, sha256: str) -> bool:
+        """Delete the cached file of artifact ``sha256`` of ``project``, once the hub deleted the artifact; whether
+        there was one. A call reading it reads on: an open file stays readable after it is deleted."""
+        with self._lock:
+            path = self.path(project, sha256)
+            found = path.exists()
+            path.unlink(missing_ok=True)
+        return found
+
     def acquire(self, store: BlobStore | None, project: str, graphs: list[BuiltGraph]) -> tuple[Path, BuiltGraph]:
         """The cached file of the newest of ``graphs`` (successful builds, newest first), held until ``release``;
         when the blob store does not answer, the newest one cached. Raises GraphUnavailable, ArtifactMismatch."""
