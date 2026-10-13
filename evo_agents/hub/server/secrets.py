@@ -146,7 +146,7 @@ class SecretWritten(Secret):
 # Reading secrets
 
 
-def _bound_names(target, key):
+def bound_names(target, key):
     """The names of the rows of ``target`` (projects or workers) the secret's bindings name by ``key``, each once and
     sorted, as an array; correlated to the secret of the enclosing query."""
     b = tables.secret_bindings
@@ -168,8 +168,8 @@ async def _secrets(conn: AsyncConnection, owner_id: int, name: str | None = None
         s.c.env_var,
         s.c.url_prefix,
         s.c.username,
-        _bound_names(tables.projects, b.c.project_id).label("projects"),
-        _bound_names(tables.workers, b.c.worker_id).label("workers"),
+        bound_names(tables.projects, b.c.project_id).label("projects"),
+        bound_names(tables.workers, b.c.worker_id).label("workers"),
         s.c.expires_at,
         s.c.created_at,
         s.c.updated_at,

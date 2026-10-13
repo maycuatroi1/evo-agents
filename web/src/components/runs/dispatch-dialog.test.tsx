@@ -197,6 +197,32 @@ describe("DispatchDialog", () => {
     expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.worker_id).toBeNull();
   });
 
+  it("dispatches with the account picked by hand, and says why when the hub refuses it", async () => {
+    const user = userEvent.setup();
+    const accounts = [
+      { name: "claude-b", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: ["demo"], workers: [], paused_at: null, state: "ready" },
+      { name: "elsewhere", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: ["other"], workers: [], paused_at: null, state: "ready" },
+    ];
+    const reason = "account claude-b is paused: resume it, or pick another account; nothing was dispatched";
+    let refuse = true;
+    const base = answer(() => (refuse ? json({ error: "unprocessable", message: reason, request_id: "rid-7" }, 422) : json([queued(41, "4")], 201)));
+    api.answer = (request) => (new URL(request.url).pathname === "/v1/accounts" ? json(accounts) : base(request));
+    renderVi(<Harness onDispatched={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Dispatch run" });
+    await waitFor(() => expect(within(dialog).getByRole("checkbox", { name: /Docs/ })).toBeChecked());
+    const select = within(dialog).getByTestId("dispatch-account-select") as HTMLSelectElement;
+    await waitFor(() => expect((within(select).getAllByRole("option") as HTMLOptionElement[]).map((option) => option.value)).toEqual(["", "claude-b"]));
+    expect(select.value).toBe("");
+    await user.selectOptions(select, "claude-b");
+    await user.click(within(dialog).getByRole("button", { name: "Dispatch 1 run" }));
+    expect(await within(dialog).findByRole("alert")).toHaveTextContent(`Hub báo: ${reason}`);
+    refuse = false;
+    await user.click(within(dialog).getByRole("button", { name: "Dispatch 1 run" }));
+    await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
+    const posts = api.seen.filter((request) => request.method === "POST" && request.url.endsWith("/runs"));
+    expect((await posts.at(-1)?.clone().json())?.account).toBe("claude-b");
+  });
+
   it("cannot dispatch before a ready step is picked", async () => {
     api.answer = answer(() => json([], 201));
     renderVi(<Harness onDispatched={vi.fn()} />);

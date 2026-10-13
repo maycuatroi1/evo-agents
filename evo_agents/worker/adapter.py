@@ -204,6 +204,8 @@ class Outcome:
     usage: dict | None = None  # tokens and cost as the runtime counts them, for the run's record
     summary: str | None = None  # the agent's last message
     cap: str | None = None  # the cap of the run's budget that stopped it: cost, turns or time (CAPS)
+    cause: str | None = None  # why the run fails, of runs.FAILURE_CAUSES, when the agent's end says (rate_limit)
+    limit: dict | None = None  # the usage limit it hit, as ``runner.limits`` reports it to the hub; None for none
 
 
 class Adapter(abc.ABC):

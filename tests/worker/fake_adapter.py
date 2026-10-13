@@ -16,7 +16,10 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"wait_for": "/abs/path"}``: wait until that file exists (an interrupt ends the wait).
 - ``{"sleep": seconds}``.
 - ``{"result": {...}}``: write .evo-run/result.json.
-- ``{"fail": "why"}``: end the turn as failed; with ``"cap": "cost"`` (or turns, time), as the run's budget stopped it.
+- ``{"rate_limit": {...}}``: send a ``rate_limit_event`` with that ``rate_limit_info``, as Claude Code's adapter passes
+  it on raw (``"status": "rejected"`` when the account hit its usage limit).
+- ``{"fail": "why"}``: end the turn as failed; with ``"cap": "cost"`` (or turns, time), as the run's budget stopped it;
+  with ``"limit": {...}``, as the account's usage limit ended it (``Outcome.limit``).
 - ``{"say": "text"}``: the agent's last message is ``text`` (``Outcome.summary``), as a message chunk too: a Judge's
   verdict ends it.
 - ``{"usage": {...}}``: the usage the turn ends with, such as Claude Code's ``total_cost_usd``.
@@ -436,8 +439,12 @@ class FakeAdapter(Adapter):
                     path = worktree / ".evo-run" / "result.json"
                     path.parent.mkdir(exist_ok=True)
                     path.write_text(json.dumps(action["result"]), encoding="utf-8")
+                elif "rate_limit" in action:
+                    event = {"type": "rate_limit_event", "rate_limit_info": action["rate_limit"]}
+                    await self._queue.put(AgentEvent("output", {"raw": event}))
                 elif "fail" in action:
-                    self._outcome = Outcome(False, action["fail"], usage, cap=action.get("cap"))
+                    limit = action.get("limit")
+                    self._outcome = Outcome(False, action["fail"], usage, cap=action.get("cap"), limit=limit)
                     return
                 elif "usage" in action:
                     usage = action["usage"]

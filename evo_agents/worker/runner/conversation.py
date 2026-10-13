@@ -173,6 +173,7 @@ class Conversation:
                     run.outcome.error or f"{run.runtime} ended before its turn completed",
                     usage=run.outcome.usage,
                     cap=run.outcome.cap,
+                    cause=run.outcome.cause,
                 )
             messages = await self.after_turn()
             if not messages:

@@ -15,7 +15,8 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import move_run
-from evo_agents.hub.server.runs.models import Run
+from evo_agents.hub.server.runs.models import Rerun, Run
+from evo_agents.hub.server.runs.service.accounts import rerun_picks
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.dispatch import (
     check_dispatcher,
@@ -188,9 +189,9 @@ async def approve_run(engine, user: Principal, project: str, run_id: int) -> Run
     return view
 
 
-async def rerun_run(engine, user: Principal, project: str, run_id: int) -> Run:
+async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Rerun | None = None) -> Run:
     """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
-    the plan's current revision."""
+    the plan's current revision, and the account picked by hand for it unless ``body`` picks another one or none."""
     async with engine.begin() as conn:
         access, row = await owned_run(conn, user, project, run_id, "rerun")
         check_dispatcher(access)
@@ -212,6 +213,7 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int) -> Run:
         held = await plan_routes._visible(conn, access, plan_id, None)
         await refuse_curator_plan(conn, access, plan_id)
         worker = None if pinned is None else await pinnable(conn, user, access, pinned)
+        picked = await rerun_picks(conn, user, access, run_id, body, worker)
         await lock_plan(conn, access.project_id, plan_id)
         activity = await plan_activity(conn, access.project_id, plan_id)
         no_plan_run(activity, plan_id)
@@ -229,8 +231,10 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int) -> Run:
             timeout_s=timeout_s,
             pinned=worker,
             parent=run_id,
+            picked=tuple(picked),
         )
-        target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}"
+        accounts = "".join(account.audit_text() for account in picked)
+        target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
         await audit_run(conn, user, access, audit.RUN_RERUN, target)
         view = await run_view(conn, new_id)
     log.info("run rerun", extra={"run_id": new_id, "rerun_of": run_id, "login": user.login})

@@ -30,6 +30,7 @@ import { CHAT_TAB, chatKey, decisionAnchor, isActiveState, LIVE_REFRESH_MS, open
 import { RunActions, RunNotes } from "./run-actions";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
+import { RunAccounts } from "./run-accounts";
 import { RunCredentials } from "./run-credentials";
 import { RunDecisions } from "./run-decisions";
 import { RunDetails, RunResult } from "./run-facts";
@@ -294,6 +295,7 @@ function RunPage({ run }: { run: Run }) {
             {plan && run.session_per_step ? <RunSessions run={run} /> : null}
             {plan ? <RunPlanSteps run={run} /> : null}
             <RunResult run={run} />
+            {controls.owner ? <RunAccounts run={run} /> : null}
             {controls.owner ? <RunCredentials run={run} /> : null}
           </div>
         </section>
