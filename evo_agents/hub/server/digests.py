@@ -128,6 +128,13 @@ class ErrorText(BaseModel):
     n: Count = Field(description="how many results said exactly this")
 
 
+class ToolChars(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: Name = Field(alias=digest.TOOL_NAME)
+    chars: Count = Field(description="characters of the text of the tool's results, which the model read")
+
+
 class SessionDigest(BaseModel):
     """The digest of one session, as ``evo_agents.hub.digest.build`` makes it."""
 
@@ -151,6 +158,20 @@ class SessionDigest(BaseModel):
     files_read: Count = 0
     files_edited: list[Annotated[str, Field(max_length=digest.PATH_CHARS)]] = Field(
         default_factory=list, max_length=digest.MAX_FILES
+    )
+    peak_context_tokens: Count | None = Field(
+        None,
+        description="the largest context one message of the model read: its input, cache creation and cache read "
+        "tokens; null when no message said its usage, or a client that did not count it pushed the digest",
+    )
+    compactions: Count | None = Field(
+        None, description="times the session's context was compacted; null when a client that did not count it pushed"
+    )
+    tool_result_chars: list[ToolChars] | None = Field(
+        None,
+        max_length=digest.MAX_TOOLS,
+        description="per tool, the characters of its results the model read, the most first; null when a client that "
+        "did not count them pushed the digest",
     )
 
 

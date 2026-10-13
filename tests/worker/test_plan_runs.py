@@ -30,6 +30,7 @@ import pytest
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.cli import main as cli_main
+from evo_agents.hub import runs
 from evo_agents.hub.credentials import Lease
 from evo_agents.worker import adapter as adapter_module
 from evo_agents.worker import checkouts as checkouts_module
@@ -37,6 +38,7 @@ from evo_agents.worker import gitops
 from evo_agents.worker.daemon import Daemon
 from evo_agents.worker.home import WorkerConfig, WorkerHome
 from evo_agents.worker.run import ANSWER_PROMPT
+from evo_agents.worker.runner import sessions
 from tests.worker import fake_adapter
 from tests.worker.fake_hub import TOKEN, FakeHub
 
@@ -1070,3 +1072,199 @@ def test_the_four_commands_refuse_to_run_outside_a_plan_run(argv, tmp_path, monk
     home.save_run({"id": 41, "kind": "step", "finished_at": None})
     assert cli_main(["worker", *argv]) == 1
     assert "run 41 is a run of one step" in capsys.readouterr().err
+
+
+# A plan run with a session for each step (criterion a3 of the context-economy plan)
+
+
+def step_one_done(evidence: str = "Wrote a.txt.\nDecision: kept it to one line.") -> list[dict]:
+    return [
+        {"cli": ["step", "1", "in_progress"]},
+        {"write": {"alpha/a.txt": "a\n"}},
+        {"cli": ["step", "1", "done", "--evidence", evidence, "--verify", "test -f a.txt"]},
+    ]
+
+
+def step_two_done() -> list[dict]:
+    return [
+        {"cli": ["step", "2", "in_progress"]},
+        {"write": {"beta/b.txt": "b\n"}},
+        {"cli": ["step", "2", "done", "--evidence", "Wrote b.txt.", "--verify", "test -f b.txt"]},
+    ]
+
+
+def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machine):
+    usages = {
+        1: {"input_tokens": 10, "cache_read_input_tokens": 100, "total_cost_usd": 0.25, "peak_context_tokens": 900},
+        2: {"input_tokens": 7, "cache_read_input_tokens": 40, "total_cost_usd": 0.5, "peak_context_tokens": 300},
+    }
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [*step_one_done(), {"usage": usages[1]}, {"result": {"summary": "Alpha written."}}],
+            f"plan:{PLAN}/2": [
+                {"sh": "test -e .evo-run/result.json && echo left || echo clean"},
+                *step_two_done(),
+                {"usage": usages[2]},
+                {"result": {"summary": "Beta written."}},
+            ],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        assert hub.last_heartbeat["features"] == ["session_per_step"]
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    first, second = machine.starts()
+    assert first["resume"] is None and second["resume"] is None, "each step starts a session of its own"
+    assert first["session"] != second["session"]
+    assert first["prompt"].startswith(f"You are running step 1 of the plan {PLAN} from the evo-agents hub, in an")
+    assert "# Step 1: Alpha file" in first["prompt"] and "write a.txt" in first["prompt"]
+    assert f"# Handoff of plan {PLAN}, revision 1, project {PROJECT}; for step 1" in first["prompt"]
+    assert "do not run the plan, with the execute-plan skill or otherwise" in first["prompt"]
+    assert "# Step 2: Beta file" in second["prompt"] and "write b.txt" in second["prompt"]
+    assert "; for step 2" in second["prompt"] and "### Step 1: Alpha file (done)" in second["prompt"]
+    assert "Decision: kept it to one line." in second["prompt"], "the handoff carries the Decision lines verbatim"
+    assert len(second["prompt"].encode()) <= runs.MAX_PROMPT_BYTES
+    looked = next(item for item in machine.commands() if str(item["cmd"]).startswith("test -e .evo-run"))
+    assert looked["stdout"].strip() == "clean", "the first session's result file is gone"
+    assert hub.moves(run_id) == ["leased", "running", "verifying", "done"]
+    assert hub.runs[run_id]["summary"] == "Step 1: Alpha written.\n\nStep 2: Beta written."
+    usage = hub.runs[run_id]["usage"]
+    assert usage["input_tokens"] == 17 and usage["cache_read_input_tokens"] == 140
+    assert usage["total_cost_usd"] == 0.75, "each session's cost, added up"
+    assert usage["peak_context_tokens"] == 900, "the largest session's, not a sum"
+    assert [(item["step"], item["session_id"], item["run_id"]) for item in usage["sessions"]] == [
+        ("1", first["session"], run_id),
+        ("2", second["session"], run_id),
+    ]
+    assert usage["sessions"][1]["peak_context_tokens"] == 300
+    record = machine.home.load_run(run_id)
+    listed = [(item["step"], item["session_id"], item["status"]) for item in record["step_sessions"]]
+    assert listed == [("1", first["session"], "done"), ("2", second["session"], "done")]
+    assert all(item["started_at"] and item["ended_at"] for item in record["step_sessions"])
+    texts = hub.texts(run_id)
+    assert any("a new session for each step" in text for text in texts)
+    assert any(text.startswith("The prompt of step 2 carries the handoff of the plan at revision") for text in texts)
+    steps = {str(item["id"]): item["status"] for item in hub.plans[PLAN]["body"]["steps"]}
+    assert steps == {"1": "done", "2": "done"}
+    assert machine.origin("beta", "log", "--format=%s", "-1", "feat/beta") == f"run #{run_id} step 2: Beta file"
+
+
+def test_session_per_step_ends_the_run_when_a_session_leaves_its_step_not_done(machine):
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [
+                {"cli": ["step", "1", "in_progress"]},
+                {"result": {"summary": "Could not write a.txt: the disk is read-only."}},
+            ],
+            f"plan:{PLAN}/2": [{"touch": str(machine.tmp / "second-session")}],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    assert len(machine.starts()) == 1 and not (machine.tmp / "second-session").exists()
+    assert any("The session of step 1 ended with the step in_progress" in text for text in hub.texts(run_id))
+    assert hub.runs[run_id]["summary"] == "Step 1: Could not write a.txt: the disk is read-only."
+    assert [item["status"] for item in machine.home.load_run(run_id)["step_sessions"]] == ["in_progress"]
+
+
+def test_session_per_step_waits_for_a_decision_in_the_session_of_its_step(machine):
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [{"cli": ["step", "1", "in_progress"]}, ask()],
+            f"plan:{PLAN}/2": [*step_one_done(), {"result": {"summary": "Alpha after the answer."}}],
+            f"plan:{PLAN}/3": [*step_two_done(), {"result": {"summary": "Beta."}}],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
+        assert await hub.wait_state(run_id, "waiting", "done", "failed") == "waiting", hub.texts(run_id)
+        hub.answer(1, "yes")
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    asked, answered, step_two = machine.starts()
+    assert answered["resume"] == asked["session"], "the answer goes to the session of step 1"
+    assert answered["prompt"].startswith(sessions.STEP_ANSWER_PROMPT.replace("{key}", "1"))
+    assert "Answer to decision #1 (deploy)" in answered["prompt"]
+    assert step_two["resume"] is None and step_two["session"] != asked["session"], "step 2 gets a new session"
+    assert hub.moves(run_id) == ["leased", "running", "waiting", "running", "verifying", "done"]
+    usage = hub.runs[run_id]["usage"]
+    assert [(item["step"], item["session_id"]) for item in usage["sessions"]] == [
+        ("1", asked["session"]),
+        ("2", step_two["session"]),
+    ]
+
+
+def test_session_per_step_resumes_a_parked_run_in_the_session_of_its_step(machine):
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [{"cli": ["step", "1", "in_progress"]}, ask()],
+            f"plan:{PLAN}/resume": [*step_one_done(), {"result": {"summary": "Alpha after the wait."}}],
+            f"plan:{PLAN}/2": [*step_two_done(), {"result": {"summary": "Beta."}}],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        parked = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
+        assert await hub.wait_state(parked, "waiting", "done", "failed") == "waiting", hub.texts(parked)
+        hub.park(parked)
+        await wait_for(lambda: parked not in daemon.runs, "the parked run to free its slot")
+        resumed = hub.answer(1, "yes")
+        assert hub.runs[resumed]["spec"]["session_per_step"] is True
+        assert await hub.wait_state(resumed, "done", "failed") == "done", (hub.runs[resumed], hub.texts(resumed))
+        found.update(parked=parked, resumed=resumed, hub=hub)
+
+    with_daemon(machine, run_it)
+    parked, resumed, hub = found["parked"], found["resumed"], found["hub"]
+    asked, again, step_two = machine.starts()
+    assert again["run"] == resumed and again["resume"] == asked["session"], "step 1 goes on in its session"
+    assert f"goes on now as run #{resumed}, in the session of step 1" in again["prompt"]
+    assert "Answer to decision #1 (deploy)" in again["prompt"]
+    assert step_two["run"] == resumed and step_two["resume"] is None and "# Step 2: Beta file" in step_two["prompt"]
+    record = machine.home.load_run(resumed)
+    listed = [(item["step"], item["session_id"], item["run_id"]) for item in record["step_sessions"]]
+    assert listed == [
+        ("1", asked["session"], parked),
+        ("1", asked["session"], resumed),
+        ("2", step_two["session"], resumed),
+    ]
+    assert [item["step"] for item in hub.runs[resumed]["usage"]["sessions"]] == ["1", "1", "2"]
+    assert hub.runs[resumed]["summary"] == "Step 1: Alpha after the wait.\n\nStep 2: Beta."
+
+
+def test_a_plan_run_without_session_per_step_keeps_one_session(machine):
+    machine.scenarios(
+        {
+            f"plan:{PLAN}": [*step_one_done(), *step_two_done(), {"result": {"summary": "Both."}}],
+        }
+    )
+    found = {}
+
+    async def run_it(hub: FakeHub, daemon: Daemon):
+        run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()))
+        assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, run_it)
+    run_id, hub = found["run"], found["hub"]
+    (only,) = machine.starts()
+    assert only["prompt"] == runs.build_plan_prompt(plan_body(), run_repos(plan_body()))
+    assert hub.runs[run_id]["summary"] == "Both." and "step_sessions" not in machine.home.load_run(run_id)

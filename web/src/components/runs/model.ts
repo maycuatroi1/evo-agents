@@ -2,146 +2,23 @@ import type { Worker } from "@/components/workers/queries";
 import type { PlanStep, PlanView } from "@/lib/plans";
 
 import {
-  HELD_STATES,
   isActiveState,
   MAX_MODEL_CHARS,
-  MAX_QUERY,
   MAX_REQUEST_BYTES,
   type RequestedRuntime,
   type Run,
-  type RunList,
-  type RunQuery,
-  RUNS_PAGE,
   type RunState,
   RUNTIMES,
-  type StateCounts,
   type StepReadiness,
 } from "./queries";
 
 /**
- * How the web reads runs: the list's facets and URL filters, the summary cards, a run's timing, the steps a dispatch
- * offers, and which of the visitor's workers could take the runs. Pure functions, shared by the pages and their tests.
+ * How the web reads runs: a run's timing, which of the visitor's workers could take the runs a dialog dispatches, the
+ * models it may name, what a plan run would do, and the worker an author run goes to. Pure functions, shared by the
+ * pages and their tests. The runs list's facets and URL filters are in run-filters.ts, its summary cards in
+ * runs-summary.ts and the steps the dispatch dialog offers in dispatch-steps.ts, so a page that needs one of those does
+ * not load the rest.
  */
-
-// The list's facets, kept in the URL. Each one is a set of states the API filters by (?state= repeated).
-
-export const RUN_FACETS = ["active", "review", "done", "ended"] as const;
-export type RunFacet = (typeof RUN_FACETS)[number];
-
-export const FACET_STATES: Record<RunFacet, readonly RunState[]> = {
-  active: ["queued", ...HELD_STATES, "parked"],
-  review: ["review"],
-  done: ["done"],
-  ended: ["failed", "lost", "cancelled"],
-};
-
-export function isRunFacet(value: string | null | undefined): value is RunFacet {
-  return (RUN_FACETS as readonly string[]).includes(value ?? "");
-}
-
-export type RunFilters = {
-  /** null: every state. */
-  facet: RunFacet | null;
-  q: string;
-  /** 1-based. */
-  page: number;
-};
-
-export const NO_FILTERS: RunFilters = { facet: null, q: "", page: 1 };
-/** The API pages up to offset 100 000. */
-export const MAX_PAGE = Math.floor(100_000 / RUNS_PAGE) + 1;
-
-type Params = { get(name: string): string | null };
-
-export function readFilters(source: Params): RunFilters {
-  const facet = source.get("state");
-  const page = Number(source.get("page") ?? "1");
-  return {
-    facet: isRunFacet(facet) ? facet : null,
-    q: (source.get("q") ?? "").trim().slice(0, MAX_QUERY),
-    page: Number.isInteger(page) && page >= 1 && page <= MAX_PAGE ? page : 1,
-  };
-}
-
-export function filtersSearch(filters: RunFilters): string {
-  const params = new URLSearchParams();
-  if (filters.facet) params.set("state", filters.facet);
-  if (filters.q) params.set("q", filters.q);
-  if (filters.page > 1) params.set("page", String(filters.page));
-  const text = params.toString();
-  return text ? `?${text}` : "";
-}
-
-export function isFiltered(filters: RunFilters): boolean {
-  return filters.facet !== null || filters.q !== "";
-}
-
-/** What the API is asked for the list a set of filters shows. */
-export function listQuery(filters: RunFilters): RunQuery {
-  return {
-    states: filters.facet ? FACET_STATES[filters.facet] : [],
-    q: filters.q,
-    limit: RUNS_PAGE,
-    offset: (filters.page - 1) * RUNS_PAGE,
-  };
-}
-
-/** Runs a facet would show, from the counts of every state (null: all of them). */
-export function facetCount(counts: StateCounts, facet: RunFacet | null): number {
-  const states = facet ? FACET_STATES[facet] : (Object.keys(counts) as RunState[]);
-  return states.reduce((sum, state) => sum + (counts[state] ?? 0), 0);
-}
-
-// The summary cards.
-
-export type RunsSummary = {
-  /** Runs a worker holds now, and how many workers hold them. */
-  held: number;
-  holdingWorkers: number;
-  queued: number;
-  /** ISO 8601; null when nothing waits, or the oldest waiting run is not among those read. */
-  oldestQueuedAt: string | null;
-  review: number;
-  /** Plan runs parked for want of an answer: active, and waiting for a person. */
-  parked: number;
-  /** The one run waiting for review, when there is exactly one. */
-  reviewRun: Run | null;
-  done: number;
-  failed: number;
-  lost: number;
-  cancelled: number;
-  total: number;
-};
-
-/** The summary from the project's active runs and the counts of every state. */
-export function summarizeRuns(list: RunList): RunsSummary {
-  const { counts } = list;
-  const held = HELD_STATES.reduce((sum, state) => sum + counts[state], 0);
-  const holders = new Set<number>();
-  let oldestQueuedAt: string | null = null;
-  const inReview: Run[] = [];
-  for (const run of list.runs) {
-    if ((HELD_STATES as readonly string[]).includes(run.state) && run.worker_id !== null) holders.add(run.worker_id);
-    if (run.state === "queued" && (!oldestQueuedAt || Date.parse(run.queued_at) < Date.parse(oldestQueuedAt))) {
-      oldestQueuedAt = run.queued_at;
-    }
-    if (run.state === "review") inReview.push(run);
-  }
-  return {
-    held,
-    holdingWorkers: holders.size,
-    queued: counts.queued,
-    oldestQueuedAt,
-    review: counts.review,
-    parked: counts.parked,
-    reviewRun: counts.review === 1 && inReview.length === 1 ? inReview[0] : null,
-    done: counts.done,
-    failed: counts.failed,
-    lost: counts.lost,
-    cancelled: counts.cancelled,
-    total: facetCount(counts, null),
-  };
-}
 
 // A run's timing.
 
@@ -168,32 +45,6 @@ export function runTiming(run: Pick<Run, "state" | "queued_at" | "leased_at" | "
 export function durationParts(ms: number): { hours: number; minutes: number } {
   const minutes = Math.floor(ms / 60_000);
   return { hours: Math.floor(minutes / 60), minutes: minutes % 60 };
-}
-
-// The steps a dispatch offers.
-
-/**
- * The steps of a plan as the dispatch dialog lists them: the pending ones in plan order, ready or not, then the
- * steps that are done, in progress or blocked, folded away. Every one of them is shown; only ready ones can be
- * picked.
- */
-export function splitSteps(steps: readonly StepReadiness[]): { open: StepReadiness[]; settled: StepReadiness[] } {
-  const open: StepReadiness[] = [];
-  const settled: StepReadiness[] = [];
-  for (const step of steps) (step.status === "pending" ? open : settled).push(step);
-  return { open, settled };
-}
-
-/** The keys picked that are still ready: a step that stopped being ready while the dialog was open drops out. */
-export function readySelection(selected: readonly string[], steps: readonly StepReadiness[]): string[] {
-  const ready = new Set(steps.filter((step) => step.ready).map((step) => step.key));
-  return selected.filter((key) => ready.has(key));
-}
-
-/** The repos the runs of the picked steps check out. */
-export function selectedRepos(selected: readonly string[], steps: readonly StepReadiness[]): string[] {
-  const keys = new Set(selected);
-  return [...new Set(steps.filter((step) => keys.has(step.key) && step.repo).map((step) => step.repo as string))];
 }
 
 // Which workers could take the runs. The hub decides at claim time (runs.py, _try_claim): a worker of the member who
@@ -226,7 +77,9 @@ export type FitProblem =
   | { kind: "draining" }
   | { kind: "runtime"; runtime: RequestedRuntime }
   /** Every repo of the request the worker has no checkout of. */
-  | { kind: "checkout"; repos: string[] };
+  | { kind: "checkout"; repos: string[] }
+  /** A plan run with a session for each step, which the worker's daemon does not say it runs. */
+  | { kind: "sessionPerStep" };
 
 export type WorkerFit = {
   worker: Worker;
@@ -236,7 +89,14 @@ export type WorkerFit = {
   free: number;
 };
 
-export type FitRequest = { project: string; runtime: RequestedRuntime; repos: readonly string[] };
+export type FitRequest = { project: string; runtime: RequestedRuntime; repos: readonly string[]; sessionPerStep?: boolean };
+
+/** The feature a worker's heartbeat names when its daemon runs a plan run with a new session for each step. */
+export const SESSION_PER_STEP = "session_per_step";
+
+export function runsSessionPerStep(worker: Pick<Worker, "features">): boolean {
+  return (worker.features ?? []).includes(SESSION_PER_STEP);
+}
 
 export function fitWorker(worker: Worker, request: FitRequest): WorkerFit {
   const free = Math.max(worker.slots - worker.held_runs, 0);
@@ -248,6 +108,7 @@ export function fitWorker(worker: Worker, request: FitRequest): WorkerFit {
   }
   const missing = request.repos.filter((repo) => !(`${request.project}/${repo}` in worker.checkouts));
   if (missing.length > 0) return no({ kind: "checkout", repos: missing });
+  if (request.sessionPerStep && !runsSessionPerStep(worker)) return no({ kind: "sessionPerStep" });
   if (worker.status !== "online") return { worker, fit: "offline", problem: null, free };
   return { worker, fit: free > 0 ? "now" : "busy", problem: null, free };
 }

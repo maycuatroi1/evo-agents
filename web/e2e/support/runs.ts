@@ -374,7 +374,8 @@ export async function dispatchPlan(account: Account, project: string, extra: Rec
   return call(
     api.POST("/v1/projects/{project}/plan-runs", {
       params: { path: { project } },
-      body: { plan_id: PLAN_RUN_PLAN, runtime: "any", mode: "headless", timeout_h: 4, ...extra },
+      // as the command line, which sends session_per_step only when it is on: the hub defaults it to false
+      body: { plan_id: PLAN_RUN_PLAN, runtime: "any", mode: "headless", timeout_h: 4, ...extra } as components["schemas"]["PlanRunDispatch"],
     }),
   );
 }

@@ -3,35 +3,30 @@ import { describe, expect, it } from "vitest";
 import type { Worker } from "@/components/workers/queries";
 import { parsePlan } from "@/lib/plans";
 
+import { readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
 import {
   activePlanRun,
   authorWorker,
   dispatchOutlook,
   dispatchWorkers,
   durationParts,
-  facetCount,
-  filtersSearch,
   fitWorker,
   harnessRepo,
   isCheckpoint,
-  listQuery,
   modelSuggestions,
   planRunLock,
   planRunPhase,
   planRunScope,
-  readFilters,
   readModel,
   readRequest,
-  readySelection,
   runTiming,
   runtimeAvailable,
   runtimeCount,
-  selectedRepos,
-  splitSteps,
-  summarizeRuns,
   workerRuntimes,
 } from "./model";
 import { hasActiveRuns, type Run, type RunList, type StateCounts, type StepReadiness } from "./queries";
+import { facetCount, filtersSearch, listQuery, readFilters } from "./run-filters";
+import { summarizeRuns } from "./runs-summary";
 
 const ZERO: StateCounts = {
   queued: 0,
@@ -270,6 +265,11 @@ describe("workers for a dispatch", () => {
     expect(fitWorker(worker({ runtimes: {} }), request).problem).toEqual({ kind: "runtime", runtime: "any" });
     expect(fitWorker(worker(), { ...request, repos: ["api", "web"] }).problem).toEqual({ kind: "checkout", repos: ["web"] });
     expect(fitWorker(worker(), { ...request, repos: ["web", "api", "docs"] }).problem).toEqual({ kind: "checkout", repos: ["web", "docs"] });
+    // A plan run with a session for each step goes only to a daemon that says it runs one.
+    expect(fitWorker(worker(), { ...request, sessionPerStep: true }).problem).toEqual({ kind: "sessionPerStep" });
+    expect(fitWorker(worker({ features: [] }), { ...request, sessionPerStep: true }).fit).toBe("no");
+    expect(fitWorker(worker({ features: ["session_per_step"] }), { ...request, sessionPerStep: true })).toMatchObject({ fit: "now", problem: null });
+    expect(fitWorker(worker(), { ...request, sessionPerStep: false }).fit).toBe("now");
   });
 
   it("counts the workers that report a runtime", () => {

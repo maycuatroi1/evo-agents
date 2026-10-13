@@ -34,6 +34,7 @@ from tests.hub.test_plan_runs import (
     ready,
     reported,
     started,
+    with_features,
 )
 from tests.hub.test_runs import (
     GITHUB_IDS,
@@ -559,6 +560,23 @@ def test_answering_a_parked_run_queues_a_run_that_resumes_it_on_the_same_worker(
     assert decision(client, hub["owner"], later["id"])["state"] == "open"
     answered(client, hub["owner"], later["id"], option="sqlite")
     assert [item["decision_id"] for item in inbox(client, worker, new_id)] == [found["id"], later["id"]]
+
+
+def test_answering_a_parked_plan_run_with_a_session_per_step_resumes_it_with_one(client, hub, hub_db):
+    worker = with_features(client, fleet_worker(client, hub["owner"], "mac-mini"), ["session_per_step"])
+    run = dispatched_plan(client, hub["owner"], session_per_step=True)
+    assert claim(client, worker)["id"] == run["id"]
+    moved(client, worker, run["id"], "running", session_id=SESSION)  # the session of step 2
+    reported(client, worker, run["id"], 2, "in_progress")
+    found = asked(client, worker, run["id"])
+    moved(client, worker, run["id"], "waiting")
+    park(hub_db, run["id"])
+    recover(client)
+    new_id = answered(client, hub["owner"], found["id"], option="postgres")["answer_run_id"]
+    new = run_view(client, hub["owner"], new_id)
+    assert (new["session_per_step"], new["session_id"], new["resume_of_run_id"]) == (True, SESSION, run["id"])
+    spec = claim(client, worker)
+    assert (spec["id"], spec["session_per_step"], spec["session_id"]) == (new_id, True, SESSION)
 
 
 def test_a_run_that_ends_another_way_cancels_its_open_decisions(client, hub, hub_db):

@@ -461,6 +461,60 @@ def test_a_run_pinned_to_a_worker_that_cannot_claim_it_gets_409_and_nothing_is_q
     assert claim(client, full)["id"] == run["id"]
 
 
+def with_features(client, worker: dict, features: list[str]) -> dict:
+    """``worker`` after a heartbeat whose daemon says it does ``features``."""
+    body = {"runtimes": worker["runtimes"], "checkouts": worker["checkouts"], "features": features}
+    response = client.post(
+        "/v1/worker/heartbeat", json={**body, "free_slots": 1, "runs": []}, headers=worker["headers"]
+    )
+    assert response.status_code == 200, response.text
+    return worker
+
+
+def worker_view(client, headers, worker: dict) -> dict:
+    response = client.get(f"/v1/workers/{worker['id']}", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_a_plan_run_with_a_session_per_step_goes_only_to_a_daemon_that_says_it_runs_one(client, hub, hub_db):
+    old = fleet_worker(client, hub["owner"], "old-box")
+    new = with_features(client, fleet_worker(client, hub["owner"], "new-box"), ["session_per_step", "warp_drive"])
+    assert worker_view(client, hub["owner"], old)["features"] == []
+    assert worker_view(client, hub["owner"], new)["features"] == ["session_per_step"], "an unknown one is left out"
+    run = dispatched_plan(client, hub["owner"], session_per_step=True)
+    assert run["session_per_step"] is True and run["kind"] == "plan"
+    assert claim(client, old) is None and state_of(hub_db, run["id"]) == "queued"
+    push(client, hub["owner"], plan_body("solo"))
+    solo = dispatched_plan(client, hub["owner"], "solo")
+    assert solo["session_per_step"] is False, "one session unless the dispatch asks for one a step"
+    spec = claim(client, old)
+    assert spec["id"] == solo["id"] and spec["session_per_step"] is False
+    spec = claim(client, new)
+    assert spec["id"] == run["id"] and spec["session_per_step"] is True
+    assert spec["prompt"] == runs.build_plan_prompt(held_plan(client, hub["owner"])["body"], REPOS)
+    shown = client.get(f"/v1/projects/{PROJECT}/runs/{run['id']}", headers=hub["reader"]).json()
+    assert shown["session_per_step"] is True
+    with_features(client, new, [])
+    assert worker_view(client, hub["owner"], new)["features"] == []
+
+
+def test_a_plan_run_with_a_session_per_step_pinned_to_a_daemon_without_it_gets_409(client, hub, hub_db):
+    old = fleet_worker(client, hub["owner"], "old-box")
+    refused = plan_run(client, hub["owner"], worker_id=old["id"], session_per_step=True)
+    assert refused.status_code == 409, refused.text
+    message = refused.json()["message"]
+    assert message.startswith("worker old-box cannot take this run: its daemon (evo-agents ")
+    assert "does not say it runs a plan run with a session for each step, and would run every step in one session" in (
+        message
+    )
+    assert message.endswith("or dispatch it to another worker; nothing was dispatched")
+    assert count_runs(hub_db) == [(0,)]
+    with_features(client, old, ["session_per_step"])
+    run = dispatched_plan(client, hub["owner"], worker_id=old["id"], session_per_step=True)
+    assert claim(client, old)["id"] == run["id"]
+
+
 def test_a_run_of_one_step_is_still_claimed_by_a_worker_with_its_repo_alone(client, hub):
     half = fleet_worker(
         client, hub["owner"], "half-box", checkouts={f"{PROJECT}/evo-agents": CHECKOUTS[f"{PROJECT}/evo-agents"]}

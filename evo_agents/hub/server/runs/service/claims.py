@@ -87,7 +87,7 @@ class RunWakeups:
 
 async def worker_of(conn: AsyncConnection, user: Principal):
     """The row of the worker whose token made the request, locked: id, owner_id, name, slots, runtimes, checkouts,
-    drained_at, revoked_at, agent_version, dispatch_from and run_kinds. 403 when there is none."""
+    drained_at, revoked_at, agent_version, dispatch_from, run_kinds and features. 403 when there is none."""
     w = tables.workers
     query = (
         select(
@@ -102,6 +102,7 @@ async def worker_of(conn: AsyncConnection, user: Principal):
             w.c.agent_version,
             w.c.dispatch_from,
             w.c.run_kinds,
+            w.c.features,
         )
         .where(w.c.token_id == user.token_id)
         .with_for_update()
@@ -135,6 +136,7 @@ def _claimable(
     review_runs: bool = False,
     judge_runs: bool = False,
     author_runs: bool = False,
+    step_sessions: bool = False,
     steady: bool = True,
 ):
     """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
@@ -144,9 +146,9 @@ def _claimable(
     run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``); a review run one
     of every repo in its repos and a daemon that says it runs review runs (``review_runs``), and a judge run likewise
     (``judge_runs``); an author run one of its first repo, the project's harness, and a daemon that says it runs
-    author runs (``author_runs``): the worker leaves out the other repos it has no checkout of. A worker set to take
-    runs dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011
-    included."""
+    author runs (``author_runs``): the worker leaves out the other repos it has no checkout of. A plan run with a
+    session per step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs dispatched
+    from the web only (``web_only``) passes over the others, those dispatched before schema 0011 included."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -174,6 +176,8 @@ def _claimable(
         query = query.where(r.c.dispatched_via == "web")
     if not plan_runs:
         query = query.where(r.c.kind != "plan")
+    if not step_sessions:
+        query = query.where(r.c.session_per_step.is_(False))
     if not review_runs:
         query = query.where(r.c.kind != "review")
     if not judge_runs:
@@ -263,7 +267,8 @@ async def _try_claim(
     why, and the claim takes nothing this time."""
     async with engine.begin() as conn:
         found = await worker_of(conn, user)
-        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from, kinds = found
+        worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from, *said = found
+        kinds, features = said  # what its daemon says it runs: kinds of run, and features (runs.WORKER_FEATURES)
         if drained_at is not None:
             return None
         r = tables.runs
@@ -296,6 +301,7 @@ async def _try_claim(
             review_runs="review" in (kinds or ()),
             judge_runs="judge" in (kinds or ()),
             author_runs="author" in (kinds or ()),
+            step_sessions=runs.SESSION_PER_STEP in (features or ()),
             steady=is_steady,
         )
         row = (await conn.execute(query)).one_or_none()
@@ -405,6 +411,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
         budget=await _claimed_budget(conn, view),
         curator=await _curator_spec(conn, project_id, view),
         verify=verify,
+        session_per_step=view.session_per_step,
     )
 
 

@@ -265,6 +265,22 @@ to:
 - keep `.evo-run/` out of its commits, and write `.evo-run/result.json` with a `summary` when it stops. A plan run has
   no verify commands at its end, since `evo-agents worker step` ran each step's.
 
+### The prompt of a step's session
+
+A plan run dispatched with `session_per_step` gives each step a session of its own (see
+[A plan run with a session for each step](#a-plan-run-with-a-session-for-each-step)). The daemon builds the prompt of
+each session from the plan as the hub holds it when the session starts: `build_step_session_prompt(plan, step,
+repos, worktrees, handoff)` gives, in this order, rules for one step, the run's repos with their branches and
+worktrees, the plan's context (shortened as above), the step's title, what, verify and note (cut as in the prompt of a
+run of one step), and the handoff of the plan for the step (`evo_agents.hub.handoff.build_handoff`, the text of
+`evo-agents hub plan handoff PLAN --step KEY`): the plan's goal, the steps the step depends on with their commits and
+`Decision:` lines first, the other steps done, and the steps not done. The handoff gets the room the rest of the prompt
+leaves within 32 KiB (`handoff_room`), at most 4,000 tokens (12,000 bytes, its default budget) and at least 1,000. The
+rules are those of a plan run, for one step: do this step and nothing else, without running the plan (the execute-plan
+skill included), read the plan with `evo-agents worker plan` for what the handoff left out, record the step with
+`evo-agents worker step`, ask only the decisions of the categories above, and write `.evo-run/result.json` with what it
+did of the step when it stops. The prompt of a plan run in one session, and of a run of one step, do not change.
+
 ### The prompt of an author run
 
 `evo_agents.hub.author.build_author_prompt(project, login, request, repos, skill_version, worktrees, plan)` gives the
@@ -312,8 +328,13 @@ token of the owner's: `evo-agents worker step`, `ask`, `notify` and `plan`. Outs
 403 for any other id, 409 for a revoked worker, one that does not serve the project, or one that could never claim
 the run, as below), `runtime` (`any` by
 default), `model` (optional, one line of at most 200 characters; null leaves the choice to the runtime), `mode`
-(`headless` by default) and `timeout_h` (2, 4, 8 or 24; 4 by default), and answers 201 with the run. It answers 409,
-and queues nothing, when the plan has no pending step, when the plan has an active run of either kind, or when a step
+(`headless` by default), `timeout_h` (2, 4, 8 or 24; 4 by default) and `session_per_step` (false by default; true
+gives each step a new agent session, see
+[A plan run with a session for each step](#a-plan-run-with-a-session-for-each-step)), and answers 201 with the run,
+whose `session_per_step` says which. `evo-agents hub run plan --session-per-step` and the switch in the web's Run plan
+dialog send the field only when it is on, since an older hub would ignore it and run the plan in one session. It
+answers 409, and queues nothing, when the plan has no pending step, when the plan has an active run of either kind,
+or when a step
 that is not done names no repo and the plan does not list exactly one. The run has kind `plan`, approval `auto`, the
 plan's title, no step key and no repo, and `repos`: the repo of each step not done, once each in plan order, with the
 branch the plan's `repos` names for it (null when it names none). A dispatch of steps (`POST .../runs`, and a rerun)
@@ -502,7 +523,9 @@ runtime as available (a run asking for `any` takes the first of `claude-code`, `
 checkout of the repo, the run is pinned to no other worker, the run was dispatched from a web session when the
 worker's `dispatch_from` is `web`, the worker holds fewer runs than its slots, and it is neither draining nor revoked.
 A plan run also needs a daemon of 0.4.0 or later, as the worker's `agent_version` says:
-an older daemon would read it as a run of one step without a repo and fail it. A review run (kind `review`, the
+an older daemon would read it as a run of one step without a repo and fail it. A plan run with `session_per_step`
+needs a daemon whose last heartbeat listed `session_per_step` in `features`: an older daemon would run every step in
+one session. A review run (kind `review`, the
 Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) needs a checkout of every repo in its
 `repos` and a daemon whose last heartbeat listed `review` in `run_kinds`, and a judge run (kind `judge`, see
 [A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`. The
@@ -511,10 +534,11 @@ id, project, plan, step key and title, plan revision, attempt, max attempts, par
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
 from), with the run's `kind` and `model`, or `{"run": null}` when the wait ends empty, and the daemon claims again at
 once. A plan run is claimed only by a worker with a checkout of every repo in its `repos`; its answer has no step key
-and no repo, but `repos`, the prompt of `build_plan_prompt`, and `plan`, `{revision, body}` at the hub's current
-revision, which the daemon writes to `.evo-run/plan.yaml`. A run the night shift queued has `budget`, its caps
-(`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`, for a run that goes
-on from a parked one), and null otherwise. A run of one step has `verify`, the verify of its step as the plan it was
+and no repo, but `repos`, the prompt of `build_plan_prompt`, `plan`, `{revision, body}` at the hub's current
+revision, which the daemon writes to `.evo-run/plan.yaml`, and `session_per_step`. A run the night shift queued has
+`budget`, its caps (`max_usd`, `max_turns`, `max_seconds`) with what it spent already (`spent_usd`, `spent_seconds`,
+for a run that goes on from a parked one), and null otherwise. A run of one step has `verify`, the verify of its step
+as the plan it was
 dispatched from has it (a list of one command, or empty), whose programs the daemon looks for before the agent starts
 (see [Preflight and failure causes](#preflight-and-failure-causes)); null for any other kind, and absent from an older
 hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, or a
@@ -543,7 +567,8 @@ it holds:
   "free_slots": 1,
   "runs": [12],
   "agent_version": "0.3.0",
-  "run_kinds": ["step", "plan", "review", "judge"]
+  "run_kinds": ["step", "plan", "review", "judge"],
+  "features": ["session_per_step"]
 }
 ```
 
@@ -557,7 +582,10 @@ the path required. The hub keeps both as sent, every key present (a missing one 
 shows them in that shape. `free_slots` is what the daemon counts free, at most the worker's slots; the hub shows it,
 and counts the runs a worker holds against its slots itself. `agent_version` is optional and replaces the version
 the worker registered with. `run_kinds`, optional, lists the kinds of run the daemon runs; the hub keeps those it
-knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run).
+knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run). `features`,
+optional, lists what the daemon does besides its kinds of run (`runs.WORKER_FEATURES`): `session_per_step`, a plan run
+with a new agent session for each step. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
+`features`, and a heartbeat without it says the daemon does none of them.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
@@ -727,9 +755,11 @@ of the plan in plan order with `ready`, `reason` (as `unready_reason` says it, o
 A dispatch, a plan run or a rerun pinned to a worker is checked against what that worker's last heartbeat reported,
 as the claim checks it: the runtime asked for available (any one for `any`), a checkout of each repo the run needs
 (the step's repo, or every repo in a plan run's `repos`), and, for a plan run, a daemon of 0.4.0 or later
-(`runs.PLAN_RUN_AGENT`). When one fails the answer is 409 naming each one, for example `worker mac-mini cannot take
-this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is queued, rather than a run that
-stays queued for good. A dispatch without a worker is not checked: a worker that can take it may join later.
+(`runs.PLAN_RUN_AGENT`) and, with `session_per_step`, one that lists `session_per_step` in its `features`. When one
+fails the answer is 409 naming each one, for example
+`worker mac-mini cannot take this run: it has no checkout of evo-agents/evo-agents-harness: ...`, and nothing is
+queued, rather than a run that stays queued for good. A dispatch without a worker is not checked: a worker that can
+take it may join later.
 
 The owner of a run is the member who dispatched it; another member gets 403 and someone without a grant 404.
 `.../cancel` moves a queued run, or one in review, to `cancelled` at once; for a held run it sets
@@ -929,6 +959,8 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | run timeout | 5 to 240 minutes; a plan run 2, 4, 8 or 24 hours of agent time |
 | decision | 2 to 6 options, context 16 KiB; parked after 24 hours waiting, cancelled 7 days later |
 | prompt of a plan run | 32 KiB, its list of steps 14 KiB |
+| prompt of a step's session | 32 KiB, its handoff 1,000 to 4,000 tokens (3 bytes a token) |
+| sessions a plan run's usage lists | the latest 100 (`sessions_left_out` counts the others) |
 | pairing code | 10 minutes, 5 unused per member (locked ones included until they expire), locked after 5 wrong tries |
 | refused joins | 10 per client address in 10 minutes, then 429 |
 | prompt | 32 KiB |
@@ -1025,12 +1057,35 @@ killed once the agent has ended, or 20 seconds after an interrupt it did not end
 | `opencode` | HTTP and the event stream of `opencode serve`, started per run on 127.0.0.1 at a free port, with a random `OPENCODE_SERVER_PASSWORD` and stdin `/dev/null` | the providers the owner set up in opencode, and the variables `env` leases set in the agent's environment, such as a provider's API key | each `permission.asked` of the session answered `once`, as `opencode run --auto` does, so the owner's explicit denials still hold; sessions get `opencode run`'s rules (no question, no plan mode) | `POST /session/:id/prompt_async`, taken at the next step boundary | `POST /session/:id/abort` | when the session goes idle with every prompt it was sent |
 
 The agent gets, on top of its runtime's own system prompt, a note that it runs unattended and that the owner may send
-messages. The model and the reasoning effort are the run's `model` and `effort` when the hub sends them, else
+messages. Claude Code and Codex, whose agents can start subagents, also get a note on them (`SUBAGENT_NOTE` of
+`evo_agents/worker/runtimes/common.py`): a subagent starts with a fresh context, not a fork of the session, and takes a
+plan handoff (the evo-hub tool `plan_handoff`, or `evo-agents hub plan handoff PLAN --step KEY`) instead of the
+session's history, so its context stays small. Claude Code is told to start a fresh subagent with its Task tool, not a
+resumed or forked one, in the text appended to its system prompt; Codex to call `spawn_agent` with `fork_turns`
+`"none"`, in the thread's developer instructions. opencode gets the first note only. The model and the reasoning
+effort are the run's `model` and `effort` when the hub sends them, else
 `EVO_WORKER_<RUNTIME>_MODEL` and `EVO_WORKER_<RUNTIME>_EFFORT` in the daemon's environment (`CLAUDE_CODE`,
 `OPENCODE`, `CODEX`), else the runtime's default. Claude Code gets it as `options.model` (the CLI's `--model`), codex
 as the model of the thread it starts or resumes. opencode is always told the model: the run's, the variable's, or the
 `model` of the owner's opencode config, as `provider/model`, split at its first `/` into the `providerID` and `modelID`
 of each prompt, and a model `opencode serve` does not list fails the start with that reason.
+
+Claude Code compacts the context of a run's agent as it nears 200,000 tokens: the agent's environment, headless and
+in the terminal UI, gets `CLAUDE_CODE_AUTO_COMPACT_WINDOW=200000`. `EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` in the
+daemon's environment sets another window (Claude Code takes 100,000 to 1,000,000 tokens and caps it at the model's
+context window), `off` or `0` leaves Claude Code's own, and a `CLAUDE_CODE_AUTO_COMPACT_WINDOW` the daemon's
+environment already has is passed on as it is. Why 200,000: the 33 sessions of worker runs on the laptop up to
+2026-10-11 peaked at a median of 41,950 tokens of context and none compacted; the six that passed 200,000 (219,000
+to 297,000) were runs of 105 to 188 model calls, each re-reading 17 to 31 million cached tokens, since every call
+reads the whole context again. Under this window those six would have
+compacted as they neared it, and the other 27 stayed below it. Codex keeps its own compaction.
+
+A long tool result stays out of the agent's context as in a session on a laptop: the PostToolUse hook of the evo-hub
+plugin runs in a Claude Code run too, and gives the agent the head and tail of a Bash, Read, Grep or MCP result longer
+than 10,000 characters with the path of a file under `~/.evo/tool-output/` that holds all of it (`EVO_SPOOL_THRESHOLD`
+in the daemon's environment changes the threshold; [hub.md](hub.md), Long tool output). That file, mode 0600 and kept 7
+days, is not the daemon's spool of events, and nothing sends it to the hub. A Codex run keeps Codex's own limit,
+`tool_output_token_limit` in its `config.toml`, since Codex ignores a hook's replacement of a tool's output.
 
 For the heartbeat, each adapter lists the models its runtime offers on the machine, looked at with the runtime itself
 every 5 minutes: Claude Code, which has no command that lists them, gives the aliases its `--model` help names
@@ -1051,6 +1106,12 @@ The events take the shapes of ACP's `session/update`: `agent_message_chunk` and 
 `cost` `{"amount", "currency": "USD"}` when the runtime counts one. An event a runtime sends that has none of these
 meanings goes as `output` `{"raw": ...}`, except the ones that only repeat others: text deltas, the start of a hook,
 Claude Code's list of slash commands.
+
+The `usage` a run reports with its end also holds `peak_context_tokens`, the largest context one request of the model
+read in the agent's main thread: for Claude Code the input, cache creation and cache read tokens of a message of the
+model, as the stream's `assistant` messages carry them (a subagent's left out); for Codex the input of a request
+(`last.inputTokens` of `thread/tokenUsage/updated`, its cached part in it), with the model's `context_window`; for
+opencode a step's `input`, `cache.read` and `cache.write`. It is null, never 0, when the runtime reported none.
 
 A runtime is available when its binary answers `--version` with at least the version the adapter was checked with,
 and the package the adapter needs is installed at least at the version checked: Claude Code 2.1.289 with
@@ -1159,6 +1220,39 @@ hands it no run.
    run ends `done` with the summary and the diffstat of every repo; the log and the diffs of every repo (each under
    `a/<repo>/`) are uploaded as one `run-log` and one `run-diff`, and each worktree on the plan's branch leaves it. A
    failed run pushes nothing at its end; what the steps pushed stays.
+
+### A plan run with a session for each step
+
+A plan run claimed with `session_per_step` (`evo_agents/worker/runner/sessions.py`) does steps 1, 4 and 5 above as any
+plan run, and in between gives each step not done yet an agent session of its own, instead of one session for every
+step, so the context of each session holds one step and the handoff of the plan rather than everything the run read
+before it:
+
+1. Before each session the daemon reads the plan as the hub holds it now and takes the next step
+   (`runs.next_session_step`): the first in plan order that is `pending` or `in_progress` (a step an earlier session or
+   run left started), whose `depends_on` are all done, and that had no session in this run yet. The session starts new,
+   on the prompt of [The prompt of a step's session](#the-prompt-of-a-steps-session), and the run's log notes the step,
+   the session and the size of the handoff. In an interactive run each step's session opens in the terminal UI, as
+   the one session of a plan run does.
+2. The agent reports the step with `evo-agents worker step` as in step 2 above. A decision it asks is waited for in
+   the session of its step (step 3 above): the answer starts a new turn of that session, and the next step's session
+   starts only once the step's session has nothing left to wait for. A takeover drives the session of the step that
+   runs, and the hub's `session_id` of the run is that session's.
+3. After the session the daemon takes the summary of `.evo-run/result.json` and removes the file, so the next
+   session starts without it, and reads the plan again. When the step is not `done` (the agent handed it back, or
+   left it in progress), no further session starts: the run goes on to step 5 above, as a plan run whose agent could
+   not go on. The run's summary is the summaries of its sessions, `Step KEY: ...` each.
+4. A run the hub parks stops in the session of the step it was on; the run that resumes it goes on first with that
+   step in that session (its prompt names the step and carries the owner's answer), then gives the next steps sessions
+   of their own.
+
+The run's record (`runs/<run>/run.json`) lists its sessions under `step_sessions`, each `{step, session_id, run_id,
+started_at, ended_at, status, usage}`, the status being the step's after its session; a run that resumes a parked one
+takes over the parked run's list. The usage the run reports with its end adds up its sessions: each runtime's numbers
+summed (Claude Code's running `total_cost_usd` taken per session, then added up), the largest `peak_context_tokens`
+(null when no runtime reported one), and `sessions`, the latest 100 sessions, each `{step, session_id, run_id}` with
+the numbers of its usage (`sessions_left_out` counts the others). `GET .../runs/{id}` shows it in `usage`, and the run
+page lists it as the step sessions card. A worker whose daemon is older takes no such run (see [Claim](#claim)).
 
 ### A default branch the remote moved on
 

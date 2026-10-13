@@ -1247,6 +1247,11 @@
         "schema": "Decision"
       }
     },
+    "hub hook post-tool-use": {
+      "positionals": [],
+      "options": [],
+      "json": null
+    },
     "hub hook session-start": {
       "positionals": [],
       "options": [],
@@ -1961,6 +1966,66 @@
         ]
       }
     },
+    "hub plan handoff": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--budget-tokens"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 4000
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "revision",
+          "step",
+          "budget_tokens",
+          "tokens",
+          "cut",
+          "text"
+        ],
+        "schema": "PlanHandoff"
+      }
+    },
     "hub plan history": {
       "positionals": [
         {
@@ -2597,7 +2662,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -2735,7 +2801,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -2822,7 +2889,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3067,7 +3135,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3154,7 +3223,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3241,7 +3311,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3512,6 +3583,14 @@
         },
         {
           "flags": [
+            "--session-per-step"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -3573,7 +3652,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3660,7 +3740,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3796,7 +3877,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -3883,7 +3965,8 @@
           "request",
           "finish_requested_at",
           "steady_wait",
-          "failure_cause"
+          "failure_cause",
+          "session_per_step"
         ],
         "schema": "Run"
       }
@@ -7029,6 +7112,139 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/PlanDiff"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plans/{plan_id}/handoff": {
+        "get": {
+          "tags": [
+            "plans"
+          ],
+          "summary": "Handoff",
+          "description": "What a new agent session needs to take the plan up, built from the plan as the hub holds it: its goal, the\nsteps done with their commits, Decision lines and evidence, the steps not done, within ``budget_tokens``\n(``evo_agents.hub.handoff``). Read under the rule of GET .../plans/{plan_id}; 404 for a step the plan lacks.",
+          "operationId": "handoff_v1_projects__project__plans__plan_id__handoff_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Plan Id"
+              }
+            },
+            {
+              "name": "step",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a step: its dependencies' evidence first",
+                "title": "Step"
+              },
+              "description": "a step: its dependencies' evidence first"
+            },
+            {
+              "name": "budget_tokens",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 8000,
+                "minimum": 1000,
+                "description": "the most tokens the text may take",
+                "default": 4000,
+                "title": "Budget Tokens"
+              },
+              "description": "the most tokens the text may take"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlanHandoff"
                   }
                 }
               }
@@ -23080,6 +23296,23 @@
               ],
               "title": "Run Kinds",
               "description": "the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does not know is left out"
+            },
+            "features": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9_]{0,31}$"
+                  },
+                  "type": "array",
+                  "maxItems": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Features",
+              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step. One that says none takes no such run. A feature this hub does not know is left out"
             }
           },
           "type": "object",
@@ -26259,6 +26492,65 @@
           ],
           "title": "PlanDiffLine"
         },
+        "PlanHandoff": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "revision": {
+              "type": "integer",
+              "title": "Revision"
+            },
+            "step": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step",
+              "description": "the step the handoff is for, whose dependencies' evidence comes first"
+            },
+            "budget_tokens": {
+              "type": "integer",
+              "title": "Budget Tokens"
+            },
+            "tokens": {
+              "type": "integer",
+              "title": "Tokens",
+              "description": "the text's size as the hub estimates it: UTF-8 bytes / 3, rounded up"
+            },
+            "cut": {
+              "type": "boolean",
+              "title": "Cut",
+              "description": "whether anything was cut or left out to stay within the budget"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "the handoff, as evo_agents.hub.handoff builds it; markdown"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "plan_id",
+            "revision",
+            "step",
+            "budget_tokens",
+            "tokens",
+            "cut",
+            "text"
+          ],
+          "title": "PlanHandoff"
+        },
         "PlanPatch": {
           "properties": {
             "section": {
@@ -26449,6 +26741,12 @@
               "title": "Timeout H",
               "description": "hours of agent time the run may take; waiting for a decision and parked do not count",
               "default": 4
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "true: the worker starts a new agent session for each step, whose prompt is the step's with the handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; false: one session does every step",
+              "default": false
             }
           },
           "type": "object",
@@ -29052,6 +29350,12 @@
               ],
               "title": "Failure Cause",
               "description": "why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024"
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "a plan run whose worker starts a new agent session for each step; its usage lists the sessions (usage.sessions). False for any other run",
+              "default": false
             }
           },
           "type": "object",
@@ -30243,6 +30547,12 @@
               ],
               "title": "Verify",
               "description": "the verify of the step of a run of one step, as the plan it was dispatched from has it: the worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)"
+            },
+            "session_per_step": {
+              "type": "boolean",
+              "title": "Session Per Step",
+              "description": "a plan run to run with a new agent session for each step not done yet, each with its prompt and the handoff of the plan; false: one session does every step, with the prompt above",
+              "default": false
             }
           },
           "type": "object",
@@ -31346,6 +31656,50 @@
               "type": "array",
               "maxItems": 40,
               "title": "Files Edited"
+            },
+            "peak_context_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peak Context Tokens",
+              "description": "the largest context one message of the model read: its input, cache creation and cache read tokens; null when no message said its usage, or a client that did not count it pushed the digest"
+            },
+            "compactions": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Compactions",
+              "description": "times the session's context was compacted; null when a client that did not count it pushed"
+            },
+            "tool_result_chars": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ToolChars"
+                  },
+                  "type": "array",
+                  "maxItems": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tool Result Chars",
+              "description": "per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest"
             }
           },
           "type": "object",
@@ -32600,6 +32954,29 @@
           "type": "object",
           "title": "ToolCall"
         },
+        "ToolChars": {
+          "properties": {
+            "gen_ai.tool.name": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Gen Ai.Tool.Name"
+            },
+            "chars": {
+              "type": "integer",
+              "maximum": 1000000000.0,
+              "minimum": 0.0,
+              "title": "Chars",
+              "description": "characters of the text of the tool's results, which the model read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "gen_ai.tool.name",
+            "chars"
+          ],
+          "title": "ToolChars"
+        },
         "ToolCount": {
           "properties": {
             "gen_ai.tool.name": {
@@ -33329,6 +33706,14 @@
               "type": "integer",
               "title": "Held Runs",
               "description": "runs it holds now (leased, running, interactive or verifying)"
+            },
+            "features": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Features",
+              "description": "what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; empty for a daemon that said none"
             },
             "created_at": {
               "type": "string",

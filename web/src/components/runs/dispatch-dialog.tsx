@@ -21,10 +21,10 @@ import { plansQuery } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
 import { Choice, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
+import { type PlanRunHold, planRunReason, readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
 import { useDispatch } from "./hooks";
-import { dispatchOutlook, dispatchWorkers, readySelection, selectedRepos, splitSteps } from "./model";
+import { dispatchOutlook, dispatchWorkers } from "./model";
 import {
-  type ActiveRun,
   type Approval,
   APPROVALS,
   DEFAULT_TIMEOUT,
@@ -359,9 +359,6 @@ function DispatchForm({
   );
 }
 
-/** The plan's active plan run, as ready-steps names it: while it is active, no step of the plan is dispatched. */
-export type PlanRunHold = { planId: string; run: ActiveRun };
-
 /** "Plan run #12 (Waiting) holds this plan's steps until it ends.", linked to the run. */
 export function PlanRunHoldNote({ project, hold, testId }: { project: string; hold: PlanRunHold; testId?: string }) {
   const t = useTranslations("runs.planRun");
@@ -468,11 +465,6 @@ function StepPicker({
       )}
     </Section>
   );
-}
-
-/** The hub's reason for a step held by the plan's plan run (`runs._plan_busy`), word for word. */
-function planRunReason({ planId, run }: PlanRunHold): string {
-  return `plan ${planId} has plan run #${run.id}, ${run.state}, dispatched by ${run.dispatched_by}`;
 }
 
 /**

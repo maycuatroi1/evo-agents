@@ -175,13 +175,16 @@ claude plugin install evo-hub@evo-agents
 ```
 
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
-hub's `/mcp`), a `using-agent-hub` skill, and two hooks. Its tools are the seven `kg_*` tools and `memory_search`,
-`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`, `hub_projects` and
+hub's `/mcp`), a `using-agent-hub` skill, and three hooks. Its tools are the seven `kg_*` tools and `memory_search`,
+`memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `skill_list`, `hub_projects` and
 `run_tool_stats`. In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
-mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML.
+mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML. To hand a
+plan to a new session or a subagent, give it `plan_handoff` (or `evo-agents hub plan handoff PLAN --step KEY`) rather
+than your history: the plan's goal, each step done with its commits and `Decision:` lines, and the steps left, within a
+token budget.
 
-Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-kg):
+Hooks (`evo-agents hub hook session-start|stop|post-tool-use`, same pins and `|| true` as evo-kg):
 
 - SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
   plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
@@ -190,12 +193,23 @@ Hooks (`evo-agents hub hook session-start|stop`, same pins and `|| true` as evo-
   A turn that wrote no memory sends nothing; when the hub does not answer, the files wait and a later Stop pushes
   them (state in `~/.evo/hub/memory-state.json`).
 - Stop also pushes the digest of a session of 6 messages or more to the project of its directory: calls and errors
-  per tool and per Bash program, what the person wrote, model and tokens, with every string that looks like a secret
-  replaced on the machine first. A digest the hub did not take waits for a later Stop (`~/.evo/hub/digest-state.json`);
-  the session of a worker run pushes none.
+  per tool and per Bash program, what the person wrote, model and tokens, the largest context one model call read
+  (`peak_context_tokens`), the compactions and the characters of each tool's results, with every string that looks
+  like a secret replaced on the machine first. A digest the hub did not take waits for a later Stop
+  (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none.
+- PostToolUse writes a result of Bash, Read, Grep or an MCP tool longer than 10,000 characters (`EVO_SPOOL_THRESHOLD`)
+  to `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
+  tail, its size and the file's path instead.
 
-Both exit 0 whatever happens, give up after a few seconds, print at most one line without tokens or memory text, and
-send nothing when the machine is not signed in.
+All three exit 0 whatever happens and give up after a few seconds. SessionStart and Stop print at most one line without
+tokens or memory text and send nothing when the machine is not signed in; PostToolUse prints the shortened result or
+nothing.
+
+Codex takes the same plugin (`codex plugin marketplace add https://github.com/maycuatroi1/evo-agents`, then
+`codex plugin add evo-hub@evo-agents`). Once you trust its hooks, which the first interactive session that loads them
+asks, SessionStart and Stop do in a Codex session what they do in Claude Code, and the digest is built from Codex's
+rollout. PostToolUse leaves Codex's output as it is: Codex ignores a replaced tool output and cuts a long one to its
+own `tool_output_token_limit` ([docs/hub.md](docs/hub.md), Codex).
 
 ### Workers
 
@@ -227,10 +241,16 @@ which waits in the Inbox on the web or on the command line:
 
 ```sh
 evo-agents hub run plan rollout --worker mac-mini --timeout-h 8 --project demo
+evo-agents hub run plan rollout --session-per-step --project demo   # each step in a new session, with the handoff
 evo-agents hub decision list --state open --project demo
 evo-agents hub decision answer 7 --option postgres --project demo
 evo-agents hub notifications --unread
 ```
+
+A plan run does every step in one agent session unless it is dispatched with `--session-per-step`: then each step
+gets a new session whose prompt carries the plan's handoff instead of what the sessions before it read, and the run's
+usage lists the session of each step. A Claude Code agent on a worker compacts its context as it nears 200,000 tokens
+(`EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` on the worker sets another window).
 
 The agent on a worker runs with the full rights of the machine's owner, and only that owner dispatches runs to it.
 [docs/workers.md](docs/workers.md) describes the protocol and plan runs, [docs/hub.md](docs/hub.md) every `hub run`

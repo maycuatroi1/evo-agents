@@ -348,6 +348,42 @@
       }
     },
     {
+      "name": "plan_handoff",
+      "description": "The handoff of a plan for a new session or a subagent, built by the hub from the plan it holds: its goal, each step done with its title, commits, Decision lines verbatim and evidence cut, and the steps not done with status and depends_on, within budget_tokens. With step, the evidence of the steps it depends on comes first. A note names what was left out; plan_show has it whole. Same revision, same budget, same text as `evo-agents hub plan handoff`.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "plan_id": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+          },
+          "step": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "the step the handoff is for: its dependencies' evidence first"
+          },
+          "budget_tokens": {
+            "type": "integer",
+            "minimum": 1000,
+            "maximum": 8000,
+            "default": 4000,
+            "description": "the most tokens the text may take, as UTF-8 bytes / 3"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "required": [
+          "plan_id"
+        ],
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "plan_step",
       "description": "Set the status of a plan step on the hub, as `evo harness step` does, with evidence or a note. done also sets done_at (default: today). Writes to the hub only: the YAML copy in git changes at the next `evo-agents hub plan export`, never by editing it.",
       "inputSchema": {

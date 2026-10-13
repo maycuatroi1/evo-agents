@@ -154,6 +154,11 @@ export function RunDetails({ run, viewer }: { run: Run; viewer: RunViewer | null
             ) : null}
           </Fact>
         )}
+        {run.kind === "plan" ? (
+          <Fact label={t("sessions")} testId="run-sessions-mode">
+            {t("sessionsValue", { each: run.session_per_step ? "step" : "one" })}
+          </Fact>
+        ) : null}
         <Fact label={t("session")}>
           {run.session_id ? <Identifier value={run.session_id} copy copyLabel={t("copySession")} /> : <span className="text-muted-foreground">{t("none")}</span>}
         </Fact>
