@@ -19,7 +19,7 @@ import { PlanHeader, ReadOnlyNotice } from "./plan-header";
 import { PlanNotFound } from "./plan-not-found";
 import { Prose, ValueView, Verbatim } from "./prose";
 import { BlockingBadge, StepStatusBadge, StepStatusIcon } from "./status";
-import { DependsOn, formatDay } from "./step-board";
+import { DependsOn, formatDay } from "./depends-on";
 
 type Context = { project: string; planId: string; byKey: Map<string, PlanStep> };
 

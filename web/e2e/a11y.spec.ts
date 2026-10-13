@@ -322,6 +322,26 @@ const PAGES: Entry[] = [
     },
   },
   {
+    name: "plan graph with a step selected and its inspector beside the canvas",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await page.setViewportSize({ width: 1440, height: 900 });
+      await open(page, `/p/${me.projects[0]}/plans/${ACTIVE_PLAN}?view=graph&step=${EVIDENCE_STEP}`);
+      await expect(page.getByTestId("step-graph-canvas")).toHaveAttribute("data-ready", "true");
+      await expect(page.getByTestId("graph-inspector").getByTestId("inspector-body")).toHaveAttribute("data-step", EVIDENCE_STEP);
+    },
+  },
+  {
+    name: "plan graph with a step selected in the bottom sheet",
+    open: async ({ page, me }) => {
+      await seedPlans(me, me.projects[0]);
+      await page.setViewportSize({ width: 800, height: 900 });
+      await open(page, `/p/${me.projects[0]}/plans/${ACTIVE_PLAN}?view=graph&step=${EVIDENCE_STEP}`);
+      await expect(page.getByTestId("step-graph-canvas")).toHaveAttribute("data-ready", "true");
+      await expect(page.getByRole("dialog").getByTestId("inspector-body")).toHaveAttribute("data-step", EVIDENCE_STEP);
+    },
+  },
+  {
     name: "plan step with evidence",
     open: async ({ page, me }) => {
       await seedPlans(me, me.projects[0]);
