@@ -13,7 +13,15 @@ from sqlalchemy import and_, case, exists, func, or_, select, update
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
-from evo_agents.hub.server.runs.models import NOT_HELD, HeartbeatAnswer, HeartbeatRequest, Run, RunControl, StateReport
+from evo_agents.hub.server.runs.models import (
+    NOT_HELD,
+    HeartbeatAnswer,
+    HeartbeatRequest,
+    Run,
+    RunControl,
+    StateReport,
+    WorkerSettings,
+)
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
@@ -77,7 +85,7 @@ async def record_heartbeat(
     async with engine.begin() as conn:
         worker_id, _, _, _, _, _, drained_at, *_ = await worker_of(conn, user)
         w = tables.workers
-        await conn.execute(
+        held = await conn.execute(
             update(w)
             .values(
                 last_heartbeat_at=func.now(),
@@ -90,7 +98,9 @@ async def record_heartbeat(
                 features=None if body.features is None else [k for k in body.features if k in runs.WORKER_FEATURES],
             )
             .where(w.c.id == worker_id)
+            .returning(w.c.slots, w.c.name, w.c.labels)
         )
+        settings = WorkerSettings(**held.one()._mapping)
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
         others = [run_id for run_id in reported if run_id not in extended]
         parked = {}
@@ -138,7 +148,7 @@ async def record_heartbeat(
             )
         else:
             controls.append(RunControl(id=run_id, held=False, state=None, lease_expires_at=None, cancel=True))
-    return HeartbeatAnswer(drain=drained_at is not None, runs=controls)
+    return HeartbeatAnswer(drain=drained_at is not None, runs=controls, settings=settings)
 
 
 SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set
