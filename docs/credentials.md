@@ -272,6 +272,79 @@ evo-agents hub account policy demo --strategy weighted-round-robin --cooldown 18
 evo-agents hub account policy demo --reset                    # the defaults again
 ```
 
+### Adding and renewing a Claude account
+
+A Claude account is an `env` secret for `CLAUDE_CODE_OAUTH_TOKEN` whose value is a token of `claude setup-token`.
+Anthropic's [Authentication](https://code.claude.com/docs/en/authentication) page, section "Generate a long-lived
+token", says that command opens the browser sign-in of `/login`, prints a token that lasts a year, uses the Claude
+subscription (Pro, Max, Team or Enterprise) and may only call the model. There are three ways to put one on the hub,
+and each ends in `PUT /v1/secrets/{name}` with kind `env` and that variable:
+
+```sh
+evo-agents hub account login claude-b --project demo                  # runs claude setup-token, saves what it prints
+evo-agents hub account login claude-b --project demo --worker mac-mini --expires 2027-09-15
+evo-agents hub account login claude-b                                 # renew: a new token, same projects and workers
+pbpaste | evo-agents hub account login claude-b --project demo        # a token made elsewhere, read on stdin
+evo-agents hub account login claude-b --paste                         # asks for the token without echo
+```
+
+`account login NAME [--project P ...] [--worker W ...] [--expires YYYY-MM-DD] [--paste] [--json]`
+(`evo_agents/hub/cli_secrets.py`) first does every check that needs no token: the name, the day, that the machine is
+signed in, the writer role on each project (`GET /v1/auth/whoami`) and that each worker is one of the caller's
+(`GET /v1/workers`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
+unchanged, on a pseudo-terminal of its own (`evo_agents/hub/setup_token.py`). The member signs in to Claude and
+approves in the browser it opens, and the command reads the token off the screen, joining it again where the
+terminal's width wrapped it. The token never reaches the member's screen: from its first bytes on, the relay passes on
+only the escape sequences that set or reset the terminal's modes, and `claude` is stopped if it still runs 5 seconds
+later. The command writes the token, prints the account as `account show` does (on stdout; the progress lines go to
+stderr), and with `--json` prints the `Account` schema instead.
+
+When the screen held no token (a sign-in cancelled, a release of Claude Code that prints it another way), the command
+says so and asks for it at a prompt that does not echo, where Enter alone stops. With `--paste`, or when stdin is not a
+terminal, it does not run `claude` and reads the token as `secret set` reads a value: from stdin, one final line break
+dropped, else with `getpass`. On a system without `pty` (Windows), `claude setup-token` uses the terminal itself, so the
+token shows there, and the member pastes it. A machine without `claude` on PATH gets an error that says how to do it by
+hand: install Claude Code, or run `claude setup-token` where it is installed and give the token to `--paste` or on
+stdin. The command refuses an API key of the Anthropic Console (`sk-ant-api...`) and points to `ANTHROPIC_API_KEY` with
+`hub secret set`. It also refuses a token with a space or line break inside, a new account without `--project`, and a
+name that is already a secret of another kind or another variable. No output, log line, argument or error carries the
+token.
+
+The account ends at 00:00 UTC of `--expires`, or by default of today (UTC) plus a year less a day, so the hub takes it
+out of use at least a day before the token itself stops working. A day already past is refused before `claude` runs.
+From `expires_at` on, the account's state is `expired`, and no run takes it.
+
+Renewing is the same command with the name of an account the caller has. The command says first that it replaces that
+account's token. Without flags it sends the account's projects and workers again; `--project` and `--worker` each
+replace only their own binding. The `PUT` keeps the secret's id, so the account's weight, priority, pause, cooldown and
+runs stay, and only the token and `expires_at` change.
+
+`account show` has an `Expires:` line: `never`, the time in UTC, or for an account that ends within
+`RENEW_WITHIN_DAYS` (30) days (`evo_agents/hub/accounts.py`) how many days are left and the command that renews it;
+for one already past, that no run takes it. `account list` adds such a line under its table for each account that
+ends within 30 days or has ended. For a Claude account the line names `evo-agents hub account login NAME`, and for an
+account on another variable `hub secret set`.
+
+On the web, the Accounts page has **Add Claude account** in its header and in its empty state. The dialog asks for the
+name, the projects (at least one, among those the visitor holds writer on), the workers (optional; none means any of
+theirs), the token in a masked field, and the day it ends, a year from today less a day by default. It shows the steps
+of `claude setup-token` and the matching `evo-agents hub account login` command to copy, for a member who would rather
+have the CLI read the token. A name that is a Claude account already shows a note that saving replaces its token, with
+a button to renew it instead; a name that is another kind of secret is refused, since the `PUT` would replace it whole.
+The dialog refuses an API key, as the CLI does, and forgets the token as soon as it is sent. Each row for
+`CLAUDE_CODE_OAUTH_TOKEN` has **Renew token**, which opens the same dialog with the name, projects and workers locked,
+so only the token and the end change; to move an account, replace it on the Secrets page or pass `--project` or
+`--worker` to `account login`. A token that ends within 30 days shows "Renew before" its day in the State cell, and a
+notice above the table lists each one with a Renew token link; an account past its end shows "Ended" and its day.
+
+`hub secret set` still writes an account, with the value on stdin or at a prompt. It sets no `expires_at` unless given
+`--expires`, so give it the day the token ends, or the hub keeps leasing the token after it has stopped working:
+
+```sh
+pbpaste | evo-agents hub secret set claude-b --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo \
+  --expires 2027-10-13
+```
+
 ### Compared with a proxy
 
 CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
@@ -294,6 +367,20 @@ weighted, fill-first, cooldown, failover, a page that shows each account) and ap
 What the proxy does that the hub does not: it moves a request, not a run, so an agent in a terminal pane goes on by
 itself, and it covers other providers and their limits. Here an interactive pane only shows the event, and only Claude
 Code reports a limit; the usage an account shows is what the CLI said last.
+
+The proxy's `--claude-login` is the other thing the hub leaves out: a PKCE login on claude.ai with Claude Code's
+client id, whose access and refresh tokens the proxy keeps and refreshes. Anthropic's
+[Legal and compliance](https://code.claude.com/docs/en/legal-and-compliance) page, section "Authentication and
+credential use" (read 2026-10-14), does not permit third-party developers to offer Claude.ai login in their own
+applications. It also says developers may not collect, store or intermediate Claude.ai credentials or session tokens,
+and that sign-in to a Claude account must complete through Anthropic's own flow. The same page does not prevent an end
+user from signing in to the unmodified Claude Code binary with their own subscription. So neither the hub nor the CLI
+runs an OAuth flow of its own: no client id, no call to an authorize or token endpoint of claude.ai, platform.claude.com
+or console.anthropic.com, no refresh token kept and nothing refreshed. `hub account login` runs the unmodified
+`claude setup-token` on the member's own machine, the member signs in through Anthropic's own flow, and the hub gets
+the one-year token that command prints, as it would get it from a paste, and leases it to that member's runs alone.
+A token that ends is renewed the same way, by its owner. Whether a given use of an account fits Anthropic's terms is for
+its owner to check against that page; the hub only keeps the sign-in itself out of its code.
 
 ## What a run got
 

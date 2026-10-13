@@ -14,7 +14,7 @@ import { type AccountChange, type AccountPolicyWrite, accountKeys, changeAccount
 /** A write that failed, in the words the page shows: what happened, the hub's message and the request id. */
 export type Failure = { text: string; detail: string | null; requestId: string | null; status: number };
 
-function signInAgainOn401(error: unknown) {
+export function signInAgainOn401(error: unknown) {
   if (isApiError(error) && error.kind === "unauthorized") window.location.assign(LOGIN_PATH);
 }
 

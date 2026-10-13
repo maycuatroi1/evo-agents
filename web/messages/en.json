@@ -1841,6 +1841,7 @@
     "caption": "Your accounts",
     "listSummary": "Your env secrets that runs take in turn for the same variable. Yours alone, and no value is ever shown.",
     "secrets": "Secrets",
+    "add": "Add Claude account",
     "columns": {
       "account": "Account",
       "state": "State",
@@ -1888,9 +1889,20 @@
     "resumedText": "Runs may take it again.",
     "pauseFailed": "Couldn't pause {name}",
     "resumeFailed": "Couldn't resume {name}",
+    "renew": "Renew token",
+    "renewLabel": "Renew the token of {name}",
+    "renewBy": "Renew before <day></day>",
+    "renewTitle": "Its token ends in {days, plural, one {# day} other {# days}}",
+    "ended": "Ended <day></day>",
+    "renewNotice": {
+      "title": "{count, plural, one {A token ends} other {# tokens end}} within 30 days",
+      "ends": "ends <day></day>",
+      "renew": "Renew token",
+      "renewLabel": "Renew the token of {name}"
+    },
     "empty": {
       "title": "No account yet",
-      "description": "An account is one of your env secrets, such as a token of <code>claude setup-token</code> for <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Add several for the same variable on the Secrets page, and runs take them in turn."
+      "description": "An account is one of your env secrets, such as a token of <code>claude setup-token</code> for <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Add one here or with <code>evo-agents hub account login</code>; with several for the same variable, runs take them in turn."
     },
     "errors": {
       "forbidden": "The hub refused: a policy needs the writer role on its project.",
@@ -1917,6 +1929,81 @@
       "problems": {
         "whole": "Enter a whole number.",
         "range": "Enter a number from {min} to {max}."
+      }
+    },
+    "login": {
+      "addTitle": "Add Claude account",
+      "renewTitle": "Renew the token of {name}",
+      "addDescription": "Runs of the projects you pick take this account's token for <code>{variable}</code>, in turn with your other accounts for it. The hub seals the token and never shows it again, to you either.",
+      "renewDescription": "A new token from <code>claude setup-token</code> for this account. Its projects, workers, weight, priority, pause and runs stay; only the token and the day it ends change.",
+      "close": "Close",
+      "name": "Name",
+      "namePlaceholder": "e.g. claude-work",
+      "nameHint": "Lower case letters, digits, dots, dashes and underscores, up to 64, starting with a letter or a digit.",
+      "nameLocked": "A renewal keeps the account's name.",
+      "nameTaken": "You already have an account named {name}. Saving gives it this token and end date and binds it to the projects and workers below; its weight, priority, pause and runs stay.",
+      "renewInstead": "Renew {name} instead",
+      "projects": "Projects",
+      "projectsHint": "Runs of these projects may take the account. Only projects where you have the writer role are listed.",
+      "projectsFailed": "Could not read your projects. Close the dialog and try again.",
+      "noProjects": "You have the writer role on no project yet, so no run could take an account. Ask a project's admin for the writer role.",
+      "workers": "Workers",
+      "workersOptional": "Workers (optional)",
+      "workersHint": "None picked: any of your workers. Pick some to keep the account to them.",
+      "noWorkers": "You have no worker yet: the account goes to any worker you register later.",
+      "anyWorker": "Any of yours",
+      "keptHint": "A renewal keeps where the account goes. To change it, replace the secret on the Secrets page.",
+      "expires": "Token ends on",
+      "expiresHint": "A token of claude setup-token lasts a year, so this is a year from today less a day. From 00:00 UTC that day no run takes it, and this page reminds you 30 days before.",
+      "stepsTitle": "Get a token",
+      "steps": {
+        "run": "In a terminal on your machine, run <code>claude setup-token</code>.",
+        "approve": "Sign in with this Claude account on the browser page it opens, and approve.",
+        "paste": "Copy the token it prints and paste it below."
+      },
+      "token": "Token",
+      "tokenHint": "Sent once over HTTPS and sealed by the hub; this page forgets it as soon as it is sent.",
+      "tokenForgotten": "The token was not kept: paste it again before you retry.",
+      "commandTitle": "Or from a terminal",
+      "commandAdd": "This command runs <code>claude setup-token</code> on your machine and saves the token it prints with the fields above, with nothing to paste.",
+      "commandRenew": "This command runs <code>claude setup-token</code> on your machine and gives the account the token it prints, keeping its projects and workers.",
+      "commandIncomplete": "Fill in a name and pick a project to complete the command.",
+      "command": {
+        "label": "The hub account login command",
+        "copy": "Copy",
+        "copiedShort": "Copied",
+        "copyLabel": "Copy the hub account login command",
+        "copied": "Command copied to the clipboard",
+        "selected": "Command selected: press Ctrl+C or Cmd+C to copy it"
+      },
+      "cancel": "Cancel",
+      "add": "Add account",
+      "renew": "Renew token",
+      "saving": "Saving",
+      "added": "Account {name} added",
+      "addedText": "Runs of its projects may take it until {until}. The hub sealed the token.",
+      "renewed": "Token of {name} renewed",
+      "renewedText": "Runs that ask for credentials from now on get the new token, until {until}.",
+      "requestId": "Request id: {id}",
+      "problems": {
+        "nameRequired": "Name the account.",
+        "nameInvalid": "Lower case letters, digits, dots, dashes and underscores, up to 64, starting with a letter or a digit.",
+        "nameOther": "{name} is a secret of yours that is not a Claude account. Pick another name.",
+        "projectsRequired": "Pick at least one project.",
+        "expiresRequired": "Pick the day the token ends.",
+        "expiresInvalid": "Pick a day.",
+        "expiresPast": "Pick a day after today.",
+        "tokenRequired": "Paste the token that claude setup-token printed.",
+        "tokenApiKey": "This is an API key of the Anthropic Console: it goes in ANTHROPIC_API_KEY, on the Secrets page. An account takes the token of claude setup-token.",
+        "tokenSpaces": "A token is one line without spaces.",
+        "tokenTooLong": "At most {max} bytes."
+      },
+      "errors": {
+        "forbidden": "The hub refused: an account needs the writer role on each of its projects, and binds only to your own workers that are not revoked.",
+        "notFound": "A project you picked is gone, or you can no longer see it. The lists were reloaded.",
+        "conflict": "You keep 200 secrets already: delete one on the Secrets page before adding another.",
+        "invalid": "The hub refused the token or the day it ends.",
+        "unavailable": "This hub cannot keep secrets yet: its operator has not set the key that seals them."
       }
     },
     "policies": {

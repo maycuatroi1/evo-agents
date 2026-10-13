@@ -18,7 +18,18 @@ variable. ``account list`` prints them, never a value (GET /v1/accounts); ``acco
 priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them take it again (PATCH
 /v1/accounts/{name}). ``account policy PROJECT`` prints the caller's policy for a project (GET
 /v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
-``--reset`` drops it, so the defaults hold again (DELETE). Standard library only, like the rest of the client.
+``--reset`` drops it, so the defaults hold again (DELETE). ``account list`` and ``account show`` remind the member to
+renew an account that ends within RENEW_WITHIN_DAYS days, or has ended.
+
+``account login NAME`` adds a Claude account, or renews the token of one: it runs ``claude setup-token`` unchanged on
+the member's machine (``evo_agents.hub.setup_token``), where the member approves in the browser, takes the token it
+prints off its screen, and writes it with PUT /v1/secrets/{name} as an env secret for CLAUDE_CODE_OAUTH_TOKEN, ending a
+year from today less a day unless ``--expires`` says otherwise. With ``--paste``, when stdin is not a terminal, or
+when the screen held no token, the token is read as ``secret set`` reads a value. An API key of the Anthropic Console
+is refused, pointing at ANTHROPIC_API_KEY. Renewing an account sends its projects and workers again unless a flag
+gives others; PUT keeps the id of the secret, so its weight, priority, pause, cooldown and runs stay. Every check that
+needs no token (the name, the day, the projects' writer role, the workers) comes before ``claude setup-token`` runs,
+so a token it makes is not lost to a refusal. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -26,19 +37,23 @@ from __future__ import annotations
 import argparse
 import getpass
 import re
+import shutil
 import sys
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
+from evo_agents.hub import setup_token
+from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import (
     MAX_COOLDOWN_SECONDS,
     MAX_FAILOVERS,
     MAX_PRIORITY,
     MAX_WEIGHT,
     MIN_COOLDOWN_SECONDS,
+    RENEW_WITHIN_DAYS,
     STRATEGIES,
 )
-from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
+from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, SECRET_KINDS, SECRET_NAME, env_name_refusal
 from evo_agents.hub.curator import money
@@ -109,13 +124,19 @@ def target(args) -> dict:
     return {"url_prefix": args.url_prefix, **({"username": args.username} if args.username is not None else {})}
 
 
-def read_value(name: str, stdin=None) -> str:
+NO_VALUE = (
+    "no value: pipe it on stdin, such as `pbpaste | evo-agents hub secret set NAME ...`, or run the command in a "
+    "terminal to be asked for it"
+)
+
+
+def read_value(name: str, stdin=None, prompt: str | None = None, missing: str = NO_VALUE) -> str:
     """The secret's value: stdin when it is not a terminal, one final line break dropped; else asked for without
-    echo. Refused when nothing came."""
+    echo, with ``prompt``. Refused with ``missing`` when nothing came."""
     stream = sys.stdin if stdin is None else stdin
     if stream is not None and stream.isatty():
         try:
-            value = getpass.getpass(f"Value of secret {name} (not shown): ")
+            value = getpass.getpass(prompt or f"Value of secret {name} (not shown): ")
         except EOFError:
             value = ""
     else:
@@ -125,10 +146,7 @@ def read_value(name: str, stdin=None) -> str:
         elif value.endswith("\n"):
             value = value[:-1]
     if not value:
-        raise Refused(
-            "no value: pipe it on stdin, such as `pbpaste | evo-agents hub secret set NAME ...`, or run the command "
-            "in a terminal to be asked for it"
-        )
+        raise Refused(missing)
     return value
 
 
@@ -379,7 +397,37 @@ def cmd_account_list(args) -> int:
     ]
     header = ("NAME", "VARIABLE", "STATE", "WEIGHT", "PRIORITY", "COOLS UNTIL", "USAGE", "RUNS 24H/7D", "COST 7D")
     _table((*header, "HELD BY", "PROJECTS", "WORKERS"), rows)
+    now = datetime.now(UTC)
+    reminders = []
+    for a in found:
+        text, due = _expiry(a, now)
+        if due:
+            reminders.append(f"Account {a['name']}: expires {text}.")
+    if reminders:
+        print("\n" + "\n".join(reminders))
     return 0
+
+
+def _renew_command(account: dict) -> str:
+    if account["env_var"] == setup_token.ENV_VAR:
+        return f"`evo-agents hub account login {account['name']}`"
+    return f"`evo-agents hub secret set {account['name']} --kind env --env-var {account['env_var']} ...`"
+
+
+def _expiry(account: dict, now: datetime) -> tuple[str, bool]:
+    """When the account ends, as ``account show`` says it, and whether it is due for renewal: it ends within
+    RENEW_WITHIN_DAYS days, or has ended."""
+    if not account["expires_at"]:
+        return "never", False
+    when = f"{_when(account['expires_at'])} UTC"
+    left = datetime.fromisoformat(account["expires_at"]) - now
+    if left > timedelta(days=RENEW_WITHIN_DAYS):
+        return when, False
+    renew = f"renew it with {_renew_command(account)}"
+    if left <= timedelta(0):
+        return f"{when}, already past, so no run takes it: {renew}", True
+    days = f"in {left.days} day(s)" if left.days else "in less than a day"
+    return f"{when}, {days}: {renew}", True
 
 
 def _percent(share) -> str:
@@ -415,18 +463,24 @@ def cmd_account_show(args) -> int:
     a = hub.call("GET", _account_path(args.name))
     if args.json:
         _print_json(a)
-        return 0
+    else:
+        _print_account(a)
+    return 0
+
+
+def _print_account(a: dict) -> None:
+    """An account as ``account show`` prints it."""
     held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
     usage = _usage_text(a["last_usage"])
     reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
     print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
     print(f"  Projects: {', '.join(a['projects']) or '-'}; workers: {', '.join(a['workers']) or 'any of yours'}.")
+    print(f"  Expires: {_expiry(a, datetime.now(UTC))[0]}.")
     print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {_when(a['last_leased_at'])} UTC.")
     print(f"  Last usage: {usage}{reported}.")
     print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
     print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
     print(f"  Held by: {held}.")
-    return 0
 
 
 @_client_command
@@ -482,6 +536,189 @@ def cmd_account_policy(args) -> int:
     return 0
 
 
+# `hub account login`: a Claude account from `claude setup-token`
+
+NO_CLAUDE = (
+    "there is no `claude` on PATH to run `claude setup-token` with. Install Claude Code "
+    "(https://code.claude.com/docs/en/setup), or run `claude setup-token` where it is installed and give the token "
+    "it prints to `evo-agents hub account login {name} --paste`, which asks for it without echo, or on stdin, such "
+    "as `pbpaste | evo-agents hub account login {name}`"
+)
+NO_TOKEN = (
+    "no token: run the command in a terminal, where it runs `claude setup-token` for you or asks for the token, or "
+    "pipe the token on stdin, such as `pbpaste | evo-agents hub account login NAME`"
+)
+API_KEY = (
+    "that is an API key of the Anthropic Console (sk-ant-api...), not a token of `claude setup-token`: an API key "
+    "goes in ANTHROPIC_API_KEY, with `evo-agents hub secret set NAME --kind env --env-var ANTHROPIC_API_KEY "
+    "--project PROJECT`"
+)
+
+
+def _say(text: str) -> None:
+    """A line for the member at the terminal, on stderr, so stdout holds the account alone."""
+    print(text, file=sys.stderr)
+
+
+def login_ends(day: str | None, now: datetime) -> str:
+    """When the account ends, in ISO 8601: 00:00 UTC of ``day`` (YYYY-MM-DD), which is to come, or of a year from
+    today (UTC) less a day when there is none. Refused for a day that is not one, or is past."""
+    if day is None:
+        return expires_at(setup_token.default_end(now.date()).isoformat())
+    ends = expires_at(day)
+    if datetime.fromisoformat(ends) <= now:
+        raise Refused(f"--expires {day} is past already: an account ends on a day to come")
+    return ends
+
+
+def login_body(args, existing: dict | None, ends: str) -> dict:
+    """What PUT /v1/secrets/{name} gets for the account, but its token: the projects and workers given, else those of
+    the account when it is one already. Refused for a secret of that name that is not an account for
+    CLAUDE_CODE_OAUTH_TOKEN, and for a new account without a project."""
+    var = setup_token.ENV_VAR
+    if existing is not None and (existing["kind"], existing["env_var"]) != ("env", var):
+        what = f"sets {existing['env_var']}" if existing["kind"] == "env" else f"is of kind {existing['kind']}"
+        raise Refused(f"your secret {args.name} {what}, not {var}: give the Claude account another name")
+    projects = args.project or (existing["projects"] if existing else [])
+    if not projects:
+        raise Refused("a new account needs --project, a project whose runs take it; repeat it for several")
+    workers = args.worker if args.worker is not None else (existing["workers"] if existing else [])
+    return {"kind": "env", "env_var": var, "projects": projects, "workers": workers, "expires_at": ends}
+
+
+def check_bindings(hub, body: dict) -> None:
+    """Refused for a project of ``body`` the caller does not hold the writer role on, or a worker that is not one of
+    theirs, as PUT /v1/secrets would refuse them: asked before ``claude setup-token`` makes a token, so none is made
+    to be lost."""
+    me = hub.call("GET", "/v1/auth/whoami")
+    roles = {grant["project"]: grant["role"] for grant in me["grants"]}
+    for project in body["projects"]:
+        if not has_role(roles.get(project), "writer"):
+            held = roles.get(project) or "no role"
+            raise Refused(f"an account for project {project} needs the writer role on it; you hold {held}")
+    if body["workers"]:
+        mine = {w["name"].lower() for w in hub.call("GET", "/v1/workers") if w["owner"] == me["login"]}
+        for worker in body["workers"]:
+            if worker.lower() not in mine:
+                raise Refused(f"{worker} is not a worker of yours that is not revoked: see GET /v1/workers")
+
+
+def login_token(value: str) -> str:
+    """The token as given, without the spaces and line breaks around it; Refused for an API key, or for what cannot
+    be one token."""
+    token = value.strip()
+    if not token:
+        raise Refused(NO_TOKEN)
+    if setup_token.is_api_key(token):
+        raise Refused(API_KEY)
+    if any(char.isspace() for char in token):
+        raise Refused("the token holds a space or a line break: give it as one line")
+    check_value("env", token)
+    return token
+
+
+def _login_intro(name: str, existing: dict | None, body: dict) -> str:
+    projects = ", ".join(body["projects"])
+    workers = ", ".join(body["workers"]) or "any worker of yours"
+    ends = f"{_when(body['expires_at'])} UTC"
+    if existing is None:
+        return f"Adding account {name} ({body['env_var']}) for project(s) {projects}, on {workers}; it ends {ends}."
+    return (
+        f"{name} is an account of yours already: this replaces its token, which ends {ends}, for project(s) "
+        f"{projects}, on {workers}. Its weight, priority, pause, cooldown and runs stay as they are."
+    )
+
+
+def _login_value(name: str, claude: str | None) -> str:
+    """The token: what ``claude setup-token`` printed when ``claude`` runs it and its screen held one, else read
+    from stdin or asked for without echo."""
+    if claude is not None:
+        _say(
+            "Running `claude setup-token`: sign in to Claude in the browser it opens. The token it prints goes to the "
+            "hub sealed, and is not shown here."
+        )
+        token = setup_token.run(claude)
+        if token is not None:
+            _say("Took the token `claude setup-token` printed.")
+            return token
+        _say("Found no token in what `claude setup-token` printed: paste it, or press Enter to stop.")
+    prompt = f"Token of `claude setup-token` for account {name} (not shown): "
+    return read_value(name, prompt=prompt, missing=NO_TOKEN)
+
+
+@_client_command
+def cmd_account_login(args) -> int:
+    try:
+        check_name(args.name)
+        ends = login_ends(args.expires, datetime.now(UTC))
+    except Refused as exc:
+        return _usage_error(str(exc))
+    hub, _ = _signed_in()
+    claude = None
+    if not args.paste and sys.stdin is not None and sys.stdin.isatty():
+        claude = shutil.which("claude")
+        if claude is None:
+            print(f"error: {NO_CLAUDE.format(name=args.name)}", file=sys.stderr)
+            return EXIT_FAILED
+    existing = next((s for s in hub.call("GET", "/v1/secrets") if s["name"] == args.name), None)
+    try:
+        body = login_body(args, existing, ends)
+        check_bindings(hub, body)
+        _say(_login_intro(args.name, existing, body))
+        token = login_token(_login_value(args.name, claude))
+    except Refused as exc:
+        return _usage_error(str(exc))
+    written = hub.call("PUT", _secret_path(args.name), {**body, "value": token})
+    account = hub.call("GET", _account_path(args.name))
+    if args.json:
+        _print_json(account)
+        return 0
+    if written["created"]:
+        print(f"Created account {args.name}. The hub keeps its token sealed and never shows it again.")
+    else:
+        print(
+            f"Replaced the token of account {args.name}; its weight, priority, pause, cooldown and runs stay. The hub "
+            "keeps the token sealed and never shows it again."
+        )
+    _print_account(account)
+    return 0
+
+
+def _register_login(asub) -> None:
+    login = asub.add_parser(
+        "login",
+        help="add a Claude account, or renew its token: runs `claude setup-token` and puts the token it prints on the "
+        "hub, never on the screen",
+    )
+    login.add_argument("name", metavar="NAME", help="1 to 64 of a-z, 0-9, '.', '_' and '-'; an account's to renew it")
+    login.add_argument(
+        "--project",
+        action="append",
+        metavar="PROJECT",
+        help="a project whose runs take it, on which you hold writer; repeat it for several (a new account needs one; "
+        "renewing keeps the account's projects)",
+    )
+    login.add_argument(
+        "--worker",
+        action="append",
+        metavar="NAME",
+        help="only runs on this worker of yours take it; repeat it for several (default: any worker of yours; "
+        "renewing keeps the account's workers)",
+    )
+    login.add_argument(
+        "--expires",
+        metavar="YYYY-MM-DD",
+        help="no run takes it from 00:00 UTC of this day on (default: a year from today, less a day)",
+    )
+    login.add_argument(
+        "--paste",
+        action="store_true",
+        help="do not run `claude setup-token`: ask for the token without echo, or read it from stdin",
+    )
+    json_option(login, returns_object(*ACCOUNT_KEYS, schema="Account"))
+    login.set_defaults(func=cmd_account_login)
+
+
 def _named(sub, command: str, help: str, func) -> argparse.ArgumentParser:
     parser = sub.add_parser(command, help=help)
     parser.add_argument("name", metavar="NAME", help="one of your env secrets")
@@ -523,6 +760,7 @@ def register_accounts(hsub) -> None:
     )
     _named(asub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_account_pause)
     _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
+    _register_login(asub)
 
     policy = asub.add_parser(
         "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"
