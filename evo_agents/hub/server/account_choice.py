@@ -18,12 +18,18 @@ Each event names an account by its secret's id, never its name: the run's log is
 
 Two runs asking at once cannot take the same turn of a rotation: before it reads them, the ask creates the accounts
 rows of the secrets it weighs (none existing) and locks them, in the order of their ids, until it commits.
+
+``fail_over`` is what the hub does when a run's account hits its usage limit (``rate_limits``): the account cools down
+until the reset its runtime gave, else for the policy's ``cooldown_seconds``; then, unless the account was picked by
+hand, the policy turns failover off or the run failed over ``max_failovers`` times already, the run takes the next
+ready account by the same tiers and strategy, its run_accounts row moves to it and counts one more failover. With no
+account ready it stays and stops, and the answer says when the first one is ready again.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 
 from sqlalchemy import func, select, update
@@ -170,13 +176,17 @@ def _decide(
     return _fallback(env_var, secrets, states, strategy)
 
 
-async def _record(conn: AsyncConnection, run_id: int, env_var: str, choice: _Choice) -> None:
+async def _record(
+    conn: AsyncConnection, run_id: int, env_var: str, choice: _Choice, failovers: int | None = None
+) -> None:
     a, ra = tables.accounts, tables.run_accounts
     values = {"last_leased_at": func.now()}
     if choice.rotation is not None:
         values["rotation"] = choice.rotation
     await conn.execute(update(a).where(a.c.secret_id == choice.secret.id).values(**values))
     took = {"secret_id": choice.secret.id, "how": choice.how, "chosen_at": func.now()}
+    if failovers is not None:
+        took["failovers"] = failovers
     statement = insert(ra).values(run_id=run_id, env_var=env_var, **took)
     await conn.execute(statement.on_conflict_do_update(index_elements=[ra.c.run_id, ra.c.env_var], set_=took))
 
@@ -209,3 +219,94 @@ async def choose_accounts(conn: AsyncConnection, run: Run, secrets: list[Secret]
 
 def _id(choice: _Choice) -> int | None:
     return choice.secret.id if choice.secret is not None else None
+
+
+# When a run's account hits its usage limit
+
+
+@dataclass(frozen=True)
+class Failover:
+    """What ``fail_over`` decided: the account the run moves to, or why it stays and when one is ready first."""
+
+    secret: Secret | None  # None: the run cannot move
+    failovers: int  # the times the run moved, this one included
+    cooling_until: datetime  # until when the limited account cools down
+    reason: str | None = None  # why the run cannot move
+    ready_at: datetime | None = None  # when it cannot: the earliest end of a cooldown among its accounts
+
+
+async def _taken(conn: AsyncConnection, run_id: int, env_var: str) -> tuple[int | None, str | None, int]:
+    """(secret id, how, failovers) of the account run ``run_id`` took for ``env_var``, or the run it resumes took."""
+    ra, r = tables.run_accounts, tables.runs
+    resumed = select(r.c.resume_of_run_id).where(r.c.id == run_id).scalar_subquery()
+    row = (
+        await conn.execute(
+            select(ra.c.run_id, ra.c.secret_id, ra.c.how, ra.c.failovers)
+            .where(ra.c.run_id.in_([run_id, resumed]), ra.c.env_var == env_var)
+            .order_by((ra.c.run_id == run_id).desc())
+            .limit(1)
+        )
+    ).one_or_none()
+    if row is None:
+        return None, None, 0
+    return row.secret_id, row.how, row.failovers if row.run_id == run_id else 0
+
+
+async def _cool(conn: AsyncConnection, secret_id: int, until: datetime, reason: str) -> datetime:
+    """Put the account in cooldown until ``until`` at least; the end of its cooldown."""
+    a = tables.accounts
+    statement = (
+        update(a)
+        .where(a.c.secret_id == secret_id)
+        .values(
+            cooldown_until=func.greatest(func.coalesce(a.c.cooldown_until, until), until),
+            cooldown_reason=reason,
+            updated_at=func.now(),
+        )
+        .returning(a.c.cooldown_until)
+    )
+    return (await conn.execute(statement)).scalar_one()
+
+
+def _why_not(how: str | None, policy: dict, failovers: int) -> str | None:
+    if how == "manual":
+        return "its account was picked by hand"
+    if not policy["failover"]:
+        return "the owner's policy turns failover off"
+    if failovers >= policy["max_failovers"]:
+        return f"it failed over {failovers} times, the most its owner's policy allows"
+    return None
+
+
+async def fail_over(
+    conn: AsyncConnection, run: Run, secrets: list[Secret], env_var: str, current: int, limit: tuple
+) -> Failover:
+    """Cool account ``current`` down, which run ``run`` holds for ``env_var`` and which hit its usage limit, and move
+    the run to another one of ``secrets`` when it may, as the module says. ``limit`` is (the reset the runtime gave or
+    None, the cooldown's reason). A run that moved already answers the account it moved to, as a retry would."""
+    resets_at, reason = limit
+    policy = await account_policy(conn, run.owner_id, run.project_id)
+    own = [s for s in secrets if s.kind == "env" and s.env_var == env_var]
+    states = await _lock_accounts(conn, [s.id for s in own] + [current])
+    now = datetime.now(UTC)
+    until = (
+        resets_at if resets_at is not None and resets_at > now else now + timedelta(seconds=policy["cooldown_seconds"])
+    )
+    until = await _cool(conn, current, until, reason)
+    taken, how, failovers = await _taken(conn, run.id, env_var)
+    others = [s for s in own if s.id != current]
+    if failovers and taken != current and taken in {s.id for s in others}:
+        return Failover(next(s for s in others if s.id == taken), failovers, until)
+    why = _why_not(how, policy, failovers)
+    if why is None:
+        for tier_how, tier in _tiers(others, run.curator is not None):
+            ready = [s for s in tier if not states[s.id].paused and states[s.id].cooling_until is None]
+            found = pick([_candidate(s, states[s.id]) for s in ready], policy["strategy"])
+            if found is not None:
+                rotation = found[1] if policy["strategy"] != "fill-first" else None
+                secret = next(s for s in ready if s.id == found[0].id)
+                await _record(conn, run.id, env_var, _Choice(secret, tier_how, rotation), failovers + 1)
+                return Failover(secret, failovers + 1, until)
+        why = f"no other account for {env_var} is ready"
+    cooling = [states[s.id].cooling_until for s in others if not states[s.id].paused and states[s.id].cooling_until]
+    return Failover(None, failovers, until, why, min([until, *cooling]))

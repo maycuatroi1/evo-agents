@@ -2,10 +2,10 @@
 attributes (``tables.accounts``, ``tables.account_policies``, ``tables.run_accounts``): queries name them there.
 
 accounts holds what a member set on one of their env secrets as an account, and where it stands: its weight and
-priority, when its owner paused it, until when it cools down and why, when a run last took it, and its place in the
-rotation (``evo_agents.hub.accounts.pick``). A secret without a row has the defaults. account_policies holds a
-member's policy for a project; none means DEFAULT_POLICY. run_accounts holds the account each run took for each
-variable and how, so the run keeps it on every ask for its leases.
+priority, when its owner paused it, until when it cools down and why, when a run last took it, its place in the
+rotation (``evo_agents.hub.accounts.pick``), and the last usage a run reported for it (0027). A secret without a row
+has the defaults. account_policies holds a member's policy for a project; none means DEFAULT_POLICY. run_accounts
+holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
 """
 
 from __future__ import annotations
@@ -27,6 +27,7 @@ from sqlalchemy import (
     func,
     true,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 
 
 def _stamp(name: str) -> Column:
@@ -51,6 +52,8 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         _when("last_leased_at"),
         Column("rotation", Double, nullable=False, server_default="0"),
         _stamp("updated_at"),
+        Column("last_usage", JSONB),  # 0027: the last usage a run reported (rate_limits), never a value
+        _when("last_usage_at"),
         ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="accounts_secret_id_fkey"),
         PrimaryKeyConstraint("secret_id", name="accounts_pkey"),
     )

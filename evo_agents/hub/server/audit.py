@@ -73,6 +73,9 @@ SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bi
 ACCOUNT_SET = "account.set"  # the owner changed the weight or priority of an account, or paused or resumed it
 ACCOUNT_POLICY_PUT = "account.policy-put"  # the member set their policy for the project
 ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the defaults hold again
+# A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
+# run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
+ACCOUNT_FAILOVER = "account.failover"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases
