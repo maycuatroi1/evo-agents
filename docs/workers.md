@@ -31,7 +31,7 @@ how decisions and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 8 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`) | `workers` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots and labels after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
 | run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md` | `runs` |
@@ -64,6 +64,11 @@ names its schedule and night and carries its caps (`budget`, see [Runs of the ni
   machine token that leaked cannot hand it work; a message or a decision answer sent with a token to a run on it, or
   that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
+- **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels and name, from a
+  web session with its CSRF header or with the owner's machine token. A hub admin who does not own the worker gets
+  403 and anyone else 404, and a revoked worker is 409. The projects a worker serves and whether it allows the web
+  terminal are not settings: the machine sets them when it joins or registers, and changing them means registering
+  again.
 - **Roles on the project still apply.** Dispatching needs the writer role; reading runs, events and diffs needs
   reader. Messages, takeover, handback, cancel, approve, rerun and the terminal belong to the run's owner, the member
   who dispatched it. A worker takes runs only of the projects it was registered for, and only while its owner still
@@ -94,7 +99,7 @@ acts on them with the owner's permissions. Whoever controls the hub server itsel
 through the API, can hand work to every worker; signing dispatches with a key kept on the owner's machine is an open
 question. The web terminal is a remote shell into the machine, which is why it has the extra checks under
 [Terminal](#terminal). Every dispatch, cancel, approve, rerun, pairing, join, registration, drain, change of
-`dispatch_from`, revoke and terminal session leaves an audit row (`run.*`, `worker.*`, `terminal.open`,
+`dispatch_from` or of settings (`worker.update`), revoke and terminal session leaves an audit row (`run.*`, `worker.*`, `terminal.open`,
 `terminal.close`), and so does each message, takeover and handback (`run.message`, `run.takeover`, `run.handback`); a row names the run and the message by id,
 never the text.
 
@@ -487,7 +492,7 @@ members do not use the header.
 ### Joining
 
 The owner creates a pairing on the web (`POST /v1/workers/pairings`, with the session's CSRF header, or with a
-machine token), naming the worker, its projects (each one the owner holds writer on; 403 otherwise), slots, labels
+machine token), naming the worker, its projects (each one the owner holds writer on; 403 otherwise), slots (1 to 16), labels
 and whether it allows the web terminal. The code is 8 characters of Crockford base32 written `XXXX-XXXX`; it lasts 10
 minutes, and a member has at most 5 codes that are neither used nor expired (409 for a sixth); a locked code counts
 until it expires, so locking codes does not free a place. The hub keeps the HMAC-SHA256 of the whole code under
@@ -594,6 +599,7 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 ```json
 {
   "drain": false,
+  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"]},
   "runs": [{"id": 12, "held": true, "state": "running", "lease_expires_at": "...", "cancel": false,
             "takeover": false, "handback": false, "terminal_open": false, "park": false, "inbox": 0,
             "decisions": 0}]
@@ -602,7 +608,13 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
 (`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
-whether to `drain`. A run the worker reports but no longer holds (lost, cancelled, or another worker's now) comes back
+whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`), which the owner may change
+with `PATCH /v1/workers/{id}`. When they differ from `config.json`, the daemon takes them in memory, writes
+`config.json` again (atomically, mode 0600, its other fields as they are on disk) and logs the old and new values. More
+slots are claimed at the next turn of the claim loop, without a restart; fewer stop no run, and the daemon only
+claims nothing until it holds fewer runs than the new slots. The hub counts the runs a worker holds against its slots
+as they are now at each claim, whatever the daemon reports. A daemon of 0.13.1 or older ignores `settings`, as it does
+any key it does not know, and a hub before schema 0026 sends none. A run the worker reports but no longer holds (lost, cancelled, or another worker's now) comes back
 with `held: false`, `state: null` and `cancel: true`. A plan run the reaper parked, or one that is done because a new
 run resumes it, comes back with `held: false`, its state, `cancel: false` and `park: true`: the worker stops the agent
 at the end of its turn, keeps the session and the worktrees, and frees the slot. The heartbeat also settles the agent
@@ -721,6 +733,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}` | member | create a pairing code, follow it |
 | `POST /v1/workers` | member (machine token) | register this machine directly |
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
+| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them) or `name` (unique among the owner's workers not revoked, 409 otherwise), at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
@@ -955,7 +968,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | offline after | 300 s without a heartbeat |
 | lease | 300 s (`EVO_HUB_RUN_LEASE_SECONDS`, 5 to 3600), extended by each heartbeat |
 | attempts per dispatch | 3 |
-| slots per worker | 1 to 8 |
+| slots per worker | 1 to 16 |
 | run timeout | 5 to 240 minutes; a plan run 2, 4, 8 or 24 hours of agent time |
 | decision | 2 to 6 options, context 16 KiB; parked after 24 hours waiting, cancelled 7 days later |
 | prompt of a plan run | 32 KiB, its list of steps 14 KiB |
@@ -1011,8 +1024,8 @@ again at its start.
 ### State on the machine
 
 Everything lives under `~/.evo/worker` (or `$EVO_WORKER_HOME`), mode 0700: `token` (0600) holds the `evw_` token,
-which no command prints; `config.json` (0600) the hub, the worker as the hub registered it and the repos of its
-projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB with five old files kept, with tokens,
+which no command prints; `config.json` (0600) the hub, the worker as the hub registered it (its name, slots and labels as the last heartbeat
+answer gave them) and the repos of its projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB with five old files kept, with tokens,
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
