@@ -1959,7 +1959,8 @@
         "draining": "đang ngừng nhận việc",
         "runtime": "không có {runtime}",
         "runtimeAny": "chưa báo runtime nào",
-        "checkout": "không có checkout của {repos}"
+        "checkout": "không có checkout của {repos}",
+        "sessionPerStep": "daemon của nó chỉ chạy một phiên cho mọi bước"
       },
       "errors": {
         "forbidden": "Hub từ chối: dispatch cần quyền ghi trên dự án này, và worker được ghim phải là worker của bạn.",
@@ -1973,12 +1974,20 @@
       "kind": "Plan run",
       "button": "Chạy plan",
       "title": "Chạy plan",
-      "description": "Một run trên một worker của bạn làm mọi bước chưa xong của <name>{plan}</name>, theo thứ tự depends_on và trong một phiên, và chỉ hỏi bạn những quyết định quan trọng.",
+      "description": "Một run trên một worker của bạn làm mọi bước chưa xong của <name>{plan}</name>, theo thứ tự depends_on và {sessions, select, step {mỗi bước một phiên mới} other {trong một phiên}}, và chỉ hỏi bạn những quyết định quan trọng.",
       "loading": "Đang tải các bước của plan",
       "loadFailed": "Không tải được các bước của plan. Đóng hộp thoại rồi thử lại.",
       "timeout": "Thời gian tối đa",
       "timeoutValue": "{hours} giờ",
       "timeoutHint": "Thời gian agent được chạy. Lúc chờ bạn trả lời hay lúc tạm gác không tính vào.",
+      "sessions": {
+        "legend": "Phiên",
+        "label": "Mỗi bước một phiên mới",
+        "hintOff": "Tắt: một phiên agent làm mọi bước, nên những gì nó đã đọc cho bước trước vẫn nằm trong context ở bước sau.",
+        "hintOn": "Mỗi bước bắt đầu một phiên agent mới. Prompt của phiên là bước đó kèm bản bàn giao của plan: goal, việc các bước trước đã làm, các dòng Decision và commit của chúng. Context của từng phiên nhỏ; quyết định vẫn được trả lời trong phiên của bước đã hỏi.",
+        "reach": "Worker của bạn cho dự án này chạy được: {count} trên {total}.",
+        "reachNone": "Chưa worker nào của bạn cho dự án này chạy được: nâng evo-agents trên một máy rồi khởi động lại daemon của nó."
+      },
       "submit": "Chạy plan",
       "submitting": "Đang đưa vào queue…",
       "holds": "<link>Plan run #{id}</link> ({state}, do {login} giao) giữ mọi bước của plan này tới khi kết thúc.",
@@ -2196,6 +2205,21 @@
         "noneYet": "Chưa có số liệu",
         "noneEnded": "Runtime không báo số liệu"
       },
+      "stepSessions": {
+        "title": "Phiên của từng bước",
+        "count": "{count, plural, other {# phiên}}",
+        "pending": "Có danh sách khi run kết thúc",
+        "none": "Không có phiên nào được báo",
+        "step": "Bước {step}",
+        "noSession": "không có id phiên",
+        "copy": "Chép id phiên của bước {step}",
+        "peak": "context đỉnh {tokens}",
+        "peakUnknown": "runtime không báo context đỉnh",
+        "cacheRead": "đọc cache {tokens}",
+        "inRun": "trong run #{id}",
+        "leftOut": "{count, plural, other {# phiên trước đó}} không có trong danh sách này.",
+        "note": "Log ghi phiên của mỗi bước khi phiên bắt đầu."
+      },
       "planSteps": {
         "title": "Các bước của plan",
         "count": "Xong {done}/{total} ({percent}%)",
@@ -2364,6 +2388,8 @@
         "repos": "Repo",
         "on": "trên nhánh",
         "session": "Session",
+        "sessions": "Phiên",
+        "sessionsValue": "{each, select, step {Mỗi bước một phiên mới} other {Một phiên cho mọi bước}}",
         "none": "chưa có",
         "lease": "Lease",
         "leaseLeft": "hết hạn sau {minutes} phút {seconds} giây",

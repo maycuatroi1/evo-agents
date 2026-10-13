@@ -35,6 +35,7 @@ import { RunDetails, RunResult } from "./run-facts";
 import { RunLogCard, SESSION_TABS, type SessionTab } from "./run-log";
 import { runControls } from "./run-model";
 import { RunPlanSteps } from "./run-plan-steps";
+import { RunSessions } from "./run-sessions";
 import { RunTerminalPanel } from "./run-terminal";
 import { RunTimeline } from "./run-timeline";
 import { terminalAccess } from "./terminal-model";
@@ -263,6 +264,7 @@ function RunPage({ run }: { run: Run }) {
           <div className="grid min-w-0 items-start gap-4 md:grid-cols-2 xl:grid-cols-1" data-testid="run-side">
             <RunDetails run={run} viewer={viewer} />
             <UsageMeter run={run} events={log.events} />
+            {plan && run.session_per_step ? <RunSessions run={run} /> : null}
             {plan ? <RunPlanSteps run={run} /> : null}
             <RunResult run={run} />
             {controls.owner ? <RunCredentials run={run} /> : null}

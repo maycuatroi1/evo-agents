@@ -18,7 +18,8 @@ the plan and the revision, never its content, all in one transaction.
 Reads go through a sink of the project (X-Evo-Sink, by default its hub sink) and follow ``ProjectAccess.visible``;
 a plan the caller cannot see answers the same 404 as one that does not exist. Reading needs a grant on the project:
 a hub admin without one is answered 403, as by the knowledge graph. GET .../diff compares two revisions line by line
-as their git copies read (``evo_agents.hub.plan_diff``). Writes need the writer role, and
+as their git copies read (``evo_agents.hub.plan_diff``), and GET .../handoff builds the handoff of the plan for a new
+agent session within a token budget (``evo_agents.hub.handoff``). Writes need the writer role, and
 the plan's label must stay below the clearance of the project's hub sink (``ProjectAccess.push_label``).
 """
 
@@ -43,6 +44,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, build_handoff
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
 from evo_agents.hub.plans import (
     AREAS,
@@ -175,6 +177,17 @@ class PlanDiff(BaseModel):
     added: int = Field(description="lines added in all hunks")
     removed: int = Field(description="lines removed in all hunks")
     hunks: list[PlanDiffHunk] = Field(description="empty when the two revisions read the same")
+
+
+class PlanHandoff(BaseModel):
+    project: str
+    plan_id: str
+    revision: int
+    step: str | None = Field(description="the step the handoff is for, whose dependencies' evidence comes first")
+    budget_tokens: int
+    tokens: int = Field(description="the text's size as the hub estimates it: UTF-8 bytes / 3, rounded up")
+    cut: bool = Field(description="whether anything was cut or left out to stay within the budget")
+    text: str = Field(description="the handoff, as evo_agents.hub.handoff builds it; markdown")
 
 
 class PlanPut(BaseModel):
@@ -473,6 +486,43 @@ async def diff(
             )
             for h in found.hunks
         ],
+    )
+
+
+@router.get("/{plan_id}/handoff", response_model=PlanHandoff, responses=READ_REFUSALS)
+async def handoff(
+    request: Request,
+    project: ProjectName,
+    plan_id: PlanId,
+    user: CurrentUser,
+    step: Annotated[str | None, Query(max_length=200, description="a step: its dependencies' evidence first")] = None,
+    budget_tokens: Annotated[
+        int, Query(ge=MIN_BUDGET_TOKENS, le=MAX_BUDGET_TOKENS, description="the most tokens the text may take")
+    ] = DEFAULT_BUDGET_TOKENS,
+    sink: Annotated[str | None, Header(alias=SINK_HEADER)] = None,
+) -> PlanHandoff:
+    """What a new agent session needs to take the plan up, built from the plan as the hub holds it: its goal, the
+    steps done with their commits, Decision lines and evidence, the steps not done, within ``budget_tokens``
+    (``evo_agents.hub.handoff``). Read under the rule of GET .../plans/{plan_id}; 404 for a step the plan lacks."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        _reader(access)
+        held = await _visible(conn, access, plan_id, sink)
+    try:
+        built = await asyncio.to_thread(
+            build_handoff, held.body, project=project, revision=held.revision, step=step, budget_tokens=budget_tokens
+        )
+    except PlanProblem as exc:
+        raise HTTPException(404, f"plan {plan_id}: {exc}") from None
+    return PlanHandoff(
+        project=project,
+        plan_id=plan_id,
+        revision=held.revision,
+        step=step,
+        budget_tokens=budget_tokens,
+        tokens=built.tokens,
+        cut=built.cut,
+        text=built.text,
     )
 
 

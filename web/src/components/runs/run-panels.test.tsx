@@ -10,6 +10,7 @@ import { renderVi } from "@/test/render";
 import type { RunMove } from "./log-model";
 import type { Run, RunEvent } from "./queries";
 import { RunNotes } from "./run-actions";
+import { RunSessions } from "./run-sessions";
 import type { RunControls } from "./run-model";
 import { RunTimeline } from "./run-timeline";
 import { UsageMeter } from "./usage-meter";
@@ -65,6 +66,44 @@ describe("UsageMeter", () => {
     renderVi(<UsageMeter run={{ ...run, state: "failed" } as Run} events={[]} />);
     expect(screen.getByTestId("run-usage-empty")).toHaveTextContent(/^Runtime không báo số liệu$/);
     expect(within(screen.getByTestId("run-usage")).getByRole("heading", { name: "Mức dùng" })).toBeInTheDocument();
+  });
+});
+
+describe("RunSessions", () => {
+  const planRun = { id: 31, project: "demo", kind: "plan", state: "done", usage: null } as unknown as Run;
+
+  it("lists the session of each step, with the run that ran it when it is another", () => {
+    const usage = {
+      input_tokens: 17,
+      peak_context_tokens: 90_000,
+      sessions: [
+        { step: "1", session_id: "sess-aaaa-1111", run_id: 30, peak_context_tokens: 90_000, cache_read_input_tokens: 1_200_000 },
+        { step: "2", session_id: "sess-bbbb-2222", run_id: 31, peak_context_tokens: null, cache_read_input_tokens: 400 },
+      ],
+      sessions_left_out: 2,
+    };
+    renderVi(
+      <TooltipProvider>
+        <RunSessions run={{ ...planRun, usage } as unknown as Run} />
+      </TooltipProvider>,
+    );
+    const card = screen.getByTestId("run-step-sessions");
+    expect(within(card).getByRole("heading", { name: "Phiên của từng bước" })).toBeInTheDocument();
+    expect(within(card).getByTestId("run-step-sessions-status")).toHaveTextContent("4 phiên");
+    const [first, second] = within(card).getAllByTestId("run-step-session");
+    expect(first).toHaveTextContent("Bước 1");
+    expect(first).toHaveTextContent("context đỉnh 90.000, đọc cache 1.200.000");
+    expect(within(first).getByTestId("run-step-session-run")).toHaveAttribute("href", "/p/demo/runs/30");
+    expect(second).toHaveTextContent("runtime không báo context đỉnh, đọc cache 400");
+    expect(within(second).queryByTestId("run-step-session-run")).toBeNull();
+    expect(card).toHaveTextContent("2 phiên trước đó không có trong danh sách này.");
+  });
+
+  it("says the list comes with the run's end while it runs", () => {
+    renderVi(<RunSessions run={{ ...planRun, state: "running" } as Run} />);
+    expect(screen.getByTestId("run-step-sessions-status")).toHaveTextContent(/^Có danh sách khi run kết thúc$/);
+    expect(screen.getByTestId("run-step-sessions")).toHaveTextContent("Log ghi phiên của mỗi bước khi phiên bắt đầu.");
+    expect(screen.queryAllByTestId("run-step-session")).toHaveLength(0);
   });
 });
 

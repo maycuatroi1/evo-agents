@@ -26,20 +26,9 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { DispatchDialog } from "./dispatch-dialog";
 import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
-import {
-  facetCount,
-  filtersSearch,
-  isFiltered,
-  listQuery,
-  NO_FILTERS,
-  readFilters,
-  RUN_FACETS,
-  type RunFacet,
-  type RunFilters,
-  type RunsSummary,
-  summarizeRuns,
-} from "./model";
 import { MAX_QUERY, runsQuery, runsSummaryQuery } from "./queries";
+import { facetCount, filtersSearch, isFiltered, listQuery, NO_FILTERS, readFilters, RUN_FACETS, type RunFacet, type RunFilters } from "./run-filters";
+import { type RunsSummary, summarizeRuns } from "./runs-summary";
 import { RunsTable } from "./runs-table";
 
 /** The filters in the URL, changed through the History API (Next.js syncs useSearchParams with it). */

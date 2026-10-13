@@ -99,6 +99,7 @@ def run_select():
             r.c.request,
             r.c.finish_requested_at,
             r.c.failure_cause,
+            r.c.session_per_step,
             lost_on.c.id.label("steady_wait_worker_id"),
             lost_on.c.name.label("steady_wait_worker"),
             case((beating(lost_on), lost_on.c.steady_since + STEADY), else_=None).label("steady_wait_at"),

@@ -1,4 +1,4 @@
-"""``evo-agents hub hook session-start|stop``: the Claude Code hooks of the evo-hub plugin.
+"""``evo-agents hub hook session-start|stop|post-tool-use``: the Claude Code hooks of the evo-hub plugin.
 
 SessionStart (startup, resume, clear) does in one process what three commands do for the session's directory:
 
@@ -42,6 +42,9 @@ A hook never fails the session and never holds it long:
 Stop prints nothing when all went well. A conflict, which a person has to merge, is a ``systemMessage`` for the person;
 any other failure is one line on stderr, the first one met, which Claude Code shows in its transcript view, so a hub
 that is down does not interrupt every turn. Standard library and PyYAML only, like the rest of the client.
+
+PostToolUse (``evo_agents.hub.spool``) writes a tool result longer than its threshold to a file under
+~/.evo/tool-output and hands the model its head, its tail and the file's path instead, by the same rules.
 """
 
 from __future__ import annotations
@@ -121,13 +124,14 @@ def budget(seconds: float):
         signal.signal(signal.SIGALRM, previous)
 
 
-def read_payload(stream=None) -> dict:
-    """The JSON object Claude Code writes to a hook's stdin; {} when there is none or it cannot be read."""
+def read_payload(stream=None, limit: int = MAX_PAYLOAD) -> dict:
+    """The JSON object Claude Code writes to a hook's stdin, read up to ``limit`` characters; {} when there is none or
+    it cannot be read."""
     stream = sys.stdin if stream is None else stream
     try:
         if stream is None or stream.isatty():
             return {}
-        data = json.loads(stream.read(MAX_PAYLOAD) or "{}")
+        data = json.loads(stream.read(limit) or "{}")
     except (OSError, ValueError):
         return {}
     return data if isinstance(data, dict) else {}
@@ -572,6 +576,12 @@ def cmd_hook_stop(args) -> int:
     return 0
 
 
+def cmd_hook_post_tool_use(args) -> int:
+    from evo_agents.hub.spool import cmd_hook_post_tool_use as run
+
+    return run(args)
+
+
 def register_hooks(hsub) -> None:
     hook = hsub.add_parser("hook", help="Claude Code hook entry points of the evo-hub plugin; they always exit 0")
     ksub = hook.add_subparsers(dest="hook_name", required=True)
@@ -585,3 +595,8 @@ def register_hooks(hsub) -> None:
         help="push the memory files of the session's directory that changed since the last sync, and the session's "
         "digest",
     ).set_defaults(func=cmd_hook_stop)
+    ksub.add_parser(
+        "post-tool-use",
+        help="write a tool result longer than EVO_SPOOL_THRESHOLD characters to a file under ~/.evo/tool-output and "
+        "give the model its head, its tail and the file's path instead",
+    ).set_defaults(func=cmd_hook_post_tool_use)

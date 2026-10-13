@@ -27,7 +27,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | --- | --- | --- |
 | Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat | `GET /v1/me/overview` |
 | Monitor, `/monitor` | every run in flight over the projects of your grants, and a grid of live tiles that shares out the window (up to nine within it, then four columns that scroll): each tile a run's state, worker, time, plan steps and the tail of its trace, for viewing only; `?runs=project:id,...` names the tiles, ended runs included, and without it the grid follows every run in flight | `GET /v1/me/overview`, `.../runs/{id}`, `.../stream?after=` (200 events before `last_seq`), `.../events?after=` while a stream fails |
-| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
+| a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises; for a plan run with a session for each step a Step sessions card, each step's agent session with its id to copy, the largest context it read and its cache reads; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
 | a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
@@ -78,7 +78,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
-| plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../complete` |
+| plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
@@ -98,10 +98,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 21 tools are the seven `kg_*` tools of `evo-agents kg serve`
-plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_step`, `skill_list`,
-`hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`, `digest_list`,
-`digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 22 tools are the seven `kg_*` tools of `evo-agents kg serve`
+plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
+`skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
+`digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
 sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
@@ -252,6 +252,7 @@ evo-agents hub plan show rollout                      # the plan as its copy rea
 evo-agents hub plan step rollout 2 done --evidence "pytest: 12 passed"
 evo-agents hub plan patch rollout --step 2 --set note="merged at abc1234"
 evo-agents hub plan history rollout
+evo-agents hub plan handoff rollout --step 3          # what a new session needs to take step 3 up
 evo-agents hub plan complete rollout                  # every step done: move it to completed
 evo-agents hub plan export . --commit                 # write the copies, commit exactly the ones that changed
 ```
@@ -260,6 +261,17 @@ evo-agents hub plan export . --commit                 # write the copies, commit
 read. When someone else wrote in between, the hub answers 409 with the current plan, and `plan step` and `plan patch`
 read it again and retry; pass `--if-revision N` to fail instead. `plan put FILE --if-revision N` replaces a whole
 plan from a file.
+
+`plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
+it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
+with its title, the commit hashes its evidence names, its lines that start with `Decision:` verbatim and the rest of
+its evidence cut, then the steps not done with their status and depends_on. `--step KEY` puts the evidence of the
+steps that step depends on first. The text stays within `--budget-tokens N` (1000 to 8000, default 4000), counted as
+UTF-8 bytes / 3, which is more than a tokenizer counts for English or Vietnamese prose. When it does not all fit, the
+goal, the steps it depends on and the steps not done go first, then the other steps done with their Decision lines,
+then the rest of the evidence; a part is left out whole, never cut in the middle of a Decision line, and a note at the
+end names what was left out and points to `plan_show`. The same revision and budget give the same text, and reading
+it needs what reading the plan needs: a grant on the project and a sink that clears the plan's label.
 
 A copy looks like this:
 
@@ -349,6 +361,7 @@ evo-agents hub run dispatch rollout 2 4 --approval auto       # one run per step
 evo-agents hub run dispatch rollout 5 --worker mac-mini --runtime codex --mode interactive --timeout 90
 evo-agents hub run dispatch rollout 6 --runtime claude-code --model opus
 evo-agents hub run plan rollout --worker mac-mini --timeout-h 8  # one plan run: every step not done yet
+evo-agents hub run plan rollout --session-per-step            # the same, each step in a new session with the handoff
 evo-agents hub run list --state running --state review        # newest first, with the runs in each state
 evo-agents hub run show 41
 evo-agents hub run logs 41 --follow                           # the live log, until the run ends
@@ -389,8 +402,13 @@ hub; the hub itself does not check the pair.
 does every step of the plan not done yet, in a worktree of each repo those steps name, and reports each step as it
 goes (`docs/workers.md`, Plan runs). It takes `--worker`, `--runtime`, `--model` and `--mode` as `dispatch` does, and
 `--timeout-h`, the hours of agent time the run may use: 2, 4, 8 or 24 (4 by default); the time it waits for your
-answer to a decision, or parked, does not count. The hub refuses a plan with no pending step, a plan with an active
-run of any kind, and a step not done that names no repo when the plan lists more than one. `dispatch`, `rerun` and
+answer to a decision, or parked, does not count. With `--session-per-step` the worker gives each step a new agent
+session, whose prompt is the step's with the handoff of the plan (`hub plan handoff`), instead of one session for every
+step; only a worker whose daemon says it does that takes the run, and one pinned with `--worker` that does not is
+refused (409). The flag is sent only when given, and `show` says which of the two a plan run is; the run's usage
+lists each step's session once it ends (`docs/workers.md`, A plan run with a session for each step). The hub refuses
+a plan with no pending step, a plan with an active run of any kind, and a step not done that names no repo when the
+plan lists more than one. `dispatch`, `rerun` and
 `plan` are refused (409, naming the repo, nothing dispatched) when a repo the run needs is one the project lists no
 origin for: no credential is leased for it, and the worker's preflight would fail the run anyway. `list` shows each run's
 KIND (`step`, `plan`, `review`, `judge` or `author`), and filters by `--state` (repeat it for several), `--plan`,
@@ -671,7 +689,11 @@ each turn that changed it, to the project the session's directory belongs to, de
 no project, and the session of a run's agent, whose trace is on the hub already, push none. A digest
 (`evo_agents/hub/digest.py`) counts the calls and failures of each tool (under `gen_ai.tool.name`) and of each program
 Bash ran, and keeps what the person wrote, the Bash commands and the text of failed results, each cut short, with the
-model, the tokens, the session's id and its directory. Before it leaves the machine every string that looks like a
+model, the tokens, the session's id and its directory. It also holds the largest context one message of the model read
+(`peak_context_tokens`: its input, cache creation and cache read tokens), how many times the context was compacted
+(`compactions`, the `compact_boundary` lines of the transcript) and the characters of each tool's results
+(`tool_result_chars`); the hub keeps them, and `digest_show` returns them, null in a digest an older client pushed.
+Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
 of any variable or key named as a secret, which is how a lease's value shows in a session; the machine's own hub
@@ -681,6 +703,55 @@ see it (`GET /v1/projects/{project}/digests`). A later turn replaces the digest;
 may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.json` and the next Stop that reaches
 the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
 days.
+
+**Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
+result out of the model's context. A successful result of Bash, Read, Grep or an MCP tool longer than 10,000
+characters is written whole to `~/.evo/tool-output/<session>/<tool_use_id>.txt` (directories 0700, file 0600), and
+the model gets, in the tool's own output shape, its first and last 1,500 characters around one line that names the
+size and the file. A Read keeps whole first lines instead, since Claude Code numbers them, and its line says from which
+line to Read on. The threshold sits near the 95th percentile of the tool results on one laptop over 30 days
+(2026-10-11: 104,186 results, median 830 characters, 95th percentile 11,080): about 6% of the results go to a file,
+and they hold about 41% of the characters. `EVO_SPOOL_THRESHOLD` changes it (`0` or `off` turns the hook off) and
+`EVO_SPOOL_DAYS` how long a file is kept (7 days); the hook deletes older files, at most once an hour. A Bash output
+over 30,000 characters, which Claude Code already saves in its session directory with a 2,000-character preview, is
+copied from that file, so the spool file holds all of it. A failed call (PostToolUseFailure, whose output Claude Code
+already cuts to about 10,000 characters of head and tail), an image, a Read with an offset or a limit, and a call that
+names `~/.evo/tool-output` pass unchanged. The hook runs in worker runs too, talks to no hub, never sends a spool
+file anywhere, and adds the start of `uvx` and the interpreter, about 0.15 seconds, to each Bash, Read, Grep or MCP
+call.
+
+Codex does not take this hook. Tried with codex-cli 0.153.4 on 2026-10-12: a command that printed 51,013 characters
+reached the model as about 40,000, cut in the middle (`Warning: truncated output (original token count: 13026)` and
+`…3026 tokens truncated…`), with no file; a PostToolUse hook gets that cut output, not the whole; Codex ignores
+`updatedToolOutput`; and `decision: "block"` does replace the result, but as `Script failed` with the hook's text as
+the script's error. The hook therefore leaves a payload from Codex (it carries a `turn_id`) unchanged, and Codex's
+own limit, `tool_output_token_limit` in its `config.toml`, is the only knob there.
+
+**Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
+session on a laptop gets the same memory sync, plan copies, context line and session digest as a Claude Code one.
+Codex installs the plugin from the same marketplace, with
+`codex plugin marketplace add https://github.com/maycuatroi1/evo-agents` then `codex plugin add evo-hub@evo-agents`.
+Codex calls a hook with the same JSON on stdin as Claude Code (`hook_event_name`, `cwd`, `session_id` and
+`transcript_path`, Stop adding `turn_id` and `last_assistant_message`) and injects a SessionStart hook's
+`additionalContext` into the session as a developer message before the prompt, so the evo-hub context line reaches
+the model. The digest of a Codex session is built (`evo_agents/hub/digest.py`) from the rollout the hook's `transcript_path` names (the
+`~/.codex/sessions/.../rollout-*.jsonl` log, whose first line is a `session_meta`), through the same redact on the
+machine and with the same fields as a Claude Code digest: `peak_context_tokens` is the largest
+`last_token_usage.input_tokens` of the rollout's `token_count` lines (as the Codex runtime measures a run's peak), the
+usage comes from the running `total_token_usage` (the cached part moved to `cache_read_input_tokens`), the tools,
+commands, edits and errors from the normalized `item_completed` item stream (shell runs, MCP calls, file changes and web
+searches), and `compactions` from the `ContextCompaction` items. The `js`/node_repl and agent-spawning tools that the
+item stream does not normalize are not counted, and `files_read` is 0 since Codex reads files through the shell, which
+the commands already hold.
+
+What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
+source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in
+`~/.codex/config.toml`; an untrusted hook is skipped silently in `codex exec`, and `--dangerously-bypass-hook-trust`
+runs it without that trust (for automation that vets its own hooks). So the owner trusts the evo-hub hook once on each
+machine (the first interactive session that loads it prompts for trust). Codex also clamps a `SessionEnd` hook's timeout
+to 3 seconds, but keeps the `SessionStart` (30 s) and `Stop` (25 s) timeouts the evo-hub plugin declares, which is where
+its work runs. Codex does not take the PostToolUse spool hook (above). As in Claude Code, the hooks exit 0 whatever
+happens and never fail a Codex session.
 
 **Skills.** `evo-agents hub skills publish skills/house-style --scope global` packs a skill directory (10 MiB at
 most) and publishes a new version; `--scope project:demo` publishes it to a project. `evo-agents hub skills sync`

@@ -546,6 +546,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/plans/{plan_id}/handoff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Handoff
+         * @description What a new agent session needs to take the plan up, built from the plan as the hub holds it: its goal, the
+         *     steps done with their commits, Decision lines and evidence, the steps not done, within ``budget_tokens``
+         *     (``evo_agents.hub.handoff``). Read under the rule of GET .../plans/{plan_id}; 404 for a step the plan lacks.
+         */
+        get: operations["handoff_v1_projects__project__plans__plan_id__handoff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/plans/{plan_id}/complete": {
         parameters: {
             query?: never;
@@ -4570,6 +4592,11 @@ export interface components {
              * @description the kinds of run the daemon runs; one that says none takes no review run. A kind this hub does not know is left out
              */
             run_kinds?: string[] | null;
+            /**
+             * Features
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step. One that says none takes no such run. A feature this hub does not know is left out
+             */
+            features?: string[] | null;
         };
         /** HiddenResult */
         HiddenResult: {
@@ -5983,6 +6010,37 @@ export interface components {
             /** Text */
             text: string;
         };
+        /** PlanHandoff */
+        PlanHandoff: {
+            /** Project */
+            project: string;
+            /** Plan Id */
+            plan_id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Step
+             * @description the step the handoff is for, whose dependencies' evidence comes first
+             */
+            step: string | null;
+            /** Budget Tokens */
+            budget_tokens: number;
+            /**
+             * Tokens
+             * @description the text's size as the hub estimates it: UTF-8 bytes / 3, rounded up
+             */
+            tokens: number;
+            /**
+             * Cut
+             * @description whether anything was cut or left out to stay within the budget
+             */
+            cut: boolean;
+            /**
+             * Text
+             * @description the handoff, as evo_agents.hub.handoff builds it; markdown
+             */
+            text: string;
+        };
         /** PlanPatch */
         PlanPatch: {
             /**
@@ -6074,6 +6132,12 @@ export interface components {
              * @enum {integer}
              */
             timeout_h: 2 | 4 | 8 | 24;
+            /**
+             * Session Per Step
+             * @description true: the worker starts a new agent session for each step, whose prompt is the step's with the handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; false: one session does every step
+             * @default false
+             */
+            session_per_step: boolean;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -7135,6 +7199,12 @@ export interface components {
              * @description why the run failed, as its worker reported it: origin, credentials or missing_tool when its preflight stopped it before the agent started, else push_conflict, verify_failed, timeout and the others of runs.FAILURE_CAUSES; null for a run that did not fail, one an older daemon or the hub ended, and every run from before schema 0024
              */
             failure_cause?: string | null;
+            /**
+             * Session Per Step
+             * @description a plan run whose worker starts a new agent session for each step; its usage lists the sessions (usage.sessions). False for any other run
+             * @default false
+             */
+            session_per_step: boolean;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -7726,6 +7796,12 @@ export interface components {
              * @description the verify of the step of a run of one step, as the plan it was dispatched from has it: the worker's preflight checks that each program it calls is on PATH before the agent starts; null for any other kind, whose worker reads the verify elsewhere (a plan run's plan, a judge run's inputs)
              */
             verify?: string[] | null;
+            /**
+             * Session Per Step
+             * @description a plan run to run with a new agent session for each step not done yet, each with its prompt and the handoff of the plan; false: one session does every step, with the prompt above
+             * @default false
+             */
+            session_per_step: boolean;
         };
         /** RunState */
         RunState: {
@@ -8211,6 +8287,21 @@ export interface components {
             files_read: number;
             /** Files Edited */
             files_edited?: string[];
+            /**
+             * Peak Context Tokens
+             * @description the largest context one message of the model read: its input, cache creation and cache read tokens; null when no message said its usage, or a client that did not count it pushed the digest
+             */
+            peak_context_tokens?: number | null;
+            /**
+             * Compactions
+             * @description times the session's context was compacted; null when a client that did not count it pushed
+             */
+            compactions?: number | null;
+            /**
+             * Tool Result Chars
+             * @description per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest
+             */
+            tool_result_chars?: components["schemas"]["ToolChars"][] | null;
         };
         /** Sign */
         Sign: {
@@ -8759,6 +8850,16 @@ export interface components {
              */
             sink: string;
         };
+        /** ToolChars */
+        ToolChars: {
+            /** Gen Ai.Tool.Name */
+            "gen_ai.tool.name": string;
+            /**
+             * Chars
+             * @description characters of the text of the tool's results, which the model read
+             */
+            chars: number;
+        };
         /** ToolCount */
         ToolCount: {
             /**
@@ -9083,6 +9184,11 @@ export interface components {
              * @description runs it holds now (leased, running, interactive or verifying)
              */
             held_runs: number;
+            /**
+             * Features
+             * @description what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; empty for a daemon that said none
+             */
+            features?: string[];
             /**
              * Created At
              * Format: date-time
@@ -10930,6 +11036,72 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["PlanDiff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    handoff_v1_projects__project__plans__plan_id__handoff_get: {
+        parameters: {
+            query?: {
+                /** @description a step: its dependencies' evidence first */
+                step?: string | null;
+                /** @description the most tokens the text may take */
+                budget_tokens?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlanHandoff"];
                 };
             };
             /** @description Unauthorized */

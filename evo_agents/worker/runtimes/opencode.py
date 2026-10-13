@@ -21,6 +21,10 @@ run`` prints is parsed here.
 - The turn is over when the session goes idle (``session.status`` ``idle``) and every prompt sent has reached the
   session; ``session.error`` (``MessageAbortedError`` after an abort, a provider error) fails it. The exit code of
   nothing is read.
+- The run's usage adds up the tokens of each step (``step-finish``) with their cost, and holds
+  ``peak_context_tokens``, the largest context of a step: its ``input`` plus ``cache.read`` plus ``cache.write``,
+  which opencode counts apart (in the research's samples, a step that read 89,984 tokens from the cache had an input
+  of 171).
 
 Checked with opencode 1.18.34 (``evo-agents worker selftest --runtime opencode``).
 """
@@ -47,15 +51,18 @@ from evo_agents.worker.runtimes.common import (
     cut,
     detect_runtime,
     kill_group,
+    larger,
     message_chunk,
     plan,
     raw,
     run_setting,
     thought_chunk,
+    token_sum,
     tool_call,
     tool_update,
     usage_update,
     which,
+    with_peak,
 )
 
 log = logging.getLogger("evo_agents.worker")
@@ -261,6 +268,7 @@ class OpencodeAdapter(QueueAdapter):
         self._tools: set[str] = set()
         self._error: str | None = None
         self._usage: dict = {}
+        self._peak: int | None = None  # the largest context of a step: input, cache read and cache write
         self._cost = 0.0
         self._summary: str | None = None
         self.model: tuple[str, str] | None = None
@@ -444,18 +452,24 @@ class OpencodeAdapter(QueueAdapter):
         if kind == "tool":
             return self._tool(part)
         if kind == "step-finish":
-            tokens = part.get("tokens") or {}
-            flat = dict(tokens)
-            cache = flat.pop("cache", None)
-            if isinstance(cache, dict):
-                flat.update({f"cache_{key}": value for key, value in cache.items()})
-            add_numbers(self._usage, flat)
-            cost = part.get("cost") if isinstance(part.get("cost"), (int, float)) else None
-            self._cost += cost or 0
-            return [usage_update(tokens, cost, reason=part.get("reason"))]
+            return self._step_finished(part)
         if kind == "step-start":
             return []
         return [raw({"type": "message.part.updated", "part": part})]
+
+    def _step_finished(self, part: dict) -> list[AgentEvent]:
+        """A step of the model ended: its tokens add to the run's usage, and its context, the input, cache read and
+        cache write tokens that opencode counts apart, to the peak."""
+        tokens = part.get("tokens") or {}
+        flat = dict(tokens)
+        cache = flat.pop("cache", None)
+        if isinstance(cache, dict):
+            flat.update({f"cache_{key}": value for key, value in cache.items()})
+        add_numbers(self._usage, flat)
+        self._peak = larger(self._peak, token_sum(flat.get("input"), flat.get("cache_read"), flat.get("cache_write")))
+        cost = part.get("cost") if isinstance(part.get("cost"), (int, float)) else None
+        self._cost += cost or 0
+        return [usage_update(tokens, cost, reason=part.get("reason"))]
 
     def _tool(self, part: dict) -> list[AgentEvent]:
         state = part.get("state") or {}
@@ -486,7 +500,7 @@ class OpencodeAdapter(QueueAdapter):
         self.emit([raw({"type": "permission.asked", "properties": request, "reply": "once"})])
 
     def _outcome(self) -> Outcome:
-        usage = {**self._usage, "cost": self._cost} if self._usage else None
+        usage = with_peak({**self._usage, "cost": self._cost} if self._usage else None, self._peak)
         if self.interrupted:
             return Outcome(False, "interrupted", usage, self._summary)
         if self._error:
