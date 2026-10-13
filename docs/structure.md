@@ -1,23 +1,23 @@
 # The structure of the code
 
-Machines keep the structure of `evo_agents`: import-linter checks the boundaries between its packages, and
-`tests/test_structure.py` checks size and complexity budgets. CI runs both once per Python, in the Linux job that
-runs tests/worker (`test (ubuntu-latest, <python>, worker)`), and `ci-ok` fails with it. A failure says what is over,
-by how much, and how to fix it. What broke a rule when the rules came in (2026-10-10) is frozen as an exception, and
-exceptions only shrink.
+Two checks keep the structure of `evo_agents`: import-linter checks the boundaries between its packages, and the
+tests marked `structure` in `tests/test_structure.py` check size and complexity budgets. Since 2026-10-13 neither runs
+in CI nor in a plain `pytest` (`addopts` deselects the marker); run them when a change moves code between packages or
+grows a large module. A failure says what is over, by how much, and how to fix it. What broke a rule when the rules
+came in (2026-10-10) is frozen as an exception, and exceptions only shrink.
 
 ## Commands
 
 ```sh
 lint-imports                                  # package boundaries: [tool.importlinter] in pyproject.toml
-python -m pytest -q tests/test_structure.py   # budgets, and the baseline and exceptions against origin/main
+python -m pytest -q -m structure tests/test_structure.py   # budgets, and the baseline and exceptions against origin/main
 python -m tests.structure report              # modules and functions over budget, most over first, then most changed
 python -m tests.structure report --json       # the same rows as JSON
 python -m tests.structure tighten             # lower the baseline to the code once you have shrunk something
 ```
 
-The comparison with main reads `origin/main`: run `git fetch origin` first, or it is skipped. CI sets
-`EVO_STRUCTURE_BASE=origin/main`, so a missing ref fails there instead.
+The comparison with main reads `origin/main`: run `git fetch origin` first, or it is skipped. With
+`EVO_STRUCTURE_BASE=origin/main` set, a missing ref fails instead.
 
 ## Package boundaries
 
