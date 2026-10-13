@@ -47,10 +47,7 @@ def _size(size: int) -> str:
 
 def _print_states(scan) -> None:
     counts = scan.counts()
-    print(
-        f"  old {counts[OLD]}: nothing in use refers to them; --purge deletes them, with {counts['logs']} run log(s) "
-        "of old runs that refer to them"
-    )
+    print(f"  old {counts[OLD]}: nothing in use refers to them; --purge deletes them")
     if counts[LIVE]:
         print(
             f"  live {counts[LIVE]}: items of the corpus now; sync the project so its connector redacts them (the git "
@@ -62,6 +59,8 @@ def _print_states(scan) -> None:
             f"  kept {counts[KEPT]}: only records the corpus no longer holds refer to them, in run logs still in use; "
             f"--purge rewrites those {counts['rewrite']} run log(s) without such records, then deletes them{pinned}"
         )
+    if counts["logs"]:
+        print(f"  run logs: {counts['logs']} of old runs name a blob --purge deletes; they go with it")
     if counts["memo"]:
         print(f"  memo: {counts['memo']} row(s); --purge deletes them and the next build computes them again")
     if counts["graph"]:

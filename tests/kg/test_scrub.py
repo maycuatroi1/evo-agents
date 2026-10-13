@@ -153,6 +153,8 @@ def test_scrub_counts_by_default_and_changes_no_file(synced_before_redaction, ca
     assert not leaked(out + err)
     assert f"{project.name}: " in out and "docker-compose.yml" in out and "password 1, uri_password 1" in out
     assert "Count only, nothing was deleted. --purge deletes" in out
+    logs = len(scan_project(project.name, project.root).logs)
+    assert logs and f"  run logs: {logs} of old runs name a blob --purge deletes; they go with it" in out
 
     code, out, err = kg("--project", project.name, "--json", capsys=capsys)
     assert code == 0, err
