@@ -10,8 +10,8 @@ import { recordHeartbeats } from "./heartbeats";
 
 /**
  * What the workers pages read and write (docs/workers.md). A member sees their own workers; a hub admin sees every
- * worker and may drain or revoke any of them, but only the owner undrains one or sets who may dispatch to it.
- * Another member's worker answers 404, the same as an id the hub never gave out.
+ * worker and may drain or revoke any of them, but only the owner undrains one, changes its settings or sets who may
+ * dispatch to it. Another member's worker answers 404, the same as an id the hub never gave out.
  */
 type Schemas = components["schemas"];
 export type Worker = Schemas["Worker"];
@@ -29,7 +29,8 @@ export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 export const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 export const MAX_LABELS = 16;
 export const MIN_SLOTS = 1;
-export const MAX_SLOTS = 8;
+/** `runs.MAX_SLOTS` of the hub: the most runs a worker holds at once. */
+export const MAX_SLOTS = 16;
 
 export const workerKeys = {
   all: ["workers"] as const,

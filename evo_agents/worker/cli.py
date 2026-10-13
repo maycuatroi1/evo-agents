@@ -58,7 +58,7 @@ from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome,
 EXIT_FAILED = 1
 EXIT_USAGE = 2
 EXTRA_HINT = "uv tool install 'evo-ak[worker]' (or python -m pip install 'evo-ak[worker]')"
-MAX_SLOTS = 8
+MAX_SLOTS = runs.MAX_SLOTS  # 16, as the hub bounds workers.slots
 
 
 class _MissingExtra(Exception):
@@ -1091,7 +1091,7 @@ def register(sub) -> None:
     reg.add_argument(
         "--project", required=True, action="append", help="a project it takes runs of; repeat it for each one"
     )
-    reg.add_argument("--slots", type=_slots, default=1, help="runs it holds at once, 1 to 8 (default 1)")
+    reg.add_argument("--slots", type=_slots, default=1, help=f"runs it holds at once, 1 to {MAX_SLOTS} (default 1)")
     reg.add_argument("--label", action="append", help="a label; repeat it for each one")
     reg.add_argument(
         "--allow-web-terminal", action="store_true", help="let the owner open a terminal on it from the web"
