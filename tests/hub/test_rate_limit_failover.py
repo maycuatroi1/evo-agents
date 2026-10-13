@@ -136,6 +136,10 @@ def test_a_rejected_report_cools_the_account_revokes_its_lease_and_fails_over(cl
     # a retry of the same report answers the same move
     retried = answer_of(client, worker, run_id, lease_id, resets_at=RESET.isoformat())
     assert (retried["action"], retried["secret_id"], retried["failovers"]) == ("failover", b_id, 1)
+    # a usage report older than the limit, come late, leaves the limit as the cooling account's last usage
+    assert answer_of(client, worker, run_id, lease_id, "allowed", utilization=0.5)["action"] == "none"
+    until, _, usage, _ = account_row(hub_db, "claude-a")
+    assert until == RESET and usage["status"] == "rejected"
     # the next run skips the cooling account
     assert account_of(client, worker, run_on(client, hub["owner"], worker, "notes")) == "claude-c"
 
