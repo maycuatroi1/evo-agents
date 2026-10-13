@@ -1,12 +1,10 @@
 "use client";
 
-import { Columns3, CornerDownRight, FolderGit2, LayoutList } from "lucide-react";
+import { Columns3, FolderGit2, LayoutList, Waypoints } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { useId, useMemo, useState } from "react";
 
-import { DataTable, dataTableColumns } from "@/components/data/data-table";
-import { NAME_LINK } from "@/components/data/identifier";
 import { SearchField } from "@/components/data/search-field";
 import { Segmented } from "@/components/data/segmented";
 import { TONE_TEXT } from "@/components/status/status-badge";
@@ -17,61 +15,23 @@ import {
   filterSteps,
   type PlanStep,
   STEP_STATUSES,
-  STEP_GROUPS,
   type StepGroup,
   stepLabel,
   stepRepos,
 } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
+import { DependsOn, formatDay, type StepContext as Context } from "./depends-on";
 import { stepHref } from "./links";
-import { BlockingBadge, StepStatusBadge, StepStatusIcon, stepLook, useStepStatusText } from "./status";
+import { BlockingBadge, StepStatusBadge, stepLook, useStepStatusText } from "./status";
+import { StepGraph } from "./step-graph-lazy";
+import StepTable from "./step-table";
+import { useStepView } from "./step-view";
 
 /** A column shows this many cards before "show all", so a long column does not bury the others; fewer on a phone,
  * where the columns stack. */
 const COLUMN_LIMIT = 8;
 const PHONE_COLUMN_LIMIT = 4;
-
-type Context = { project: string; planId: string; byKey: Map<string, PlanStep> };
-
-/** depends_on as links to those steps, each with its status, so a reader sees what a step waits for. */
-export function DependsOn({ step, context, compact = false }: { step: PlanStep; context: Context; compact?: boolean }) {
-  const t = useTranslations("plans.step");
-  if (step.dependsOn.length === 0) {
-    return compact ? null : <span className="text-sm text-muted-foreground">{t("noDependencies")}</span>;
-  }
-  return (
-    <span className={cn("flex flex-wrap items-center gap-x-2 gap-y-1", compact ? "text-xs" : "text-sm")}>
-      {compact ? (
-        <span className="inline-flex items-center gap-1 text-muted-foreground">
-          <CornerDownRight className="size-3.5" aria-hidden="true" />
-          {t("after")}
-        </span>
-      ) : null}
-      {step.dependsOn.map((key) => {
-        const target = context.byKey.get(key);
-        if (!target) {
-          return (
-            <span key={key} className="font-mono text-muted-foreground" title={t("unknownStep")}>
-              {key}
-            </span>
-          );
-        }
-        return (
-          <Link
-            key={key}
-            href={stepHref(context.project, context.planId, key)}
-            className="relative z-10 inline-flex items-center gap-1 rounded font-mono text-brand underline-offset-4 hover:underline"
-            aria-label={t("dependencyLink", { key, title: stepLabel(target) })}
-          >
-            <StepStatusIcon group={target.group} raw={target.rawStatus} className="[&_svg]:size-3.5" />
-            {key}
-          </Link>
-        );
-      })}
-    </span>
-  );
-}
 
 function StepCard({ step, context }: { step: PlanStep; context: Context }) {
   const t = useTranslations("plans.step");
@@ -111,17 +71,6 @@ function StepCard({ step, context }: { step: PlanStep; context: Context }) {
       <DependsOn step={step} context={context} compact />
     </li>
   );
-}
-
-type Formatter = ReturnType<typeof useFormatter>;
-
-/** A plan date (often `2026-10-02T11:15:00+07:00`, sometimes a bare day or free text) for people to read. */
-export function formatDay(format: Formatter, value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return value;
-  return /T\d/.test(value)
-    ? format.dateTime(date, { dateStyle: "medium", timeStyle: "short" })
-    : format.dateTime(date, { dateStyle: "medium" });
 }
 
 function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]; context: Context }) {
@@ -170,97 +119,15 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
   );
 }
 
-function StepTable({ steps, context }: { steps: PlanStep[]; context: Context }) {
-  const t = useTranslations("plans.board");
-  const format = useFormatter();
-  const columns = useMemo(() => {
-    const helper = dataTableColumns<PlanStep>();
-    return helper.columns([
-      helper.accessor("index", {
-        header: () => t("columns.step"),
-        sortFn: "basic",
-        cell: (info) => {
-          const step = info.row.original;
-          return (
-            <div className="flex min-w-48 items-start gap-2">
-              <span className="mt-0.5 font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
-              <Link
-                href={stepHref(context.project, context.planId, step.key)}
-                className={cn(NAME_LINK, "text-pretty [overflow-wrap:anywhere]")}
-              >
-                {stepLabel(step) || step.key}
-              </Link>
-            </div>
-          );
-        },
-      }),
-      helper.accessor((row) => STEP_GROUPS.indexOf(row.group), {
-        id: "status",
-        header: () => t("columns.status"),
-        sortFn: "basic",
-        cell: (info) => (
-          <div className="flex flex-wrap gap-1">
-            <StepStatusBadge group={info.row.original.group} raw={info.row.original.rawStatus} />
-            <BlockingBadge blocking={info.row.original.blocking} />
-          </div>
-        ),
-      }),
-      helper.accessor((row) => row.repo ?? "", {
-        id: "repo",
-        header: () => t("columns.repo"),
-        sortFn: "text",
-        cell: (info) => <span className="font-mono text-xs">{info.getValue() || "-"}</span>,
-      }),
-      helper.accessor((row) => row.dependsOn.join(", "), {
-        id: "depends",
-        header: () => t("columns.dependsOn"),
-        enableSorting: false,
-        cell: (info) => <DependsOn step={info.row.original} context={context} />,
-      }),
-      helper.accessor((row) => row.doneAt ?? "", {
-        id: "done_at",
-        header: () => t("columns.doneAt"),
-        sortFn: "text",
-        cell: (info) => (
-          <span className="text-xs text-muted-foreground tabular-nums">
-            {info.getValue() ? formatDay(format, info.getValue()) : "-"}
-          </span>
-        ),
-      }),
-    ]);
-  }, [t, format, context]);
-  return (
-    <DataTable
-      data={steps}
-      columns={columns}
-      caption={t("tableCaption")}
-      getRowId={(row) => `${row.index}`}
-      initialSorting={[{ id: "index", desc: false }]}
-      columnClassNames={{ repo: "hidden md:table-cell", depends: "hidden lg:table-cell", done_at: "hidden xl:table-cell" }}
-      testId="steps-table"
-      empty={t("noMatch")}
-      // On a phone: the step's title opening its page, its status, and its key with the repo it changes.
-      mobile={(step) => ({
-        title: stepLabel(step) || step.key,
-        titleText: stepLabel(step) || step.key,
-        href: stepHref(context.project, context.planId, step.key),
-        tags: step.group === "done" ? null : <BlockingBadge blocking={step.blocking} />,
-        status: <StepStatusBadge group={step.group} raw={step.rawStatus} />,
-        meta: step.repo ? t("mobileMetaRepo", { key: step.key, repo: step.repo }) : t("mobileMeta", { key: step.key }),
-        data: { "step-key": step.key },
-      })}
-    />
-  );
-}
-
-type View = "board" | "list";
-
-/** The plan's steps by status (pending, in progress, blocked, done), or as a list in plan order. */
+/**
+ * The plan's steps by status (pending, in progress, blocked, done), as a list in plan order, or as the graph of their
+ * dependencies; the choice is in the URL's `view` and remembered (step-view.ts).
+ */
 export function StepBoard({ project, planId, steps }: { project: string; planId: string; steps: PlanStep[] }) {
   const t = useTranslations("plans.board");
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
-  const [view, setView] = useState<View>("board");
+  const [view, setView] = useStepView();
   const repoId = useId();
   const context = useMemo<Context>(
     () => ({ project, planId, byKey: new Map(steps.map((step) => [step.key, step])) }),
@@ -317,6 +184,7 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
             options={[
               { value: "board", label: t("viewBoard"), icon: Columns3, testId: "steps-view-board" },
               { value: "list", label: t("viewList"), icon: LayoutList, testId: "steps-view-list" },
+              { value: "graph", label: t("viewGraph"), icon: Waypoints, testId: "steps-view-graph" },
             ]}
           />
         </div>
@@ -338,8 +206,14 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
             />
           ))}
         </div>
-      ) : (
+      ) : view === "list" ? (
         <StepTable steps={shown} context={context} />
+      ) : (
+        <StepGraph
+          steps={steps}
+          matching={filtering ? new Set(shown.map((step) => step.key)) : null}
+          onBoard={() => setView("board")}
+        />
       )}
     </section>
   );

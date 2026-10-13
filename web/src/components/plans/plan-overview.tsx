@@ -23,7 +23,8 @@ import { PlanNotFound } from "./plan-not-found";
 import { PlanProgress } from "./progress";
 import { Prose, ValueView } from "./prose";
 import { RepoStatusBadge } from "./status";
-import { formatDay, StepBoard } from "./step-board";
+import { formatDay } from "./depends-on";
+import { StepBoard } from "./step-board";
 
 /** The sections the page names in Vietnamese and English; any other key of a plan is shown under its own name. */
 const SECTION_NAMES = [

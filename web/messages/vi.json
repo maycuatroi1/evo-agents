@@ -837,6 +837,7 @@
       "view": "Cách xem các bước",
       "viewBoard": "Bảng",
       "viewList": "Danh sách",
+      "viewGraph": "Đồ thị",
       "shown": "Hiện {shown} trên {total} bước",
       "otherColumn": "Trạng thái khác",
       "emptyColumn": "Không có bước nào",
@@ -853,6 +854,24 @@
         "dependsOn": "Phụ thuộc",
         "doneAt": "Xong lúc"
       }
+    },
+    "graph": {
+      "loadFailed": "Không tải được đồ thị",
+      "loadFailedHint": "Kiểm tra kết nối rồi tải lại trang, hoặc dùng Bảng, nơi có cùng các bước theo trạng thái.",
+      "useBoard": "Dùng Bảng",
+      "ready": "Sẵn sàng",
+      "lineDone": "Phụ thuộc đã xong",
+      "lineNotDone": "Chưa xong",
+      "notDrawn": "{count} phụ thuộc không vẽ",
+      "notDrawnHint": "Phụ thuộc đã được suy ra qua một phụ thuộc khác, trỏ tới bước không có trong plan hay tạo chu trình thì không vẽ; trang của bước liệt kê đủ.",
+      "zoomIn": "Phóng to",
+      "zoomOut": "Thu nhỏ",
+      "fit": "Vừa cả plan",
+      "untitled": "Bước chưa có tên",
+      "stepLabel": "Bước {key}: {words}",
+      "a11yStep": "Nhấn Enter để chọn bước và làm nổi các bước nó phụ thuộc và các bước chờ nó.",
+      "a11yEdge": "Một phụ thuộc giữa hai bước.",
+      "canvas": "Đồ thị các bước của plan"
     },
     "step": {
       "metaTitle": "Bước {step} của plan {planId}",

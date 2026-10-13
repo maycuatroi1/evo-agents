@@ -2,118 +2,141 @@
   "$comment": "First Load JS budget of each route in kB (gzip, 1 kB = 1000 bytes), checked by scripts/bundle-budget.mjs. Raising a budget or adding a route needs a reason in that route's entry; lowering one needs none.",
   "routes": {
     "/": {
-      "kB": 305.4
+      "kB": 303.7
     },
     "/_not-found": {
-      "kB": 209.3
+      "kB": 209.2
     },
     "/[...missing]": {
-      "kB": 283.8
+      "kB": 284.1,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/admin": {
-      "kB": 296.7
+      "kB": 296.3
     },
     "/admin/audit": {
-      "kB": 307.8
+      "kB": 308.1,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/admin/diagnostics": {
-      "kB": 303.5
+      "kB": 303.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/admin/members": {
-      "kB": 313.5
+      "kB": 313.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/admin/members/[login]": {
-      "kB": 315.4
+      "kB": 315.7,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/admin/tokens": {
-      "kB": 311.3
+      "kB": 311.5,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/inbox": {
-      "kB": 391.8
+      "kB": 391.5
     },
     "/login": {
-      "kB": 209.3
+      "kB": 209.2
     },
     "/memories": {
-      "kB": 307.6
+      "kB": 307.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/memories/[id]": {
-      "kB": 356.5
+      "kB": 356.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/monitor": {
-      "kB": 311
+      "kB": 310.6
     },
     "/p/[project]": {
-      "kB": 287.6
+      "kB": 287.9,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/curator": {
-      "kB": 321.5
+      "kB": 321.2
     },
     "/p/[project]/curator/charter": {
-      "kB": 329.9
+      "kB": 329.1
     },
     "/p/[project]/curator/proposals": {
-      "kB": 327.1
+      "kB": 326.8
     },
     "/p/[project]/curator/proposals/[id]": {
-      "kB": 357.5
+      "kB": 357.3
     },
     "/p/[project]/insights": {
-      "kB": 289.5
+      "kB": 289.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/kg": {
-      "kB": 310.4
+      "kB": 310.7,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/kg/node": {
-      "kB": 323.5
+      "kB": 323.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/memories": {
-      "kB": 307.6
+      "kB": 307.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/memories/[id]": {
-      "kB": 356.5
+      "kB": 356.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/plans": {
-      "kB": 324
+      "kB": 321.4
     },
     "/p/[project]/plans/[planId]": {
-      "kB": 326.6
+      "kB": 324.5
     },
     "/p/[project]/plans/[planId]/revisions": {
-      "kB": 296.8
+      "kB": 297.1,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/plans/[planId]/steps/[stepKey]": {
-      "kB": 325.5
+      "kB": 322
     },
     "/p/[project]/runs": {
-      "kB": 321.3
+      "kB": 321.5,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/runs/[id]": {
-      "kB": 421.2
+      "kB": 420.7
     },
     "/p/[project]/runs/[id]/diff": {
-      "kB": 291.8
+      "kB": 292.1,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/skills": {
-      "kB": 304.3
+      "kB": 304.6,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/skills/[name]": {
-      "kB": 304.5
+      "kB": 304.7,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/secrets": {
-      "kB": 316.9
+      "kB": 316.5
     },
     "/skills": {
-      "kB": 304.3
+      "kB": 304.6,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/skills/[name]": {
-      "kB": 304.5
+      "kB": 304.7,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/workers": {
-      "kB": 315.7
+      "kB": 316,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/workers/[id]": {
-      "kB": 316.3
+      "kB": 316.8,
+      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     }
   }
 }
