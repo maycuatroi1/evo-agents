@@ -5,10 +5,10 @@ import { useFormatter, useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
 
-import { renewalDue, usagePercent, usageResetsAt } from "./model";
+import { renewalDue } from "./model";
 import type { Account, AccountState } from "./queries";
 
-/** The cells of the accounts table that read more than one field: its state, with a token's end, and its last usage. */
+/** The cells of the accounts table that read more than one field: its state, with a token's end. */
 
 const STATES: Record<AccountState, { icon: typeof CircleCheck; variant: "success" | "warning" | "secondary" | "destructive" }> = {
   ready: { icon: CircleCheck, variant: "success" },
@@ -72,26 +72,6 @@ export function StateCell({ account, now }: { account: Account; now: number }) {
           {t.rich("ended", { day: () => <Day value={account.expires_at ?? ""} /> })}
         </span>
       ) : null}
-    </span>
-  );
-}
-
-/** The last usage a run's CLI reported for the account: the share of its limit used, what it said, when it resets. */
-export function UsageCell({ account }: { account: Account }) {
-  const t = useTranslations("accounts.usage");
-  const usage = account.last_usage;
-  if (!usage) return <span className="text-fg-subtle">{t("none")}</span>;
-  const percent = usagePercent(usage);
-  const resets = usageResetsAt(usage);
-  return (
-    <span className="inline-flex flex-col items-start gap-0.5" data-testid="account-usage" data-status={usage.status}>
-      <span className={usage.status === "allowed" ? "text-foreground" : "font-medium text-attention"}>
-        {percent === null ? t(`status.${usage.status}`) : t("percent", { percent })}
-      </span>
-      <span className="text-xs text-fg-subtle">
-        {account.last_usage_at ? t.rich("reported", { time: () => <At value={account.last_usage_at ?? ""} /> }) : null}
-        {resets ? <> · {t.rich("resets", { time: () => <At value={resets} /> })}</> : null}
-      </span>
     </span>
   );
 }

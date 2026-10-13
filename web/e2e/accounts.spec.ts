@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 
+import { expectNoSeriousViolations } from "./support/a11y";
 import { API_URL } from "./support/env";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
@@ -10,8 +11,8 @@ import { PROTOCOL_HEADER } from "./support/workers";
 
 /**
  * The Accounts page and the accounts of a run against the real API (docs/credentials.md, section "Accounts"): a
- * member's env secrets for the same variable, each with its state, its last usage, its runs and their cost, and the
- * runs holding it; Pause, Resume and Edit on each, and the rotation policy of each project; the run page names the
+ * member's env secrets for the same variable, each with its state, its usage limits as a bar per window, its runs and
+ * their cost, and the runs holding it; Pause, Resume and Edit on each, and the rotation policy of each project; the run page names the
  * account the run took and each usage limit it hit. No value is ever sent to the browser. Pages render in English.
  */
 test.skip(isDeployed, "writes accounts through the local stack");
@@ -23,8 +24,9 @@ function main(page: Page) {
   return page.locator("#main");
 }
 
+/** An account's row with the usage limits under it: the two are one group (a tbody) of the table. */
 function row(page: Page, name: string) {
-  return main(page).getByTestId("accounts-table").locator("tbody tr").filter({ has: page.locator(`[data-account-name="${name}"]`) });
+  return main(page).getByTestId("accounts-table").locator("tbody").filter({ has: page.locator(`[data-account-name="${name}"]`) });
 }
 
 function policyRow(page: Page, project: string) {
@@ -174,25 +176,42 @@ test("a token that ends within 30 days is reminded with its day, on its row and 
   await expect(page.getByTestId("login-dialog").getByRole("heading", { name: "Renew the token of claude-soon" })).toBeVisible();
 });
 
-test("each account shows its state, usage, runs and holder without a value; Pause, Resume and Edit change it", async ({ page, member }) => {
+test("each account shows its state, usage limits, runs and holder without a value; Pause, Resume and Edit change it", async ({
+  page,
+  member,
+}) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const values = await twoAccounts(me);
   const { project, live, run, leaseId } = await heldRun(me);
   const windows = { five_hour: { utilization: 0.42, resets_at: RESET } };
   expect((await rateLimit(live, run.id, { lease_id: leaseId, status: "allowed", utilization: 0.42, windows })).action).toBe("none");
+  // A later report that lists the week alone keeps the session's window.
+  const week = { seven_day: { utilization: 0.9, resets_at: RESET } };
+  const warned = { lease_id: leaseId, status: "allowed_warning", rate_limit_type: "seven_day", windows: week };
+  expect((await rateLimit(live, run.id, warned)).action).toBe("none");
   const received = recordResponses(page);
 
   await page.goto("/accounts");
   const held = row(page, "claude-a");
   await expect(held.getByTestId("account-state")).toHaveAttribute("data-state", "ready");
   await expect(held.getByTestId("account-target")).toContainText(VAR);
-  await expect(held.getByTestId("account-usage")).toContainText("42% used");
+  const usage = held.getByRole("group", { name: "Usage limits of claude-a" });
+  await expect(usage).toContainText("Usage limits, reported");
+  const session = usage.getByRole("progressbar", { name: "Session (5 hours)" });
+  await expect(session).toHaveAttribute("aria-valuenow", "42");
+  await expect(session).toHaveAttribute("data-tone", "normal");
+  const weekly = usage.getByRole("progressbar", { name: "Weekly, all models" });
+  await expect(weekly).toHaveAttribute("aria-valuenow", "90");
+  await expect(weekly).toHaveAttribute("data-tone", "warning");
+  await expect(usage.getByTestId("account-usage-window")).toHaveText([/Session \(5 hours\)42% usedResets May 1/, /Weekly, all models90% used/]);
   await expect(held.getByTestId("account-runs")).toHaveText("1 / 1");
   await expect(held.getByTestId("account-cost")).toContainText("$0.00");
   await expect(held.getByRole("link", { name: `Open run #${run.id} of ${project}` })).toHaveAttribute("href", runPath(project, run.id));
   const other = row(page, "claude-b");
   await expect(other).toContainText("No run");
-  await expect(other).toContainText("Not reported");
+  await expect(other.getByTestId("account-usage")).toHaveText("No usage reported yet");
+  await expect(other.getByRole("progressbar")).toHaveCount(0);
+  await expectNoSeriousViolations(page, "/accounts with usage limits");
 
   // Pause, then resume: each a PATCH with the session's CSRF header, and a toast.
   const [pause] = await Promise.all([

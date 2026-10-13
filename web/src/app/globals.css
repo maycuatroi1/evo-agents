@@ -329,9 +329,17 @@
   }
 }
 
-/* The actions of a table row (DataTable, meta.actions) show while the row is hovered or holds focus, or while a menu
-   they opened is open. Where nothing can hover (touch) and under 768 px they always show. Hidden ones still take
-   their room, so showing them never moves the row. */
+/* A table whose rows have a detail under them (DataTable, detail): its scroll region is a size container, so the
+   detail's content takes the region's width (100cqw) and stays in view while a wide table scrolls sideways. */
+@layer components {
+  [data-slot="table-container"]:has([data-row-detail]) {
+    container-type: inline-size;
+  }
+}
+
+/* The actions of a table row (DataTable, meta.actions) show while the row, or the group of a row and its detail, is
+   hovered or holds focus, or while a menu they opened is open. Where nothing can hover (touch) and under 768 px they
+   always show. Hidden ones still take their room, so showing them never moves the row. */
 @layer components {
   @media (hover: hover) and (min-width: 48rem) {
     .row-actions {
@@ -340,6 +348,8 @@
     }
     tr:hover .row-actions,
     tr:focus-within .row-actions,
+    [data-row-group]:hover .row-actions,
+    [data-row-group]:focus-within .row-actions,
     .row-actions:has([aria-expanded="true"]) {
       opacity: 1;
     }
