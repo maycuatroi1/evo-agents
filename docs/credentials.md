@@ -272,6 +272,29 @@ evo-agents hub account policy demo --strategy weighted-round-robin --cooldown 18
 evo-agents hub account policy demo --reset                    # the defaults again
 ```
 
+### Compared with a proxy
+
+CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
+that the CLI reaches through `ANTHROPIC_BASE_URL`, which logs in to each account with OAuth, keeps its refresh token,
+and picks an account for each request (`routing.strategy` round-robin or fill-first, with weights), retries a request on
+another account when one answers with its quota spent (`request-retry`), cools that account down, keeps a session on
+one account while it can (`session-affinity`), and has a management panel. The hub takes the same rules (round-robin,
+weighted, fill-first, cooldown, failover, a page that shows each account) and applies them per run, not per request:
+
+- a run keeps one account for its whole life, and moves only when that account hits its limit, so the session's prompt
+  cache and the account's usage figures stay with one account, and what a run cost is the cost on the account it ran on;
+- the value stays a lease, as every secret here: the worker holds it in memory for the run that needs it, and the hub
+  revokes it when the run ends or fails over. A proxy would hold every account's token, and its refresh token, for as
+  long as it runs, on a path every request of every agent goes through, and would see each prompt;
+- nothing sits between the CLI and Anthropic: no process to keep up on each worker or on the hub, no request rewritten,
+  no identity changed, and the CLI's own `rate_limit_event` says when an account is spent;
+- an account is the token `claude setup-token` makes, which the hub already leases; there is no OAuth login with a
+  refresh token to keep alive.
+
+What the proxy does that the hub does not: it moves a request, not a run, so an agent in a terminal pane goes on by
+itself, and it covers other providers and their limits. Here an interactive pane only shows the event, and only Claude
+Code reports a limit; the usage an account shows is what the CLI said last.
+
 ## What a run got
 
 `GET /v1/projects/{project}/runs/{id}/credentials` lists every lease of the run, given back or not, oldest first:
