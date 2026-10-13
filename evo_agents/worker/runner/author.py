@@ -15,6 +15,14 @@ hub parks (no reply within a day) keeps its session, worktrees and skills for th
 does, which goes on in them with the reply (``author.RESUME_PROMPT``). Once the owner ends the chat (the heartbeat's
 ``finish``) the run ends done with its summary after the agent's turn: nothing is committed or pushed
 (``gitops.check_push`` refuses an author run), and the run's GitHub token reads only.
+
+The agent may also ask its owner a question with options as a decision (``evo-agents worker ask``, which notes it in
+the run's file of decisions; the daemon says it does ``runs.AUTHOR_DECISIONS``, so the hub's prompt tells it how). A
+turn that ends with a decision the agent asked unanswered still posts its last message to the chat, then waits until
+the owner answered each of those decisions, replied in the chat, or ended it (``transitions.author_wakes``): an answer
+alone does not start a turn while another is open, and the next turn takes every answer and reply there is, in one
+prompt (``author.reply_prompt``). A run that resumes a parked one takes the parked run's open decisions with it
+(``Conversation.adopt``), so after its first turn it waits again for those still unanswered.
 """
 
 from __future__ import annotations
@@ -27,7 +35,7 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import author, runs, skill_sync, skills
 from evo_agents.hub.client import HubError
 from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
-from evo_agents.worker.runner import access, verify
+from evo_agents.worker.runner import access, transitions, verify
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, Parked, ReportRefused, RunFailed, cut, wait_or
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
@@ -57,6 +65,7 @@ class AuthorRun:
             reply_prompt=author.REPLY_PROMPT,
             resume_prompt=author.RESUME_PROMPT,
             after_turn=self.after_turn,
+            prompt_for=author.reply_prompt,
         )
         self.left_out: list[str] = []  # repos of the run this worker has no checkout of
         self.last_said: str | None = None  # the agent's last message in the chat
@@ -143,12 +152,14 @@ class AuthorRun:
 
     async def after_turn(self) -> list[dict]:
         """After each turn of the agent: its last message to the chat, then what starts its next turn: the owner's
-        messages it has not had, at once; else, unless the owner ended the chat, the reply the run waits for. None
-        when the run ends."""
+        messages it has not had, at once, when they hold a reply in the chat or answer every decision the agent asked
+        and has no answer to; else, unless the owner ended the chat, what the run waits for: those answers, or a
+        reply. None when the run ends."""
         run = self.run
         await self.post_chat()
+        asked = self.conversation.open_asked()
         unread = await run.inbox.unread()
-        if unread:
+        if transitions.author_wakes(unread, asked):
             run.note(f"{len(unread)} message(s) of the owner came while the agent worked: a new turn takes them.")
             return unread
         if run.finish_asked.is_set():
@@ -164,11 +175,18 @@ class AuthorRun:
             return []
         if run.state != "waiting":
             return []
-        run.note(
-            "The agent's turn ended: the run waits for its owner's reply in the chat, and the time it waits does not "
-            "count toward its timeout."
-        )
-        messages = await self.conversation.wait_for_answer()
+        if asked:
+            shown = ", ".join(f"#{decision_id}" for decision_id in sorted(asked))
+            run.note(
+                f"The agent's turn ended with decision {shown} open: the run waits until its owner answered each one "
+                "or replied in the chat, and the time it waits does not count toward its timeout."
+            )
+        else:
+            run.note(
+                "The agent's turn ended: the run waits for its owner's reply in the chat, and the time it waits does "
+                "not count toward its timeout."
+            )
+        messages = await self.conversation.wait_for_answer(lambda found: transitions.author_wakes(found, asked))
         if not messages:
             run.note("The owner ended the chat: the run ends done.")
         return messages

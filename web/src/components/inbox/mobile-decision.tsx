@@ -21,7 +21,6 @@ import { type ReactNode, type Ref, type RefObject, useEffect, useMemo, useState 
 
 import { useLiveQuery } from "@/components/live/live-context";
 import { LiveIndicator } from "@/components/live/live-indicator";
-import { planHref, stepHref } from "@/components/plans/links";
 import { KIND_ICON, useTraceDuration } from "@/components/runs/trace-look";
 import { recentEventsQuery, runHref, runQuery } from "@/components/runs/queries";
 import { buildTrace } from "@/components/runs/trace-model";
@@ -42,12 +41,13 @@ import {
   AskedTiming,
   ClosedNote,
   DecisionStatePill,
+  DecisionWhere,
   FoldedContext,
   NoFormNote,
-  OptionList,
   TakeOverButton,
   useAnswerForm,
 } from "./decision-view";
+import { OptionList } from "./decision-options";
 import { useInboxViewer, useParksAt } from "./hooks";
 import { InboxBell } from "./inbox-bell";
 import { type AnswerAccess, answerAccess } from "./model";
@@ -83,7 +83,7 @@ function ScreenTop({ decision }: { decision: Decision | null }) {
           className="block min-w-0 truncate rounded-xs px-1 text-base leading-11 font-semibold text-foreground tabular-nums"
           data-testid="decision-screen-run"
         >
-          {tDecision("runLink", { id: decision.run_id })}
+          {tDecision(decision.plan_id === null ? "authorRunLink" : "runLink", { id: decision.run_id })}
         </Link>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center">
@@ -127,20 +127,8 @@ function ScreenLead({
           <DecisionStatePill decision={decision} access={access} size="lg" />
           <DecisionCategoryBadge category={decision.category} />
         </div>
-        <p className="text-sm leading-5 text-muted-foreground [overflow-wrap:anywhere]" data-testid="decision-where">
-          <span className="font-mono">{decision.project}</span>
-          {" / "}
-          <Link href={planHref(decision.project, decision.plan_id)} className={cn(TEXT_LINK, "font-mono font-normal")} data-testid="decision-plan-link">
-            {decision.plan_id}
-          </Link>
-          {decision.step_key !== null ? (
-            <>
-              {", "}
-              <Link href={stepHref(decision.project, decision.plan_id, decision.step_key)} className={TEXT_LINK} data-testid="decision-step-link">
-                {t("stepLink", { key: decision.step_key })}
-              </Link>
-            </>
-          ) : null}
+        <p className="text-sm leading-5 text-muted-foreground">
+          <DecisionWhere decision={decision} link={TEXT_LINK} />
         </p>
         {open ? (
           <AskedTiming decision={decision} parksAt={parksAt} className="text-[13px] leading-[18px] text-fg-subtle" />

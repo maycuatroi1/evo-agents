@@ -292,7 +292,8 @@ class Worker(BaseModel):
     features: list[str] = Field(
         default_factory=list,
         description="what its daemon said it does besides its kinds of run: session_per_step, a plan run with a "
-        "session for each step; empty for a daemon that said none",
+        "session for each step; author_decisions, an author run whose agent asks decisions; empty for a daemon that "
+        "said none",
     )
     created_at: datetime
     last_heartbeat_at: datetime | None

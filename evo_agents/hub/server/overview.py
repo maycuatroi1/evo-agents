@@ -4,7 +4,9 @@ One answer says what waits for the caller, what runs and what ended lately, over
 grant on; a hub admin's projects without one are left out. Each project goes through the check of GET
 /v1/projects/{p}/runs and GET /v1/projects/{p}/decisions, the same functions (``projects.project_access`` and
 ``runs.visible_plans``, through the project's hub sink), so a run or decision of a plan whose label the caller's grant
-does not reach is neither listed nor counted. The queries then take the visible (project, plan) pairs at once, and
+does not reach is neither listed nor counted. A decision is read as its run is (``views.readable_run``): through the
+run's plan, and for an author run that has put no plan yet, through the project's default label
+(``views.sees_unplanned``). The queries then take the visible (project, plan) pairs at once, and
 use the indexes the runs, decisions and plans already have.
 
 - counts: waiting_on_you, the open decisions of runs the caller dispatched; running, the runs in RUNNING_STATES;
@@ -13,11 +15,13 @@ use the indexes the runs, decisions and plans already have.
 - active_runs: at most MAX_ACTIVE runs in IN_FLIGHT, those whose agent works first, then waiting, parked, queued,
   the newest first within each;
 - recent_runs: the MAX_RECENT runs that ended last, in any end state;
-- open_decisions: at most MAX_DECISIONS open decisions, the caller's own first, the oldest first, each with when its
-  run parks for want of an answer (EVO_HUB_DECISION_WAIT_SECONDS after it started waiting);
+- open_decisions: at most MAX_DECISIONS open decisions, of plan runs and author runs, the caller's own first, the oldest
+  first, each with when its run parks for want of an answer (EVO_HUB_DECISION_WAIT_SECONDS after it started waiting);
+  plan_id is null for the decision of an author run that has put no plan yet;
 - author_waiting: at most MAX_AUTHOR_WAITING of the caller's own author runs (``evo_agents.hub.author``) that wait for
   their reply in the chat, waiting or parked, the latest first, each with the agent's last message: those of a new
-  plan, which no plan's label covers, and those of a plan the caller sees;
+  plan, which no plan's label covers, and those of a plan the caller sees. A run with a decision still open is left
+  out: open_decisions lists it through its decision;
 - projects: each with the caller's role and max level, its repos, its active plans the caller sees, the open
   decisions of those plans, and where its Curator stands when it has a charter (``curator.curator_overview``).
 """
@@ -55,7 +59,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import REQUESTED_RUNTIMES
-from evo_agents.hub.server.runs.service.views import visible_plans
+from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
 from evo_agents.hub.server.security import CurrentUser
 
 log = logging.getLogger(__name__)
@@ -116,9 +120,11 @@ class OverviewRun(BaseModel):
 class OverviewDecision(BaseModel):
     id: int
     project: str
-    run_id: int = Field(description="the plan run the decision belongs to")
+    run_id: int = Field(description="the plan run or author run the decision belongs to")
     run_state: Literal[runs.RUN_STATES]
-    plan_id: str
+    plan_id: str | None = Field(
+        description="the run's plan when its agent asked; null for an author run that had put no plan yet"
+    )
     plan_title: str | None
     step_key: str | None = Field(description="the step it is about, when the agent named one")
     category: Literal[runs.DECISION_CATEGORIES]
@@ -204,6 +210,19 @@ def _visible():
 def _of_visible(visible, table):
     """``table``'s rows of a visible plan: its project_id and plan_id are a pair of ``visible``."""
     return and_(visible.c.project_id == table.c.project_id, visible.c.plan_id == table.c.plan_id)
+
+
+def _decision_visible(visible, unplanned: ColumnElement[bool]):
+    """Whether the caller reads a decision, of a query that joins its run, as it reads the run: the run's plan is a
+    visible one, or it has none and ``unplanned`` selects its project (the caller reads its runs on no plan)."""
+    decisions, runs_ = tables.decisions, tables.runs
+    plan = func.coalesce(decisions.c.plan_id, runs_.c.plan_id)
+    seen = (
+        select(visible.c.plan_id)
+        .where(visible.c.project_id == decisions.c.project_id, visible.c.plan_id == plan)
+        .exists()
+    )
+    return or_(seen, and_(plan.is_(None), unplanned))
 
 
 def _granted(user_id: int):
@@ -296,9 +315,9 @@ def _run_rows(visible, states: tuple[str, ...], order: tuple, limit: int):
     )
 
 
-def _open_decisions(visible, user_id: int):
-    """The first MAX_DECISIONS open decisions of the visible plans, ``user_id``'s own first, then the oldest first,
-    with OverviewDecision's columns and what its parks_at is made of."""
+def _open_decisions(visible, user_id: int, unplanned: ColumnElement[bool]):
+    """The first MAX_DECISIONS open decisions the caller reads (``_decision_visible``), ``user_id``'s own first, then
+    the oldest first, with OverviewDecision's columns and what its parks_at is made of."""
     decisions, runs_, projects, users, plans = (
         tables.decisions,
         tables.runs,
@@ -325,15 +344,14 @@ def _open_decisions(visible, user_id: int):
             runs_.c.parked_at,
         )
         .select_from(
-            decisions.join(visible, _of_visible(visible, decisions))
-            .join(runs_, runs_.c.id == decisions.c.run_id)
+            decisions.join(runs_, runs_.c.id == decisions.c.run_id)
             .join(projects, projects.c.id == decisions.c.project_id)
             .join(users, users.c.id == runs_.c.dispatched_by)
             .outerjoin(
                 plans, and_(plans.c.project_id == decisions.c.project_id, plans.c.plan_id == decisions.c.plan_id)
             )
         )
-        .where(decisions.c.state == "open")
+        .where(decisions.c.state == "open", _decision_visible(visible, unplanned))
         .order_by(yours.desc(), decisions.c.asked_at, decisions.c.id)
         .limit(MAX_DECISIONS)
     )
@@ -362,6 +380,8 @@ def _author_waiting(visible, user_id, granted: ColumnElement[bool]):
         .scalar_subquery()
     )
     seen = select(visible.c.plan_id).where(_of_visible(visible, runs_)).exists()
+    decisions = tables.decisions
+    asks = select(decisions.c.id).where(decisions.c.run_id == runs_.c.id, decisions.c.state == "open").exists()
     return (
         select(
             runs_.c.id,
@@ -386,14 +406,16 @@ def _author_waiting(visible, user_id, granted: ColumnElement[bool]):
             one_of(runs_.c.state, AUTHOR_WAITING_STATES),
             granted,
             or_(runs_.c.plan_id.is_(None), seen),
+            ~asks,  # open_decisions lists it through its decision
         )
         .order_by(runs_.c.id.desc())
         .limit(MAX_AUTHOR_WAITING)
     )
 
 
-def _decision_counts(visible, user_id: int):
-    """For each project, its open decisions of the visible plans, and how many of those are ``user_id``'s."""
+def _decision_counts(visible, user_id: int, unplanned: ColumnElement[bool]):
+    """For each project, its open decisions the caller reads (``_decision_visible``), and how many of those are
+    ``user_id``'s."""
     decisions, runs_ = tables.decisions, tables.runs
     return (
         select(
@@ -401,10 +423,8 @@ def _decision_counts(visible, user_id: int):
             func.count().label("total"),
             func.count().filter(runs_.c.dispatched_by == user_id).label("yours"),
         )
-        .select_from(
-            decisions.join(visible, _of_visible(visible, decisions)).join(runs_, runs_.c.id == decisions.c.run_id)
-        )
-        .where(decisions.c.state == "open")
+        .select_from(decisions.join(runs_, runs_.c.id == decisions.c.run_id))
+        .where(decisions.c.state == "open", _decision_visible(visible, unplanned))
         .group_by(decisions.c.project_id)
     )
 
@@ -430,19 +450,24 @@ _GRANTED = _granted(bindparam("user_id"))
 _RUN_COUNTS = _run_counts(_VISIBLE, bindparam("since"))
 _ACTIVE_RUNS = _run_rows(_VISIBLE, IN_FLIGHT, _active_order(), MAX_ACTIVE)
 _RECENT_RUNS = _run_rows(_VISIBLE, runs.TERMINAL_STATES, _recent_order(), MAX_RECENT)
-_OPEN_DECISIONS = _open_decisions(_VISIBLE, bindparam("user_id"))
-_DECISION_COUNTS = _decision_counts(_VISIBLE, bindparam("user_id"))
+_UNPLANNED = one_of(tables.decisions.c.project_id, name="unplanned")
+_OPEN_DECISIONS = _open_decisions(_VISIBLE, bindparam("user_id"), _UNPLANNED)
+_DECISION_COUNTS = _decision_counts(_VISIBLE, bindparam("user_id"), _UNPLANNED)
 _PROJECT_COUNTS = _project_counts(_VISIBLE, one_of(tables.projects.c.id, name="granted"))
 _AUTHOR_WAITING = _author_waiting(_VISIBLE, bindparam("user_id"), one_of(tables.runs.c.project_id, name="granted"))
 
 
-def _bound(user_id: int, pairs: list[tuple[int, str]], granted: list[int], since: datetime) -> dict:
+def _bound(
+    user_id: int, pairs: list[tuple[int, str]], granted: list[int], unplanned: list[int], since: datetime
+) -> dict:
     """The parameters of the statements above: the visible (project_id, plan_id) ``pairs``, the projects
-    ``granted``, the caller and the start of the counted days."""
+    ``granted``, those of them whose runs on no plan the caller sees (``unplanned``), the caller and the start of the
+    counted days."""
     return {
         "visible_projects": [project_id for project_id, _ in pairs],
         "visible_plans": [plan_id for _, plan_id in pairs],
         "granted": granted,
+        "unplanned": unplanned,
         "user_id": user_id,
         "since": since,
     }
@@ -491,7 +516,9 @@ async def overview(request: Request, user: CurrentUser) -> Overview:
         for access in accesses:
             pairs += [(access.project_id, plan_id) for plan_id in await visible_plans(conn, access, None)]
         since = datetime.combine(today - timedelta(days=DAYS - 1), time.min, tzinfo=UTC)
-        bound = _bound(user.user_id, pairs, [access.project_id for access in accesses], since)
+        granted = [access.project_id for access in accesses]
+        unplanned = [access.project_id for access in accesses if sees_unplanned(access, None)]
+        bound = _bound(user.user_id, pairs, granted, unplanned, since)
         counted = (await conn.execute(_RUN_COUNTS, bound)).all()
         active = (await conn.execute(_ACTIVE_RUNS, bound)).all()
         recent = (await conn.execute(_RECENT_RUNS, bound)).all()

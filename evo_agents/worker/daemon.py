@@ -300,7 +300,8 @@ class Daemon:
             "runs": held + asked,
             "agent_version": __version__,
             "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
-            "features": list(runs.WORKER_FEATURES),  # a plan run with a session for each step (runner.sessions)
+            # a plan run with a session for each step (runner.sessions), an author run that asks decisions
+            "features": list(runs.WORKER_FEATURES),
         }
         try:
             answer = await self.hub.heartbeat(body)
