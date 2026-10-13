@@ -2849,6 +2849,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/rate-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Rate Limit
+         * @description Keep the usage the CLI gave for the account of one of the run's leases; on a usage limit, cool the account
+         *     down and move the run to the next one when its owner's policy lets it, as the module says.
+         */
+        post: operations["report_rate_limit_v1_worker_runs__run_id__rate_limit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6875,6 +6896,76 @@ export interface components {
              */
             queued: boolean;
         };
+        /** RateLimitAnswer */
+        RateLimitAnswer: {
+            /**
+             * Action
+             * @description none: usage kept, go on; failover: ask for the run's leases again, the new account's value is in them, and go on in the same session; stop: end the run failed with cause rate_limit
+             * @enum {string}
+             */
+            action: "none" | "failover" | "stop";
+            /**
+             * Secret Id
+             * @description the account the run has now, by its secret's id
+             */
+            secret_id: number;
+            /**
+             * Failovers
+             * @description the times the run moved to another account
+             */
+            failovers: number;
+            /**
+             * Cooldown Until
+             * @description with rejected: until when the account cools
+             */
+            cooldown_until?: string | null;
+            /**
+             * Ready At
+             * @description with stop: when an account is ready first
+             */
+            ready_at?: string | null;
+            /**
+             * Reason
+             * @description with stop: why the run cannot move
+             */
+            reason?: string | null;
+        };
+        /** RateLimitReport */
+        RateLimitReport: {
+            /**
+             * Lease Id
+             * @description the lease of the env secret the agent ran with, one the run holds
+             */
+            lease_id: number;
+            /**
+             * Status
+             * @description what the CLI said: rejected when the account hit its usage limit, else its usage alone
+             * @enum {string}
+             */
+            status: "allowed" | "allowed_warning" | "rejected";
+            /**
+             * Rate Limit Type
+             * @description the limit, such as five_hour or seven_day
+             */
+            rate_limit_type?: string | null;
+            /**
+             * Resets At
+             * @description when the limit resets, when the CLI said
+             */
+            resets_at?: string | null;
+            /**
+             * Utilization
+             * @description the share of the limit used
+             */
+            utilization?: number | null;
+            /**
+             * Windows
+             * @description the usage of each window the CLI listed
+             */
+            windows?: {
+                [key: string]: components["schemas"]["UsageWindow"];
+            } | null;
+        };
         /** ReadRequest */
         ReadRequest: {
             /**
@@ -9226,6 +9317,13 @@ export interface components {
              * @description when the URLs stop working
              */
             expires_at: string;
+        };
+        /** UsageWindow */
+        UsageWindow: {
+            /** Utilization */
+            utilization?: number | null;
+            /** Resets At */
+            resets_at?: string | null;
         };
         /** UserGrant */
         UserGrant: {
@@ -19290,6 +19388,68 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_rate_limit_v1_worker_runs__run_id__rate_limit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RateLimitReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitAnswer"];
+                };
             };
             /** @description Unauthorized */
             401: {

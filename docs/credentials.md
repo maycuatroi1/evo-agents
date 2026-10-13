@@ -216,10 +216,28 @@ workers, or bound to some workers while the run is not pinned to one of them, is
 rules (`account_by_rule`). A body without `account` dispatches as before. Audit rows of the dispatch end with
 `account=secret:<id>`.
 
-`run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool`
-or `cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
-cooldown and rotation; `account_policies` holds a member's policy for a project: `strategy`, `cooldown_seconds` (60 to
-604800, default 3600), `failover` (default on) and `max_failovers` (0 to 20, default 3).
+When the agent of a headless run (a step run, a plan run or an author run of Claude Code) hits its account's usage
+limit, the worker says so: the CLI's `rate_limit_event` with status `rejected`, or a result whose error reads as a
+usage limit. It calls `POST /v1/worker/runs/{id}/rate-limit` with the lease of the account (`lease_id`), the
+`status`, the limit's `rate_limit_type`, the reset time (`resets_at`) when the CLI gave one, and the usage
+(`utilization`, `windows`); an event with status `allowed` or `allowed_warning` is reported the same way and only
+keeps the usage on the account (`accounts.last_usage`). On `rejected` the hub cools the account down until the reset,
+else for the policy's `cooldown_seconds`. When the run may fail over (failover on, its account not picked by hand,
+fewer than `max_failovers` moves, another account ready by the rules above), the hub moves its `run_accounts` row to
+the next account, counts one more failover, revokes the old lease and answers `failover`; the worker asks for the
+run's leases again, swaps the value in the agent's environment and in the run's socket, stops the agent and goes on in
+the same session with the new account. Else it answers `stop` with the reason and the earliest time an account is
+ready again, and the worker ends the run `failed` with cause `rate_limit` and that time in its error. A `system`
+event of the run records each switch or stop, and the audit row `account.failover` each switch
+(`... run:<id> env=<variable> from=secret:<id> to=secret:<id>`): both name the accounts by secret id, never by name
+or value. A worker of an older release never calls the route, and its runs fail as before. An interactive pane only
+shows the event: the person at it switches by hand.
+
+`run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool` or
+`cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
+cooldown, rotation and the last usage a run reported (`last_usage`, `last_usage_at`); `account_policies` holds a
+member's policy for a project: `strategy`, `cooldown_seconds` (60 to 604800, default 3600), `failover` (default on) and
+`max_failovers` (0 to 20, default 3).
 
 The routes are the member's own, a hub admin included, and never carry a value:
 

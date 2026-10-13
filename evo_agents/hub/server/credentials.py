@@ -381,7 +381,7 @@ def _origins_text(origins) -> str:
     return " ".join(kept) or "-"
 
 
-async def _survey(conn: AsyncConnection, user: Principal, run_id: int, *, lock: bool) -> tuple[int, _Survey]:
+async def survey_run(conn: AsyncConnection, user: Principal, run_id: int, *, lock: bool) -> tuple[int, _Survey]:
     """(worker id, what run ``run_id`` may get) for the worker of ``user``, which must hold the run. The worker's row
     is locked, as on every worker route; with ``lock`` the run's and the secrets' rows are too, so the run cannot end
     and a secret cannot be deleted until the leases are recorded."""
@@ -606,7 +606,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
     sealer: Sealer | None = state.sealer
     engine = state.engine
     async with engine.begin() as conn:
-        _, survey = await _survey(conn, user, run_id, lock=False)
+        _, survey = await survey_run(conn, user, run_id, lock=False)
     curator = survey.run.curator is not None
     app: GitHubApp | None = getattr(state, "curator_app", None) if curator else state.github_app
     made: list[InstallationToken] | None = None
@@ -629,7 +629,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
                     reasons[repo] = found.missing[f"{owner}/{name}"]
     try:
         async with engine.begin() as conn:
-            worker_id, survey = await _survey(conn, user, run_id, lock=True)
+            worker_id, survey = await survey_run(conn, user, run_id, lock=True)
             _drop_github(survey, unchecked)
             if sealer is None:
                 missing_key = ", ".join(state.config.credentials_missing()) or "EVO_HUB_SECRETS_KEY"
