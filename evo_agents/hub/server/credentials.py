@@ -8,7 +8,8 @@ for a run of one step, its repos for a plan run) and their origins in project_re
 ``credentials.normalize_origin``, and leases what the run's owner, the member who dispatched it, bound to the run's
 project, on any of their workers or on this one, and that has not expired:
 
-- each secret of kind env, one per variable: a secret bound to this worker before one bound to any, then by name;
+- each secret of kind env, one per variable: the account the run took already, else one bound to this worker before
+  one bound to any, by the strategy of the owner's policy for the project (``account_choice``);
 - each secret of kind git whose url_prefix covers one of the origins, the longest prefix for each origin, so a
   secret for ``https://gitlab.example.org/group`` answers for ``git@gitlab.example.org:group/repo.git`` too;
 - a token of the hub's GitHub App for the origins on github.com that no git secret covers, one per installation
@@ -92,6 +93,7 @@ from evo_agents.hub.credentials import (
 )
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.account_choice import choose_accounts
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -433,14 +435,9 @@ def _allowed(policy: CuratorPolicy | None) -> set[tuple[str, str]] | None:
 
 
 def _choose(survey: _Survey) -> None:
-    """Which env secrets, which git secret for each origin, and which repos need a GitHub token; the reason of each
-    repo that nothing can cover."""
+    """Which git secret for each origin, and which repos need a GitHub token; the reason of each repo that nothing can
+    cover. The env secrets are chosen when they are leased (``account_choice``)."""
     by_preference = sorted(survey.secrets, key=lambda secret: (not secret.on_worker, secret.name))
-    variables: dict[str, _Secret] = {}
-    for secret in by_preference:
-        if secret.kind == "env":
-            variables.setdefault(secret.env_var, secret)
-    survey.env = sorted(variables.values(), key=lambda secret: secret.env_var)
     git = [secret for secret in by_preference if secret.kind == "git"]
     for repo, origin in survey.origins.items():
         if not origin:
@@ -504,6 +501,7 @@ async def _lease_secrets(conn: AsyncConnection, survey: _Survey, worker_id: int,
         cl.c.revoked_at.is_(None),
     )
     held = {(row.secret_id, row.target): row.id for row in await conn.execute(live)}
+    survey.env = await choose_accounts(conn, survey.run, survey.secrets, {secret_id for secret_id, _ in held})
     chosen: list[tuple[_Secret, str]] = [(secret, secret.env_var) for secret in survey.env]
     for secret in dict.fromkeys(survey.git.values()):
         origins = [survey.origins[repo] for repo, found in survey.git.items() if found == secret]

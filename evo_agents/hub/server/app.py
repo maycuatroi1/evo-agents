@@ -260,12 +260,11 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(terminal.worker_router)
     app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
 
-    from evo_agents.hub.server import credentials, secrets
+    from evo_agents.hub.server import accounts, credentials, secrets
     from evo_agents.hub.server.sealing import Sealer
 
-    app.include_router(secrets.router)
-    app.include_router(credentials.router)
-    app.include_router(credentials.worker_router)
+    for routes in (secrets.router, credentials.router, credentials.worker_router, accounts.router):
+        app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
     return app
 

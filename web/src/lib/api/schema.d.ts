@@ -2760,10 +2760,240 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description The caller's own env secrets as accounts, by variable and name, without their values; a hub admin's own too.
+         */
+        get: operations["list_accounts_v1_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Account
+         * @description Change the weight or priority of the caller's account ``name``, or pause or resume it.
+         */
+        patch: operations["change_account_v1_accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/account-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Policies
+         * @description The caller's own policies, by project; a project without one has the defaults.
+         */
+        get: operations["list_account_policies_v1_account_policies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account-policies/{project}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Account Policy
+         * @description The caller's policy for ``project``, the defaults when they set none.
+         */
+        get: operations["get_account_policy_v1_account_policies__project__get"];
+        /**
+         * Put Account Policy
+         * @description Set the caller's policy for ``project`` whole; the writer role on it.
+         */
+        put: operations["put_account_policy_v1_account_policies__project__put"];
+        post?: never;
+        /**
+         * Delete Account Policy
+         * @description Drop the caller's policy for ``project``: the defaults hold again. 404 when they set none.
+         */
+        delete: operations["delete_account_policy_v1_account_policies__project__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Account
+         * @description One of the caller's env secrets as an account: everything but its value.
+         */
+        Account: {
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused or expired, now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired";
+        };
+        /** AccountChange */
+        AccountChange: {
+            /**
+             * Weight
+             * @description its share in a weighted pool; 0 leaves it
+             */
+            weight?: number | null;
+            /**
+             * Priority
+             * @description the lower, the sooner in a fill-first pool
+             */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, so no new run takes it; false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** AccountPolicy */
+        AccountPolicy: {
+            /**
+             * Strategy
+             * @description how a run picks among the accounts
+             * @default round-robin
+             * @enum {string}
+             */
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            /**
+             * Cooldown Seconds
+             * @description how long an account cools down after a usage limit that gave no reset time
+             * @default 3600
+             */
+            cooldown_seconds: number;
+            /**
+             * Failover
+             * @description whether a run that hits a usage limit goes on with another account
+             * @default true
+             */
+            failover: boolean;
+            /**
+             * Max Failovers
+             * @description at most how many times a run moves on
+             * @default 3
+             */
+            max_failovers: number;
+            /** Project */
+            project: string;
+            /**
+             * Updated At
+             * @description when the caller set it; null for the defaults
+             */
+            updated_at: string | null;
+        };
+        /** AccountPolicyWrite */
+        AccountPolicyWrite: {
+            /**
+             * Strategy
+             * @description how a run picks among the accounts
+             * @default round-robin
+             * @enum {string}
+             */
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            /**
+             * Cooldown Seconds
+             * @description how long an account cools down after a usage limit that gave no reset time
+             * @default 3600
+             */
+            cooldown_seconds: number;
+            /**
+             * Failover
+             * @description whether a run that hits a usage limit goes on with another account
+             * @default true
+             */
+            failover: boolean;
+            /**
+             * Max Failovers
+             * @description at most how many times a run moves on
+             * @default 3
+             */
+            max_failovers: number;
+        };
         /** ActiveRun */
         ActiveRun: {
             /** Id */
@@ -18726,6 +18956,303 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["GivenBack"];
                 };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_v1_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    change_account_v1_accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's env secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_account_policies_v1_account_policies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPolicy"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_account_policy_v1_account_policies__project__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_account_policy_v1_account_policies__project__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_policy_v1_account_policies__project__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             /** @description Unauthorized */
             401: {

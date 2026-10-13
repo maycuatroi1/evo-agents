@@ -1,6 +1,249 @@
 {
   "version": 1,
   "commands": {
+    "hub account list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "name",
+          "env_var",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state"
+        ],
+        "schema": "Account"
+      }
+    },
+    "hub account pause": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "env_var",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state"
+        ],
+        "schema": "Account"
+      }
+    },
+    "hub account policy": {
+      "positionals": [
+        {
+          "name": "project",
+          "metavar": "PROJECT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--strategy"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "round-robin",
+            "weighted-round-robin",
+            "fill-first"
+          ]
+        },
+        {
+          "flags": [
+            "--cooldown"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--failover",
+            "--no-failover"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--max-failovers"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reset"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "strategy",
+          "cooldown_seconds",
+          "failover",
+          "max_failovers",
+          "project",
+          "updated_at"
+        ],
+        "schema": "AccountPolicy"
+      }
+    },
+    "hub account resume": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "env_var",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state"
+        ],
+        "schema": "Account"
+      }
+    },
+    "hub account set": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--weight"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "env_var",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state"
+        ],
+        "schema": "Account"
+      }
+    },
     "hub admin grant": {
       "positionals": [
         {
@@ -19040,10 +19283,667 @@
             }
           }
         }
+      },
+      "/v1/accounts": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "List Accounts",
+          "description": "The caller's own env secrets as accounts, by variable and name, without their values; a hub admin's own too.",
+          "operationId": "list_accounts_v1_accounts_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/Account"
+                    },
+                    "type": "array",
+                    "title": "Response List Accounts V1 Accounts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/accounts/{name}": {
+        "patch": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Change Account",
+          "description": "Change the weight or priority of the caller's account ``name``, or pause or resume it.",
+          "operationId": "change_account_v1_accounts__name__patch",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "one of the caller's env secrets",
+                "title": "Name"
+              },
+              "description": "one of the caller's env secrets"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountChange"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Account"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/account-policies": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "List Account Policies",
+          "description": "The caller's own policies, by project; a project without one has the defaults.",
+          "operationId": "list_account_policies_v1_account_policies_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/AccountPolicy"
+                    },
+                    "type": "array",
+                    "title": "Response List Account Policies V1 Account Policies Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/account-policies/{project}": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Get Account Policy",
+          "description": "The caller's policy for ``project``, the defaults when they set none.",
+          "operationId": "get_account_policy_v1_account_policies__project__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "put": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Put Account Policy",
+          "description": "Set the caller's policy for ``project`` whole; the writer role on it.",
+          "operationId": "put_account_policy_v1_account_policies__project__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AccountPolicyWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AccountPolicy"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Delete Account Policy",
+          "description": "Drop the caller's policy for ``project``: the defaults hold again. 404 when they set none.",
+          "operationId": "delete_account_policy_v1_account_policies__project__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
       "schemas": {
+        "Account": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "env_var": {
+              "type": "string",
+              "title": "Env Var",
+              "description": "the variable it sets"
+            },
+            "projects": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose runs may take it"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to; empty for any worker of its owner"
+            },
+            "weight": {
+              "type": "integer",
+              "title": "Weight",
+              "description": "0 to 1000: its share in a weighted-round-robin pool; 0 leaves it"
+            },
+            "priority": {
+              "type": "integer",
+              "title": "Priority",
+              "description": "0 to 1000: the lower, the sooner a fill-first pool takes it"
+            },
+            "paused_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused At",
+              "description": "when its owner paused it; null while it may be taken"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until",
+              "description": "until when it cools down after a usage limit"
+            },
+            "cooldown_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Reason",
+              "description": "why it cools down"
+            },
+            "last_leased_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Leased At",
+              "description": "when a run last took it"
+            },
+            "expires_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Expires At"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "ready",
+                "cooling",
+                "paused",
+                "expired"
+              ],
+              "title": "State",
+              "description": "ready, cooling, paused or expired, now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "env_var",
+            "projects",
+            "workers",
+            "weight",
+            "priority",
+            "paused_at",
+            "cooldown_until",
+            "cooldown_reason",
+            "last_leased_at",
+            "expires_at",
+            "state"
+          ],
+          "title": "Account",
+          "description": "One of the caller's env secrets as an account: everything but its value."
+        },
+        "AccountChange": {
+          "properties": {
+            "weight": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Weight",
+              "description": "its share in a weighted pool; 0 leaves it"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority",
+              "description": "the lower, the sooner in a fill-first pool"
+            },
+            "paused": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Paused",
+              "description": "true pauses it, so no new run takes it; false resumes it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "AccountChange"
+        },
+        "AccountPolicy": {
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "round-robin",
+                "weighted-round-robin",
+                "fill-first"
+              ],
+              "title": "Strategy",
+              "description": "how a run picks among the accounts",
+              "default": "round-robin"
+            },
+            "cooldown_seconds": {
+              "type": "integer",
+              "maximum": 604800.0,
+              "minimum": 60.0,
+              "title": "Cooldown Seconds",
+              "description": "how long an account cools down after a usage limit that gave no reset time",
+              "default": 3600
+            },
+            "failover": {
+              "type": "boolean",
+              "title": "Failover",
+              "description": "whether a run that hits a usage limit goes on with another account",
+              "default": true
+            },
+            "max_failovers": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Max Failovers",
+              "description": "at most how many times a run moves on",
+              "default": 3
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "updated_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated At",
+              "description": "when the caller set it; null for the defaults"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "project",
+            "updated_at"
+          ],
+          "title": "AccountPolicy"
+        },
+        "AccountPolicyWrite": {
+          "properties": {
+            "strategy": {
+              "type": "string",
+              "enum": [
+                "round-robin",
+                "weighted-round-robin",
+                "fill-first"
+              ],
+              "title": "Strategy",
+              "description": "how a run picks among the accounts",
+              "default": "round-robin"
+            },
+            "cooldown_seconds": {
+              "type": "integer",
+              "maximum": 604800.0,
+              "minimum": 60.0,
+              "title": "Cooldown Seconds",
+              "description": "how long an account cools down after a usage limit that gave no reset time",
+              "default": 3600
+            },
+            "failover": {
+              "type": "boolean",
+              "title": "Failover",
+              "description": "whether a run that hits a usage limit goes on with another account",
+              "default": true
+            },
+            "max_failovers": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Max Failovers",
+              "description": "at most how many times a run moves on",
+              "default": 3
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "AccountPolicyWrite"
+        },
         "ActiveRun": {
           "properties": {
             "id": {
