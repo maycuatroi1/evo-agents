@@ -18,7 +18,6 @@ export type Worker = Schemas["Worker"];
 export type Pairing = Schemas["Pairing"];
 export type PairingState = Schemas["PairingState"];
 export type PairingRequest = Schemas["PairingRequest"];
-export type WorkerUpdate = Schemas["WorkerUpdate"];
 
 /** The list and a worker's page poll the hub this often, so a heartbeat or a drain shows within seconds. */
 export const WORKERS_REFRESH_MS = 10_000;
@@ -103,15 +102,6 @@ export type DispatchFrom = Worker["dispatch_from"];
 export async function setDispatchFrom(api: ApiClient, id: number, value: DispatchFrom): Promise<Worker> {
   const headers = await csrfHeaders(api);
   return call(api.POST("/v1/workers/{worker_id}/dispatch-from", { params: { path: { worker_id: id } }, body: { value }, headers }));
-}
-
-/**
- * Change the worker's slots, labels or name: each field the body gives, at least one. Only its owner may; the daemon
- * takes the new values from the answer to its next heartbeat.
- */
-export async function updateWorker(api: ApiClient, id: number, body: WorkerUpdate): Promise<Worker> {
-  const headers = await csrfHeaders(api);
-  return call(api.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: id } }, body, headers }));
 }
 
 /** A worker id as the API accepts it: a positive bigint written in digits; null for anything else. */

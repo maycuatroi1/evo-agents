@@ -9,11 +9,26 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { type ApiClient, call } from "@/lib/api/client";
+import { csrfHeaders } from "@/lib/api/csrf";
 import { isApiError } from "@/lib/api/errors";
+import type { components } from "@/lib/api/schema";
 
 import { useWorkerFailure, useWorkerWrite } from "./hooks";
 import { isWorkerName, parseLabels, workerView } from "./model";
-import { MAX_LABELS, MAX_SLOTS, MIN_SLOTS, updateWorker, type Worker, type WorkerUpdate } from "./queries";
+import { MAX_LABELS, MAX_SLOTS, MIN_SLOTS, type Worker } from "./queries";
+
+type WorkerUpdate = components["schemas"]["WorkerUpdate"];
+
+/**
+ * Change the worker's slots, labels or name: each field the body gives, at least one. Only its owner may; the daemon
+ * takes the new values from the answer to its next heartbeat. It lives here, not in queries.ts, because queries.ts
+ * sits in a chunk every route loads first, and this card loads on demand (next/dynamic in worker-detail.tsx).
+ */
+async function updateWorker(api: ApiClient, id: number, body: WorkerUpdate): Promise<Worker> {
+  const headers = await csrfHeaders(api);
+  return call(api.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: id } }, body, headers }));
+}
 
 type Form = { name: string; slots: string; labels: string };
 type Field = keyof Form;

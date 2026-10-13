@@ -109,8 +109,8 @@
       "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/p/[project]/runs/[id]": {
-      "kB": 421.8,
-      "reason": "Turbopack repacked the chunks every route shares when the plan's Graph view gained its step inspector (it loads with the Graph, next/dynamic); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
+      "kB": 424.5,
+      "reason": "The Trace shows a step's report as a card (step-report.ts, trace-report.tsx, trace-term.tsx, main 6033862): main's own build measures this route at 424.5 kB, the same as this branch."
     },
     "/p/[project]/runs/[id]/diff": {
       "kB": 292.4,
@@ -140,8 +140,8 @@
       "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
     },
     "/workers/[id]": {
-      "kB": 317.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 317.8,
+      "reason": "The owner's Settings card (name, slots and labels, saved with PATCH /v1/workers/{id}) shows on the worker page as it loads. Loading it with next/dynamic took 0.5 kB off this route but made Turbopack repack shared chunks and put /admin/members/[login] 1.4 kB over, so it stays a static import."
     }
   }
 }
