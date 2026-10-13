@@ -1847,7 +1847,6 @@
       "state": "Trạng thái",
       "projects": "Dự án",
       "workers": "Worker",
-      "usage": "Mức dùng gần nhất",
       "runs": "Run 24 giờ / 7 ngày",
       "cost": "Chi phí 24 giờ / 7 ngày",
       "heldBy": "Đang dùng bởi",
@@ -1863,15 +1862,33 @@
     "until": "đến <time></time>",
     "rank": "trọng số {weight}, ưu tiên {priority}",
     "usage": {
-      "none": "Chưa có báo cáo",
+      "none": "Chưa có báo cáo mức dùng",
+      "title": "Giới hạn sử dụng",
+      "titleReported": "Giới hạn sử dụng, báo cáo <time></time>",
+      "label": "Giới hạn sử dụng của {name}",
       "percent": "Đã dùng {percent}%",
       "status": {
         "allowed": "Còn dùng được",
         "allowed_warning": "Gần chạm giới hạn",
         "rejected": "Đã chạm giới hạn"
       },
-      "resets": "đặt lại <time></time>",
-      "reported": "Báo cáo lúc <time></time>"
+      "notReported": "Chưa có số liệu",
+      "limited": "Đã chạm giới hạn",
+      "resetsIn": "Đặt lại sau {duration}",
+      "resetsAt": "Đặt lại {time}",
+      "wasReset": "Đã đặt lại {time}",
+      "duration": {
+        "hoursMinutes": "{hours} giờ {minutes} phút",
+        "hours": "{hours} giờ",
+        "minutes": "{minutes} phút"
+      },
+      "windows": {
+        "five_hour": "Phiên (5 giờ)",
+        "seven_day": "Hằng tuần, mọi model",
+        "session": "Phiên, {model}",
+        "weekly": "Hằng tuần, {model}",
+        "unnamed": "Giới hạn sử dụng"
+      }
     },
     "runsTitle": "{day, plural, other {# run}} trong 24 giờ, {week, plural, other {# run}} trong 7 ngày",
     "costTitle": "Ước tính từ mức dùng của các run: {day} trong 24 giờ, {week} trong 7 ngày",

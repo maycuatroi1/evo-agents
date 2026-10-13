@@ -3,7 +3,6 @@ import {
   CLAUDE_TOKEN_VAR,
   type AccountPolicy,
   type AccountPolicyWrite,
-  type AccountUsage,
   DEFAULT_POLICY,
   MAX_COOLDOWN_SECONDS,
   MAX_FAILOVERS,
@@ -14,31 +13,9 @@ import {
 } from "./queries";
 
 /**
- * The Accounts page's reading of the hub's answers: how much of its usage limit an account used last, the projects a
- * policy can be set for, the forms of an account and of a policy with their checks, and which Claude accounts are due
- * for a new token.
+ * The Accounts page's reading of the hub's answers: the projects a policy can be set for, the forms of an account and
+ * of a policy with their checks, and which Claude accounts are due for a new token. Usage limits: usage-model.ts.
  */
-
-/** The highest share of a usage limit the CLI last reported for the account, in whole percent; null when it gave none. */
-export function usagePercent(usage: AccountUsage | null | undefined): number | null {
-  if (!usage) return null;
-  const shares = [usage.utilization, ...Object.values(usage.windows ?? {}).map((window) => window.utilization)].filter(
-    (share): share is number => typeof share === "number" && Number.isFinite(share),
-  );
-  if (shares.length === 0) return null;
-  return Math.round(Math.min(Math.max(...shares), 1) * 100);
-}
-
-/** When the reported limit resets: the usage's own time, else the latest of its windows'. */
-export function usageResetsAt(usage: AccountUsage | null | undefined): string | null {
-  if (!usage) return null;
-  if (usage.resets_at) return usage.resets_at;
-  const times = Object.values(usage.windows ?? {})
-    .map((window) => window.resets_at)
-    .filter((at): at is string => typeof at === "string")
-    .sort();
-  return times.at(-1) ?? null;
-}
 
 export type PolicyRow = AccountPolicyWrite & { project: string; custom: boolean; updated_at: string | null };
 

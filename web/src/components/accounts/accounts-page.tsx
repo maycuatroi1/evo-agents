@@ -20,12 +20,13 @@ import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { Day, StateCell, UsageCell } from "./account-cells";
+import { Day, StateCell } from "./account-cells";
 import { AccountDialog } from "./account-dialog";
 import { useChangeAccount, useFailure } from "./hooks";
 import { isClaudeAccount, policyRows, renewalDue } from "./model";
 import { type Account, accountListQuery, policiesQuery } from "./queries";
 import { PolicySection } from "./policy-section";
+import { UsageLimits } from "./usage-limits";
 
 const SECRETS_HREF = "/secrets" as Route;
 
@@ -38,7 +39,6 @@ const preloadLogin = () => void loadLogin();
 const NARROW_HIDDEN = {
   projects: "hidden lg:table-cell",
   workers: "hidden xl:table-cell",
-  usage: "hidden md:table-cell",
   runs: "hidden lg:table-cell",
   cost: "hidden lg:table-cell",
   heldBy: "hidden sm:table-cell",
@@ -93,7 +93,6 @@ function AccountsTable({
           return workers.length ? <span className="font-mono text-xs">{workers.join(", ")}</span> : <span className="text-fg-subtle">{t("anyWorker")}</span>;
         },
       }),
-      helper.display({ id: "usage", header: () => t("columns.usage"), cell: (info) => <UsageCell account={info.row.original} /> }),
       helper.accessor("runs_7d", {
         id: "runs",
         header: () => t("columns.runs"),
@@ -196,6 +195,11 @@ function AccountsTable({
       }),
     ]);
   }, [t, format, now, onEdit, onPause, onRenew]);
+  // A Claude account's usage limits, or any account's a run reported, under its row at every width.
+  const usage = useCallback(
+    (account: Account) => (account.last_usage || isClaudeAccount(account) ? <UsageLimits account={account} pageNow={now} /> : null),
+    [now],
+  );
 
   return (
     <DataTable
@@ -205,6 +209,7 @@ function AccountsTable({
       getRowId={(row) => row.name}
       initialSorting={[{ id: "name", desc: false }]}
       columnClassNames={NARROW_HIDDEN}
+      detail={usage}
       testId="accounts-table"
     />
   );
@@ -273,8 +278,9 @@ function RenewNotice({ accounts, now, onRenew }: { accounts: Account[]; now: num
 }
 
 /**
- * The visitor's accounts (docs/credentials.md, section "Accounts"): each one's variable, bindings, state, the last
- * usage a run reported, its runs and their estimated cost over 24 hours and 7 days, and the runs holding it now; Renew
+ * The visitor's accounts (docs/credentials.md, section "Accounts"): each one's variable, bindings, state, its runs and
+ * their estimated cost over 24 hours and 7 days, and the runs holding it now, with its usage limits as bars under its
+ * row (a Claude account's, or any a run reported); Renew
  * token (a Claude account's), Pause or Resume and Edit (weight and priority) on each, and a reminder for each token
  * that ends within 30 days; then the rotation policy of each project. Add Claude account opens the same dialog as
  * Renew token, empty. Never a value.

@@ -1847,7 +1847,6 @@
       "state": "State",
       "projects": "Projects",
       "workers": "Workers",
-      "usage": "Last usage",
       "runs": "Runs 24 h / 7 d",
       "cost": "Cost 24 h / 7 d",
       "heldBy": "Held by",
@@ -1863,15 +1862,33 @@
     "until": "until <time></time>",
     "rank": "weight {weight}, priority {priority}",
     "usage": {
-      "none": "Not reported",
+      "none": "No usage reported yet",
+      "title": "Usage limits",
+      "titleReported": "Usage limits, reported <time></time>",
+      "label": "Usage limits of {name}",
       "percent": "{percent}% used",
       "status": {
         "allowed": "Allowed",
         "allowed_warning": "Near its limit",
         "rejected": "Limit reached"
       },
-      "resets": "resets <time></time>",
-      "reported": "Reported <time></time>"
+      "notReported": "Not reported",
+      "limited": "Limit reached",
+      "resetsIn": "Resets in {duration}",
+      "resetsAt": "Resets {time}",
+      "wasReset": "Reset {time}",
+      "duration": {
+        "hoursMinutes": "{hours} hr {minutes} min",
+        "hours": "{hours} hr",
+        "minutes": "{minutes} min"
+      },
+      "windows": {
+        "five_hour": "Session (5 hours)",
+        "seven_day": "Weekly, all models",
+        "session": "Session, {model}",
+        "weekly": "Weekly, {model}",
+        "unnamed": "Usage limit"
+      }
     },
     "runsTitle": "{day, plural, one {# run} other {# runs}} in 24 hours, {week, plural, one {# run} other {# runs}} in 7 days",
     "costTitle": "Estimated from the usage of its runs: {day} in 24 hours, {week} in 7 days",
