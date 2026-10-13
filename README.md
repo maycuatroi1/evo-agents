@@ -300,6 +300,8 @@ follows the evo-agents hub UI kit, in light and dark ([web/DESIGN.md](web/DESIGN
 - Monitor (`/monitor`) lists every run in flight over your projects and watches the ones you pick in a grid of live
   tiles that shares out the window: each tile a run's state, worker, time, plan steps and the tail of its trace, for
   viewing only. The tiles are in the URL (`?runs=project:id,...`), so a link opens the same grid.
+- A plan's page shows its steps as Board, List or Graph (`?view=graph`): the graph draws each step under the steps it
+  waits for, marks the Ready ones, and a step selected (`&step=11`) opens its details beside the graph, read only.
 - Insights charts a project's runs by day over 7, 30 or 90 days: outcomes, failure rate, run time and tokens
   (`GET /v1/projects/{project}/runs/stats`), each chart with its table.
 - Administration lists what needs a hub admin (`GET /v1/admin/overview`): tokens expiring or unused, failed graph
