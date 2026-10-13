@@ -221,6 +221,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
 | Accounts, the agent's accounts and their rotation | `UserRoundCog` |
+| Add Claude account; Renew token; a token that ends within 30 days | `UserRoundPlus`; `RefreshCw`; `CalendarClock` |
 | Knowledge graph | `Network` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |

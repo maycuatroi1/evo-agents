@@ -9,6 +9,7 @@ import {
   policyFormOf,
   policyProblems,
   policyRows,
+  renewalDue,
   usagePercent,
   usageResetsAt,
 } from "./model";
@@ -91,5 +92,19 @@ describe("the forms", () => {
     expect(policyBody(off).max_failovers).toBe(3);
     expect(policyProblems({ ...off, failover: true, cooldownMinutes: "0" })).toEqual({ cooldownMinutes: "range", maxFailovers: "whole" });
     expect(policyProblems({ ...form, cooldownMinutes: "10081" })).toEqual({ cooldownMinutes: "range" });
+  });
+});
+
+const NOW = Date.parse("2026-10-14T09:30:00Z");
+const DAY = 24 * 60 * 60 * 1000;
+
+describe("the renewal reminder", () => {
+  it("is due when the token ends within 30 days and has not ended yet", () => {
+    const at = (ms: number) => ({ expires_at: new Date(ms).toISOString() });
+    expect(renewalDue({ expires_at: null }, NOW)).toBeNull();
+    expect(renewalDue(at(NOW + 31 * DAY), NOW)).toBeNull();
+    expect(renewalDue(at(NOW + 30 * DAY), NOW)).toEqual({ at: new Date(NOW + 30 * DAY).toISOString(), days: 30 });
+    expect(renewalDue(at(NOW + 2 * 60 * 60 * 1000), NOW)?.days).toBe(1);
+    expect(renewalDue(at(NOW - DAY), NOW)).toBeNull();
   });
 });
