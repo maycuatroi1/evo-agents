@@ -723,6 +723,7 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
 | `POST /v1/worker/runs/{id}/credentials` | takes the leases of a run it holds: the owner's secrets, a GitHub token ([credentials.md](credentials.md)) |
 | `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
+| `POST /v1/worker/runs/{id}/rate-limit` | reports what the agent's CLI said of the usage limit of the account behind a lease of the run; on a limit hit, answers `failover` (the run moved to another account) or `stop` ([An account's usage limit](#an-accounts-usage-limit)) |
 | websocket `/v1/worker/runs/{id}/terminal` | the worker's end of the terminal |
 
 For members, with a web session or a machine token. `{p}` is a project, and run routes sit under
@@ -745,6 +746,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `GET .../runs/{id}/events?after=SEQ` | reader | events after a number |
 | `GET .../runs/{id}/stream` | reader | the same as server-sent events, with a ping every 15 s, resumed by `Last-Event-ID` |
 | `GET .../runs/{id}/diff` | reader | a presigned URL of the run's diff |
+| `GET .../runs/{id}/accounts` | the member who dispatched it | the account the run has for each variable, how it came by it, and each usage limit it hit and failed over from ([credentials.md](credentials.md), Accounts) |
 | `POST .../runs/{id}/messages` | owner | a message for the agent, at most 8 KiB; a reply in an author run's chat |
 | `GET .../runs/{id}/chat` | reader | the chat of an author run, and whose turn it is |
 | `POST .../runs/{id}/finish` | owner | end the chat of an author run: it ends done |
@@ -758,7 +760,9 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 or `claude-code`, `opencode`, `codex`), `mode` (`headless` by default), `worker_id` (optional: pin the runs to a
 worker of the caller's), `approval` (`review` by default, or `auto`), `timeout_min` (5 to 240, 60 by default) and
 `model` (optional, one line of at most 200 characters, as the runtime names it; null, the default, leaves the choice
-to the runtime as before). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
+to the runtime as before), and `account` (optional: one of the caller's env secrets bound to the project, by name,
+which the runs take and keep with no failover; null, the default, lets the rules of the caller's policy pick, see
+[credentials.md](credentials.md), Accounts; `plan-runs` and `author-runs` take it too). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
 403, and a revoked worker or one that does not serve the project is 409. A worker whose owner set `dispatch_from` to
 `web` takes a pinned dispatch only from a web session: with a token the answer is 403, saying so. Each run records
@@ -779,8 +783,9 @@ The owner of a run is the member who dispatched it; another member gets 403 and 
 `cancel_requested_at`, the next heartbeat says `cancel`, and the worker reports `cancelled` (an expired lease after
 that ends the run `cancelled` too). `.../approve` moves a run in review to `done` and writes the step done with the
 evidence the run got when it went to review. `.../rerun` queues the step of a run that ended again, at the plan's
-current revision, with the same requested runtime, model, mode, approval, timeout and pinned worker, attempt 1 and
-`parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
+current revision, with the same requested runtime, model, mode, approval, timeout and pinned worker, the account picked
+by hand for the old run unless its body names another one (`account`) or asks the rules (`account_by_rule`), attempt 1
+and `parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
 
 ### Reading runs
 
@@ -1550,10 +1555,44 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `checkout` | the fetch, or the worktree, went wrong for another reason |
 | `runtime` | the worker has no adapter for the runtime, cannot run it interactive, or has no login the run may use |
 | `worker_stopped` | the daemon was stopped, or failed, while it held the run |
+| `rate_limit` | the agent's account hit its usage limit and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 
 A run that fails for another reason (the agent's own error, the watchdog of the Curator) carries no cause, and neither
 does one an older daemon or the hub ended (a lost lease, a revoked worker); the Curator's figures read the cause of
 those from their error (`evo_agents.hub.review.run_cause`).
+
+### An account's usage limit
+
+The agent of a headless run of Claude Code (a run of one step, a plan run, an author run) says how much of its
+account's usage the session spent: the CLI writes a `rate_limit_event` with a `status` (`allowed`, `allowed_warning` or
+`rejected`), the limit's type, the time it resets and the utilization of each window, and the run's log keeps it raw as
+an `output` event (`evo_agents.worker.runner.limits`). While the run holds a lease of `CLAUDE_CODE_OAUTH_TOKEN` from
+one of its owner's secrets, the daemon reports each one to `POST /v1/worker/runs/{id}/rate-limit` with the lease's id.
+With `allowed` and `allowed_warning` the hub only keeps the usage on the account (`evo-agents hub account list`, the
+web's Accounts page); a `rejected` event the CLI goes on past with overage counts as `allowed_warning`. A hub that does
+not know the route refuses the report, and nothing else changes.
+
+On a `rejected` event the daemon notes that the account hit its usage limit and stops the agent. A turn that ended
+with an error that reads as a usage limit ("usage limit", "limit reached", "hit your limit", "out of extra usage"; a
+reset written as `|<unix time>` is read as the reset) counts the same. Once the agent ended, the daemon reports the
+limit, and the hub cools the account down until its reset, or for the policy's `cooldown_seconds`
+([credentials.md](credentials.md), Accounts). Then, by the hub's answer:
+
+- `failover`: the hub moved the run to the next account by its owner's rules and revoked the old lease. The daemon
+  asks for the run's leases again: the new value replaces the old in memory, in the agent's environment and on the
+  run's socket, masked like every value. A new agent resumes the same session, told that the account changed and to go
+  on from where the session and the worktree stand and write `.evo-run/result.json` at the end (a run whose session
+  had no id yet starts again on its first prompt). A `system` event names the new account by its secret's id and
+  counts the failover.
+- `stop` (failover off in the policy, an account picked by hand, `max_failovers` reached, no other account ready), a
+  hub that refused or did not answer, a run that holds no lease of the variable (the machine's own login), or a run
+  the daemon moved 20 times already (`accounts.MAX_FAILOVERS`, whatever the policy says): the run fails with
+  `failure_cause` `rate_limit`, and its error says why and, when known, when an account is ready again.
+
+Each note of the run names an account by its secret's id, never by name or value. The agent in a terminal (a takeover,
+`--mode interactive`) is not stopped: the person at the pane sees the CLI's message and acts on it. Codex and opencode
+report no usage limit, so their runs fail on one as before, and so do the runs of a daemon older than this one, which
+never calls the route.
 
 ### When the hub does not answer, and stopping
 

@@ -20,6 +20,8 @@ import { planQuery } from "@/lib/plan-queries";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
+import { AccountField } from "./account-field";
+import { accountField, BY_RULES } from "./account-model";
 import { ModelField, Outlook } from "./dispatch-fields";
 import { useDispatchAuthorRun } from "./hooks";
 import { authorWorker, dispatchOutlook, dispatchWorkers, harnessRepo, modelSuggestions, readModel, readRequest, workerFitsNow } from "./model";
@@ -110,6 +112,7 @@ function AuthorRunForm({
   const [modelText, setModelText] = useState("");
   const [workerChoice, setWorkerChoice] = useState<number | null>(null);
   const [timeout, setTimeoutHours] = useState<AuthorTimeout>(DEFAULT_AUTHOR_TIMEOUT);
+  const [account, setAccount] = useState(BY_RULES);
 
   const harness = projectState.data ? harnessRepo(projectState.data.harness) : undefined;
   const mine: Worker[] = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
@@ -143,6 +146,7 @@ function AuthorRunForm({
         runtime: AUTHOR_RUNTIME,
         model: model.model,
         timeout_h: timeout,
+        ...accountField(account),
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -155,7 +159,7 @@ function AuthorRunForm({
     ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") })
     : null;
   const apiDetail =
-    write.isError && isApiError(write.error) && (write.error.info.status === 409 || write.error.info.status === 422)
+    write.isError && isApiError(write.error) && [404, 409, 422].includes(write.error.info.status)
       ? tPlanRun("errors.hubSays", { message: write.error.info.message })
       : null;
   const requestDescribed = [`${ids}-request-hint`, problem ? `${ids}-request-problem` : null].filter(Boolean).join(" ");
@@ -281,6 +285,8 @@ function AuthorRunForm({
             {harness ? t("workerHint", { harness }) : t("workerHintNoHarness")}
           </p>
         </div>
+
+        <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${ids}-timeout`} className="text-sm font-medium">

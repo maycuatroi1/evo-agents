@@ -1,7 +1,7 @@
 """The agent of an author run asks its owner decisions too, before its run has a plan.
 
-Revision ID: 0027
-Revises: 0026
+Revision ID: 0029
+Revises: 0028
 Create Date: 2026-10-13
 
 Schema 0010 made decisions.plan_id NOT NULL: only a plan run, which always has a plan, asked a decision. An author run
@@ -12,15 +12,15 @@ of a plan run keeps its plan as before. The statement is an Alembic operation on
 
 Going back deletes every decision whose plan_id is NULL, the questions author runs asked before they put a plan, with
 the inbox messages that answered them and the notifications that named them (run_inbox.decision_id and
-notifications.decision_id cascade), then makes the column NOT NULL again, which is the schema that schema 0026 runs
-on. The decisions author runs asked once they had a plan stay, as schema 0026 can hold them.
+notifications.decision_id cascade), then makes the column NOT NULL again, which is the schema that schema 0028 runs
+on. The decisions author runs asked once they had a plan stay, as schema 0028 can hold them.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0027"
-down_revision = "0026"
+revision = "0029"
+down_revision = "0028"
 branch_labels = None
 depends_on = None
 

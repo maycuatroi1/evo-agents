@@ -20,6 +20,8 @@ import { planQuery } from "@/lib/plan-queries";
 import { parsePlan } from "@/lib/plans";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
 
+import { AccountField } from "./account-field";
+import { accountField, BY_RULES } from "./account-model";
 import { Choice, ModelField, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
 import { useDispatchPlanRun } from "./hooks";
 import { dispatchOutlook, dispatchWorkers, modelSuggestions, planRunScope, readModel } from "./model";
@@ -120,6 +122,7 @@ function PlanRunForm({
   const [pinnedChoice, setPinnedChoice] = useState<number | null>(null);
   const [timeout, setTimeoutHours] = useState<PlanTimeout>(DEFAULT_PLAN_TIMEOUT);
   const [perStep, setPerStep] = useState(false);
+  const [account, setAccount] = useState(BY_RULES);
 
   const view = plan.data ? parsePlan(plan.data.body, plan.data.plan_id) : null;
   const defaults = Object.fromEntries((projectState.data?.repos ?? []).map((repo) => [repo.name, repo.default_branch ?? null]));
@@ -142,7 +145,7 @@ function PlanRunForm({
     let run: Run;
     try {
       const each = perStep ? { session_per_step: true as const } : {}; // sent only when on: an older hub ignores it
-      run = await write.mutateAsync({ plan_id: planId, worker_id: pinned, runtime, model: model.model, mode, timeout_h: timeout, ...each });
+      run = await write.mutateAsync({ plan_id: planId, worker_id: pinned, runtime, model: model.model, mode, timeout_h: timeout, ...each, ...accountField(account) });
     } catch {
       return; // shown above the buttons, from the mutation's state
     }
@@ -151,7 +154,7 @@ function PlanRunForm({
   };
 
   const error = write.isError ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") }) : null;
-  const apiDetail = write.isError && isApiError(write.error) && write.error.info.status === 409 ? t("errors.hubSays", { message: write.error.info.message }) : null;
+  const apiDetail = write.isError && isApiError(write.error) && [404, 409, 422].includes(write.error.info.status) ? t("errors.hubSays", { message: write.error.info.message }) : null;
   const planTitle = view?.title ?? planId;
 
   return (
@@ -248,6 +251,8 @@ function PlanRunForm({
           onPinned={setPinnedChoice}
           subject="plan"
         />
+
+        <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
 
         <div className="flex flex-col gap-1.5">
           <label htmlFor={`${ids}-timeout`} className="text-sm font-medium">

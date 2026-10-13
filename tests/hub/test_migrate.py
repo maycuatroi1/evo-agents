@@ -1,4 +1,4 @@
-"""Migrations: a fresh database gets the forty-nine hub tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the fifty-two hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise. Schemas 0009 and 0010 have their checks in
 ``tests.hub.test_run_tables``, 0011 in ``tests.hub.test_sealing``, 0012 in ``tests.hub.test_curator``, 0013 in
@@ -75,6 +75,7 @@ TABLES |= pg.REVIEW_TABLES  # migration 0014
 TABLES |= pg.BRIEF_TABLES  # migration 0015
 TABLES |= pg.CHANGE_TABLES  # migration 0017
 TABLES |= pg.LEDGER_TABLES  # migration 0018
+TABLES |= pg.ACCOUNT_TABLES  # migration 0027
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -149,8 +150,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_forty_nine_tables(hub_db):
-    assert len(TABLES) == 49  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_fifty_two_tables(hub_db):
+    assert len(TABLES) == 52  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -475,14 +476,14 @@ def _decision_row(ids, run_id: int, plan_id: str | None):
     return insert(decisions).values(row).returning(decisions.c.id)
 
 
-def test_0027_lets_an_author_decision_have_no_plan_and_going_back_deletes_those_with_their_inbox_rows(hub_db):
-    move_to(hub_db, "0026")
+def test_0029_lets_an_author_decision_have_no_plan_and_going_back_deletes_those_with_their_inbox_rows(hub_db):
+    move_to(hub_db, "0028")
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         run_id = one(conn, _author_run(ids))
-        with pytest.raises(errors.NotNullViolation):  # every decision had a plan before 0027
+        with pytest.raises(errors.NotNullViolation):  # every decision had a plan before 0029
             conn.execute(_decision_row(ids, run_id, None))
-    move_to(hub_db, "0027")
+    move_to(hub_db, "0029")
     t = hub_tables
     with live.connect(hub_db) as conn:
         planless = one(conn, _decision_row(ids, run_id, None))
@@ -495,13 +496,13 @@ def test_0027_lets_an_author_decision_have_no_plan_and_going_back_deletes_those_
             conn.execute(insert(t.notifications).values(**notice, run_id=run_id, decision_id=decision_id))
 
     # Going back deletes the decision without a plan, the answer in the inbox and the notification naming it.
-    move_to(hub_db, "0026", down=True)
+    move_to(hub_db, "0028", down=True)
     assert query(hub_db, select(t.decisions.c.id, t.decisions.c.plan_id)) == [(planned, "wait-helper")]
     assert query(hub_db, select(t.run_inbox.c.decision_id)) == [(planned,)]
     assert query(hub_db, select(t.notifications.c.decision_id)) == [(planned,)]
     with live.connect(hub_db) as conn, pytest.raises(errors.NotNullViolation):
         conn.execute(_decision_row(ids, run_id, None))
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0027") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0029") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

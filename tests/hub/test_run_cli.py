@@ -1047,3 +1047,34 @@ def test_the_owner_reads_and_answers_the_decisions_of_a_plan_run(hub, monkeypatc
     assert fields["delivered"] == "not to the agent yet"
     left = ok(hub_of(hub, monkeypatch, capsys, "owner", "notifications", "--read", "all"))
     assert left.out == "Marked 0 notification(s) read; 0 left unread.\n"  # answering read the decision's
+
+
+@needs_pg
+def test_dispatch_plan_author_and_rerun_send_the_account_picked_by_hand(hub, monkeypatch, capsys):
+    """``--account`` goes in the body: a name that is no env secret of the caller's comes back refused, nothing
+    queued; ``rerun`` takes ``--account`` or ``--account-by-rule``, never both (``tests.hub.test_accounts_dispatch``
+    checks the accounts the runs take)."""
+    from tests.hub.test_author_runs import CHECKOUTS, KINDS, beat
+
+    push(hub.client, hub.headers["owner"], fleet_body())
+    fleet_worker(hub.client, hub.headers["owner"], "mac-plan")
+    beat(hub.client, add_worker(hub.client, hub.headers["owner"], "mac-author", checkouts=CHECKOUTS), KINDS)
+    refused = "you have no env secret named claude-z on this hub"
+    for args in (
+        ("dispatch", PLAN, "2"),
+        ("plan", FLEET, "--worker", "mac-plan"),
+        ("author", "Write a plan.", "--worker", "mac-author"),
+    ):
+        result = runs_of(hub, monkeypatch, capsys, "owner", *args, "--account", "claude-z")
+        assert result.code == 1 and refused in result.err and "nothing was dispatched" in result.err, args
+    assert as_json(runs_of(hub, monkeypatch, capsys, "owner", "list", "--json"))["runs"] == []
+
+    queued = str(dispatched(hub.client, hub.headers["owner"], [4])[0]["id"])
+    ok(runs_of(hub, monkeypatch, capsys, "owner", "cancel", queued))
+    result = runs_of(hub, monkeypatch, capsys, "owner", "rerun", queued, "--account", "claude-z")
+    assert result.code == 1 and refused in result.err
+    with pytest.raises(SystemExit) as both:
+        runs_of(hub, monkeypatch, capsys, "owner", "rerun", queued, "--account", "claude-z", "--account-by-rule")
+    assert both.value.code == 2 and "not allowed with argument --account" in capsys.readouterr().err
+    again = as_json(runs_of(hub, monkeypatch, capsys, "owner", "rerun", queued, "--account-by-rule", "--json"))
+    assert (again["parent_run_id"], again["state"]) == (int(queued), "queued")

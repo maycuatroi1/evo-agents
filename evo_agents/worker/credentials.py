@@ -753,6 +753,25 @@ class RunCredentials:
             log.info("credentials taken again", extra={"run_id": self.run_id, "leases": len(self.leases)})
             return True
 
+    async def swap(self) -> bool:
+        """Ask again for the run's leases once the hub moved one of them to another account (``runner.limits``): the
+        new value replaces the old in memory, in what the agent and git get, and on the run's socket, masked like
+        every value. Whether the hub answered."""
+        from evo_agents.worker.hubapi import HubProblem
+
+        async with self._lock:
+            if self.hub is None:
+                return False
+            try:
+                answer = await self.hub.credentials(self.run_id)
+            except HubProblem as exc:
+                log.warning("the run's leases were not taken again", extra={"run_id": self.run_id, "error": str(exc)})
+                return False
+            self._keep(answer)
+            await self._serve_leases()
+            log.info("credentials swapped", extra={"run_id": self.run_id, "leases": len(self.leases)})
+            return True
+
     async def with_renewal(self, repo: str, push: Callable[[], Awaitable[T]]) -> T:
         """``push()``, a push of the daemon to ``repo``'s origin; when the origin refuses its credential and a lease of
         the run covers it, the leases are taken again once (``renew``) and ``push()`` runs once more. A repo the hub

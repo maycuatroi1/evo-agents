@@ -13,7 +13,7 @@ from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
 from evo_agents.hub import author, runs
-from evo_agents.hub.credentials import DISPATCHED_VIA
+from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server.errors import ErrorBody
@@ -38,6 +38,12 @@ RuntimeName = Literal[runs.RUNTIMES]  # an alias: a model with a field named run
 ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, pattern=LINE)]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
 StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
+AccountName = Annotated[str, Field(max_length=MAX_SECRET_NAME_CHARS, pattern=f"^{SECRET_NAME.pattern}$")]
+ACCOUNT_HELP = (
+    "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its "
+    "variable and keeps it, with no failover to another account; null: the account is picked by the rules of the "
+    "caller's policy for the project"
+)
 
 MAX_LIST = 200
 MAX_OFFSET = 100_000
@@ -86,6 +92,7 @@ class Dispatch(BaseModel):
         description="the model each run uses, as its runtime names it (opencode: provider/model); null: the "
         "runtime's own choice",
     )
+    account: AccountName | None = Field(None, description=ACCOUNT_HELP)
 
 
 class AuthorRunDispatch(BaseModel):
@@ -109,6 +116,7 @@ class AuthorRunDispatch(BaseModel):
     timeout_h: Literal[author.AUTHOR_TIMEOUT_CHOICES] = Field(
         author.DEFAULT_TIMEOUT_H, description="hours of agent time the run may take"
     )
+    account: AccountName | None = Field(None, description=ACCOUNT_HELP)
 
 
 class PlanRunDispatch(BaseModel):
@@ -128,6 +136,28 @@ class PlanRunDispatch(BaseModel):
         "handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; "
         "false: one session does every step",
     )
+    account: AccountName | None = Field(None, description=ACCOUNT_HELP)
+
+
+class Rerun(BaseModel):
+    """What a rerun may change of the run it reruns; no body keeps everything."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    account: AccountName | None = Field(
+        None,
+        description="one of the caller's env secrets bound to the project, by name: the rerun takes it, with no "
+        "failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick",
+    )
+    account_by_rule: bool = Field(
+        False, description="true: the rules of the caller's policy pick the account, not the one picked for the run"
+    )
+
+    @model_validator(mode="after")
+    def _one_choice(self) -> Rerun:
+        if self.account is not None and self.account_by_rule:
+            raise ValueError("name an account or ask for one by rule, not both")
+        return self
 
 
 class RunBudget(BaseModel):
