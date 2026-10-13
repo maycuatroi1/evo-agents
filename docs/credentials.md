@@ -204,6 +204,18 @@ take the same turn:
    when every one is paused, none, and an event says that. An event names the account by its secret's id, never by
    name or value.
 
+A member may also pick the account by hand when dispatching: `account` on the body of `POST .../runs`,
+`.../plan-runs` and `.../author-runs` (`--account NAME` on `evo-agents hub run dispatch|plan|author`, and the Account
+select of every dispatch form on the web) names one of their env secrets bound to the project. The hub checks it in the
+transaction that queues the run and records it in `run_accounts` with how `manual`, so step 1 above keeps it on every
+lease; an account picked by hand is never failed over to another one, and its rotation does not move. A name that is
+not an env secret of the dispatcher's is 404; one past its end, paused, not bound to the project, bound only to other
+workers, or bound to some workers while the run is not pinned to one of them, is 422 saying why, and nothing is queued.
+`POST .../runs/{id}/rerun` keeps the account picked by hand for the run it reruns, checked again the same way; its body
+(`--account NAME` or `--account-by-rule` on `hub run rerun`, the Rerun dialog on the web) names another one or asks the
+rules (`account_by_rule`). A body without `account` dispatches as before. Audit rows of the dispatch end with
+`account=secret:<id>`.
+
 `run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool`
 or `cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
 cooldown and rotation; `account_policies` holds a member's policy for a project: `strategy`, `cooldown_seconds` (60 to

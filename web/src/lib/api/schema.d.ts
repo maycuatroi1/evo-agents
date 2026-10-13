@@ -1539,7 +1539,8 @@ export interface paths {
         /**
          * Rerun
          * @description Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
-         *     the plan's current revision.
+         *     the plan's current revision, and the account picked by hand for it; the body, which may be left out, picks
+         *     another account or asks the rules for one.
          */
         post: operations["rerun_v1_projects__project__runs__run_id__rerun_post"];
         delete?: never;
@@ -3175,6 +3176,11 @@ export interface components {
              * @enum {integer}
              */
             timeout_h: 1 | 2 | 4;
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             */
+            account?: string | null;
         };
         /** AuthoredPlan */
         AuthoredPlan: {
@@ -4294,6 +4300,11 @@ export interface components {
              * @description the model each run uses, as its runtime names it (opencode: provider/model); null: the runtime's own choice
              */
             model?: string | null;
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             */
+            account?: string | null;
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -6368,6 +6379,11 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             */
+            account?: string | null;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -7043,6 +7059,23 @@ export interface components {
             repo: string;
             /** Path */
             path: string;
+        };
+        /**
+         * Rerun
+         * @description What a rerun may change of the run it reruns; no body keeps everything.
+         */
+        Rerun: {
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
+             */
+            account?: string | null;
+            /**
+             * Account By Rule
+             * @description true: the rules of the caller's policy pick the account, not the one picked for the run
+             * @default false
+             */
+            account_by_rule: boolean;
         };
         /** Results */
         Results: {
@@ -14877,7 +14910,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Rerun"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {

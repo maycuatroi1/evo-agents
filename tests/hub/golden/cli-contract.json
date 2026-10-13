@@ -2983,6 +2983,14 @@
         },
         {
           "flags": [
+            "--account"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -3310,6 +3318,14 @@
         {
           "flags": [
             "--model"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--account"
           ],
           "value": "string",
           "required": false,
@@ -3834,6 +3850,14 @@
         },
         {
           "flags": [
+            "--account"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -3917,6 +3941,22 @@
             "--project"
           ],
           "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--account"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--account-by-rule"
+          ],
+          "value": null,
           "required": false,
           "repeatable": false
         },
@@ -13045,7 +13085,7 @@
             "runs"
           ],
           "summary": "Rerun",
-          "description": "Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at\nthe plan's current revision.",
+          "description": "Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at\nthe plan's current revision, and the account picked by hand for it; the body, which may be left out, picks\nanother account or asks the rules for one.",
           "operationId": "rerun_v1_projects__project__runs__run_id__rerun_post",
           "parameters": [
             {
@@ -13070,6 +13110,23 @@
               }
             }
           ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/Rerun"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
           "responses": {
             "201": {
               "description": "Successful Response",
@@ -20350,6 +20407,20 @@
               "title": "Timeout H",
               "description": "hours of agent time the run may take",
               "default": 2
+            },
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
             }
           },
           "type": "object",
@@ -22964,6 +23035,20 @@
               ],
               "title": "Model",
               "description": "the model each run uses, as its runtime names it (opencode: provider/model); null: the runtime's own choice"
+            },
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
             }
           },
           "type": "object",
@@ -27647,6 +27732,20 @@
               "title": "Session Per Step",
               "description": "true: the worker starts a new agent session for each step, whose prompt is the step's with the handoff of the plan, and only a worker whose heartbeat lists the feature session_per_step takes the run; false: one session does every step",
               "default": false
+            },
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
             }
           },
           "type": "object",
@@ -29342,6 +29441,34 @@
             "path"
           ],
           "title": "RepoPath"
+        },
+        "Rerun": {
+          "properties": {
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick"
+            },
+            "account_by_rule": {
+              "type": "boolean",
+              "title": "Account By Rule",
+              "description": "true: the rules of the caller's policy pick the account, not the one picked for the run",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "Rerun",
+          "description": "What a rerun may change of the run it reruns; no body keeps everything."
         },
         "Results": {
           "properties": {

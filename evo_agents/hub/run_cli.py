@@ -13,8 +13,9 @@ agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are
 .../runs/{id}/credentials, the owner only), never their values. Every command after ``dispatch``, ``plan``,
 ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's message on stderr, such
 as why a worker whose owner set it to take runs dispatched from the web only refuses a run dispatched with a token.
-``docs/workers.md`` describes the protocol behind them; ``--json`` prints what the hub answered, with the keys declared
-next to the flag.
+``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, one of your accounts picked by hand
+(``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes the protocol behind them; ``--json`` prints what
+the hub answered, with the keys declared next to the flag.
 
 ``--model`` names a model as one runtime names it (opencode: provider/model), so ``dispatch`` and ``plan`` take it
 only with ``--runtime`` naming that runtime: with ``any`` the claiming worker picks the runtime, and the model might
@@ -43,17 +44,24 @@ from datetime import UTC, datetime
 from urllib.parse import urlencode
 
 from evo_agents import __version__
-from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H, MAX_REQUEST_BYTES
+from evo_agents.hub.author import MAX_REQUEST_BYTES
 from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
 from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
+from evo_agents.hub.run_cli_options import (
+    REQUESTED_RUNTIMES,
+    account_option,
+    author_options,
+    plan_options,
+    rerun_body,
+    rerun_options,
+)
 from evo_agents.hub.runs import (
     APPROVALS,
     EVENT_KINDS,
     MAX_MODEL_CHARS,
     MODES,
-    PLAN_TIMEOUT_CHOICES,
     RUN_STATES,
     RUNTIMES,
     STEADY_GAP_SECONDS,
@@ -63,7 +71,6 @@ from evo_agents.hub.runs import (
 from evo_agents.hub.sse import sse_messages
 
 EXIT_USAGE = 2
-REQUESTED_RUNTIMES = ("any", *RUNTIMES)
 EVENTS_PAGE = 1000  # the most events GET .../events answers at once
 STREAM_TIMEOUT = 60.0  # seconds without a byte, pings included, before a followed stream counts as dropped
 RECONNECTS = 5  # tries in a row to open a followed stream again that bring no event before giving up
@@ -408,6 +415,7 @@ def cmd_dispatch(args) -> int:
         "mode": args.mode,
         "approval": args.approval,
         "timeout_min": args.timeout,
+        "account": args.account,
     }
     body.update({key: value for key, value in chosen.items() if value is not None})
     if args.worker is not None:
@@ -436,6 +444,7 @@ def cmd_plan(args) -> int:
     body = {"plan_id": _plan_id(args.plan)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
+    chosen["account"] = args.account
     body.update({key: value for key, value in {**chosen, "session_per_step": each}.items() if value is not None})
     if args.worker is not None:
         body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
@@ -470,6 +479,7 @@ def cmd_author(args) -> int:
     project = _project(args)
     body = {"request": text, "worker_id": _worker_id(hub, credentials.login, args.worker)}
     chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
+    chosen["account"] = args.account
     body.update({key: value for key, value in chosen.items() if value is not None})
     run = hub.call("POST", f"{_project_path(project)}/author-runs", body)
     if args.json:
@@ -834,7 +844,7 @@ def _control(action: str, said: Callable[[dict], str]):
     @_client_command
     def command(args) -> int:
         hub, _ = _signed_in()
-        run = hub.call("POST", _runs_path(_project(args), args.run, action))
+        run = hub.call("POST", _runs_path(_project(args), args.run, action), rerun_body(args))
         if args.json:
             _print_json(run)
             return 0
@@ -843,32 +853,6 @@ def _control(action: str, said: Callable[[dict], str]):
 
     command.__name__ = command.__qualname__ = f"cmd_{action}"
     return command
-
-
-def _plan_options(plan, with_model) -> None:
-    """The options of `hub run plan` after its plan and --project: where, how and how long the plan run runs."""
-    plan.add_argument(
-        "--worker", help="pin the run to this worker of yours, by id or name (default: any of yours with every repo)"
-    )
-    plan.add_argument("--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has")
-    with_model(plan)
-    plan.add_argument(
-        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
-    )
-    plan.add_argument(
-        "--timeout-h",
-        type=int,
-        choices=PLAN_TIMEOUT_CHOICES,
-        metavar="HOURS",
-        help=f"hours of agent time, one of {', '.join(map(str, PLAN_TIMEOUT_CHOICES))} (default 4); waiting for a "
-        "decision and parked do not count",
-    )
-    plan.add_argument(
-        "--session-per-step",
-        action="store_true",
-        help="start a new agent session for each step, its prompt the step's with the handoff of the plan, rather "
-        "than one session for every step; a worker takes it once its daemon says it runs one",
-    )
 
 
 def register_runs(hsub) -> None:
@@ -915,6 +899,7 @@ def register_runs(hsub) -> None:
     )
     dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
     with_model(dispatch)
+    account_option(dispatch)
     json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
     dispatch.set_defaults(func=cmd_dispatch)
 
@@ -925,7 +910,7 @@ def register_runs(hsub) -> None:
     )
     plan.add_argument("plan", metavar="PLAN", help="the plan's id")
     with_project(plan)
-    _plan_options(plan, with_model)
+    plan_options(plan, with_model)
     json_option(plan, RUN)
     plan.set_defaults(func=cmd_plan)
 
@@ -940,29 +925,7 @@ def register_runs(hsub) -> None:
         help=f"what the plan should achieve, at most {MAX_REQUEST_BYTES // 1024} KiB of UTF-8; - reads it from stdin",
     )
     with_project(authored)
-    authored.add_argument(
-        "--plan",
-        metavar="PLAN",
-        help="the plan to revise, one you can read; the agent puts it back with its revision (default: a new plan)",
-    )
-    authored.add_argument(
-        "--worker",
-        required=True,
-        help="the worker of yours to run it on, by id or name; it needs the harness checked out",
-    )
-    authored.add_argument(
-        "--runtime",
-        choices=REQUESTED_RUNTIMES,
-        help=f"default: {AUTHOR_RUNTIMES[0]}, the one runtime an author run takes; the hub refuses another",
-    )
-    authored.add_argument("--model", help="the model, as Claude Code names it (default: Claude Code's own choice)")
-    authored.add_argument(
-        "--timeout-h",
-        type=int,
-        choices=AUTHOR_TIMEOUT_CHOICES,
-        metavar="HOURS",
-        help=f"hours of agent time, one of {', '.join(map(str, AUTHOR_TIMEOUT_CHOICES))} (default {DEFAULT_TIMEOUT_H})",
-    )
+    author_options(authored)
     json_option(authored, RUN)
     authored.set_defaults(func=cmd_author)
 
@@ -1051,5 +1014,7 @@ def register_runs(hsub) -> None:
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")
         with_run(parser)
         with_project(parser)
+        if action == "rerun":
+            rerun_options(parser)
         json_option(parser, RUN)
         parser.set_defaults(func=_control(action, said))
