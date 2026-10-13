@@ -1,8 +1,8 @@
 """Runs and workers as the hub models them: the states of a run and who may move a run between them, a worker's
 status as its heartbeats show it, the kinds of a run's events, which steps of a plan are ready to run, the prompt a
-run hands its agent, and the decisions and notices a plan run sends its owner. Pure functions over JSON values and
-datetimes, standard library only, so the api and the worker daemon share them. ``docs/workers.md`` describes the
-protocol built on them, and ``docs/notifications.md`` how decisions and notices reach the owner.
+run hands its agent, and the decisions and notices a plan run or an author run sends its owner. Pure functions over
+JSON values and datetimes, standard library only, so the api and the worker daemon share them. ``docs/workers.md``
+describes the protocol built on them, and ``docs/notifications.md`` how decisions and notices reach the owner.
 
 A run is of one of RUN_KINDS. A ``step`` run is one attempt at one plan step on one worker. A ``plan`` run is one long
 session on one worker that does every step of a plan that is not done yet, in the order ``depends_on`` allows, and
@@ -32,9 +32,13 @@ same session, and the run is ``running`` again. A run that waited DECISION_WAIT_
 it go and frees the slot, and keeps the agent's session and the worktrees. An answer then queues a new plan run on the
 same worker that goes on in that session (the run it resumes is ``done``), and a run parked PARKED_DAYS is
 ``cancelled``. Neither waiting nor parked counts toward the run's timeout: ``run_seconds`` counts only CLOCK_STATES.
-An author run waits the same way after each turn of its agent, for its owner's reply in the run's chat rather than an
-answer to a decision (``evo_agents.hub.author``), is parked and resumed the same way (RESUME_KINDS), and ends ``done``
-when its owner ends the chat (the control ``finish``).
+An author run waits the same way after each turn of its agent, for its owner's reply in the run's chat
+(``evo_agents.hub.author``), is parked and resumed the same way (RESUME_KINDS), and ends ``done`` when its owner ends
+the chat (the control ``finish``). On a daemon that lists AUTHOR_DECISIONS among its ``features``, an author run's
+agent asks decisions too (its prompt names ``scope`` and ``architecture``), before its run has a plan (the decision's
+``plan_id`` is then null) or after; a turn that ends with one of them open waits until each is answered, the owner
+replies in the chat or ends it, so one answer alone does not wake the agent, and a parked author run resumes only once
+none of its decisions is open, or on a reply. A plan run wakes at the first answer, as before.
 
 TRANSITIONS names, for each move, who may do it: the ``worker`` that holds the run, the ``owner`` (the member who
 dispatched it, who is the owner of the worker), or the ``reaper``, the hub itself acting on an expired lease, a revoked
