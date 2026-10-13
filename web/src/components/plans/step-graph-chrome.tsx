@@ -3,19 +3,22 @@
 import { useReactFlow } from "@xyflow/react";
 import { Maximize, Minus, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
+import type { ReactNode } from "react";
 
 import { TONE_TEXT } from "@/components/status/status-badge";
 import { Button } from "@/components/ui/button";
 import type { PlanGraph } from "@/lib/plan-graph/layout";
+import { FIT } from "@/lib/plan-graph/viewport";
 import { STEP_STATUSES } from "@/lib/plans";
 import { cn } from "@/lib/utils";
 
 import { stepLook, useStepStatusText } from "./status";
 import { LineSample } from "./step-graph-parts";
 
-/** The Graph view's legend above the canvas and its zoom buttons; the fit it zooms to is the one the canvas opens on. */
-
-export const FIT = { maxZoom: 1, padding: 0.06 };
+/**
+ * The Graph view's bar above the canvas: the legend and the zoom buttons, kept out of the canvas so no step sits under
+ * them. Fit shows the whole plan, never past zoom 1 (FIT of lib/plan-graph/viewport.ts).
+ */
 
 const reducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -23,7 +26,7 @@ const reducedMotion = () =>
 /** Moves of the canvas take this long, or no time at all under prefers-reduced-motion. */
 export const motion = (duration: number) => ({ duration: reducedMotion() ? 0 : duration });
 
-export function Legend({ graph }: { graph: PlanGraph }) {
+export function Legend({ graph, children }: { graph: PlanGraph; children?: ReactNode }) {
   const t = useTranslations("plans.graph");
   const status = useStepStatusText();
   const notDrawn = graph.edges.filter((edge) => edge.kind !== "drawn").length;
@@ -60,6 +63,7 @@ export function Legend({ graph }: { graph: PlanGraph }) {
           {t("notDrawn", { count: notDrawn })}
         </span>
       ) : null}
+      {children}
     </div>
   );
 }
@@ -73,7 +77,7 @@ export function Zoom() {
     { label: t("fit"), icon: Maximize, run: () => flow.fitView({ ...FIT, ...motion(180) }) },
   ];
   return (
-    <div className="absolute top-2 right-2 z-10 flex gap-1 rounded-md border bg-card/95 p-0.5 shadow-raised">
+    <div className="ml-auto flex gap-1">
       {buttons.map(({ label, icon: Icon, run }) => (
         <Button
           key={label}

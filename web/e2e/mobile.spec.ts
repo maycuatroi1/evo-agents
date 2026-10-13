@@ -234,7 +234,9 @@ test("the plan's graph opens a step in a bottom sheet, its controls 44 px, and g
   await open(page, `/p/${project}/plans/${ACTIVE_PLAN}?view=graph`);
   const canvas = main(page).getByTestId("step-graph-canvas");
   await expect(canvas).toHaveAttribute("data-ready", "true");
-  for (const name of ["Zoom in", "Zoom out", "Fit the plan"]) await touchSized(canvas.getByRole("button", { name, exact: true }), name);
+  // The zoom buttons sit in the bar above the canvas, so no step is ever under them.
+  const bar = main(page).getByTestId("graph-legend");
+  for (const name of ["Zoom in", "Zoom out", "Fit the plan"]) await touchSized(bar.getByRole("button", { name, exact: true }), name);
 
   const node = canvas.locator('[data-testid="graph-step"][data-step="10"]');
   await node.click();
