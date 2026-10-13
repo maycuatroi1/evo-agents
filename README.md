@@ -277,7 +277,8 @@ evo-agents hub run credentials 41 --project demo   # the leases run 41 got, give
 ### Running a hub
 
 The hub is an API server, a job worker and a web interface, published as two images on GHCR for each release and run
-with `deploy/hub/docker-compose.yml` next to a Postgres database and a Cloudflare R2 bucket. `evo-agents hub serve`
+with `deploy/hub/docker-compose.yml`, which can also build them from source, next to a Postgres database and a
+Cloudflare R2 bucket. `evo-agents hub serve`
 and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-server]'`. [docs/hub.md](docs/hub.md)
 covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
 workers and runs, blobs on R2, the job worker and its queue, and operations: migrations, backup, restore and
