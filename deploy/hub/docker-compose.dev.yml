@@ -1,5 +1,5 @@
-# A local hub from this checkout, on top of docker-compose.yml: the two images built from source, Postgres 16, moto
-# as the S3 blob store and a one-off service that creates its bucket. For trying the images and the compose file
+# A local hub from this checkout, on top of docker-compose.yml, which builds the two images from source: Postgres 16,
+# moto as the S3 blob store and a one-off service that creates its bucket. For trying the images and the compose file
 # before a release, not for production:
 #
 #   docker compose -f deploy/hub/docker-compose.yml -f deploy/hub/docker-compose.dev.yml \
@@ -14,9 +14,6 @@
 
 services:
   api:
-    build:
-      context: ../..
-      dockerfile: deploy/hub/Dockerfile
     ports:
       - "127.0.0.1:${EVO_HUB_DEV_API_PORT:-8080}:8080"
     # Checked every 2 s while it starts, so the worker, which waits for a healthy api, starts within seconds.
@@ -28,14 +25,8 @@ services:
       bucket:
         condition: service_completed_successfully
 
-  worker:
-    build:
-      context: ../..
-      dockerfile: deploy/hub/Dockerfile
-
   web:
     build:
-      context: ../../web
       args:
         # Built with the /v1 rewrite to the api, so the browser gets the api on the web's origin without a reverse
         # proxy; the same address server components use at run time.
