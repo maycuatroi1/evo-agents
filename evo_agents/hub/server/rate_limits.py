@@ -4,8 +4,10 @@ POST /v1/worker/runs/{run_id}/rate-limit (``docs/credentials.md``, section "Acco
 The worker sends what the agent's CLI said of the account behind one of the run's leases (``lease_id``, an env
 secret's lease the run holds): ``status`` (``allowed``, ``allowed_warning`` or ``rejected``), the limit's
 ``rate_limit_type``, the time it resets (``resets_at``) when the CLI gave one, its ``utilization`` and the usage of
-each window. The hub keeps that usage on the account (accounts.last_usage). With ``allowed`` and
-``allowed_warning`` that is all, and the answer's action is ``none``.
+each window. The hub keeps that usage on the account (accounts.last_usage), except an ``allowed`` or
+``allowed_warning`` that comes while the account cools down from a ``rejected`` one: that report is older than the
+limit, so the limit stays the account's last usage. With ``allowed`` and ``allowed_warning`` that is all, and the
+answer's action is ``none``.
 
 With ``rejected`` the account cools down until ``resets_at``, else for the owner's ``cooldown_seconds``
 (``account_choice.fail_over``). When the run may fail over (failover on in its owner's policy, the account not picked
@@ -25,7 +27,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field
-from sqlalchemy import func, select, update
+from sqlalchemy import and_, func, not_, select, update
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -99,10 +101,15 @@ async def _lease(conn: AsyncConnection, run_id: int, worker_id: int, lease_id: i
 
 
 async def _keep_usage(conn: AsyncConnection, secret_id: int, usage: dict) -> None:
+    """Keep ``usage`` as the account's last; one not rejected leaves a rejected one of a cooling account alone."""
     a = tables.accounts
     values = {"last_usage": usage, "last_usage_at": func.now()}
     statement = insert(a).values(secret_id=secret_id, **values)
-    await conn.execute(statement.on_conflict_do_update(index_elements=[a.c.secret_id], set_=values))
+    where = None
+    if usage.get("status") != "rejected":
+        limited = and_(a.c.cooldown_until > func.now(), a.c.last_usage["status"].astext == "rejected")
+        where = not_(func.coalesce(limited, False))
+    await conn.execute(statement.on_conflict_do_update(index_elements=[a.c.secret_id], set_=values, where=where))
 
 
 def _note(env_var: str, current: int, moved: Failover) -> str:
