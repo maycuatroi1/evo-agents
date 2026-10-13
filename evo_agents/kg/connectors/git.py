@@ -24,7 +24,11 @@ applies to a ref of the form ``origin/<branch>``. A failed fetch (offline, no ac
 run: it logs a warning and reads the ref as the clone has it. Without the key nothing is fetched.
 
 Item IDs are ``<source>:file:<path>``; the revision is the blob SHA, so it changes exactly when the
-content does. A git ref can be force-pushed; then the order of revisions is the order syncs observed.
+content does, and the revision time is that of the last commit on the ref that touched the file. Within one ref
+the corpus keeps the record with the latest such time, so a force-push that moves a file back to an older commit
+shows only once the file changes again. A change of the source's ``ref``, ``repo`` or ``path`` starts a new epoch
+(``evo_agents.kg.corpus``): the next run's records replace those read from the old ref, even where its commits
+are newer.
 
 Before a file's text becomes an item, ``evo_agents.kg.redact`` replaces each secret in it (a private key in PEM, a
 provider's key, the password of a URI, the literal value of a variable named as a secret) with a marker that names

@@ -9,10 +9,18 @@ Layout under ``$EVO_KG_HOME/<project>/`` (default ``~/.evo/kg``), mode 0700::
     audit.jsonl             one line per sync and per build, counts and ids only (audit.py), mode 0600
 
 The merge keeps, for every item ID, the record with the largest order key
-``(rev_time, rev, run_id, tie)``. Taking a maximum under a total order is commutative, associative and
+``(epoch, rev_time, rev, run_id, tie)``. Taking a maximum under a total order is commutative, associative and
 idempotent, so replaying the log in any order, or twice, gives the same state (property P3).
 Deletions enter the log only as tombstones: sent by a connector, or derived from a scoped listing that
 ended with ``complete: true``.
+
+A revision time only orders records read from one place: the commit times of two git refs say nothing about
+which one the source reads now. Each run's header therefore names its source's lineage, a digest of where the
+source reads from (``evo_agents.kg.sync.source_lineage``), and its epoch: BASE_EPOCH for the first lineage the
+corpus records for a source, the epoch of the source's previous run when the lineage is the same, and the run's
+own ID when it changed. Every record of a run takes the run's epoch, so a run that reads from somewhere new
+supersedes whatever earlier lineages left, and within one lineage the revision order decides as before. Logs
+written before epochs existed have none (``""``) and lose to any run that has one.
 """
 
 from __future__ import annotations
@@ -21,6 +29,7 @@ import contextlib
 import gzip
 import json
 import os
+import re
 import sqlite3
 from collections.abc import Iterable, Iterator
 from dataclasses import dataclass
@@ -35,6 +44,7 @@ CREATE TABLE IF NOT EXISTS items (
     item_id TEXT PRIMARY KEY,
     source TEXT NOT NULL,
     deleted INTEGER NOT NULL,
+    k_epoch TEXT NOT NULL DEFAULT '',
     k_time TEXT NOT NULL,
     k_rev TEXT NOT NULL,
     k_run TEXT NOT NULL,
@@ -65,15 +75,32 @@ CREATE TABLE IF NOT EXISTS held (
     ids TEXT NOT NULL,
     PRIMARY KEY (run_id, scope)
 ) STRICT;
+CREATE TABLE IF NOT EXISTS lineages (
+    source TEXT PRIMARY KEY,
+    lineage TEXT NOT NULL,
+    epoch TEXT NOT NULL,
+    run_id TEXT NOT NULL
+) STRICT;
 """
+ITEM_COLUMNS = "item_id, source, deleted, k_epoch, k_time, k_rev, k_run, k_tie, record"
+# The epoch of a source's first lineage: below every run ID, above the empty epoch of logs written before epochs.
+BASE_EPOCH = "00000000-0000-0000-0000-000000000000"
+EPOCH = re.compile(r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+
+
+def run_epoch(header: dict) -> str:
+    """The epoch a run's header names; ``""`` for a log written before epochs, or when it is not a UUID."""
+    epoch = header.get("epoch")
+    return epoch if isinstance(epoch, str) and EPOCH.fullmatch(epoch) else ""
 
 
 def kg_home() -> Path:
     return Path(os.environ.get("EVO_KG_HOME") or "~/.evo/kg").expanduser()
 
 
-def order_key(record: dict, run_id: str) -> tuple[str, str, str, str]:
+def order_key(record: dict, run_id: str, epoch: str = "") -> tuple[str, str, str, str, str]:
     return (
+        epoch,
         normalize_time(record.get("rev_time")),
         rev_key(record.get("rev")),
         run_id,
@@ -119,6 +146,10 @@ class Corpus:
         db = sqlite3.connect(path)
         db.execute("PRAGMA journal_mode=WAL")
         db.executescript(SCHEMA)
+        columns = {row[1] for row in db.execute("PRAGMA table_info(items)")}
+        if "k_epoch" not in columns:  # a corpus from before epochs: its records keep the empty one
+            with contextlib.suppress(sqlite3.OperationalError):  # another process added it first
+                db.execute("ALTER TABLE items ADD COLUMN k_epoch TEXT NOT NULL DEFAULT ''")
         return db
 
     def close(self) -> None:
@@ -198,21 +229,25 @@ class Corpus:
     # -- merge ---------------------------------------------------------------------------------
 
     def merge(self, records: Iterable[dict], run_id: str, db: sqlite3.Connection | None = None) -> int:
-        """Merge item and tombstone records of one run into the state. Returns how many changed."""
+        """Merge item and tombstone records of one run into the state, each with the epoch the run's header names.
+        Returns how many changed."""
         db = db or self.db
         changed = 0
+        epoch = ""
         for record in records:
             kind = record.get("type")
+            if kind == "run":
+                epoch = run_epoch(record)
             if kind not in ("item", "tombstone"):
                 continue
-            key = order_key(record, run_id)
+            key = order_key(record, run_id, epoch)
             row = db.execute(
-                "SELECT k_time, k_rev, k_run, k_tie FROM items WHERE item_id = ?", (record["id"],)
+                "SELECT k_epoch, k_time, k_rev, k_run, k_tie FROM items WHERE item_id = ?", (record["id"],)
             ).fetchone()
             if row is not None and tuple(row) >= key:
                 continue
             db.execute(
-                "INSERT OR REPLACE INTO items VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                f"INSERT OR REPLACE INTO items ({ITEM_COLUMNS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (
                     record["id"],
                     source_of(record["id"]),
@@ -266,6 +301,30 @@ class Corpus:
                 self.merge(records, run_id, db)
         db.commit()
         return db
+
+    # -- lineages ------------------------------------------------------------------------------
+
+    def _lineage(self, source: str) -> tuple[str, str] | None:
+        row = self.db.execute("SELECT lineage, epoch FROM lineages WHERE source = ?", (source,)).fetchone()
+        return (row[0], row[1]) if row else None
+
+    def epoch_for(self, source: str, lineage: str, run_id: str) -> str:
+        """The epoch of run ``run_id`` of ``source``, which reads from ``lineage``: BASE_EPOCH when the corpus
+        records no lineage for the source yet, the recorded epoch when the lineage is the recorded one, else
+        ``run_id`` itself, which starts a new epoch."""
+        recorded = self._lineage(source)
+        if recorded is None:
+            return BASE_EPOCH
+        return recorded[1] if recorded[0] == lineage else run_id
+
+    def current_epoch(self, source: str) -> str:
+        """The epoch of the last run of ``source`` that recorded its lineage, ``""`` when none did."""
+        recorded = self._lineage(source)
+        return recorded[1] if recorded else ""
+
+    def record_lineage(self, source: str, lineage: str, epoch: str, run_id: str) -> None:
+        """Remember what run ``run_id`` of ``source`` read from, in the caller's transaction."""
+        self.db.execute("INSERT OR REPLACE INTO lineages VALUES (?, ?, ?, ?)", (source, lineage, epoch, run_id))
 
     # -- cursors, runs, held removals ----------------------------------------------------------
 
@@ -361,7 +420,8 @@ class LogWriter:
         self.path = corpus.log_dir / f"{run_id}.jsonl"
         self.fh = open(self.path, "a", encoding="utf-8")
         self.records: list[dict] = []
-        self.write({"type": "run", "run_id": run_id, "started_at": utc_now(), **header})
+        self.header = {"type": "run", "run_id": run_id, "started_at": utc_now(), **header}
+        self.write(self.header)
 
     def write(self, record: dict) -> None:
         self.fh.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
