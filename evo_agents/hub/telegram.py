@@ -8,7 +8,8 @@ The hub has one bot. A member links their private chat with a one-time code of L
 its SHA-256 (``code_hash``). The link ``https://t.me/<bot>?start=<code>`` makes Telegram send the bot ``/start <code>``
 from that chat (``start_code``).
 
-A decision goes out with one button per option and one that opens it on the web, a tier 2 proposal with Accept, Reject
+A decision goes out with one button per option and one that opens it on the web, naming its plan and step, or for an
+author run that has put no plan yet, the author run and its title; a tier 2 proposal with Accept, Reject
 and Defer and the web's button. A button's ``callback_data`` names the decision or proposal and the option or answer,
 never any text: ``d:<id>:<key>`` or ``p:<id>:<action>``, at most MAX_CALLBACK_BYTES (``parse_callback``). The question
 of a decision goes out, its context never: the web's button leads to it, and so for a proposal's summary, its paths and
@@ -48,6 +49,7 @@ LINK_CODE = re.compile(r"[A-Za-z0-9_-]{32}")
 MAX_CALLBACK_BYTES = 64  # Telegram's bound on a button's callback_data
 MAX_TEXT_CHARS = 4096  # Telegram's bound on a message's text
 QUESTION_CHARS = 1200  # of a decision's question in its message
+RUN_TITLE_CHARS = 120  # of the title of an author run, which a decision without a plan names
 BODY_CHARS = 3000  # of a notice's body in its message
 BUTTON_CHARS = 60  # of an option's label on its button
 TOAST_CHARS = 200  # Telegram's bound on the text answerCallbackQuery shows
@@ -281,11 +283,18 @@ def decision_message(
     options: Sequence[Mapping],
     url: str | None,
     link: str | None,
+    run_kind: str | None = None,
+    run_title: str | None = None,
 ) -> Message:
     """A decision: what it is about, its question, its options with the recommended one marked, a button per option
-    and the web's button. Its context stays on the hub. The question gives way first when the text runs long."""
+    and the web's button. Its context stays on the hub. The question gives way first when the text runs long. A
+    decision of an author run (``run_kind``) without a plan names the run and its title (``run_title``) instead."""
     where = f"plan {plan_id}" + (f", step {step_key}" if step_key else "") if plan_id else "its plan"
     run = f"Run #{run_id}" if run_id else "A run"
+    if run_kind == "author" and run_id:
+        run = f"Author run #{run_id}"
+        if not plan_id:
+            where = clip(" ".join(run_title.split()), RUN_TITLE_CHARS) if run_title else "no plan yet"
     head = f"<b>{escape(run)} of {escape(project)} asks a decision</b> ({escape(category)}, {escape(where)})"
     listed, buttons = [], []
     for option in options:

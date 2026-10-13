@@ -1,33 +1,42 @@
-"""Decisions: the questions a plan run's agent asks its owner, and the owner's answers. ``docs/notifications.md``
-(Decisions) is the design, ``runs`` holds the categories, states and limits, and ``run_state`` moves the runs.
+"""Decisions: the questions the agent of a plan run or an author run asks its owner, and the owner's answers.
+``docs/notifications.md`` (Decisions) is the design, ``runs`` holds the categories, states and limits, and
+``run_state`` moves the runs.
 
-POST /v1/worker/runs/{id}/decisions takes a decision from the worker holding a plan run (404 for any other run, a run
-of one step included): a category of ``runs.DECISION_CATEGORIES`` (422 for any other), a question, a context in
-markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the agent recommends, and the step
-it is about, which must be a step of the plan. It answers 201 with the decision, whose id the agent waits for, leaves
-a ``system`` event in the run's log and notifies the run's owner (``notifications.notify``). A run has at most
-MAX_OPEN_DECISIONS open at once (409).
+POST /v1/worker/runs/{id}/decisions takes a decision from the worker holding a plan run or an author run (404 for any
+other run: a run of one step, a review run, a judge run): a category of ``runs.DECISION_CATEGORIES`` (422 for any
+other), a question, a context in markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the
+agent recommends, and the step it is about, which must be a step of the run's plan (422 for an author run that has put
+no plan yet, which has no steps). The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
+for an author run that has put no plan yet. It answers 201 with the decision, whose id the agent waits for, leaves a
+``system`` event in the run's log and notifies the run's owner (``notifications.notify``); the notification of a
+decision without a plan names the author run and its title instead. A run has at most MAX_OPEN_DECISIONS open at once
+(409).
 
 POST /v1/projects/{p}/decisions/{id}/answer is for the run's owner alone, with a web session or a machine token of
 their own: another member gets 403, as does a worker's token (the middleware keeps it under /v1/worker/), and someone
 without a grant on the project 404. A machine token also gets 403 when the run is on a worker set to take runs
 dispatched from the web only, held, pinned or parked there (``runs.web_only_steering``): its answer would steer that
 worker's agent, or resume the parked run on it. A decision that is no longer open gets 409. The answer names an
-option of the decision, gives text of the owner's own (at most 4 KiB), or both. Under the plan's dispatch lock and the
-run's row lock, the decision is answered, its notification read, and the answer goes to a run's inbox as a message
-that names the decision (``run_inbox.decision_id``), with a ``user_message`` event, so the heartbeat counts it and the
-worker hands it to the agent like any message of the owner's:
+option of the decision, gives text of the owner's own (at most 4 KiB), or both. Under the plan's dispatch lock (for a
+decision with a plan) and the run's row lock, the decision is answered, its notification read, and the answer goes to
+a run's inbox as a message that names the decision (``run_inbox.decision_id``), with a ``user_message`` event, so the
+heartbeat counts it and the worker hands it to the agent like any message of the owner's:
 
 - a run that is queued or held (``runs.MESSAGE_STATES``, waiting included) gets it in its own inbox;
-- a parked run is resumed: the hub queues a new plan run pinned to the parked run's worker, with
+- a parked plan run is resumed: the hub queues a new plan run pinned to the parked run's worker, with
   ``resume_of_run_id`` naming it, its session, repos, model, timeout and the agent time used so far, at the plan's
   current revision; the parked run is ``done`` with the reason ``resumed as #N``, its decisions still open go to the
-  new run, and the answer goes to the new run's inbox.
+  new run, and the answer goes to the new run's inbox;
+- a parked author run is resumed so only once the answer leaves none of its decisions open. Until then the answer waits
+  in the parked run's inbox, and the run that resumes it (on the last answer, or on a reply in its chat) takes every
+  message of that inbox the worker has not handed to an agent, so the agent reads them all in its first turn.
 
 The audit row decision.answer names the decision, its run and the option, never the text.
 
 GET /v1/projects/{p}/decisions lists a project's decisions, newest first, filtered by state, run and plan, a page at a
-time, and GET .../decisions/{id} shows one, to the readers of the run's plan (``runs.visible_plans``).
+time, and GET .../decisions/{id} shows one, to the readers of the decision's run, as ``views.readable_run`` reads it:
+the readers of its plan (``views.visible_plans``), and for an author run that has put no plan, those who read the
+project's runs on no plan (``views.sees_unplanned``).
 """
 
 from __future__ import annotations
@@ -40,7 +49,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, model_validator
-from sqlalchemy import BigInteger, func, insert, literal, select, update
+from sqlalchemy import BigInteger, and_, false, func, insert, literal, or_, select, true, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 from sqlalchemy.ext.compiler import compiles
 from sqlalchemy.sql import Select
@@ -59,7 +68,7 @@ from evo_agents.hub.server.runs.models import LINE, MAX_ID, REFUSALS, RunId
 from evo_agents.hub.server.runs.service.controls import web_only_steering
 from evo_agents.hub.server.runs.service.dispatch import check_dispatcher
 from evo_agents.hub.server.runs.service.plan_runs import held_plan_run
-from evo_agents.hub.server.runs.service.views import lock_plan, visible_plans
+from evo_agents.hub.server.runs.service.views import lock_plan, sees_unplanned, visible_plans
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
@@ -137,9 +146,11 @@ class DecisionOption(BaseModel):
 class Decision(BaseModel):
     id: int
     project: str
-    run_id: int = Field(description="the plan run the decision belongs to")
+    run_id: int = Field(description="the plan run or author run the decision belongs to")
     run_state: Literal[runs.RUN_STATES]
-    plan_id: str
+    plan_id: str | None = Field(
+        description="the run's plan when its agent asked; null for an author run that had put no plan yet"
+    )
     step_key: str | None = Field(description="the step it is about, when the agent named one")
     category: Literal[runs.DECISION_CATEGORIES]
     question: str
@@ -220,11 +231,22 @@ def _decisions():
     )
 
 
-def _listed(project_id: int, plans: list[str], states: list[str], run_id: int | None, plan_id: str | None) -> list:
-    """The filters of the decision list: the project's decisions of ``plans``, in any of ``states`` (any state when
-    empty), of run ``run_id`` and plan ``plan_id`` when given."""
+def _readable(plans: list[str], unplanned: bool):
+    """Whether the caller reads a decision, of a query that joins its run: the run's plan is one of ``plans``, or the
+    run has none and ``unplanned`` (``views.sees_unplanned``), as ``views.readable_run`` reads the run."""
+    d, r = tables.decisions, tables.runs
+    plan = func.coalesce(d.c.plan_id, r.c.plan_id)
+    return or_(plan.in_(plans), and_(plan.is_(None), true() if unplanned else false()))
+
+
+def _listed(
+    project_id: int, plans: list[str], unplanned: bool, states: list[str], run_id: int | None, plan_id: str | None
+) -> list:
+    """The filters of the decision list, of a query that joins each decision's run: the project's decisions the
+    caller reads (``_readable``), in any of ``states`` (any state when empty), of run ``run_id`` and plan ``plan_id``
+    when given."""
     d = tables.decisions
-    where = [d.c.project_id == project_id, d.c.plan_id.in_(plans)]
+    where = [d.c.project_id == project_id, _readable(plans, unplanned)]
     if states:
         where.append(d.c.state.in_(states))
     if run_id is not None:
@@ -264,13 +286,24 @@ async def readable_decision(
     conn: AsyncConnection, user: Principal, project: str, decision_id: int, sink: str | None
 ) -> ProjectAccess:
     """The caller's access to ``project`` when it may read decision ``decision_id`` of it: a grant on the project (404
-    without, 403 for a hub admin without one) and the decision's plan visible to it (404 otherwise, as for none)."""
+    without, 403 for a hub admin without one) and the decision's run readable to it (404 otherwise, as for none): its
+    plan visible, or for an author run that has put no plan, the project's runs on no plan (``views.readable_run``)."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
-    d = tables.decisions
-    query = select(d.c.plan_id).where(d.c.id == decision_id, d.c.project_id == access.project_id)
-    plan_id = (await conn.execute(query)).scalar_one_or_none()
-    if plan_id is None or plan_id not in await visible_plans(conn, access, sink):
+    d, r = tables.decisions, tables.runs
+    query = (
+        select(func.coalesce(d.c.plan_id, r.c.plan_id))
+        .join_from(d, r, r.c.id == d.c.run_id)
+        .where(d.c.id == decision_id, d.c.project_id == access.project_id)
+    )
+    found = (await conn.execute(query)).one_or_none()
+    if found is None:
+        raise _no_decision(project, decision_id)
+    if found[0] is None:
+        visible = sees_unplanned(access, sink)
+    else:
+        visible = found[0] in await visible_plans(conn, access, sink)
+    if not visible:
         raise _no_decision(project, decision_id)
     return access
 
@@ -291,15 +324,17 @@ async def list_decisions(
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> DecisionList:
-    """The project's decisions, newest first, of the plans the caller may read."""
-    d = tables.decisions
+    """The project's decisions, newest first, of the runs the caller may read."""
+    d, r = tables.decisions, tables.runs
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         plans = await visible_plans(conn, access, sink)
-        where = _listed(access.project_id, plans, list(dict.fromkeys(state)), run_id, plan_id)
+        unplanned = sees_unplanned(access, sink)
+        where = _listed(access.project_id, plans, unplanned, list(dict.fromkeys(state)), run_id, plan_id)
         query = _decisions().where(*where).order_by(d.c.id.desc()).limit(limit).offset(offset)
         page = [_decision(row) for row in (await conn.execute(query)).all()]
-        total = (await conn.execute(select(func.count()).select_from(d).where(*where))).scalar_one()
+        counted = select(func.count()).select_from(d.join(r, r.c.id == d.c.run_id)).where(*where)
+        total = (await conn.execute(counted)).scalar_one()
     return DecisionList(decisions=page, total=total, limit=limit, offset=offset)
 
 
@@ -334,6 +369,52 @@ def _asked_step(run_id: int, plan, key: str | None) -> str | None:
     return step_key(plan["steps"][index], index)
 
 
+async def _step_of_run(conn: AsyncConnection, run_id: int, row, key: str | None) -> str | None:
+    """The step of its plan a decision of run ``run_id`` (``row``, as ``held_plan_run`` reads it) is about; 422 for a
+    step its plan does not have, and for any step of an author run that has put no plan yet."""
+    if row.plan_id is None:
+        if key is not None:
+            raise HTTPException(
+                422,
+                f"author run {run_id} has put no plan on the hub yet, so it has no step {key!r}: leave out step_key, "
+                "or put the plan first",
+            )
+        return None
+    pl = tables.plans
+    held = select(pl.c.body).where(pl.c.project_id == row.project_id, pl.c.plan_id == row.plan_id)
+    current = (await conn.execute(held)).one_or_none()
+    return _asked_step(run_id, current.body if current else {}, key)
+
+
+def about_run(run_id: int, kind: str, title: str | None) -> str:
+    """What a decision of run ``run_id`` is about when it has no plan: the author run and its title."""
+    shown = f"{kind} run #{run_id}"
+    return shown + (f", {one_line(title)}" if title else "")
+
+
+async def _notify_asked(conn: AsyncConnection, row, run_id: int, decision_id: int, key: str | None, body) -> None:
+    """Tell the run's owner of the decision just asked: what it is about, its plan and step, or for an author run
+    without a plan, the run and its title."""
+    r = tables.runs
+    title = (await conn.execute(select(r.c.title).where(r.c.id == run_id))).scalar_one()
+    if row.plan_id is not None:
+        about = f"plan {row.plan_id}" + (f", step {key}" if key else "")
+    else:
+        about = about_run(run_id, row.kind, title)
+    who = "Run" if row.kind == "plan" else f"{row.kind.capitalize()} run"
+    await notify(
+        conn,
+        user_id=row.dispatched_by,
+        kind="decision",
+        project_id=row.project_id,
+        run_id=run_id,
+        decision_id=decision_id,
+        title=f"{who} #{run_id} asks: {one_line(body.question)}",
+        body=f"{body.question.strip()}\n\n{body.category} decision for {about} in project {row.name}.",
+        link=decision_link(decision_id),
+    )
+
+
 @worker_router.post(
     "/runs/{run_id}/decisions",
     status_code=201,
@@ -341,26 +422,23 @@ def _asked_step(run_id: int, plan, key: str | None) -> str | None:
     responses={**REFUSALS, 422: {"model": ErrorBody}},
 )
 async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentUser) -> Decision:
-    """Ask the owner of a plan run this worker holds a decision, and notify them."""
+    """Ask the owner of a plan run or an author run this worker holds a decision, and notify them."""
     async with request.app.state.engine.begin() as conn:
-        _, row = await held_plan_run(conn, user, run_id, lock=True)
-        _, _, _, project_id, project, plan_id, dispatcher_id, _, _ = row
-        d, pl = tables.decisions, tables.plans
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("plan", "author"))
+        d = tables.decisions
         opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
         if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
             raise HTTPException(
                 409,
                 f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
             )
-        held = select(pl.c.body).where(pl.c.project_id == project_id, pl.c.plan_id == plan_id)
-        current = (await conn.execute(held)).one_or_none()
-        key = _asked_step(run_id, current.body if current else {}, body.step_key)
+        key = await _step_of_run(conn, run_id, row, body.step_key)
         stored = (
             insert(d)
             .values(
                 run_id=run_id,
-                project_id=project_id,
-                plan_id=plan_id,
+                project_id=row.project_id,
+                plan_id=row.plan_id,
                 step_key=key,
                 category=body.category,
                 question=body.question,
@@ -370,18 +448,7 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
             .returning(d.c.id)
         )
         decision_id = (await conn.execute(stored)).scalar_one()
-        about = f"plan {plan_id}" + (f", step {key}" if key else "")
-        await notify(
-            conn,
-            user_id=dispatcher_id,
-            kind="decision",
-            project_id=project_id,
-            run_id=run_id,
-            decision_id=decision_id,
-            title=f"Run #{run_id} asks: {one_line(body.question)}",
-            body=f"{body.question.strip()}\n\n{body.category} decision for {about} in project {project}.",
-            link=decision_link(decision_id),
-        )
+        await _notify_asked(conn, row, run_id, decision_id, key, body)
         shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
         await write_event(
             conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}
@@ -459,9 +526,10 @@ def answer_message(decision_id: int, category: str, question: str, option: dict 
     return runs.clip("\n".join(lines), runs.MAX_MESSAGE_BYTES)
 
 
-def _answer_target(project: str, plan_id: str, key: str | None, decision_id: int, run_id: int, option) -> str:
+def _answer_target(project: str, plan_id: str | None, key: str | None, decision_id: int, run_id: int, option) -> str:
     step = "" if key is None else f"#{key}"
-    return f"{project}/{plan_id}{step} decision:{decision_id} run:{run_id} option={option or '-'}"
+    where = f"{project}/{plan_id}{step}" if plan_id is not None else f"{project}/author"
+    return f"{where} decision:{decision_id} run:{run_id} option={option or '-'}"
 
 
 async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decision_id: int) -> int:
@@ -473,7 +541,9 @@ async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decisi
 async def resume_parked(conn: AsyncConnection, user: Principal, parked_id: int, why: str) -> int:
     """Queue the run that resumes parked run ``parked_id``, whose row the caller holds locked (for a plan run, under
     the plan's lock), and end the parked one done; the new run's id. ``why`` ends the new run's first event, such as
-    "as owner answered decision #3". The parked run's decisions still open go to the new run."""
+    "as owner answered decision #3". The parked run's decisions still open go to the new run, and for an author run,
+    the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
+    parked, which its agent reads in the new run's first turn."""
     reserved = select(func.nextval(func.pg_get_serial_sequence("runs", "id")))
     new_id = (await conn.execute(reserved)).scalar_one()
     # The parked run leaves the active states first: a plan has one active plan run at a time.
@@ -488,12 +558,47 @@ async def resume_parked(conn: AsyncConnection, user: Principal, parked_id: int, 
         decisions=None,
     )
     await conn.execute(_resume_run(new_id, parked_id))
-    d = tables.decisions
+    d, r, i = tables.decisions, tables.runs, tables.run_inbox
     await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
+    kind = (await conn.execute(select(r.c.kind).where(r.c.id == parked_id))).scalar_one()
+    if kind == "author":
+        undelivered = (i.c.run_id == parked_id, i.c.delivered_at.is_(None))
+        await conn.execute(update(i).values(run_id=new_id).where(*undelivered))
     shown = f"resumes run #{parked_id} in its session, {why}"
     await write_event(conn, new_id, {"text": shown, "resume_of_run_id": parked_id})
     await notify_queued(conn, new_id)
     return new_id
+
+
+async def _lock_run_of(conn: AsyncConnection, project_id: int, plan_id: str | None, decision_id: int):
+    """Lock the run decision ``decision_id`` belongs to, and the decision's plan for one with a plan; (run id, its
+    state, its kind). A decision of a plan is answered under the plan's dispatch lock, which its run's moves to another
+    run (a resume) take too; one without a plan, under its run's row lock, which a resume holds: when the decision
+    moved to another run before the lock, the lock is taken again on that run."""
+    if plan_id is not None:
+        await lock_plan(conn, project_id, plan_id)
+    d, r = tables.decisions, tables.runs
+    of_decision = select(d.c.run_id).where(d.c.id == decision_id)
+    run_id = (await conn.execute(of_decision)).scalar_one()
+    while True:
+        locked = select(r.c.state, r.c.kind).where(r.c.id == run_id).with_for_update()
+        run_state, kind = (await conn.execute(locked)).one()
+        now = (await conn.execute(of_decision)).scalar_one()
+        if now == run_id:
+            return run_id, run_state, kind
+        run_id = now
+
+
+async def _resumes(conn: AsyncConnection, run_id: int, run_state: str, kind: str) -> bool:
+    """Whether the answer just recorded resumes run ``run_id``: a parked plan run at its first answer, a parked
+    author run once none of its decisions is open."""
+    if run_state != "parked":
+        return False
+    if kind != "author":
+        return True
+    d = tables.decisions
+    still_open = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
+    return (await conn.execute(still_open)).scalar_one() == 0
 
 
 @dataclass(frozen=True)
@@ -526,9 +631,7 @@ async def answer_decision(
     check_dispatcher(access)
     # Answers of the plan's decisions, and its dispatches, one at a time: the run a decision belongs to stays put
     # until the transaction ends. The run's row before the decision's, as every move of a run takes them.
-    await lock_plan(conn, access.project_id, plan_id)
-    run_id = (await conn.execute(select(d.c.run_id).where(d.c.id == decision_id))).scalar_one()
-    run_state = (await conn.execute(select(r.c.state).where(r.c.id == run_id).with_for_update())).scalar_one()
+    run_id, run_state, kind = await _lock_run_of(conn, access.project_id, plan_id, decision_id)
     locked = select(d.c.state, d.c.category, d.c.question, d.c.options).where(d.c.id == decision_id)
     state, category, question, options = (await conn.execute(locked.with_for_update())).one()
     if state != "open":
@@ -559,7 +662,8 @@ async def answer_decision(
         .values(read_at=func.now())
         .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
     )
-    inbox_run = await _resume(conn, user, run_id, decision_id) if run_state == "parked" else run_id
+    resumes = await _resumes(conn, run_id, run_state, kind)
+    inbox_run = await _resume(conn, user, run_id, decision_id) if resumes else run_id
     text = answer_message(decision_id, category, question, chosen, body.text)
     i = tables.run_inbox
     left = (

@@ -1,17 +1,28 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Inbox } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { useId, useState } from "react";
+import { useCallback, useId, useMemo, useState } from "react";
 
 import { DecisionCard } from "@/components/inbox/decision-view";
 import { type Decision, decisionQuery } from "@/components/inbox/queries";
 import { browserApi } from "@/lib/api/browser";
+import { call } from "@/lib/api/client";
+import type { ApiSource } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-import { decisionAnchor, decisionHref, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run } from "./queries";
+import {
+  CHAT_REFRESH_MS,
+  decisionAnchor,
+  decisionHref,
+  isActiveState,
+  LIVE_REFRESH_MS,
+  openDecisionsQuery,
+  type Run,
+  type RunChat,
+} from "./queries";
 
 /**
  * A plan run's open decisions on its page, at the top of the side column (above the log below the xl breakpoint): the
@@ -135,5 +146,71 @@ function LiveDecision({
       onConflict={onSettled}
       onTakeOver={onTakeOver}
     />
+  );
+}
+
+/** The most decisions a run's chat reads of one run, `MAX_LIST` of the API's list. */
+const MAX_CHAT_DECISIONS = 200;
+
+/** Every decision of one run, in any state, newest first: an author run's chat shows them all. */
+const runDecisionsQuery = (api: ApiSource, project: string, runId: number) =>
+  queryOptions({
+    queryKey: ["projects", project, "decisions", { run: runId }] as const,
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/projects/{project}/decisions", {
+          params: { path: { project }, query: { run_id: runId, limit: MAX_CHAT_DECISIONS } },
+          signal,
+        }),
+      ),
+  });
+
+export type ChatDecisions = {
+  /** The decisions of the chat's runs, in the order asked. */
+  list: Decision[];
+  /** How many of them wait for an answer. */
+  open: number;
+  /** A decision as an answer here (or a 409) left it, until the list says it is no longer open. */
+  keep: (decision: Decision) => void;
+};
+
+/**
+ * The decisions of an author run's chat (docs/workers.md, The chat of an author run): those of the run and of each run
+ * the chat goes over (a parked run and the run that resumes it), read as often as the chat while it has not ended. The
+ * answers are the decisions' own: the chat leaves them out of its messages.
+ */
+export function useChatDecisions(run: Pick<Run, "id" | "project">, chat: RunChat | undefined): ChatDecisions {
+  const ids = useMemo(() => [...new Set([run.id, ...(chat ? [chat.run_id, ...chat.messages.map((message) => message.run_id)] : [])])].sort((a, b) => a - b), [run.id, chat]);
+  const live = chat !== undefined && chat.status !== "ended";
+  const lists = useQueries({
+    queries: ids.map((id) => ({ ...runDecisionsQuery(browserApi, run.project, id), enabled: chat !== undefined, refetchInterval: live ? CHAT_REFRESH_MS : false })),
+  });
+  const [kept, setKept] = useState<ReadonlyMap<number, Decision>>(new Map());
+  const keep = useCallback((decision: Decision) => setKept((map) => new Map(map).set(decision.id, decision)), []);
+  const list = lists
+    .flatMap((query) => query.data?.decisions ?? [])
+    .map((decision) => (decision.state === "open" ? (kept.get(decision.id) ?? decision) : decision))
+    .sort((a, b) => a.id - b.id);
+  return { list, open: list.filter((decision) => decision.state === "open").length, keep };
+}
+
+/**
+ * One decision in an author run's chat, under the agent's message that ended the turn which asked it: the kit's
+ * DecisionCard as a plan run's side column shows it, the answer form for the run's owner (the agent's pick chosen) and
+ * the question, context and options for anyone else; once answered, the compact block with the answer. Its anchor is
+ * what the trace's "Asked you" opens.
+ */
+export function ChatDecision({ decision, onSettled }: { decision: Decision; onSettled: (decision: Decision) => void }) {
+  return (
+    <div
+      id={decisionAnchor(decision.id)}
+      tabIndex={-1}
+      className="min-w-0 scroll-mt-4 rounded-md sm:ml-10 sm:max-w-[46rem]"
+      data-testid="run-chat-decision"
+      data-decision-id={decision.id}
+      data-state={decision.state}
+    >
+      <DecisionCard decision={decision} where="run" onAnswered={onSettled} onConflict={onSettled} />
+    </div>
   );
 }

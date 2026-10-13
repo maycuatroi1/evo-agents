@@ -328,7 +328,7 @@ async def _try_claim(
             token_id=user.token_id,
             lease=lease,
         )
-        spec = await _run_spec(conn, run_id)
+        spec = await _run_spec(conn, run_id, tuple(features or ()))
         if skill is not None:
             spec.skills = [await _skill_ticket(blobs, skill)]
         if gone is not None and await gone():
@@ -337,7 +337,9 @@ async def _try_claim(
     return spec
 
 
-async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
+async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...] = ()) -> RunSpec:
+    """The claim of run ``run_id`` by a worker whose daemon says it does ``features`` (``runs.WORKER_FEATURES``): an
+    author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``."""
     view = await run_view(conn, run_id)
     r, revisions = tables.runs, tables.plan_revisions
     project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
@@ -360,7 +362,13 @@ async def _run_spec(conn: AsyncConnection, run_id: int) -> RunSpec:
         version = skill.version if skill is not None else 0
         target = (view.plan_id, view.plan_revision) if view.plan_id else None
         prompt = author.build_author_prompt(
-            view.project, view.dispatched_by, view.request or "", repos, version, plan=target
+            view.project,
+            view.dispatched_by,
+            view.request or "",
+            repos,
+            version,
+            plan=target,
+            decisions=runs.AUTHOR_DECISIONS in features,
         )
         title = view.title
     elif view.kind == "judge":

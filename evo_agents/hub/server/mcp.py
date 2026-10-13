@@ -842,9 +842,9 @@ class HubMcp(MCPServer):
         lines = []
         for item in found.decisions:
             answer = item.answer_option or ("text" if item.answer_text else "-")
+            of = f"run #{item.run_id}, plan {item.plan_id}" if item.plan_id else f"author run #{item.run_id}, no plan"
             lines.append(
-                f"#{item.id} {item.category} ({item.state}, run #{item.run_id}, plan {item.plan_id}): "
-                f"{_one_line(item.question)}; answer {answer}"
+                f"#{item.id} {item.category} ({item.state}, {of}): {_one_line(item.question)}; answer {answer}"
             )
         text = "\n".join(lines) or f"no decision of project {project} matches"
         data = {"project": project, **found.model_dump(mode="json"), "summary": f"{found.total} decisions"}

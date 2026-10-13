@@ -5,6 +5,7 @@ import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "@/lib/api/client";
+import type { components } from "@/lib/api/schema";
 import { renderVi } from "@/test/render";
 
 import type { Run, RunChat } from "./queries";
@@ -15,6 +16,8 @@ const api = vi.hoisted(() => ({
   chat: null as unknown,
   seen: [] as Request[],
   post: null as null | ((request: Request) => Response),
+  login: "octo",
+  decisions: {} as Record<string, unknown[]>,
 }));
 
 vi.mock("@/lib/api/browser", () => ({
@@ -26,6 +29,11 @@ vi.mock("@/lib/api/browser", () => ({
         const url = new URL(request.url);
         if (url.pathname === "/v1/auth/web/csrf") return Response.json({ csrf: "csrf-1", header: "X-Evo-CSRF" });
         if (url.pathname === "/v1/projects/demo/runs/41/chat") return Response.json(api.chat);
+        if (url.pathname === "/v1/auth/whoami") return Response.json({ login: api.login, admin: false, token: {}, grants: [{ project: "demo", role: "writer", max_level: "internal" }] });
+        if (url.pathname === "/v1/projects/demo/decisions" && request.method === "GET") {
+          const decisions = api.decisions[url.searchParams.get("run_id") ?? ""] ?? [];
+          return Response.json({ decisions, total: decisions.length, limit: 200, offset: 0 });
+        }
         if (request.method === "POST" && api.post) return api.post(request);
         return Response.json({ error: "not_found", message: url.pathname }, { status: 404 });
       },
@@ -59,6 +67,49 @@ const CHAT: RunChat = {
   ],
 };
 
+type Decision = components["schemas"]["Decision"];
+
+const ASKED: Decision = {
+  id: 8,
+  project: "demo",
+  run_id: 44,
+  run_state: "parked",
+  plan_id: null,
+  step_key: null,
+  category: "scope",
+  question: "Which runs does the first revision cover?",
+  context: "The plan can cover **plan runs** only, or author runs as well.",
+  options: [
+    { key: "plan", label: "Plan runs only", description: null, recommended: true },
+    { key: "both", label: "Plan and author runs", description: "One more step.", recommended: false },
+  ],
+  recommended: "plan",
+  state: "open",
+  owner: "octo",
+  answer_option: null,
+  answer_text: null,
+  answered_by: null,
+  answer_run_id: null,
+  asked_at: "2026-10-07T03:19:00Z",
+  answered_at: null,
+  delivered_at: null,
+};
+
+const ANSWERED: Decision = {
+  ...ASKED,
+  id: 5,
+  run_id: 41,
+  run_state: "parked",
+  question: "Should the button sit in the header?",
+  state: "answered",
+  answer_option: "plan",
+  answer_text: "Keep it small.",
+  answered_by: "octo",
+  answer_run_id: 44,
+  asked_at: "2026-10-07T03:04:00Z",
+  answered_at: "2026-10-07T03:06:00Z",
+};
+
 function show(run: Run, owner: boolean) {
   return renderVi(
     <QueryClientProvider client={new QueryClient({ defaultOptions: { queries: { retry: false } } })}>
@@ -71,6 +122,8 @@ beforeEach(() => {
   api.chat = CHAT;
   api.seen = [];
   api.post = null;
+  api.login = "octo";
+  api.decisions = {};
 });
 
 describe("RunChatPanel", () => {
@@ -94,6 +147,52 @@ describe("RunChatPanel", () => {
     // The chat goes on in the run that resumed this parked one.
     expect(within(chat).getByTestId("run-chat-continues")).toHaveTextContent("Chat này tiếp tục ở run #44.");
     expect(within(chat).getByRole("link", { name: "run #44" })).toHaveAttribute("href", "/p/demo/runs/44");
+  });
+
+  it("shows each decision as the kit's card after the agent's message that ended the turn which asked it, and how many wait", async () => {
+    api.decisions = { "41": [ANSWERED], "44": [ASKED] };
+    show(RUN, true);
+    const log = await screen.findByRole("log", { name: "Chat của run #41" });
+    await waitFor(() => expect(within(log).getAllByTestId("run-chat-decision")).toHaveLength(2));
+    // In the order of the chat: the decision asked in the first turn after its agent's message, the open one after the last.
+    expect(Array.from(log.children).map((line) => line.getAttribute("data-testid"))).toEqual([
+      "run-chat-request",
+      "run-chat-agent",
+      "run-chat-decision",
+      "run-chat-owner",
+      "run-chat-agent",
+      "run-chat-decision",
+    ]);
+    const [answered, open] = within(log).getAllByTestId("run-chat-decision");
+    expect(answered).toHaveAttribute("id", "run-decision-5");
+    expect(answered).toHaveAttribute("data-state", "answered");
+    // Answered, the card is one block with the answer; the owner's choice is not a message of the chat again.
+    expect(within(answered).getByTestId("decision-answer")).toHaveTextContent("Keep it small.");
+    expect(within(answered).queryByRole("radio")).toBeNull();
+    expect(within(log).getAllByTestId("run-chat-owner")).toHaveLength(1);
+    // Open, it takes the owner's answer with the mouse, the agent's pick chosen.
+    expect(open).toHaveAttribute("id", "run-decision-8");
+    expect(await within(open).findByRole("radio", { name: /Plan runs only/ })).toBeChecked();
+    expect(within(open).getByTestId("decision-send")).toBeInTheDocument();
+    expect(within(open).queryByTestId("decision-plan-link")).toBeNull();
+    expect(screen.getByTestId("run-chat-status")).toHaveTextContent("1 quyết định đang chờ bạn");
+    expect(screen.getByTestId("run-chat-status")).toHaveAttribute("data-open-decisions", "1");
+    // The reply box and End chat stay.
+    expect(screen.getByTestId("run-chat-reply")).toBeInTheDocument();
+    expect(screen.getByTestId("run-chat-end")).toBeInTheDocument();
+    const reads = api.seen.filter((request) => new URL(request.url).pathname === "/v1/projects/demo/decisions");
+    expect(new Set(reads.map((request) => new URL(request.url).searchParams.get("run_id")))).toEqual(new Set(["41", "44"]));
+  });
+
+  it("shows anyone but the owner the open decision's card read-only", async () => {
+    api.login = "mona";
+    api.decisions = { "44": [ASKED] };
+    show(RUN, false);
+    const card = await screen.findByTestId("run-chat-decision");
+    expect(await within(card).findByTestId("decision-locked")).toHaveTextContent("Chỉ octo");
+    expect(within(card).queryByRole("radio")).toBeNull();
+    expect(within(card).getAllByTestId("decision-option")).toHaveLength(2);
+    expect(screen.getByTestId("run-chat-status")).toHaveTextContent("1 quyết định đang chờ octo");
   });
 
   it("posts the owner's reply to the run that takes the chat's next message, and refuses a blank one", async () => {
