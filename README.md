@@ -278,11 +278,14 @@ evo-agents hub run credentials 41 --project demo   # the leases run 41 got, give
 Several `env` secrets for the same variable bound to one project are accounts, such as two Claude subscriptions: each
 run takes one of them by the rotation you set for the project (round-robin by default, weighted-round-robin or
 fill-first) and keeps it, and a headless Claude Code run whose account hits its usage limit goes on in the same session
-with the next one. `hub account` shows and weighs them, and `--account` picks one by hand
+with the next one. `hub account login` adds a Claude account: it runs Anthropic's own `claude setup-token`, where you
+approve in the browser, and puts the token it prints on the hub without showing it, ending a year from today less a
+day. Run it again with the same name to renew the token, or use Add Claude account and Renew token on the web's
+Accounts page. `hub account` shows and weighs the accounts, and `--account` picks one by hand
 ([docs/credentials.md](docs/credentials.md), section "Accounts"):
 
 ```sh
-pbpaste | evo-agents hub secret set claude-b --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
+evo-agents hub account login claude-b --project demo  # claude setup-token, then the token goes to the hub sealed
 evo-agents hub account list                        # state, usage, runs and cost of each account; never a value
 evo-agents hub account policy demo --strategy fill-first --cooldown 1800
 evo-agents hub account pause claude-a
