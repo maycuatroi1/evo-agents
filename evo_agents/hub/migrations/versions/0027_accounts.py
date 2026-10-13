@@ -1,8 +1,8 @@
 """Accounts: a member's env secrets as accounts a run picks among, the member's policy for each project, and the
 account each run took.
 
-Revision ID: 0026
-Revises: 0025
+Revision ID: 0027
+Revises: 0026
 Create Date: 2026-10-13
 
 ``evo_agents.hub.accounts`` describes the design; the lists and bounds below are copies of its constants as of this
@@ -22,15 +22,15 @@ run_accounts holds the account a run took for each variable, and how (manual, wo
 the run keeps it on every later ask for its leases; failovers counts the times the run moved to another one. A row
 goes with its run; a secret a run took is never deleted, only soft-deleted, so it keeps it.
 
-Going back drops the three tables, which is the schema that schema 0025 runs on: its runs take the first env secret
+Going back drops the three tables, which is the schema that schema 0026 runs on: its runs take the first env secret
 by name for each variable, as before.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0026"
-down_revision = "0025"
+revision = "0027"
+down_revision = "0026"
 branch_labels = None
 depends_on = None
 

@@ -34,8 +34,15 @@ dispatch pinned to it with a token gets 403 (``runs``). Only its owner sets it, 
 gets 403 whoever holds it, so a token that leaked cannot open the worker again, a hub admin who does not own the
 worker gets 403, and anyone else 404. Setting the value it has changes nothing and is not audited.
 
-Every pairing, join, registration, drain, undrain, change of dispatch_from and revocation adds an audit row naming the
-pairing or worker, never the code or the token, and neither ever reaches a log line.
+PATCH /v1/workers/{id} changes the worker's slots (1 to ``runs.MAX_SLOTS``), labels (as a pairing takes them) or
+name (unique among the owner's workers that are not revoked, 409 otherwise), each field optional but at least one
+given. Only its owner changes them, from a web session with its CSRF header or with their machine token: a hub admin
+who does not own the worker gets 403, anyone else 404, and a revoked worker 409. Giving the values it has changes
+nothing and is not audited. The daemon learns the new settings from the answer to its next heartbeat (``settings``),
+and the hub's claim counts the runs a worker holds against its slots as they are now.
+
+Every pairing, join, registration, drain, undrain, change of dispatch_from or of settings and revocation adds an audit
+row naming the pairing or worker, never the code or the token, and neither ever reaches a log line.
 """
 
 from __future__ import annotations
@@ -50,7 +57,7 @@ from typing import Annotated, Literal
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import BigInteger, Text, any_, delete, exists, func, insert, literal, select, update
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -103,6 +110,7 @@ NO_SECRET = "pairing codes need EVO_HUB_SESSION_SECRET, which this hub does not 
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
 LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
 LINE = r"^[^\x00-\x1f\x7f]+$"  # one line, without control characters
+MAX_LABELS = 16
 
 router = APIRouter(prefix="/v1/workers", tags=["workers"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"])
@@ -205,8 +213,8 @@ class WorkerScope(BaseModel):
     projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
         min_length=1, max_length=100, description="projects the worker takes runs of; the writer role on each"
     )
-    slots: int = Field(1, ge=1, le=8, description="runs the worker holds at once")
-    labels: list[Annotated[str, Field(pattern=LABEL)]] = Field(default_factory=list, max_length=16)
+    slots: int = Field(1, ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
+    labels: list[Annotated[str, Field(pattern=LABEL)]] = Field(default_factory=list, max_length=MAX_LABELS)
     allow_web_terminal: bool = Field(False, description="whether the owner may open a terminal on it from the web")
 
 
@@ -297,6 +305,20 @@ class DispatchFrom(BaseModel):
         description="any: runs dispatched with any credential of the owner; web: only runs dispatched from a web "
         "session, so a token cannot hand the worker work"
     )
+
+
+class WorkerUpdate(BaseModel):
+    """What PATCH /v1/workers/{id} changes: each field it gives, at least one; a field left out or null stays."""
+
+    slots: int | None = Field(None, ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
+    labels: list[Annotated[str, Field(pattern=LABEL)]] | None = Field(None, max_length=MAX_LABELS)
+    name: str | None = Field(None, pattern=WORKER_NAME, description="unique among the owner's workers not revoked")
+
+    @model_validator(mode="after")
+    def _some_field(self) -> WorkerUpdate:
+        if self.slots is None and self.labels is None and self.name is None:
+            raise ValueError("name at least one of slots, labels and name to change")
+        return self
 
 
 class WorkerCredential(BaseModel):
@@ -409,9 +431,13 @@ async def _writable(conn, user: Principal, names: list[str]) -> list[int]:
     return ids
 
 
-async def _name_taken(conn: AsyncConnection, owner_id: int, name: str) -> bool:
+async def _name_taken(conn: AsyncConnection, owner_id: int, name: str, *, besides: int | None = None) -> bool:
+    """Whether a worker of ``owner_id`` that is not revoked, other than worker ``besides``, is named ``name`` in any
+    case."""
     w = tables.workers
     taken = exists().where(w.c.owner_id == owner_id, func.lower(w.c.name) == func.lower(name), w.c.revoked_at.is_(None))
+    if besides is not None:
+        taken = taken.where(w.c.id != besides)
     return (await conn.execute(select(taken))).scalar_one()
 
 
@@ -851,6 +877,43 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
             action = audit.WORKER_DISPATCH_FROM
             await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
             log.info("worker dispatch_from set", extra={"worker_id": worker_id, "dispatch_from": body.value})
+        return await _one_worker(conn, worker_id)
+
+
+def _shown(value) -> str:
+    """A setting as an audit target shows it: labels in brackets, comma separated."""
+    return f"[{','.join(value)}]" if isinstance(value, list) else str(value)
+
+
+@router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
+async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
+    """Change the worker's slots, labels or name: its owner only, from a web session or with their machine token."""
+    wanted = body.model_dump(exclude_none=True)
+    if "labels" in wanted:
+        wanted["labels"] = _unique(wanted["labels"])
+    async with request.app.state.engine.begin() as conn:
+        owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
+        if owner_id != user.user_id:
+            raise HTTPException(403, f"only {owner}, who owns worker {worker_id}, may change its settings")
+        if revoked_at is not None:
+            raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
+        w = tables.workers
+        row = (await conn.execute(select(w.c.slots, w.c.labels, w.c.name).where(w.c.id == worker_id))).one()
+        now = {"slots": row.slots, "labels": list(row.labels), "name": row.name}
+        changed = {field: value for field, value in wanted.items() if value != now[field]}
+        if changed:  # the values it has already: nothing changes, nothing is audited
+            if "name" in changed and await _name_taken(conn, owner_id, changed["name"], besides=worker_id):
+                raise _name_conflict(changed["name"])
+            try:
+                await conn.execute(update(w).values(**changed).where(w.c.id == worker_id))
+            except sa_exc.IntegrityError as exc:  # another worker took the name meanwhile
+                if not isinstance(exc.orig, psycopg.errors.UniqueViolation):
+                    raise
+                raise _name_conflict(changed["name"]) from None
+            changes = " ".join(f"{field}={_shown(now[field])}->{_shown(value)}" for field, value in changed.items())
+            target, action = f"{_target(worker_id, name, owner)} {changes}", audit.WORKER_UPDATE
+            await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=action, target=target)
+            log.info("worker settings changed", extra={"worker_id": worker_id, "fields": sorted(changed)})
         return await _one_worker(conn, worker_id)
 
 

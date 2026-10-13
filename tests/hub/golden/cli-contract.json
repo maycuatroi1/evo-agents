@@ -11513,6 +11513,99 @@
               }
             }
           }
+        },
+        "patch": {
+          "tags": [
+            "workers"
+          ],
+          "summary": "Update Worker",
+          "description": "Change the worker's slots, labels or name: its owner only, from a web session or with their machine token.",
+          "operationId": "update_worker_v1_workers__worker_id__patch",
+          "parameters": [
+            {
+              "name": "worker_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Worker Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WorkerUpdate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Worker"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
         }
       },
       "/v1/workers/{worker_id}/drain": {
@@ -24690,12 +24783,17 @@
               },
               "type": "array",
               "title": "Runs"
+            },
+            "settings": {
+              "$ref": "#/components/schemas/WorkerSettings",
+              "description": "the worker's settings as the hub holds them, which its owner may change (PATCH /v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none"
             }
           },
           "type": "object",
           "required": [
             "drain",
-            "runs"
+            "runs",
+            "settings"
           ],
           "title": "HeartbeatAnswer"
         },
@@ -24729,7 +24827,7 @@
             },
             "free_slots": {
               "type": "integer",
-              "maximum": 8.0,
+              "maximum": 16.0,
               "minimum": 0.0,
               "title": "Free Slots"
             },
@@ -27607,7 +27705,7 @@
             },
             "slots": {
               "type": "integer",
-              "maximum": 8.0,
+              "maximum": 16.0,
               "minimum": 1.0,
               "title": "Slots",
               "description": "runs the worker holds at once",
@@ -35745,7 +35843,7 @@
             },
             "slots": {
               "type": "integer",
-              "maximum": 8.0,
+              "maximum": 16.0,
               "minimum": 1.0,
               "title": "Slots",
               "description": "runs the worker holds at once",
@@ -35777,6 +35875,85 @@
             "projects"
           ],
           "title": "WorkerRegistration"
+        },
+        "WorkerSettings": {
+          "properties": {
+            "slots": {
+              "type": "integer",
+              "maximum": 16.0,
+              "minimum": 1.0,
+              "title": "Slots",
+              "description": "runs the worker holds at once"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slots",
+            "name",
+            "labels"
+          ],
+          "title": "WorkerSettings"
+        },
+        "WorkerUpdate": {
+          "properties": {
+            "slots": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 16.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slots",
+              "description": "runs the worker holds at once"
+            },
+            "labels": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Labels"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "unique among the owner's workers not revoked"
+            }
+          },
+          "type": "object",
+          "title": "WorkerUpdate",
+          "description": "What PATCH /v1/workers/{id} changes: each field it gives, at least one; a field left out or null stays."
         },
         "evo_agents__hub__server__memories__Conflict": {
           "properties": {

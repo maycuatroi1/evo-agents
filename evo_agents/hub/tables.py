@@ -1282,4 +1282,4 @@ Index(  # a merged change has one outcome
     unique=True,
     postgresql_where=curator_ledger.c.action == "outcome",
 )
-accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0026)
+accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0027)

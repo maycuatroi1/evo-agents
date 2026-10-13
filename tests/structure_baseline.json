@@ -40,7 +40,7 @@
     "evo_agents/worker/cli.py::cmd_step": {"complexity": 26, "statements": 90},
     "evo_agents/worker/cli.py::cmd_step.work": {"complexity": 19, "statements": 72},
     "evo_agents/worker/cli.py::register": {"statements": 95},
-    "evo_agents/worker/daemon.py::Daemon._beat": {"complexity": 20, "statements": 56},
+    "evo_agents/worker/daemon.py::Daemon._beat": {"complexity": 20, "statements": 53},
     "evo_agents/worker/interactive.py::claude_transcript_events": {"complexity": 17},
     "evo_agents/worker/runtimes/claude_code.py::events_of": {"complexity": 17}
   },

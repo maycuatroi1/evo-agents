@@ -75,7 +75,7 @@ TABLES |= pg.REVIEW_TABLES  # migration 0014
 TABLES |= pg.BRIEF_TABLES  # migration 0015
 TABLES |= pg.CHANGE_TABLES  # migration 0017
 TABLES |= pg.LEDGER_TABLES  # migration 0018
-TABLES |= pg.ACCOUNT_TABLES  # migration 0026
+TABLES |= pg.ACCOUNT_TABLES  # migration 0027
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -383,6 +383,79 @@ def test_0008_keeps_the_builds_and_going_back_fails_the_pruned_ones(hub_db):
         (second, "succeeded", "b" * 64, False),
     ]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0008") :]
+
+
+def _worker_row(ids, token_id: int, name: str, slots: int, **values):
+    """The INSERT of a worker of the seeded user with ``slots``, returning its id."""
+    host = {"hostname": "mac", "os": "darwin", "arch": "arm64", "agent_version": "0.13.0"}
+    workers = hub_tables.workers
+    row = {"owner_id": ids["user"], "token_id": token_id, "name": name, "slots": slots, **host, **values}
+    return insert(workers).values(row).returning(workers.c.id)
+
+
+def _pairing_row(ids, selector: str, slots: int, made_ago: timedelta):
+    """The INSERT of an unused pairing of the seeded user for demo with ``slots``, made ``made_ago`` and lasting ten
+    minutes, returning its id."""
+    pairings = hub_tables.worker_pairings
+    row = {"code_selector": selector, "code_hash": "2" * 64, "owner_id": ids["user"], "name": "paired"}
+    made = func.now() - made_ago
+    row |= {
+        "projects": [ids["project"]],
+        "slots": slots,
+        "created_at": made,
+        "expires_at": made + timedelta(minutes=10),
+    }
+    return insert(pairings).values(row).returning(pairings.c.id)
+
+
+def test_0026_takes_up_to_sixteen_slots_and_going_back_refuses_a_live_worker_over_eight(hub_db):
+    move_to(hub_db, "0025")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = hub_tables.tokens.c.id
+        tokens = [
+            one(conn, _token(ids, kind="worker", token_hash=f"{n}" * 64, host="mac").returning(token_id))
+            for n in range(3)
+        ]
+        with pytest.raises(errors.CheckViolation):  # eight at most before 0026
+            conn.execute(_worker_row(ids, tokens[0], "big", 9))
+    move_to(hub_db, "0026")
+    workers, pairings = hub_tables.workers, hub_tables.worker_pairings
+    with live.connect(hub_db) as conn:
+        live_id = one(conn, _worker_row(ids, tokens[0], "big", 16, free_slots=16))
+        gone_id = one(conn, _worker_row(ids, tokens[1], "gone", 12, free_slots=12, revoked_at=func.now()))
+        small_id = one(conn, _worker_row(ids, tokens[2], "small", 2, free_slots=2))
+        waiting_id = one(conn, _pairing_row(ids, "WXYZ", 16, timedelta(minutes=1)))
+        expired_id = one(conn, _pairing_row(ids, "ABCD", 9, timedelta(minutes=20)))
+        for bad in (
+            update(workers).values(slots=17).where(workers.c.id == small_id),
+            update(workers).values(slots=0).where(workers.c.id == small_id),
+            update(workers).values(free_slots=17).where(workers.c.id == small_id),
+            update(pairings).values(slots=17).where(pairings.c.id == waiting_id),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+
+    # Going back refuses, naming them, while a live worker or a live pairing holds more than eight; nothing changed.
+    with pytest.raises(RuntimeError, match=rf"worker {live_id}, pairing {waiting_id} have more"):
+        move_to(hub_db, "0025", down=True)
+    assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [("0026",)]
+    live.sql(hub_db, update(workers).values(slots=8).where(workers.c.id == live_id))
+    with pytest.raises(RuntimeError, match=rf"pairing {waiting_id} has more"):
+        move_to(hub_db, "0025", down=True)
+    live.sql(hub_db, update(pairings).values(expires_at=func.now()).where(pairings.c.id == waiting_id))
+
+    # Then it goes back: the revoked worker and the used or expired pairings keep eight, free_slots at most eight.
+    move_to(hub_db, "0025", down=True)
+    kept = select(workers.c.id, workers.c.slots, workers.c.free_slots).order_by(workers.c.id)
+    assert query(hub_db, kept) == [(live_id, 8, 8), (gone_id, 8, 8), (small_id, 2, 2)]
+    assert query(hub_db, select(pairings.c.id, pairings.c.slots).order_by(pairings.c.id)) == [
+        (waiting_id, 8),
+        (expired_id, 8),
+    ]
+    with live.connect(hub_db) as conn, pytest.raises(errors.CheckViolation):
+        conn.execute(update(workers).values(slots=9).where(workers.c.id == small_id))
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0026") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
