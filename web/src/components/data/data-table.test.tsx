@@ -77,6 +77,21 @@ describe("DataTable", () => {
     expect(within(table).getAllByRole("columnheader")[1]).toHaveAttribute("aria-sort", "ascending");
     expect(within(within(table).getAllByRole("row")[1]).getByRole("link")).toHaveTextContent("Bảng theo kit");
   });
+
+  it("puts a row's detail under it, across every column, the two a group of their own", () => {
+    const detail = (row: Row) => (row.id === 1 ? <p>Usage of {row.title}</p> : null);
+    renderVi(<DataTable data={rows} columns={columns()} caption="Accounts" detail={detail} />);
+    const table = screen.getByRole("table", { name: "Accounts" });
+    const groups = within(table).getAllByRole("rowgroup").slice(1); // the header first
+    expect(groups).toHaveLength(2);
+    const [first, second] = groups.map((group) => within(group).getAllByRole("row"));
+    expect(first).toHaveLength(2);
+    const [cell] = within(first[1]).getAllByRole("cell");
+    expect(cell).toHaveAttribute("colspan", "3");
+    expect(cell).toHaveTextContent("Usage of Web shell");
+    expect(second).toHaveLength(1);
+    expect(groups[1]).toHaveAttribute("data-row-group");
+  });
 });
 
 describe("DataCard", () => {

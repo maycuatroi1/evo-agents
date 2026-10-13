@@ -221,7 +221,15 @@ limit, the worker says so: the CLI's `rate_limit_event` with status `rejected`, 
 usage limit. It calls `POST /v1/worker/runs/{id}/rate-limit` with the lease of the account (`lease_id`), the
 `status`, the limit's `rate_limit_type`, the reset time (`resets_at`) when the CLI gave one, and the usage
 (`utilization`, `windows`); an event with status `allowed` or `allowed_warning` is reported the same way and only
-keeps the usage on the account (`accounts.last_usage`). On `rejected` the hub cools the account down until the reset,
+keeps the usage on the account (`accounts.last_usage`). The hub keeps it window by window: the report's `windows`
+replace those of the same name, a window it does not list keeps what an earlier report said of it, and `status`,
+`rate_limit_type`, `resets_at` and `utilization` are the newest report's. `last_usage_at` is the time of the newest
+report, so a window kept from an earlier one may be older than that. A window whose reset has passed stays until a
+report lists it again, and the web reads it as reset, at 0%. A report that is not `rejected` and comes while the
+account cools down from a `rejected` one changes nothing, no window either: it is older than the limit. A share
+(`utilization`) is a fraction of the limit, 0.35 for 35%, as the CLI gives it; the route takes 0 to 100 and keeps the
+value as sent, and the web and `hub account list|show` read a value above 1 as the limit reached (100%), never as a
+percent. On `rejected` the hub cools the account down until the reset,
 else for the policy's `cooldown_seconds`. When the run may fail over (failover on, its account not picked by hand,
 fewer than `max_failovers` moves, another account ready by the rules above), the hub moves its `run_accounts` row to
 the next account, counts one more failover, revokes the old lease and answers `failover`; the worker asks for the
@@ -259,7 +267,13 @@ The routes are the member's own, a hub admin included, and never carry a value:
   `system` events, which carry `account_event`, `to_secret_id` and `cooldown_until` besides the secret ids.
 
 The web's Accounts page (next to Secrets in the sidebar) shows the same and edits weight, priority, pause and each
-project's policy; the run page shows the run's accounts and their failovers. `evo-agents hub
+project's policy; the run page shows the run's accounts and their failovers. Under the row of each Claude account, and
+of any account a run reported usage for, the page draws a bar per window the hub kept, as claude.ai's Usage page does:
+"Session (5 hours)" for `five_hour`, "Weekly, all models" for `seven_day`, "Weekly, Opus" for `seven_day_opus` (any
+other name in words), each with its share used and when it resets ("Resets in 2 hr 51 min" within a day, "Resets Tue
+7:00 AM" past that), and above them how long ago a run reported it: the bars change only when a run uses the account.
+A bar turns amber from 80% and red at 100% or at the limit the CLI rejected. A Claude account no run reported for says
+"No usage reported yet". `evo-agents hub
 account list|show|set|pause|resume|policy` call them:
 
 ```sh

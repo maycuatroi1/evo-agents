@@ -431,10 +431,11 @@ def _expiry(account: dict, now: datetime) -> tuple[str, bool]:
 
 
 def _percent(share) -> str:
-    """A utilization the CLI gave, as a fraction (0.85) or a percent (85), as `` 85%``; empty for none."""
-    if not isinstance(share, int | float):
+    """A utilization the CLI gave, a fraction of the limit (0.85), as `` 85%``; above 1 is the limit, `` 100%``, as
+    the web reads it (docs/credentials.md, section "Accounts"); empty for none."""
+    if isinstance(share, bool) or not isinstance(share, int | float):
         return ""
-    return f" {share * 100 if share <= 1 else share:.0f}%"
+    return f" {min(max(share, 0), 1) * 100:.0f}%"
 
 
 def _usage_text(usage: dict | None) -> str:

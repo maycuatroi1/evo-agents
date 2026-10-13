@@ -105,6 +105,42 @@ def test_a_report_that_is_not_rejected_keeps_the_usage_alone(client, hub, hub_db
     assert events(hub_db, run_id) == [] and audit_rows(hub_db, "account.failover") == []
 
 
+def test_the_usage_is_kept_window_by_window(client, hub, hub_db):
+    three(client, hub["owner"])
+    worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
+    run_id = run_on(client, hub["owner"], worker, "evo-agents")
+    lease_id = lease_of(client, worker, run_id)
+    session = {"utilization": 0.35, "resets_at": "2031-05-01T12:00:00Z"}
+    week = {"utilization": 0.22, "resets_at": "2031-05-06T07:00:00Z"}
+    windows = {"five_hour": session, "seven_day": week, "seven_day_opus": {"utilization": 0.0}}
+    answer_of(client, worker, run_id, lease_id, "allowed", utilization=0.35, windows=windows)
+    # a report that lists fewer windows replaces those it lists and keeps the others; the rest is the newest report's
+    week = {"utilization": 0.81, "resets_at": "2031-05-06T07:00:00Z"}
+    answer_of(
+        client, worker, run_id, lease_id, "allowed_warning", rate_limit_type="seven_day", windows={"seven_day": week}
+    )
+    kept = {"five_hour": session, "seven_day": week, "seven_day_opus": {"utilization": 0.0}}
+    usage = account_row(hub_db, "claude-a")[2]
+    assert usage == {"status": "allowed_warning", "rate_limit_type": "seven_day", "windows": kept}
+    # one that lists none keeps them all
+    answer_of(client, worker, run_id, lease_id, "allowed", rate_limit_type=None, utilization=0.4)
+    assert account_row(hub_db, "claude-a")[2] == {"status": "allowed", "utilization": 0.4, "windows": kept}
+    # a limit merges the same way, and a report older than it, come late, changes nothing while the account cools
+    full = {"utilization": 1.0, "resets_at": RESET.isoformat()}
+    limit = answer_of(client, worker, run_id, lease_id, resets_at=RESET.isoformat(), windows={"five_hour": full})
+    assert limit["action"] == "failover"
+    rejected = {
+        "status": "rejected",
+        "rate_limit_type": "five_hour",
+        "resets_at": "2031-05-01T12:00:00Z",
+        "windows": {**kept, "five_hour": {"utilization": 1.0, "resets_at": "2031-05-01T12:00:00Z"}},
+    }
+    assert account_row(hub_db, "claude-a")[2] == rejected
+    stale = {"five_hour": {"utilization": 0.5}, "seven_day_sonnet": {"utilization": 0.1}}
+    assert answer_of(client, worker, run_id, lease_id, "allowed", windows=stale)["action"] == "none"
+    assert account_row(hub_db, "claude-a")[2] == rejected
+
+
 def test_a_rejected_report_cools_the_account_revokes_its_lease_and_fails_over(client, hub, hub_db):
     values = three(client, hub["owner"])
     worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
