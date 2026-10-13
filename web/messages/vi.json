@@ -1580,7 +1580,7 @@
       },
       "scope": {
         "title": "Phạm vi",
-        "description": "Những gì worker được chạy, đặt lúc đăng ký.",
+        "description": "Những gì worker được chạy. Dự án được đặt lúc đăng ký.",
         "projects": "Dự án",
         "slots": "Slot",
         "slotsValue": "Đang dùng {held} trên {slots}",
@@ -1649,6 +1649,31 @@
       "anySuccess": "{name} lại nhận run dispatch từ dòng lệnh",
       "anySuccessText": "Worker nhận run dispatch bằng mọi credential của bạn, từ dòng lệnh lẫn từ web.",
       "failed": "Không đổi được ai dispatch cho {name}"
+    },
+    "settings": {
+      "title": "Cài đặt",
+      "description": "Chỉ bạn, chủ worker, đổi được các giá trị này. Worker nhận chúng ở nhịp heartbeat kế tiếp, không cần khởi động lại.",
+      "name": "Tên",
+      "nameHint": "Không trùng với worker khác của bạn: chữ, số, dấu chấm, gạch ngang và gạch dưới.",
+      "nameRequired": "Nhập tên cho worker.",
+      "nameInvalid": "Bắt đầu bằng chữ hoặc số, sau đó dùng chữ, số, dấu chấm, gạch ngang hoặc gạch dưới, tổng cộng tối đa 100 ký tự.",
+      "nameTaken": "Bạn đã có worker tên {name}. Chọn tên khác, hoặc thu hồi worker đó trước.",
+      "slots": "Slot",
+      "slotsHint": "Số run worker giữ cùng lúc, từ {min} tới {max}. Đặt ít slot hơn số run đang giữ không dừng run nào: worker nhận việc lại khi giữ ít hơn.",
+      "slotsInvalid": "Nhập một số nguyên từ {min} tới {max}.",
+      "labels": "Label",
+      "labelsPlaceholder": "macos, gpu",
+      "labelsHint": "Không bắt buộc. Ngăn cách bằng dấu phẩy hoặc khoảng trắng.",
+      "labelsInvalid": "Label không hợp lệ: {labels}. Label bắt đầu bằng chữ hoặc số và chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới, tổng cộng tối đa 40 ký tự.",
+      "labelsTooMany": "Tối đa {max} label.",
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "discard": "Bỏ thay đổi",
+      "saved": "Đã lưu cài đặt của {name}",
+      "savedText": "Worker nhận chúng ở nhịp heartbeat kế tiếp.",
+      "failed": "Không lưu được cài đặt của {name}",
+      "revoked": "Worker đã bị thu hồi nên không đổi cài đặt được nữa. Trang vừa được tải lại.",
+      "requestId": "Mã request: {id}"
     }
   },
   "secrets": {

@@ -10,14 +10,15 @@ import { recordHeartbeats } from "./heartbeats";
 
 /**
  * What the workers pages read and write (docs/workers.md). A member sees their own workers; a hub admin sees every
- * worker and may drain or revoke any of them, but only the owner undrains one or sets who may dispatch to it.
- * Another member's worker answers 404, the same as an id the hub never gave out.
+ * worker and may drain or revoke any of them, but only the owner undrains one, changes its settings or sets who may
+ * dispatch to it. Another member's worker answers 404, the same as an id the hub never gave out.
  */
 type Schemas = components["schemas"];
 export type Worker = Schemas["Worker"];
 export type Pairing = Schemas["Pairing"];
 export type PairingState = Schemas["PairingState"];
 export type PairingRequest = Schemas["PairingRequest"];
+export type WorkerUpdate = Schemas["WorkerUpdate"];
 
 /** The list and a worker's page poll the hub this often, so a heartbeat or a drain shows within seconds. */
 export const WORKERS_REFRESH_MS = 10_000;
@@ -29,7 +30,8 @@ export const WORKER_NAME = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
 export const LABEL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$/;
 export const MAX_LABELS = 16;
 export const MIN_SLOTS = 1;
-export const MAX_SLOTS = 8;
+/** `runs.MAX_SLOTS` of the hub: the most runs a worker holds at once. */
+export const MAX_SLOTS = 16;
 
 export const workerKeys = {
   all: ["workers"] as const,
@@ -101,6 +103,15 @@ export type DispatchFrom = Worker["dispatch_from"];
 export async function setDispatchFrom(api: ApiClient, id: number, value: DispatchFrom): Promise<Worker> {
   const headers = await csrfHeaders(api);
   return call(api.POST("/v1/workers/{worker_id}/dispatch-from", { params: { path: { worker_id: id } }, body: { value }, headers }));
+}
+
+/**
+ * Change the worker's slots, labels or name: each field the body gives, at least one. Only its owner may; the daemon
+ * takes the new values from the answer to its next heartbeat.
+ */
+export async function updateWorker(api: ApiClient, id: number, body: WorkerUpdate): Promise<Worker> {
+  const headers = await csrfHeaders(api);
+  return call(api.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: id } }, body, headers }));
 }
 
 /** A worker id as the API accepts it: a positive bigint written in digits; null for anything else. */
