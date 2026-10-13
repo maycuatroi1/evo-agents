@@ -107,12 +107,16 @@ A corpus synced before its git connector redacted keeps the old copies: in the b
 and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
 them with the connector's patterns and lists each blob that holds a secret by hash, path, item id and kind of
 secret, never the value. A blob is old when nothing uses it, live when an item of the corpus refers to it now (a
-sync of its source replaces it with a redacted copy, so sync and build first), and kept when only an older record of
-a run still in use names it. Counting changes nothing. `--purge` says what it is about to delete and asks first
-(`--yes` when no terminal can answer). It then deletes the old blobs, the run logs of old runs that name them and
-the memo rows holding a secret, compacts the memo and the graph so no free page keeps the text, and appends a
-`scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus uses, and it holds every source's
-lock meanwhile, so a sync started then stops at once instead of writing:
+sync of its source replaces it with a redacted copy, so sync and build first), and kept when only records the corpus
+no longer holds name it, in the log of a run still in use (an item or a tombstone of that run still wins). Counting
+changes nothing. `--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer). It
+then rewrites each run log in use that names a kept blob, keeping of its item and tombstone records only those the
+corpus holds (the log keeps its name and format, and replays to the same state), deletes the old and kept blobs, the
+run logs of old runs that name them and the memo rows holding a secret, compacts the memo and the graph so no free
+page keeps the text, and appends a `scrub` line with the counts to `audit.jsonl`. It never deletes what the corpus
+uses, and it holds every source's lock meanwhile, so a sync started then stops at once instead of writing.
+`hub kg push` never sends a run the hub already holds, so a rewritten log leaves the machine only for a run the hub
+lacks. In order:
 
 ```sh
 evo-agents kg sync --build                   # live copies become old ones
