@@ -26,7 +26,7 @@ import { AuthorRunKindBadge, PlanRunKindBadge } from "./badges";
 import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
 import type { RunMove } from "./log-model";
-import { CHAT_TAB, chatKey, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
+import { CHAT_TAB, chatKey, decisionAnchor, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions, RunNotes } from "./run-actions";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
@@ -153,7 +153,7 @@ function RunPage({ run }: { run: Run }) {
   const plan = run.kind === "plan";
   const active = isActiveState(run.state);
   // The same query as the decisions' column (one request): "Asked you" links to the card of a decision still open.
-  const decisions = useQuery({ ...openDecisionsQuery(browserApi, run.project, run.id), enabled: plan && active, refetchInterval: LIVE_REFRESH_MS });
+  const decisions = useQuery({ ...openDecisionsQuery(browserApi, run.project, run.id), enabled: (plan || authoring) && active, refetchInterval: LIVE_REFRESH_MS });
   const openIds = useMemo(() => (decisions.data?.decisions ?? []).map((decision) => decision.id).join(","), [decisions.data]);
   // A step report's branch and commits link to the run's repo on that branch: its own repo, or the plan run's repo of it.
   const webOf = useRepoWeb(run.project);
@@ -165,6 +165,20 @@ function RunPage({ run }: { run: Run }) {
     },
     [webOf, repo, repos],
   );
+  // An author run's decisions are cards in its Chat: "Asked you" shows the tab, then the card, once it is drawn.
+  const showDecision = useCallback(
+    (id: number) => {
+      setSessionTab("chat");
+      requestAnimationFrame(() =>
+        requestAnimationFrame(() => {
+          const card = document.getElementById(decisionAnchor(id));
+          card?.scrollIntoView({ block: "center", behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
+          card?.focus({ preventScroll: true });
+        }),
+      );
+    },
+    [setSessionTab],
+  );
   const traceContext = useMemo<TraceContext>(
     () => ({
       runId: run.id,
@@ -175,8 +189,9 @@ function RunPage({ run }: { run: Run }) {
       working: run.state === "running" && log.status !== "ended",
       active,
       webOfBranch,
+      showDecision: authoring ? showDecision : undefined,
     }),
-    [run.id, run.dispatched_by, viewer?.login, describe, openIds, run.state, log.status, active, webOfBranch],
+    [run.id, run.dispatched_by, viewer?.login, describe, openIds, run.state, log.status, active, webOfBranch, authoring, showDecision],
   );
 
   // From xl the side column is a scroll region of its own, which a key must reach; below, the page scrolls it.
