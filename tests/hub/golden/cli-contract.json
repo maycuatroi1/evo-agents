@@ -39,6 +39,84 @@
         "schema": "Account"
       }
     },
+    "hub account login": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--expires"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--paste"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "env_var",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "last_usage",
+          "last_usage_at",
+          "runs_24h",
+          "runs_7d",
+          "cost_24h_usd",
+          "cost_7d_usd",
+          "held_by"
+        ],
+        "schema": "Account"
+      }
+    },
     "hub account pause": {
       "positionals": [
         {

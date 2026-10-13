@@ -1,6 +1,6 @@
 """``evo-agents hub account list|set|pause|resume|policy``, as a signed-in member runs them: the commands and their
 ``--json`` keys are in the contract (seam hub-cli-v1), a number out of bounds is refused before the hub is asked, and
-against a hub no command prints a value.
+against a hub no command prints a value. ``account login`` has tests/hub/test_account_login.py.
 
 The parsing runs without Postgres; everything that needs the hub skips without EVO_HUB_TEST_DSN."""
 
@@ -34,11 +34,18 @@ def test_the_account_commands_are_in_the_contract():
         "hub account pause",
         "hub account resume",
         "hub account policy",
+        "hub account login",
     }
     assert names <= set(printed)
     assert printed["hub account list"]["json"]["schema"] == "Account"
     assert printed["hub account list"]["json"]["kind"] == "array"
-    for command in ("hub account show", "hub account set", "hub account pause", "hub account resume"):
+    for command in (
+        "hub account show",
+        "hub account set",
+        "hub account pause",
+        "hub account resume",
+        "hub account login",
+    ):
         assert printed[command]["json"]["schema"] == "Account"
         assert "value" not in printed[command]["json"]["keys"]
     assert printed["hub account policy"]["json"]["schema"] == "AccountPolicy"

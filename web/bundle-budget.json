@@ -13,8 +13,8 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/accounts": {
-      "kB": 307.6,
-      "reason": "The Accounts page: the member's accounts with their state, usage, runs and cost, and the rotation policy of each project (claude-account-rotation step 4)."
+      "kB": 309.4,
+      "reason": "The Accounts page: the member's accounts with their state, usage, runs and cost, and the rotation policy of each project (claude-account-rotation step 4). It gains Add Claude account and Renew token, and a reminder for each token that ends within 30 days (claude-account-login step 2); the dialog itself loads on demand (next/dynamic), so the page carries only its buttons, the reminder and their icons."
     },
     "/admin": {
       "kB": 297.3,

@@ -4,7 +4,7 @@ import { API_URL } from "./support/env";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { claimRun, dispatch, leaseCredentials, type LiveWorker, liveWorker, runPath, seedRunPlan, startRun } from "./support/runs";
-import { putSecretByApi, recordResponses, secretValue } from "./support/secrets";
+import { putSecretByApi, recordResponses, secretsOf, secretValue } from "./support/secrets";
 import { toast } from "./support/toast";
 import { PROTOCOL_HEADER } from "./support/workers";
 
@@ -75,6 +75,103 @@ test("the sidebar leads to Accounts, which points to the Secrets page while ther
   await expect(empty).toContainText("No account yet");
   await expect(empty).toContainText(VAR);
   await expect(main(page).getByTestId("accounts-secrets-link")).toHaveAttribute("href", "/secrets");
+});
+
+test("Add Claude account writes a token the list then shows without it, and Renew token keeps the account's bindings", async ({
+  page,
+  member,
+}) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const token = secretValue("setup-token");
+  const renewed = secretValue("setup-token-new");
+  const received = recordResponses(page);
+
+  await page.goto("/accounts");
+  await expect(main(page).getByTestId("accounts-add")).toBeVisible();
+  await main(page).getByTestId("accounts-empty-add").click();
+  let dialog = page.getByTestId("login-dialog");
+  await expect(dialog.getByRole("heading", { name: "Add Claude account" })).toBeVisible();
+  await expect(dialog.getByTestId("login-steps")).toContainText("claude setup-token");
+  await dialog.getByTestId("login-name").fill("claude-web");
+  await dialog.getByTestId("login-projects").getByRole("checkbox", { name: project }).check();
+  await expect(dialog.getByTestId("login-command-text")).toHaveText(`evo-agents hub account login claude-web --project ${project}`);
+  const field = dialog.getByTestId("login-token");
+  await expect(field).toHaveAttribute("type", "password");
+  expect(await field.getAttribute("name")).toBeNull();
+  await field.fill(token);
+
+  const [put] = await Promise.all([
+    page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/v1/secrets/claude-web")),
+    dialog.getByTestId("login-save").click(),
+  ]);
+  expect(put.headers()["x-evo-csrf"]).toBeTruthy();
+  const body = put.postDataJSON();
+  expect(body).toMatchObject({ kind: "env", env_var: VAR, projects: [project], workers: [], value: token });
+  // A year from today less a day, at 00:00 UTC.
+  expect(Date.parse(body.expires_at) - Date.now()).toBeGreaterThan(362 * 24 * 3600 * 1000);
+  await expect(dialog).toBeHidden();
+  await expect(toast(page, "Account claude-web added")).toBeVisible();
+  const added = row(page, "claude-web");
+  await expect(added.getByTestId("account-state")).toHaveAttribute("data-state", "ready");
+  await expect(added.getByTestId("account-target")).toContainText(VAR);
+  await expect(added).toContainText(project);
+  expect((await secretsOf(me)).map(({ name, kind, env_var, projects }) => ({ name, kind, env_var, projects }))).toEqual([
+    { name: "claude-web", kind: "env", env_var: VAR, projects: [project] },
+  ]);
+
+  // Renew token: the name is locked, the bindings are the account's, and only the token and its end change.
+  await added.getByRole("button", { name: "Renew the token of claude-web" }).click();
+  dialog = page.getByTestId("login-dialog");
+  await expect(dialog.getByRole("heading", { name: "Renew the token of claude-web" })).toBeVisible();
+  await expect(dialog.getByTestId("login-name")).toHaveValue("claude-web");
+  await expect(dialog.getByTestId("login-name")).toHaveAttribute("readonly");
+  await expect(dialog.getByTestId("login-kept-projects")).toHaveText(project);
+  await expect(dialog.getByTestId("login-command-text")).toHaveText("evo-agents hub account login claude-web");
+  await dialog.getByTestId("login-token").fill(renewed);
+  const [again] = await Promise.all([
+    page.waitForRequest((request) => request.method() === "PUT" && request.url().endsWith("/v1/secrets/claude-web")),
+    dialog.getByTestId("login-save").click(),
+  ]);
+  expect(again.postDataJSON()).toMatchObject({ kind: "env", env_var: VAR, projects: [project], workers: [], value: renewed });
+  await expect(dialog).toBeHidden();
+  await expect(toast(page, "Token of claude-web renewed")).toBeVisible();
+
+  await page.reload();
+  await expect(row(page, "claude-web")).toBeVisible();
+  const html = await page.content();
+  expect(html).not.toContain(token);
+  expect(html).not.toContain(renewed);
+  const bodies = (await received()).join("\n");
+  expect(bodies).not.toContain(token);
+  expect(bodies).not.toContain(renewed);
+});
+
+test("a token that ends within 30 days is reminded with its day, on its row and above the list", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const soon = new Date(Date.now() + 10 * 24 * 3600 * 1000);
+  soon.setUTCHours(0, 0, 0, 0);
+  await putSecretByApi(me, "claude-soon", {
+    kind: "env",
+    env_var: VAR,
+    projects: [me.projects[0]],
+    expires_at: soon.toISOString(),
+    value: secretValue("soon"),
+  });
+  await putSecretByApi(me, "claude-later", { kind: "env", env_var: VAR, projects: [me.projects[0]], value: secretValue("later") });
+
+  await page.goto("/accounts");
+  const day = soon.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" });
+  await expect(row(page, "claude-soon").getByTestId("account-renew-reminder")).toHaveText(`Renew before ${day}`);
+  await expect(row(page, "claude-later").getByTestId("account-renew-reminder")).toHaveCount(0);
+  const notice = main(page).getByTestId("accounts-renew-notice");
+  await expect(notice).toContainText("A token ends within 30 days");
+  const entry = notice.getByRole("listitem");
+  await expect(entry).toHaveCount(1);
+  await expect(entry).toContainText("claude-soon");
+  await expect(entry).toContainText(`ends ${day}`);
+  await notice.getByRole("button", { name: "Renew the token of claude-soon" }).click();
+  await expect(page.getByTestId("login-dialog").getByRole("heading", { name: "Renew the token of claude-soon" })).toBeVisible();
 });
 
 test("each account shows its state, usage, runs and holder without a value; Pause, Resume and Edit change it", async ({ page, member }) => {

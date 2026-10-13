@@ -1,5 +1,6 @@
 import {
   type Account,
+  CLAUDE_TOKEN_VAR,
   type AccountPolicy,
   type AccountPolicyWrite,
   type AccountUsage,
@@ -14,7 +15,8 @@ import {
 
 /**
  * The Accounts page's reading of the hub's answers: how much of its usage limit an account used last, the projects a
- * policy can be set for, and the forms of an account and of a policy with their checks.
+ * policy can be set for, the forms of an account and of a policy with their checks, and which Claude accounts are due
+ * for a new token.
  */
 
 /** The highest share of a usage limit the CLI last reported for the account, in whole percent; null when it gave none. */
@@ -107,3 +109,21 @@ export function policyBody(form: PolicyForm): AccountPolicyWrite {
     max_failovers: whole(form.maxFailovers, 0, MAX_FAILOVERS).value ?? DEFAULT_POLICY.max_failovers,
   };
 }
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+/** An account whose token ends within this many days is reminded on the page. */
+export const RENEW_WITHIN_DAYS = 30;
+
+/**
+ * When the account's token ends, if that is within RENEW_WITHIN_DAYS from `now` and still ahead; null for an account
+ * without an end, one ending later, or one that has ended (its state says Expired then).
+ */
+export function renewalDue(account: Pick<Account, "expires_at">, now: number): { at: string; days: number } | null {
+  if (!account.expires_at) return null;
+  const left = Date.parse(account.expires_at) - now;
+  if (!Number.isFinite(left) || left <= 0 || left > RENEW_WITHIN_DAYS * DAY_MS) return null;
+  return { at: account.expires_at, days: Math.ceil(left / DAY_MS) };
+}
+
+/** Whether the account is a Claude account, which the Renew token dialog can give a new token. */
+export const isClaudeAccount = (account: Pick<Account, "env_var">) => account.env_var === CLAUDE_TOKEN_VAR;
