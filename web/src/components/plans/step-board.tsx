@@ -123,7 +123,18 @@ function Column({ group, steps, context }: { group: StepGroup; steps: PlanStep[]
  * The plan's steps by status (pending, in progress, blocked, done), as a list in plan order, or as the graph of their
  * dependencies; the choice is in the URL's `view` and remembered (step-view.ts).
  */
-export function StepBoard({ project, planId, steps }: { project: string; planId: string; steps: PlanStep[] }) {
+export function StepBoard({
+  project,
+  planId,
+  steps,
+  acceptance = null,
+}: {
+  project: string;
+  planId: string;
+  steps: PlanStep[];
+  /** The plan's `acceptance` section, which the graph's inspector quotes for the criteria a step names. */
+  acceptance?: unknown;
+}) {
   const t = useTranslations("plans.board");
   const [query, setQuery] = useState("");
   const [repo, setRepo] = useState("");
@@ -210,7 +221,10 @@ export function StepBoard({ project, planId, steps }: { project: string; planId:
         <StepTable steps={shown} context={context} />
       ) : (
         <StepGraph
+          project={project}
+          planId={planId}
           steps={steps}
+          acceptance={acceptance}
           matching={filtering ? new Set(shown.map((step) => step.key)) : null}
           onBoard={() => setView("board")}
         />

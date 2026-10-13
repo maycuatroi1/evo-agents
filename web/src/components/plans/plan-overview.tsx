@@ -249,7 +249,7 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
         <Intro view={view} />
         <PlanProgress counts={counts} />
       </div>
-      <StepBoard project={project} planId={plan.plan_id} steps={view.steps} />
+      <StepBoard project={project} planId={plan.plan_id} steps={view.steps} acceptance={plan.body.acceptance} />
       <Repos repos={view.repos} />
       <OtherSections sections={view.sections} />
     </>

@@ -3,120 +3,113 @@
 import "@xyflow/react/dist/base.css";
 
 import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, useReactFlow } from "@xyflow/react";
-import { Maximize, Minus, Plus } from "lucide-react";
 import { useTranslations } from "next-intl";
-import { type KeyboardEvent, useCallback, useMemo, useState } from "react";
+import { type FocusEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
-import { TONE_TEXT } from "@/components/status/status-badge";
-import { Button } from "@/components/ui/button";
-import { layoutPlanGraph, type PlanGraph } from "@/lib/plan-graph/layout";
-import { STEP_STATUSES, stepLabel } from "@/lib/plans";
-import { cn } from "@/lib/utils";
+import { planCriteria, stepCriteria } from "@/lib/plan-graph/criteria";
+import { layoutPlanGraph } from "@/lib/plan-graph/layout";
+import { arrowDirection, neighbour } from "@/lib/plan-graph/navigate";
+import { stepLabel } from "@/lib/plans";
 
-import { stepLook, useStepStatusText } from "./status";
+import { useStepStatusText } from "./status";
+import { FIT, Legend, motion, Zoom } from "./step-graph-chrome";
 import { GRAPH_FRAME, type StepGraphProps } from "./step-graph-frame";
-import { LineSample, StepEdge, type StepFlowEdge, type StepFlowNode, StepNode } from "./step-graph-parts";
+import { InspectorPanel, InspectorSheet, useWideInspector } from "./step-graph-inspector";
+import { StepEdge, type StepFlowEdge, type StepFlowNode, StepNode } from "./step-graph-parts";
+import { useSelectedStep } from "./step-view";
 
 /**
  * The Graph view of a plan's steps: the layout of lib/plan-graph drawn by React Flow, read only. A legend above the
  * canvas counts the steps by status and the Ready ones, says what solid and dashed lines mean and how many
  * dependencies are not drawn. The canvas fits the whole plan when it opens, never past zoom 1; a drag pans it, the
  * wheel scrolls the page, and the buttons zoom and fit. Loaded on demand (step-graph-lazy.tsx).
+ *
+ * A click, Enter or Space on a step selects it (the URL's `step`): the steps outside its ancestors and descendants dim,
+ * and the inspector shows it (step-graph-inspector.tsx). Tab reaches the steps; the arrows move between them, Up and
+ * Down to the nearest step of the row above or below, Left and Right along the row; Esc closes the inspector and
+ * leaves the focus on the step. A step the focus or the inspector moves to is brought into view, at once under
+ * prefers-reduced-motion.
  */
 
 const NODE_TYPES = { step: StepNode };
 const EDGE_TYPES = { step: StepEdge };
-const FIT = { maxZoom: 1, padding: 0.06 };
 
-const reducedMotion = () =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-
-function Legend({ graph }: { graph: PlanGraph }) {
+function Graph({ project, planId, steps, acceptance, matching }: StepGraphProps) {
   const t = useTranslations("plans.graph");
   const status = useStepStatusText();
-  const notDrawn = graph.edges.filter((edge) => edge.kind !== "drawn").length;
-  return (
-    <div
-      className="flex flex-wrap items-center gap-x-4 gap-y-1.5 border-b px-3 py-2 text-xs text-muted-foreground"
-      data-testid="graph-legend"
-    >
-      {STEP_STATUSES.map((group) => {
-        const look = stepLook(group);
-        const count = graph.nodes.filter((node) => node.step.group === group).length;
-        return (
-          <span key={group} className="inline-flex items-center gap-1.5" data-testid={`graph-count-${group}`}>
-            <look.icon className={cn("size-3.5", TONE_TEXT[look.tone])} aria-hidden="true" />
-            <span className="font-medium text-foreground tabular-nums">{count}</span>
-            {status(group)}
-          </span>
-        );
-      })}
-      <span className="inline-flex items-center gap-1.5" data-testid="graph-count-ready">
-        <span className="font-medium text-foreground tabular-nums">{graph.nodes.filter((node) => node.ready).length}</span>
-        {t("ready")}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <LineSample dashed={false} />
-        {t("lineDone")}
-      </span>
-      <span className="inline-flex items-center gap-1.5">
-        <LineSample dashed />
-        {t("lineNotDone")}
-      </span>
-      {notDrawn ? (
-        <span title={t("notDrawnHint")} data-testid="graph-not-drawn">
-          {t("notDrawn", { count: notDrawn })}
-        </span>
-      ) : null}
-    </div>
-  );
-}
-
-function Zoom() {
-  const t = useTranslations("plans.graph");
-  const flow = useReactFlow();
-  const options = () => ({ duration: reducedMotion() ? 0 : 180 });
-  const buttons = [
-    { label: t("zoomIn"), icon: Plus, run: () => flow.zoomIn(options()) },
-    { label: t("zoomOut"), icon: Minus, run: () => flow.zoomOut(options()) },
-    { label: t("fit"), icon: Maximize, run: () => flow.fitView({ ...FIT, ...options() }) },
-  ];
-  return (
-    <div className="absolute top-2 right-2 z-10 flex gap-1 rounded-md border bg-card/95 p-0.5 shadow-raised">
-      {buttons.map(({ label, icon: Icon, run }) => (
-        <Button
-          key={label}
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          className="cursor-pointer max-md:size-11"
-          aria-label={label}
-          title={label}
-          onClick={() => void run()}
-        >
-          <Icon aria-hidden="true" />
-        </Button>
-      ))}
-    </div>
-  );
-}
-
-function Graph({ steps, matching }: StepGraphProps) {
-  const t = useTranslations("plans.graph");
-  const status = useStepStatusText();
+  const flow = useReactFlow<StepFlowNode, StepFlowEdge>();
+  const wide = useWideInspector();
+  const canvas = useRef<HTMLDivElement>(null);
   const graph = useMemo(() => layoutPlanGraph(steps), [steps]);
-  const [selected, setSelected] = useState<string | null>(null);
+  const criteria = useMemo(() => planCriteria(acceptance), [acceptance]);
+  const [asked, select] = useSelectedStep();
   const [ready, setReady] = useState(false);
+  // The step whose box gets the focus back when the inspector closes.
+  const last = useRef<string | null>(null);
 
+  const current = graph.nodes.find((node) => node.key === asked) ?? null;
+  const selected = current?.key ?? null;
   const keyOf = useMemo(() => new Map(graph.nodes.map((node) => [`s${node.index}`, node.key])), [graph]);
-  const related = useMemo(() => {
-    const node = graph.nodes.find((n) => n.key === selected);
-    return node ? new Set([node.key, ...node.ancestors, ...node.descendants]) : null;
-  }, [graph, selected]);
+  const related = useMemo(
+    () => (current ? new Set([current.key, ...current.ancestors, ...current.descendants]) : null),
+    [current],
+  );
   const outside = useCallback(
     (key: string) => Boolean((related && !related.has(key)) || (matching && !matching.has(key))),
     [related, matching],
   );
+
+  const boxOf = useCallback(
+    (key: string) => {
+      const node = graph.nodes.find((n) => n.key === key);
+      return node ? canvas.current?.querySelector<HTMLElement>(`.react-flow__node[data-id="s${node.index}"]`) : null;
+    },
+    [graph],
+  );
+  /** Pans the canvas, keeping its zoom, so the step's box is inside it; nothing when it already is. */
+  const reveal = useCallback(
+    (key: string) => {
+      const node = graph.nodes.find((n) => n.key === key);
+      const frame = canvas.current?.getBoundingClientRect();
+      if (!node || !frame) return;
+      const { x, y, zoom } = flow.getViewport();
+      const left = node.x * zoom + x;
+      const top = node.y * zoom + y;
+      const inside = left >= 0 && top >= 0 && left + node.width * zoom <= frame.width && top + node.height * zoom <= frame.height;
+      if (inside) return;
+      void flow.setCenter(node.x + node.width / 2, node.y + node.height / 2, { zoom, ...motion(240) });
+    },
+    [graph, flow],
+  );
+  const focusStep = useCallback((key: string | null) => (key ? boxOf(key)?.focus({ preventScroll: true }) : undefined), [boxOf]);
+
+  const open = (key: string | undefined) => {
+    if (key) select(key);
+  };
+  /** From the inspector: select the step, bring it into view, and keep the focus where a keyboard user can go on. */
+  const jump = (key: string) => {
+    open(key);
+    reveal(key);
+    requestAnimationFrame(() => {
+      if (wide) focusStep(key);
+      else document.querySelector<HTMLElement>('[data-layout="sheet"] [data-testid="inspector-title"]')?.focus();
+    });
+  };
+  const close = () => {
+    select(null);
+    if (wide) focusStep(selected);
+  };
+  useEffect(() => {
+    if (selected) last.current = selected;
+  }, [selected]);
+
+  // A link to a selected step opens the graph with that step in view.
+  const revealed = useRef(false);
+  useEffect(() => {
+    if (!ready || revealed.current) return;
+    revealed.current = true;
+    if (selected) requestAnimationFrame(() => reveal(selected));
+  }, [ready, selected, reveal]);
 
   const nodes = useMemo<StepFlowNode[]>(
     () =>
@@ -163,60 +156,89 @@ function Graph({ steps, matching }: StepGraphProps) {
     [graph, selected, outside],
   );
 
-  const toggle = (key: string | undefined) => {
-    if (key) setSelected((current) => (current === key ? null : key));
-  };
-  // Enter or Space on a focused step selects it, as a click does (React Flow's own keys move nodes, off here).
   const onKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== "Enter" && event.key !== " ") return;
     const id = (event.target as HTMLElement).closest(".react-flow__node")?.getAttribute("data-id");
-    if (!id) return;
-    event.preventDefault();
-    toggle(keyOf.get(id));
+    const key = id ? keyOf.get(id) : undefined;
+    if (event.key === "Escape" && selected) {
+      event.preventDefault();
+      close();
+      return;
+    }
+    if (!key) return;
+    const direction = arrowDirection(event.key);
+    if (direction) {
+      event.preventDefault();
+      focusStep(neighbour(graph.nodes, key, direction));
+    } else if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      open(key);
+    }
+  };
+  // React Flow pans to a focused step only with its own keyboard handling, which is off: do it here.
+  const onFocus = (event: FocusEvent<HTMLDivElement>) => {
+    const id = event.target.closest(".react-flow__node")?.getAttribute("data-id");
+    const key = id ? keyOf.get(id) : undefined;
+    if (key && event.target.matches(":focus-visible")) reveal(key);
+  };
+
+  const inspector = {
+    graph,
+    project,
+    planId,
+    node: current,
+    criteria: current ? stepCriteria(current.step, criteria) : [],
+    onSelect: jump,
+    onClose: close,
   };
 
   return (
     <div className={GRAPH_FRAME} data-testid="step-graph">
       <Legend graph={graph} />
-      <div
-        className="relative min-h-0 flex-1 bg-background [&_.react-flow__node:focus-visible]:rounded-md [&_.react-flow__node:focus-visible]:outline-2 [&_.react-flow__node:focus-visible]:outline-offset-2 [&_.react-flow__node:focus-visible]:outline-ring"
-        onKeyDown={onKeyDown}
-        data-testid="step-graph-canvas"
-        data-ready={ready ? "true" : "false"}
-        data-selected={selected ?? ""}
-      >
-        <ReactFlow<StepFlowNode, StepFlowEdge>
-          nodes={nodes}
-          edges={edges}
-          nodeTypes={NODE_TYPES}
-          edgeTypes={EDGE_TYPES}
-          fitView
-          fitViewOptions={FIT}
-          minZoom={0.2}
-          maxZoom={2}
-          nodesDraggable={false}
-          nodesConnectable={false}
-          elementsSelectable={false}
-          disableKeyboardA11y
-          panOnDrag
-          panOnScroll={false}
-          zoomOnScroll={false}
-          zoomOnDoubleClick={false}
-          preventScrolling={false}
-          onInit={() => setReady(true)}
-          onNodeClick={(_, node) => toggle(node.data.node.key)}
-          onPaneClick={() => setSelected(null)}
-          ariaLabelConfig={{
-            "node.a11yDescription.default": t("a11yStep"),
-            "node.a11yDescription.keyboardDisabled": t("a11yStep"),
-            "edge.a11yDescription.default": t("a11yEdge"),
-          }}
-          aria-label={t("canvas")}
+      <div className="flex min-h-0 flex-1">
+        <div
+          ref={canvas}
+          className="relative min-h-0 min-w-0 flex-1 bg-background [&_.react-flow__node:focus-visible]:rounded-md [&_.react-flow__node:focus-visible]:outline-2 [&_.react-flow__node:focus-visible]:outline-offset-2 [&_.react-flow__node:focus-visible]:outline-ring"
+          onKeyDown={onKeyDown}
+          onFocus={onFocus}
+          data-testid="step-graph-canvas"
+          data-ready={ready ? "true" : "false"}
+          data-selected={selected ?? ""}
         >
-          <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--border-strong)" />
-          <Zoom />
-        </ReactFlow>
+          <ReactFlow<StepFlowNode, StepFlowEdge>
+            nodes={nodes}
+            edges={edges}
+            nodeTypes={NODE_TYPES}
+            edgeTypes={EDGE_TYPES}
+            fitView
+            fitViewOptions={FIT}
+            minZoom={0.2}
+            maxZoom={2}
+            nodesDraggable={false}
+            nodesConnectable={false}
+            elementsSelectable={false}
+            disableKeyboardA11y
+            panOnDrag
+            panOnScroll={false}
+            zoomOnScroll={false}
+            zoomOnDoubleClick={false}
+            preventScrolling={false}
+            onInit={() => setReady(true)}
+            onNodeClick={(_, node) => open(node.data.node.key)}
+            onPaneClick={() => (selected ? select(null) : undefined)}
+            ariaLabelConfig={{
+              "node.a11yDescription.default": t("a11yStep"),
+              "node.a11yDescription.keyboardDisabled": t("a11yStep"),
+              "edge.a11yDescription.default": t("a11yEdge"),
+            }}
+            aria-label={t("canvas")}
+          >
+            <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--border-strong)" />
+            <Zoom />
+          </ReactFlow>
+        </div>
+        {wide ? <InspectorPanel {...inspector} /> : null}
       </div>
+      {wide ? null : <InspectorSheet {...inspector} onClosed={() => focusStep(last.current)} />}
     </div>
   );
 }
