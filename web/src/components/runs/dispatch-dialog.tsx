@@ -2,7 +2,6 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { CircleCheck, CircleDashed, Info, Send, X } from "lucide-react";
-import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
@@ -20,8 +19,11 @@ import { isApiError } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
 import { whoamiQuery } from "@/lib/queries";
 
+import { AccountField } from "./account-field";
+import { accountField, BY_RULES } from "./account-model";
 import { Choice, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
 import { type PlanRunHold, planRunReason, readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
+import { PlanRunHoldNote } from "./plan-run-hold";
 import { useDispatch } from "./hooks";
 import { dispatchOutlook, dispatchWorkers } from "./model";
 import {
@@ -33,7 +35,6 @@ import {
   readyStepsQuery,
   type RequestedRuntime,
   type Run,
-  runHref,
   type RunMode,
   RUNTIMES,
   type StepReadiness,
@@ -132,6 +133,7 @@ function DispatchForm({
   const [pinnedChoice, setPinnedChoice] = useState<number | null>(null);
   const [approval, setApproval] = useState<Approval>("review");
   const [timeout, setTimeoutMinutes] = useState<number>(DEFAULT_TIMEOUT);
+  const [account, setAccount] = useState(BY_RULES);
 
   const mine = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const pinned = target === "pin" ? (pinnedChoice ?? mine[0]?.id ?? null) : null;
@@ -163,6 +165,7 @@ function DispatchForm({
         approval,
         timeout_min: timeout,
         worker_id: pinned,
+        ...accountField(account),
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -174,7 +177,7 @@ function DispatchForm({
   const error = write.isError
     ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") })
     : null;
-  const apiDetail = write.isError && isApiError(write.error) && write.error.info.status === 409 ? t("errors.hubSays", { message: write.error.info.message }) : null;
+  const apiDetail = write.isError && isApiError(write.error) && [404, 409, 422].includes(write.error.info.status) ? t("errors.hubSays", { message: write.error.info.message }) : null;
 
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex min-h-0 flex-1 flex-col" aria-busy={pending || undefined}>
@@ -305,6 +308,8 @@ function DispatchForm({
           onPinned={setPinnedChoice}
         />
 
+        <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
+
         <Section legend={t("approval")} testId="dispatch-approval">
           {APPROVALS.map((value) => (
             <Choice
@@ -356,29 +361,6 @@ function DispatchForm({
         </div>
       </div>
     </form>
-  );
-}
-
-/** "Plan run #12 (Waiting) holds this plan's steps until it ends.", linked to the run. */
-export function PlanRunHoldNote({ project, hold, testId }: { project: string; hold: PlanRunHold; testId?: string }) {
-  const t = useTranslations("runs.planRun");
-  const tState = useStatusText("run");
-  return (
-    <p className="flex items-start gap-2 rounded-md border border-dashed px-3 py-2.5 text-sm text-pretty text-muted-foreground" data-testid={testId}>
-      <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span>
-        {t.rich("holds", {
-          id: hold.run.id,
-          state: tState(hold.run.state),
-          login: hold.run.dispatched_by,
-          link: (chunks) => (
-            <Link href={runHref(project, hold.run.id)} className="font-medium text-brand underline-offset-4 hover:underline">
-              {chunks}
-            </Link>
-          ),
-        })}
-      </span>
-    </p>
   );
 }
 

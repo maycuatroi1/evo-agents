@@ -2539,7 +2539,15 @@
       },
       "reviewSub": "Lần review ban đêm của <curatorLink>Curator</curatorLink> cho dự án: chỉ đọc, không đổi gì. <proposalsLink>Các đề xuất của nó</proposalsLink>",
       "authorPlanSub": "Plan <planLink>{plan}</planLink>: {title}. Viết từ yêu cầu của bạn trong chat với agent.",
-      "authorNewSub": "Một plan mới: {title}. Viết từ yêu cầu trong chat với agent."
+      "authorNewSub": "Một plan mới: {title}. Viết từ yêu cầu trong chat với agent.",
+      "rerun": {
+        "title": "Chạy lại run #{id}?",
+        "description": "Chạy lại run với cùng runtime, model, chế độ, cách duyệt, thời gian tối đa và worker, theo bản hiện tại của plan.",
+        "confirm": "Chạy lại",
+        "pending": "Đang chạy lại…",
+        "cancel": "Thôi",
+        "hubSays": "Hub báo: {message}"
+      }
     },
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
@@ -2688,6 +2696,18 @@
           "toastAfterTurn": "Run kết thúc ở trạng thái done sau lượt của agent."
         }
       }
+    },
+    "account": {
+      "label": "Tài khoản",
+      "byRules": "Tự động, theo quy tắc của bạn",
+      "option": "{name} ({variable})",
+      "onWorkers": "{name} ({variable}), chỉ trên {workers}",
+      "paused": "{name} ({variable}), đang tạm dừng",
+      "keep": "Như run #{id}: tài khoản đã chọn tay cho nó, nếu có",
+      "hint": "Run dùng tài khoản bạn chọn và giữ nó, không chuyển sang tài khoản khác. Tự động để quy tắc của bạn cho dự án chọn khi một worker nhận run.",
+      "none": "Chưa tài khoản nào của bạn được gắn với dự án {project}, nên quy tắc chọn trong credential sẵn có của worker. Gắn một tài khoản ở trang Secret.",
+      "rerunHint": "Mặc định, lần chạy lại dùng tài khoản đã chọn tay cho run #{id}, hoặc theo quy tắc nếu không chọn. Tài khoản chọn tay được giữ, không chuyển sang tài khoản khác.",
+      "expired": "{name} ({variable}), đã hết hạn"
     }
   },
   "insights": {
