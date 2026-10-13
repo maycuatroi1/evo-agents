@@ -260,7 +260,7 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(terminal.worker_router)
     app.state.terminals = terminal.Terminals()  # the web terminals open in this process, one per run
 
-    from evo_agents.hub.server import accounts, credentials, rate_limits, secrets
+    from evo_agents.hub.server import account_views, accounts, credentials, rate_limits, secrets
     from evo_agents.hub.server.sealing import Sealer
 
     for routes in (
@@ -268,6 +268,7 @@ def create_app(config: HubConfig) -> FastAPI:
         credentials.router,
         credentials.worker_router,
         accounts.router,
+        account_views.router,
         rate_limits.worker_router,
     ):
         app.include_router(routes)

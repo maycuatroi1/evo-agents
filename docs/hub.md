@@ -463,7 +463,8 @@ command prints the value, an error included. `--kind env` needs `--env-var`; `--
 day, as GitLab ends an access token on its expiry date. `secret list` reads `GET /v1/secrets` (`--json` prints it),
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
-list|set|pause|resume|policy` weighs, pauses and sets the strategy for them (`docs/credentials.md`, section "Accounts").
+list|show|set|pause|resume|policy` shows their usage, runs and cost, and weighs, pauses and sets the strategy for them,
+as the web's Accounts page does (`docs/credentials.md`, section "Accounts").
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:

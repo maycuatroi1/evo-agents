@@ -243,17 +243,28 @@ The routes are the member's own, a hub admin included, and never carry a value:
 
 - `GET /v1/accounts`: the caller's env secrets as accounts, with `name`, `env_var`, `projects`, `workers`, `weight`,
   `priority`, `paused_at`, `cooldown_until`, `cooldown_reason`, `last_leased_at`, `expires_at` and `state` (`ready`,
-  `cooling`, `paused` or `expired`);
+  `cooling`, `paused` or `expired`), and its figures (`evo_agents/hub/server/account_views.py`): the last usage a run's
+  CLI reported (`last_usage`, `last_usage_at`), the runs that took it in the last 24 hours and 7 days (`runs_24h`,
+  `runs_7d`: a run took it at its first lease of it) and their estimated cost in USD from their usage (`cost_24h_usd`,
+  `cost_7d_usd`: a run that failed over counts with each account it took), and the runs a worker holds with it now
+  (`held_by`); `GET /v1/accounts/{name}` gives one of them, 404 for a name that is not the caller's;
 - `PATCH /v1/accounts/{name}` with `weight`, `priority` or `paused`: 404 for a name that is not the caller's; audit
   `account.set` names the secret by id;
 - `GET /v1/account-policies`, `GET|PUT|DELETE /v1/account-policies/{project}`: the caller's policy for a project they
   may read (the defaults, `updated_at` null, when they set none); `PUT` needs the writer role; audits
-  `account.policy-put` and `account.policy-delete`.
+  `account.policy-put` and `account.policy-delete`;
+- `GET /v1/projects/{project}/runs/{id}/accounts`, for the member who dispatched the run alone (403 for anyone else,
+  as for its credentials): per variable, the account the run has now by name, how it came by it, its failovers, and
+  each usage limit it hit (`events`: `failover` with the account it moved `to`, or `stop`), read from the run's
+  `system` events, which carry `account_event`, `to_secret_id` and `cooldown_until` besides the secret ids.
 
-`evo-agents hub account list|set|pause|resume|policy` call them:
+The web's Accounts page (next to Secrets in the sidebar) shows the same and edits weight, priority, pause and each
+project's policy; the run page shows the run's accounts and their failovers. `evo-agents hub
+account list|show|set|pause|resume|policy` call them:
 
 ```sh
-evo-agents hub account list                                   # variable, state, weight, priority, never the value
+evo-agents hub account list                                   # state, weight, priority, usage, runs, cost, holders
+evo-agents hub account show claude-a                          # one account and its figures, never the value
 evo-agents hub account set claude-b --weight 3 --priority 1
 evo-agents hub account pause claude-a                         # a run that holds it keeps it
 evo-agents hub account resume claude-a
