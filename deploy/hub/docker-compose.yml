@@ -1,6 +1,9 @@
-# The evo-agents hub in production: api, worker and web from the images GitHub Actions publishes on GHCR for each
-# release (.github/workflows/images.yml). Nothing is built here. Postgres is not in this file: the hub expects a
-# database it can reach at EVO_HUB_DSN, such as one the platform manages, on the network EVO_HUB_PLATFORM_NETWORK.
+# The evo-agents hub in production: api, worker and web built from the checkout this file is in. The platform runs
+# `docker compose up -d --build`, which .github/workflows/deploy.yml has it do for main once ci passes. The images
+# carry the names GitHub Actions publishes on GHCR for each release (.github/workflows/images.yml), tagged
+# EVO_HUB_VERSION, so `up` without --build pulls that release and builds only when GHCR lacks the tag. Postgres is not
+# in this file: the hub expects a database it can reach at EVO_HUB_DSN, such as one the platform manages, on the
+# network EVO_HUB_PLATFORM_NETWORK.
 # A reverse proxy in front sends /v1 and /mcp to api:8080 and everything else to web:3000, on one domain. The /v1
 # rule carries the web terminal's websockets too, so the proxy must pass a websocket upgrade there.
 # docs/hub.md describes every variable; deploy/hub/.env.example lists them. x-hub-environment passes every variable
@@ -10,8 +13,8 @@
 # The volumes are caches only: the state lives in Postgres and the blob store (R2), and a lost volume is rebuilt.
 #
 # No variable is required when the file is read, so `docker compose ps` and `down` work without the environment.
-# Unset EVO_HUB_VERSION pulls a tag named unset-EVO_HUB_VERSION, which fails and names the variable; unset
-# EVO_HUB_DSN stops api and worker with a log line naming it.
+# Unset EVO_HUB_VERSION tags the images unset-EVO_HUB_VERSION, which names the variable; unset EVO_HUB_DSN stops api
+# and worker with a log line naming it.
 
 name: evo-agents-hub
 
@@ -46,6 +49,11 @@ x-hub-environment: &hub-environment
   EVO_HUB_TELEGRAM_BOT_TOKEN: ${EVO_HUB_TELEGRAM_BOT_TOKEN:-}
   EVO_HUB_TELEGRAM_WEBHOOK_SECRET: ${EVO_HUB_TELEGRAM_WEBHOOK_SECRET:-}
 
+# api and worker run one image, built from one definition.
+x-hub-build: &hub-build
+  context: ../..
+  dockerfile: deploy/hub/Dockerfile
+
 x-hardening: &hardening
   init: true
   cap_drop: [ALL]
@@ -60,6 +68,7 @@ services:
   api:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    build: *hub-build
     restart: unless-stopped
     environment: *hub-environment
     volumes:
@@ -86,6 +95,7 @@ services:
   worker:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    build: *hub-build
     command: ["evo-agents", "hub", "worker", "--data-dir", "/cache"]
     restart: unless-stopped
     environment: *hub-environment
@@ -110,6 +120,9 @@ services:
   web:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub-web:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    # Without build arguments, as images.yml builds it: the /v1 rewrite goes to http://api:8080 (web/Dockerfile).
+    build:
+      context: ../../web
     restart: unless-stopped
     environment:
       EVO_HUB_API_INTERNAL_URL: ${EVO_HUB_API_INTERNAL_URL:-http://evo-agents-hub-api:8080}
