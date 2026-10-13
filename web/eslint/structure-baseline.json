@@ -11,7 +11,7 @@
     "src/components/kg/build-status.tsx": 429,
     "src/components/memories/memory-browser.tsx": 484,
     "src/components/palette/command-palette.tsx": 698,
-    "src/components/runs/agent-trace.tsx": 682,
+    "src/components/runs/agent-trace.tsx": 678,
     "src/components/runs/dispatch-dialog.tsx": 547,
     "src/components/runs/queries.ts": 453,
     "src/components/runs/run-chat.tsx": 493,

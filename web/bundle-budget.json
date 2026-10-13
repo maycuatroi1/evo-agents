@@ -2,146 +2,154 @@
   "$comment": "First Load JS budget of each route in kB (gzip, 1 kB = 1000 bytes), checked by scripts/bundle-budget.mjs. Raising a budget or adding a route needs a reason in that route's entry; lowering one needs none.",
   "routes": {
     "/": {
-      "kB": 304
+      "kB": 304.1,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/_not-found": {
       "kB": 209.2
     },
     "/[...missing]": {
-      "kB": 284.4,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 284.5,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/admin": {
-      "kB": 296.6
+      "kB": 296.7,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/admin/audit": {
-      "kB": 308.4,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 308.5,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/admin/diagnostics": {
-      "kB": 304.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 304.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/admin/members": {
-      "kB": 314.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 314.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/admin/members/[login]": {
-      "kB": 316,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 316.1,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/admin/tokens": {
-      "kB": 311.9,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 312,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/inbox": {
-      "kB": 391.9,
-      "reason": "Turbopack repacked the chunks every route shares when the plan's Graph view gained its step inspector (it loads with the Graph, next/dynamic); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
+      "kB": 392,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/login": {
       "kB": 209.2
     },
     "/memories": {
-      "kB": 308.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 308.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/memories/[id]": {
-      "kB": 357.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 357.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/monitor": {
-      "kB": 310.9
+      "kB": 311,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]": {
-      "kB": 288.2,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 288.3,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/curator": {
-      "kB": 321.5
+      "kB": 321.6,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/curator/charter": {
-      "kB": 330,
-      "reason": "Turbopack repacked the chunks every route shares when the plan's Graph view gained its step inspector (it loads with the Graph, next/dynamic); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
+      "kB": 330.1,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/curator/proposals": {
-      "kB": 327.2,
-      "reason": "Turbopack repacked the chunks every route shares when the plan's Graph view gained its step inspector (it loads with the Graph, next/dynamic); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
+      "kB": 327.3,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/curator/proposals/[id]": {
-      "kB": 357.6,
-      "reason": "Turbopack repacked the chunks every route shares when the plan's Graph view gained its step inspector (it loads with the Graph, next/dynamic); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
+      "kB": 357.7,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/insights": {
-      "kB": 290.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 290.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/kg": {
-      "kB": 311,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 311.1,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/kg/node": {
-      "kB": 324.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 324.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/memories": {
-      "kB": 308.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 308.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/memories/[id]": {
-      "kB": 357.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 357.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/plans": {
-      "kB": 321.7
+      "kB": 321.8,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/plans/[planId]": {
-      "kB": 324.9
+      "kB": 325,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/plans/[planId]/revisions": {
-      "kB": 297.4,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 297.5,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/plans/[planId]/steps/[stepKey]": {
-      "kB": 322.3
+      "kB": 322.4,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/runs": {
-      "kB": 321.8,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 322,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/runs/[id]": {
-      "kB": 421.8,
-      "reason": "Turbopack repacked the chunks every route shares when the plan's Graph view gained its step inspector (it loads with the Graph, next/dynamic); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
+      "kB": 422.8,
+      "reason": "A step's report shows as a card in the Trace (6033862). Its parser and card load on demand (trace-report-lazy.tsx, next/dynamic), which takes 1.7 kB of the 2.7 kB it added back out; what stays is the check that tells a message holding a report (step-report-start.ts) and Turbopack's repacking of the chunks this route shares."
     },
     "/p/[project]/runs/[id]/diff": {
-      "kB": 292.4,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 292.5,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/skills": {
-      "kB": 304.9,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 305,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/skills/[name]": {
-      "kB": 305,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 305.1,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/secrets": {
-      "kB": 316.8
+      "kB": 316.9,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/skills": {
-      "kB": 304.9,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 305,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/skills/[name]": {
-      "kB": 305,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 305.1,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/workers": {
-      "kB": 316.3,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 316.4,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/workers/[id]": {
-      "kB": 317.1,
-      "reason": "Turbopack repacked the chunks every route shares when the Run plan dialog and the plan's Graph view moved out of the plan pages' first load (next/dynamic); this route's own code did not change."
+      "kB": 317.2,
+      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     }
   }
 }
