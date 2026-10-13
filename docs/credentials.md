@@ -146,8 +146,8 @@ the plan's steps not done when it was dispatched) and their origins from `projec
 `normalize_origin` (`git@host:path` and `ssh://git@host[:port]/path` included). It then leases what the run's owner
 bound to the run's project, bound to no worker or to this one, and not past its `expires_at`:
 
-- each `env` secret, one per variable: a secret bound to this worker wins over one bound to any worker, then the
-  first by name;
+- one `env` secret per variable, the run's account for it (section "Accounts" below): with one secret per variable
+  and no policy, that secret, as in 0.13;
 - each `git` secret whose `url_prefix` covers one of those origins, the longest prefix for each origin;
 - a GitHub App token for the origins on github.com that no `git` secret covers and that the run's owner may push to
   on GitHub, one per installation: a lease of kind `git` named `github-app:<owner>` for `https://github.com/<owner>`,
@@ -183,6 +183,53 @@ lease's id, until it expires, so the hub can revoke it. Asked again, a run gets 
 `GITHUB_TOKEN_REFRESH_SECONDS` or more left, and new ones in new leases after that; the tokens they replace go on
 working until they expire, so a push that took one is not cut off. GitHub is asked between two transactions, never
 while the run's row is locked; when the run ended in between, the tokens just made are revoked and the answer is 404.
+
+## Accounts
+
+A member may keep several `env` secrets for the same variable bound to the same project, such as two subscriptions of
+the agent's runtime (`claude-a`, `claude-b`); each is an **account**, and a run gets one of them per variable
+(`evo_agents/hub/server/account_choice.py`, migration 0026). The hub picks it in the transaction that leases it, with
+the run's row locked and the accounts it weighs locked in the order of their ids, so two runs asking at once cannot
+take the same turn:
+
+1. the account the run took already: a run keeps its account on every ask for its leases and in every step, and a run
+   that resumes another takes the one that run took;
+2. else the accounts bound to this worker (for a run of the Curator: only those its charter lists in `env_secrets`),
+   then the others bound to the project, by the strategy of the owner's policy for the project:
+   - `round-robin` (the default): each run takes the account whose turn it is;
+   - `weighted-round-robin`: each account takes runs in proportion to its `weight`; weight 0 leaves the pool;
+   - `fill-first`: the lowest `priority` (then the name) while it is usable;
+   an account its owner paused, or one cooling down until `cooldown_until`, is skipped;
+3. when every account left cools down, the one whose cooldown ends first, and a `system` event of the run says so;
+   when every one is paused, none, and an event says that. An event names the account by its secret's id, never by
+   name or value.
+
+`run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool`
+or `cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
+cooldown and rotation; `account_policies` holds a member's policy for a project: `strategy`, `cooldown_seconds` (60 to
+604800, default 3600), `failover` (default on) and `max_failovers` (0 to 20, default 3).
+
+The routes are the member's own, a hub admin included, and never carry a value:
+
+- `GET /v1/accounts`: the caller's env secrets as accounts, with `name`, `env_var`, `projects`, `workers`, `weight`,
+  `priority`, `paused_at`, `cooldown_until`, `cooldown_reason`, `last_leased_at`, `expires_at` and `state` (`ready`,
+  `cooling`, `paused` or `expired`);
+- `PATCH /v1/accounts/{name}` with `weight`, `priority` or `paused`: 404 for a name that is not the caller's; audit
+  `account.set` names the secret by id;
+- `GET /v1/account-policies`, `GET|PUT|DELETE /v1/account-policies/{project}`: the caller's policy for a project they
+  may read (the defaults, `updated_at` null, when they set none); `PUT` needs the writer role; audits
+  `account.policy-put` and `account.policy-delete`.
+
+`evo-agents hub account list|set|pause|resume|policy` call them:
+
+```sh
+evo-agents hub account list                                   # variable, state, weight, priority, never the value
+evo-agents hub account set claude-b --weight 3 --priority 1
+evo-agents hub account pause claude-a                         # a run that holds it keeps it
+evo-agents hub account resume claude-a
+evo-agents hub account policy demo --strategy weighted-round-robin --cooldown 1800 --no-failover
+evo-agents hub account policy demo --reset                    # the defaults again
+```
 
 ## What a run got
 

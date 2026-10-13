@@ -462,6 +462,8 @@ command prints the value, an error included. `--kind env` needs `--env-var`; `--
 `--worker` one of your workers that alone gets it; both repeat. `--expires YYYY-MM-DD` ends it at 00:00 UTC of that
 day, as GitLab ends an access token on its expiry date. `secret list` reads `GET /v1/secrets` (`--json` prints it),
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
+Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
+list|set|pause|resume|policy` weighs, pauses and sets the strategy for them (`docs/credentials.md`, section "Accounts").
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:

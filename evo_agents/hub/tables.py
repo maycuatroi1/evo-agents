@@ -1,4 +1,4 @@
-"""The hub's 45 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
+"""The hub's 48 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
 the next migration from (``evo_agents/hub/migrations/env.py``).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
@@ -39,6 +39,8 @@ from sqlalchemy import (
     true,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
+
+from evo_agents.hub.tables_accounts import account_tables
 
 metadata = MetaData()
 
@@ -178,8 +180,7 @@ memories = Table(
     _stamp("created_at"),
     _stamp("updated_at"),
     Column("updated_by", BigInteger, nullable=False),
-    # Alembic compares a generated column's expression as text and warns at the casts Postgres adds to it
-    # ('simple'::regconfig); it cannot alter one anyway.
+    # Alembic compares a generated column's expression as text, warns at Postgres's casts and cannot alter it anyway
     Column(
         "search",
         TSVECTOR,
@@ -1175,8 +1176,7 @@ telegram_links = Table(
     Index("telegram_links_user_idx", "user_id"),
 )
 
-# The Curator's changes: the plan an accepted proposal became, its pull request, its Judge and its merge; and the repos
-# whose ruleset the hub checked (0017)
+# The Curator's changes: an accepted proposal's plan, pull request, Judge and merge; the repos' ruleset checks (0017)
 
 curator_changes = Table(
     "curator_changes",
@@ -1240,8 +1240,7 @@ curator_repo_checks = Table(
     PrimaryKeyConstraint("project_id", "repo", name="curator_repo_checks_pkey"),
 )
 
-# The Curator's ledger: what happened to each proposal, line by line, never changed or deleted; and the outcome of each
-# merged change (0018)
+# The Curator's ledger: what happened to each proposal, never changed or deleted; each merged change's outcome (0018)
 
 curator_ledger = Table(
     "curator_ledger",
@@ -1283,3 +1282,4 @@ Index(  # a merged change has one outcome
     unique=True,
     postgresql_where=curator_ledger.c.action == "outcome",
 )
+accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0026)
