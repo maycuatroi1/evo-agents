@@ -83,7 +83,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
-| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
+| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
@@ -347,7 +347,11 @@ without the run. Schema 0023 adds `workers.steady_since`, the first heartbeat of
 none more than 30 seconds late, which holds the next attempt of a run lost on a worker back from it until it has been
 steady for 120 seconds (`docs/workers.md`, Run states); going back to 0022 drops it. Schema 0024 adds
 `runs.failure_cause`, why a run failed as its worker reported it (`docs/workers.md`, Preflight and failure causes);
-going back to 0023 drops it, and the Curator's figures read every cause from the error again.
+going back to 0023 drops it, and the Curator's figures read every cause from the error again. Schema 0026 lets a
+worker hold up to 16 runs at once: the CHECKs of `workers.slots`, `workers.free_slots` and `worker_pairings.slots` go
+from 8 to 16, and the owner changes a worker's slots, labels and name with `PATCH /v1/workers/{id}` (`docs/workers.md`,
+Routes); going back to 0025 narrows them to 8 again and refuses, naming them, while a worker not revoked or a pairing
+neither used nor expired holds more than 8 slots.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
