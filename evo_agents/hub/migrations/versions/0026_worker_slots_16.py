@@ -7,7 +7,8 @@ Create Date: 2026-10-13
 Schema 0009 bounded workers.slots and worker_pairings.slots to 1 through 8, and workers.free_slots, what the last
 heartbeat reported, to 0 through 8. This revision widens the three CHECKs to 16 (``MAX_SLOTS``), the bound the api
 holds a pairing, a registration, PATCH /v1/workers/{id} and a heartbeat to. The constraints keep the names Postgres
-gave them in 0009. The statements are Alembic operations on SQL text, as 0009 wrote the constraints.
+gave them in 0009. Every statement is an Alembic operation on SQLAlchemy Core expressions, as
+``evo_agents.hub.tables`` describes the tables.
 
 Going back narrows the CHECKs to 8 again, which is the schema that schema 0025 runs on. It refuses, naming them, while
 a live worker (not revoked) or a live pairing (neither used nor expired) holds more than 8 slots: its owner sets them
@@ -16,57 +17,56 @@ only record what was, so going back sets their slots to 8, and every worker's fr
 of schema 0025 would report them.
 """
 
+import sqlalchemy as sa
 from alembic import op
-from sqlalchemy import text
 
 revision = "0026"
 down_revision = "0025"
 branch_labels = None
 depends_on = None
 
-MAX_SLOTS = 16
+MAX_SLOTS = 16  # evo_agents.hub.runs.MAX_SLOTS as of this revision, a copy rather than an import
 OLD_MAX_SLOTS = 8
 
-
-def _bound(table: str, column: str, low: int, high: int) -> str:
-    name = f"{table}_{column}_check"
-    return (
-        f"ALTER TABLE {table} DROP CONSTRAINT {name}, ADD CONSTRAINT {name} CHECK ({column} BETWEEN {low} AND {high})"
-    )
+col = sa.column
+BOUNDS = (("workers", "slots", 1), ("workers", "free_slots", 0), ("worker_pairings", "slots", 1))
 
 
-def _bounds(high: int) -> list[str]:
-    return [
-        _bound("workers", "slots", 1, high),
-        _bound("workers", "free_slots", 0, high),
-        _bound("worker_pairings", "slots", 1, high),
-    ]
+def _bound(high: int) -> None:
+    """Replace the CHECK of each bounded column with one from its low to ``high``, under the name 0009 gave it."""
+    for table, column, low in BOUNDS:
+        name = f"{table}_{column}_check"
+        op.drop_constraint(name, table, type_="check")
+        op.create_check_constraint(name, table, col(column).between(low, high))
 
 
 def upgrade() -> None:
-    for statement in _bounds(MAX_SLOTS):
-        op.execute(statement)
-
-
-LIVE_WORKERS = text("SELECT id FROM workers WHERE revoked_at IS NULL AND slots > :most ORDER BY id")
-LIVE_PAIRINGS = text(
-    "SELECT id FROM worker_pairings WHERE used_at IS NULL AND expires_at > now() AND slots > :most ORDER BY id"
-)
+    _bound(MAX_SLOTS)
 
 
 def downgrade() -> None:
+    workers = sa.table("workers", col("id"), col("slots"), col("free_slots"), col("revoked_at"))
+    pairings = sa.table("worker_pairings", col("id"), col("slots"), col("used_at"), col("expires_at"))
     conn = op.get_bind()
-    workers = [row[0] for row in conn.execute(LIVE_WORKERS, {"most": OLD_MAX_SLOTS})]
-    pairings = [row[0] for row in conn.execute(LIVE_PAIRINGS, {"most": OLD_MAX_SLOTS})]
-    if workers or pairings:
-        held = [f"worker {i}" for i in workers] + [f"pairing {i}" for i in pairings]
+    live_workers = (
+        sa.select(workers.c.id)
+        .where(workers.c.revoked_at.is_(None), workers.c.slots > OLD_MAX_SLOTS)
+        .order_by(workers.c.id)
+    )
+    live_pairings = (
+        sa.select(pairings.c.id)
+        .where(pairings.c.used_at.is_(None), pairings.c.expires_at > sa.func.now(), pairings.c.slots > OLD_MAX_SLOTS)
+        .order_by(pairings.c.id)
+    )
+    held = [f"worker {i}" for i in conn.execute(live_workers).scalars()]
+    held += [f"pairing {i}" for i in conn.execute(live_pairings).scalars()]
+    if held:
         raise RuntimeError(
             f"schema 0025 holds a worker to {OLD_MAX_SLOTS} slots, and {', '.join(held)} "
             f"{'has' if len(held) == 1 else 'have'} more: set each worker to {OLD_MAX_SLOTS} slots or fewer "
             "(PATCH /v1/workers/{id}) and let each pairing expire, then go back again"
         )
-    op.execute(f"UPDATE workers SET slots = {OLD_MAX_SLOTS} WHERE slots > {OLD_MAX_SLOTS}")  # revoked ones only
-    op.execute(f"UPDATE worker_pairings SET slots = {OLD_MAX_SLOTS} WHERE slots > {OLD_MAX_SLOTS}")  # used, expired
-    op.execute(f"UPDATE workers SET free_slots = {OLD_MAX_SLOTS} WHERE free_slots > {OLD_MAX_SLOTS}")
-    for statement in _bounds(OLD_MAX_SLOTS):
-        op.execute(statement)
+    op.execute(workers.update().where(workers.c.slots > OLD_MAX_SLOTS).values(slots=OLD_MAX_SLOTS))  # revoked only
+    op.execute(pairings.update().where(pairings.c.slots > OLD_MAX_SLOTS).values(slots=OLD_MAX_SLOTS))  # used, expired
+    op.execute(workers.update().where(workers.c.free_slots > OLD_MAX_SLOTS).values(free_slots=OLD_MAX_SLOTS))
+    _bound(OLD_MAX_SLOTS)
