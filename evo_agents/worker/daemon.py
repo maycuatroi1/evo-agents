@@ -4,6 +4,11 @@
   every 5 minutes), the checkouts (``checkouts.discover``, every minute), the free slots, the runs it holds and its
   version. The answer says whether to drain, and for each run whether to cancel it, whether the hub still holds it
   for this worker, and how many messages of the owner wait.
+- The answer also carries the worker's settings as the hub holds them (slots, name, labels), which its owner may
+  change from the web. When they differ from config.json, the daemon takes them in memory, writes config.json again
+  (the other fields as they are on disk) and logs the old and new values: more slots are claimed at the next turn of
+  the claim loop, and fewer stop no run, the daemon only claims nothing until it holds fewer runs than the new
+  slots. An answer without settings (a hub before schema 0026) changes nothing.
 - It claims a run whenever it has a free slot and is neither draining nor stopping, one long poll of up to 25
   seconds at a time, and runs each run it gets (``run.Run``) next to the others.
 - The answer's ``takeover`` and ``handback`` hand a run's agent to a person in tmux and back (``interactive``), and
@@ -74,6 +79,21 @@ LEFTOVER_GRACE = 30.0  # seconds the daemon waits at its end for leftover events
 MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
 
 
+def _settings(value) -> dict | None:
+    """The worker settings of a heartbeat answer, {"slots", "name", "labels"}, or None when they are not as the hub
+    sends them."""
+    if not isinstance(value, dict):
+        return None
+    slots, name, labels = value.get("slots"), value.get("name"), value.get("labels")
+    if isinstance(slots, bool) or not isinstance(slots, int) or not 1 <= slots <= runs.MAX_SLOTS:
+        return None
+    if not isinstance(name, str) or not name:
+        return None
+    if not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
+        return None
+    return {"slots": slots, "name": name, "labels": list(labels)}
+
+
 def heartbeat_seconds(env: Mapping[str, str]) -> float:
     try:
         value = float(env.get(HEARTBEAT_VARIABLE) or runs.HEARTBEAT_SECONDS)
@@ -115,6 +135,7 @@ class Daemon:
         self._runtimes_at = float("-inf")
         self._checkouts_at = float("-inf")
         self._beat_failures = 0
+        self._settings_unread = False
         self.keep_awake = keep_awake or KeepAwake(config.name)  # the power assertions, while it holds a run
         self.wake = wake or WakeWatch()  # notices a sleep from the turns of the heartbeat and claim loops
 
@@ -275,7 +296,7 @@ class Daemon:
         body = {
             "runtimes": self.runtimes,
             "checkouts": self.checkouts,
-            "free_slots": min(self.free_slots, 8),
+            "free_slots": min(self.free_slots, runs.MAX_SLOTS),
             "runs": held + asked,
             "agent_version": __version__,
             "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
@@ -302,11 +323,8 @@ class Daemon:
         if asked:  # before any claim, so a new run never starts next to an agent a dead daemon left
             await self._settle_orphans({item.get("id"): item for item in controls if item.get("id") in asked})
         self.beat_ok.set()
-        drain = bool(answer.get("drain")) if isinstance(answer, dict) else False
-        if drain != self.draining:
-            log.info("draining: no new claims" if drain else "drain ended: claiming again")
-            self.draining = drain
-            self.slot_free.set()
+        if isinstance(answer, dict):
+            self._take_worker_state(answer)
         for control in controls:
             run = self.runs.get(control.get("id"))
             if run is None or run.ended:
@@ -333,6 +351,48 @@ class Daemon:
                 if run.curator is not None:  # the watchdog of the Curator's runs, after each heartbeat
                     run.spawn(run.watch())
         return True
+
+    def _take_worker_state(self, answer: dict) -> None:
+        """What a heartbeat answer says of the worker itself: whether to drain, and its settings when the hub sends
+        them."""
+        drain = bool(answer.get("drain"))
+        if drain != self.draining:
+            log.info("draining: no new claims" if drain else "drain ended: claiming again")
+            self.draining = drain
+            self.slot_free.set()
+        if answer.get("settings") is not None:
+            self._take_settings(answer["settings"])
+
+    def _take_settings(self, settings) -> None:
+        """Take the worker's settings the hub sent (slots, name, labels) when they differ from the config: in memory,
+        and in config.json, read again so a field set by hand since the start (checkouts) stays. Settings this daemon
+        cannot read are logged and left."""
+        wanted = _settings(settings)
+        if wanted is None:
+            if not self._settings_unread:  # once, not at each heartbeat
+                self._settings_unread = True
+                log.warning("the hub sent worker settings this daemon cannot read", extra={"got": settings})
+            return
+        self._settings_unread = False
+        old = {key: getattr(self.config, key) for key in wanted}
+        if old == wanted:
+            return
+        for key, value in wanted.items():
+            setattr(self.config, key, value)
+        try:
+            on_disk = self.home.load_config()
+        except Exception:  # an unreadable config.json: write the one in memory, which holds the new settings
+            on_disk = self.config
+        for key, value in wanted.items():
+            setattr(on_disk, key, value)
+        try:
+            self.home.save(on_disk)
+        except OSError as exc:
+            log.error("config.json could not be written; the new settings hold until the daemon stops", exc_info=exc)
+        changed = {key: {"old": old[key], "new": wanted[key]} for key in wanted if old[key] != wanted[key]}
+        log.info("worker settings changed on the hub", extra={"changed": changed})
+        if "slots" in changed:
+            self.slot_free.set()  # more slots: the claim loop claims at once
 
     # Claims
 
