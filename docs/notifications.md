@@ -15,7 +15,7 @@ Inbox come in the same release.
 
 | Term | What it is | Table |
 | --- | --- | --- |
-| decision | a question the agent of a plan run asks its owner, with 2 to 6 options, open until it is answered, expires or is cancelled | `decisions` |
+| decision | a question the agent of a plan run or an author run asks its owner, with 2 to 6 options, open until it is answered, expires or is cancelled | `decisions` |
 | notice | something the owner should know and need not answer, such as a push to a default branch | none of its own: it is a notification of kind `notice` |
 | notification | one decision or notice for one member, read or not | `notifications` |
 | channel | a place where a member gets notifications: the web, later Telegram | `notification_channels` |
@@ -59,6 +59,26 @@ recommends; at most one is. The owner answers with an option, with text of their
 Waiting and parked do not count toward the run's timeout: the timeout of a plan run, 2, 4, 8 or 24 hours, counts the
 time the agent runs (`run_seconds` in `runs.py`).
 
+### A decision of an author run
+
+The agent of an author run (`docs/workers.md`, "The chat of an author run") asks decisions too, on a worker whose
+daemon lists `author_decisions` in its heartbeat's `features`: its prompt names `scope` for the scope, outcome,
+compatibility and rollout of the plan and `architecture` for a choice of design, and the route takes any category of
+the table above with the bounds of a plan run's. The decision keeps the plan the run has when its agent asks; one the
+agent asks before its run put a plan has none (`plan_id` null), and its readers are the readers of the run. Its
+notification, kind `decision`, goes to the run's owner with a button per option on the web and on Telegram like a
+plan run's, and when it has no plan the message names `Author run #N` and the run's title in place of the plan.
+`evo-agents hub decision list` and `decision show`, and the MCP tool `decision_list`, show such a decision as `author
+run #N`, never `None` or `null`.
+
+The life differs from a plan run's in when the agent wakes. A turn that ends with decisions it asked still open waits
+(`waiting`) until every one of them has an answer, the owner replies in the run's chat, or the owner ends the chat; a
+single answer while another is open does not wake the agent, and the next turn takes every answer there is. A parked
+author run resumes only once none of its decisions is open, or on a reply in its chat, and the answers written while
+it was parked reach the agent in the first turn of the run that resumes it. When the run ends (End chat, cancel,
+fail), its decisions still open are `cancelled`. The answer goes to the run's inbox but is no message of its chat: on
+the web the decision's card in the run's Chat tab shows it.
+
 Only the run's owner answers, through the web or with a machine token of their own: another member gets 403,
 someone without a grant on the project 404, and the worker's own token 403, so the agent cannot answer itself. A
 decision that is no longer open gets 409. The answer goes into the run's inbox as a message that names the decision
@@ -77,12 +97,17 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `run_failed` | a plan, review or judge run failed, or its last attempt was lost; a run of one step or an author run failed for a cause of its preflight (`origin`, `credentials`, `missing_tool`: `docs/workers.md`, "Preflight and failure causes") | the run, the error (and the cause) |
 | `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, open decisions and proposals, the worker on duty's last heartbeat |
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
-| `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"); the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
+| `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
 `curator_paused` and `author_waiting`. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
 worker step`; for a push or merge the agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
 branch and sends no notice.
+
+The hub sends no `author_waiting` when an author run moves to `waiting` with a decision of its own still open: the
+decision's notification told the owner already, and Home lists the run in Needs you through its decision, not again
+among the author runs waiting for a reply. An author run that waits with no decision open sends `author_waiting` as
+before.
 
 ## Notifications, channels and deliveries
 
@@ -141,12 +166,12 @@ text.
 
 `evo_agents/hub/server/decisions.py` and `evo_agents/hub/server/notifications.py` hold them.
 
-For the worker holding a plan run, with its `evw_` token and the protocol header (`docs/workers.md`); any other run,
-a run of one step included, gets 404:
+For the worker holding a plan run (or, for `decisions`, an author run), with its `evw_` token and the protocol header
+(`docs/workers.md`); any other run, a run of one step, a review run and a judge run included, gets 404:
 
 | Route | Body | Answer |
 | --- | --- | --- |
-| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above or a step the plan does not have; 409 when the run has 20 decisions open |
+| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above, a step the plan does not have, or a step of an author run that has put no plan; 409 when the run has 20 decisions open |
 | `POST /v1/worker/runs/{id}/notices` | `kind` (of `NOTICE_KINDS`), `title` (one line, at most 200 characters), `body` (at most 16 KiB), `repo` (one of the run's repos), `branch`, `commits` (at most 100) | 201, the notification |
 
 A decision leaves a `system` event in the run's log, and so does a notice. The hub sends `plan_finished` itself when a
@@ -157,19 +182,21 @@ For members, with a web session or a machine token:
 
 | Route | Who | What it does |
 | --- | --- | --- |
-| `GET /v1/projects/{p}/decisions` | readers of the run's plan | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
-| `GET /v1/projects/{p}/decisions/{id}` | readers of the run's plan | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
+| `GET /v1/projects/{p}/decisions` | readers of the decision's run: of its plan, or of the project's runs on no plan for an author run without one | the project's decisions, newest first, filtered by `state` (repeatable), `run_id` and `plan_id`, with `limit` and `offset` |
+| `GET /v1/projects/{p}/decisions/{id}` | readers of the decision's run, as above | one decision: its options, the recommended one, its state, the answer, `answer_run_id` (the run whose inbox took the answer) and when the agent got it (`delivered_at`) |
 | `POST /v1/projects/{p}/decisions/{id}/answer` | the run's owner, who still holds writer | `{"option": KEY, "text": "..."}`, one or both; answers the decision |
 | `GET /v1/me/notifications` | the member | their notifications, open decisions and proposals first, then newest first, filtered by `unread`, `kind` and `project`, with `limit` and `offset` |
 | `GET /v1/me/notifications/count` | the member | `{"unread": N, "open_decisions": M, "open_proposals": P}`, for the bell |
 | `POST /v1/me/notifications/read` | the member | `{"ids": [...]}` or `{"all": true}`; answers how many it marked read and how many are left unread |
 
-The answer takes the plan's dispatch lock and the run's row, then: the decision is `answered`, its notification read,
+The answer takes the plan's dispatch lock (for a decision with a plan) and the run's row, then: the decision is `answered`, its notification read,
 and the answer goes to an inbox as a message that names the decision. A run that is queued or held (waiting
 included) gets it in its own inbox. A parked run is resumed: the hub queues a new plan run pinned to the parked run's
 worker, at the plan's current revision, with its session, repos, model, timeout and the agent time used so far, and
 `resume_of_run_id` naming it; the parked run is `done` with the reason `resumed as #N`, its other open decisions move
-to the new run, and the answer goes to the new run's inbox. The inbox message reads `Answer to decision #N (category):
+to the new run, and the answer goes to the new run's inbox. A parked author run is resumed so only once the answer
+leaves none of its decisions open; until then the answer waits in the parked run's inbox, and the run that resumes it
+takes every message there. The inbox message reads `Answer to decision #N (category):
 question`, then `Chosen option: KEY, LABEL.` and the owner's text.
 
 A notification links to a page of the hub's web: a decision to `/inbox?decision=ID`, a proposal to
@@ -218,7 +245,8 @@ A chat speaks for its member with no token and never as a hub admin.
 
 ### What a decision looks like there
 
-The message names the run, the project, the category, the plan and the step, asks the question, and lists the options
+The message names the run, the project, the category, the plan and the step (for a decision of an author run without
+a plan, `Author run #N` and the run's title), asks the question, and lists the options
 with their labels, the recommended one marked. Under it, an inline keyboard has one button per option and a button that
 opens the decision on the web. A button's `callback_data` carries the decision's id and the option key, `d:<id>:<key>`,
 never any text. The context is not sent: the web button leads to it. A tier 2 proposal of the Curator goes out with its
