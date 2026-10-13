@@ -143,7 +143,7 @@ describe("AgentTrace", () => {
     show([ev("agent_message_chunk", { content: { type: "text", text } })], {
       webOfBranch: () => ({ url: "https://github.com/octo/evo", forge: "github" }),
     });
-    const card = screen.getByTestId("trace-report");
+    const card = await screen.findByTestId("trace-report");
     expect(card).toHaveAttribute("data-result", "pass");
     expect(card).toHaveAccessibleName("Báo cáo bước 1");
     expect(within(card).getByTestId("trace-report-result")).toHaveTextContent("Đạt");

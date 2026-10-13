@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import { parseStepReport, shellLines } from "./step-report";
+import { holdsStepReport } from "./step-report-start";
 
 // The shape of run #46's step 1 report, cut down.
 const REPORT = [
@@ -108,6 +109,21 @@ describe("parseStepReport", () => {
     expect(parseStepReport("step: 1\nThe result comes later.")).toBeNull();
     expect(parseStepReport("Next: step: 2\nresult: pass")).toBeNull();
     expect(parseStepReport("")).toBeNull();
+  });
+});
+
+describe("holdsStepReport", () => {
+  it("says a message holds a report exactly when parseStepReport reads one", () => {
+    const messages = [
+      REPORT,
+      "Done.\n\n```\nstep: 2\nresult: fail\n```\nOver to you.",
+      "step: 3\r\nresult: pass\r\ncomm",
+      "Step 1 is running in a subagent.",
+      "step: 1\nThe result comes later.",
+      "Next: step: 2\nresult: pass",
+      "",
+    ];
+    for (const text of messages) expect(holdsStepReport(text), text).toBe(parseStepReport(text) !== null);
   });
 });
 
