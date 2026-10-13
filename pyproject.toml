@@ -91,14 +91,18 @@ testpaths = ["tests"]
 pythonpath = ["."]
 markers = [
     "empty_db: hub_db is an empty database, not a copy of the migrated template (tests/hub/conftest.py)",
+    "structure: evo_agents against its structure budgets (tests/test_structure.py); runs only with -m structure",
 ]
+# The structure budgets are a check to run when wanted, not part of the suite or of CI (docs/structure.md):
+# `python -m pytest -m structure tests/test_structure.py`. Another -m replaces this one.
+addopts = ["-m", "not structure"]
 # Read by pytest-asyncio when it is installed (the tests do not need it); tests/conftest.py declares the option
 # otherwise, so pytest does not warn about an unknown key.
 asyncio_default_fixture_loop_scope = "function"
 
 # Boundaries between the packages of evo_agents, checked by `lint-imports` (docs/structure.md, section Package
 # boundaries). Each contract's ignore_imports lists the imports that break it today: those lists only shrink, and
-# tests/test_structure.py fails a change that adds an entry main does not have.
+# `pytest -m structure tests/test_structure.py` fails a change that adds an entry main does not have.
 [tool.importlinter]
 root_package = "evo_agents"
 

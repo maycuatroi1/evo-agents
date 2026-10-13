@@ -32,7 +32,7 @@ secret. The session cookie is the API's, httpOnly; server components forward it 
 
 | Command | What it does |
 | --- | --- |
-| `pnpm lint` | ESLint, no warnings allowed, then `scripts/check-structure.mjs`. Together they hold `src/` to files of 400 lines and imports in one direction, with no cycle; `eslint/structure.mjs` has the rules and a baseline that may only shrink |
+| `pnpm lint` | ESLint, no warnings allowed, then `scripts/check-structure.mjs` (not run by CI). Together they hold `src/` to files of 400 lines and imports in one direction, with no cycle; `eslint/structure.mjs` has the rules and a baseline that may only shrink |
 | `pnpm typecheck` | route types, then `tsc --noEmit` |
 | `pnpm test` | Vitest unit tests |
 | `pnpm gen:api` | regenerates `src/lib/api/schema.d.ts` from `evo-agents hub openapi` (this checkout's Python; set `PYTHON` to choose the interpreter) |
@@ -69,7 +69,7 @@ drops it when Playwright stops. Ports default to 3324 (web), 18324 (API) and 183
 `E2E_WEB_PORT`, `E2E_API_PORT` and `E2E_STACK_PORT` to run two checkouts at once, and set
 `E2E_REUSE_SERVERS=1` to reuse servers that are already up. The API log is `e2e/.stack/hub-serve.log`.
 
-CI runs the specs in four shards (`pnpm exec playwright test --shard=<i>/4`), each with a Postgres, a stack and a
+CI runs the specs in six shards (`pnpm exec playwright test --shard=<i>/6`), each with a Postgres, a stack and a
 production build of its own; a failed shard uploads its report as `playwright-report-<i>`. A pull request that
 touches neither `web/` nor the Python package skips them, and one that touches only `web/` skips the Python tests.
 
