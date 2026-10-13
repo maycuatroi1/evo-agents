@@ -219,6 +219,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Plans | `ListChecks` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
+| Accounts, the agent's accounts and their rotation | `UserRoundCog` |
 | Knowledge graph | `Network` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |

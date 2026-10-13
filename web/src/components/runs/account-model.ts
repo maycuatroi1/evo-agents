@@ -5,7 +5,7 @@ import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
-import type { Run } from "./queries";
+import { LIVE_REFRESH_MS, type Run, runKey } from "./queries";
 
 /**
  * The account a member picks by hand for a run (docs/credentials.md, section "Accounts"): one of their own env
@@ -16,6 +16,8 @@ import type { Run } from "./queries";
 type Schemas = components["schemas"];
 export type Account = Schemas["Account"];
 export type RerunRequest = Schemas["Rerun"];
+export type RunAccount = Schemas["RunAccount"];
+export type RunAccountEvent = Schemas["RunAccountEvent"];
 
 /** The choice "auto, by the rules", and, for a rerun, "as the run rerun": no account name has these shapes. */
 export const BY_RULES = "";
@@ -26,6 +28,15 @@ export const accountsQuery = (api: ApiSource) =>
     queryKey: ["accounts"] as const,
     queryFn: ({ signal }) => call(api().GET("/v1/accounts", { signal })),
     staleTime: 30_000,
+  });
+
+/** The accounts run `id` took, by variable, with each usage limit it hit; read again while the run is active. */
+export const runAccountsQuery = (api: ApiSource, project: string, id: number, active: boolean) =>
+  queryOptions({
+    queryKey: [...runKey(project, id), "accounts"] as const,
+    queryFn: ({ signal }) =>
+      call(api().GET("/v1/projects/{project}/runs/{run_id}/accounts", { params: { path: { project, run_id: id } }, signal })),
+    refetchInterval: active ? LIVE_REFRESH_MS : false,
   });
 
 /** The visitor's accounts a run of `project` may take, by name. */

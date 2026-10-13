@@ -8,43 +8,57 @@
       "kB": 209.3
     },
     "/[...missing]": {
-      "kB": 283.8
+      "kB": 284.4,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+    },
+    "/accounts": {
+      "kB": 307.0,
+      "reason": "The Accounts page: the member's accounts with their state, usage, runs and cost, and the rotation policy of each project (claude-account-rotation step 4)."
     },
     "/admin": {
       "kB": 296.7
     },
     "/admin/audit": {
-      "kB": 307.8
+      "kB": 308.4,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/admin/diagnostics": {
-      "kB": 303.5
+      "kB": 304.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/admin/members": {
-      "kB": 313.5
+      "kB": 314.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/admin/members/[login]": {
-      "kB": 315.4
+      "kB": 316.0,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/admin/tokens": {
-      "kB": 311.3
+      "kB": 311.8,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/inbox": {
-      "kB": 391.8
+      "kB": 391.9,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/login": {
       "kB": 209.3
     },
     "/memories": {
-      "kB": 307.6
+      "kB": 308.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/memories/[id]": {
-      "kB": 356.5
+      "kB": 357.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/monitor": {
       "kB": 311
     },
     "/p/[project]": {
-      "kB": 287.6
+      "kB": 288.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/curator": {
       "kB": 321.5
@@ -56,61 +70,79 @@
       "kB": 327.1
     },
     "/p/[project]/curator/proposals/[id]": {
-      "kB": 357.5
+      "kB": 357.6,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/insights": {
-      "kB": 289.5
+      "kB": 290.0,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/kg": {
-      "kB": 310.4
+      "kB": 311.0,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/kg/node": {
-      "kB": 323.5
+      "kB": 324.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/memories": {
-      "kB": 307.6
+      "kB": 308.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/memories/[id]": {
-      "kB": 356.5
+      "kB": 357.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/plans": {
-      "kB": 324
+      "kB": 325.8,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
     },
     "/p/[project]/plans/[planId]": {
-      "kB": 326.6
+      "kB": 328.4,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
     },
     "/p/[project]/plans/[planId]/revisions": {
-      "kB": 296.8
+      "kB": 297.3,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/plans/[planId]/steps/[stepKey]": {
-      "kB": 325.5
+      "kB": 326.3,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
     },
     "/p/[project]/runs": {
-      "kB": 321.3
+      "kB": 322.5,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
     },
     "/p/[project]/runs/[id]": {
-      "kB": 421.2
+      "kB": 423.9,
+      "reason": "The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry."
     },
     "/p/[project]/runs/[id]/diff": {
-      "kB": 291.8
+      "kB": 292.4,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/skills": {
-      "kB": 304.3
+      "kB": 304.8,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/skills/[name]": {
-      "kB": 304.5
+      "kB": 305.0,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/secrets": {
       "kB": 316.9
     },
     "/skills": {
-      "kB": 304.3
+      "kB": 304.8,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/skills/[name]": {
-      "kB": 304.5
+      "kB": 305.0,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/workers": {
-      "kB": 315.7
+      "kB": 316.3,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/workers/[id]": {
       "kB": 316.3
