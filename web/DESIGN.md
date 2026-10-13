@@ -217,6 +217,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Morning brief of the Curator | `Sunrise` |
 | Telegram, the member's chat | `Smartphone` |
 | Plans | `ListChecks` |
+| A plan's steps as Board, List, Graph | `Columns3`, `LayoutList`, `Waypoints` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
 | Knowledge graph | `Network` |
