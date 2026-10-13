@@ -2,7 +2,7 @@
 
 import "@xyflow/react/dist/base.css";
 
-import { Background, BackgroundVariant, ReactFlow, ReactFlowProvider, useReactFlow } from "@xyflow/react";
+import { Background, BackgroundVariant, Position, ReactFlow, ReactFlowProvider, useReactFlow } from "@xyflow/react";
 import { useTranslations } from "next-intl";
 import { type FocusEvent, type KeyboardEvent, useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -123,6 +123,13 @@ function Graph({ project, planId, steps, acceptance, matching }: StepGraphProps)
           position: { x: node.x, y: node.y },
           width: node.width,
           height: node.height,
+          // The handles are declared rather than measured: these nodes are rebuilt on every selection without
+          // `measured`, which drops the measured handles, and a line waits for them; under load the re-measure could
+          // be lost and the graph stayed without lines.
+          handles: [
+            { type: "target", position: Position.Top, x: node.width / 2, y: 0, width: 1, height: 1 },
+            { type: "source", position: Position.Bottom, x: node.width / 2, y: node.height, width: 1, height: 1 },
+          ],
           draggable: false,
           connectable: false,
           selectable: false,
