@@ -107,7 +107,10 @@ PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review 
 CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
-WORKER_FEATURES = (SESSION_PER_STEP,)  # what a heartbeat may say a daemon does besides its kinds of run (features)
+# a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
+AUTHOR_DECISIONS = "author_decisions"
+# what a heartbeat may say a daemon does besides its kinds of run (features)
+WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS)
 RUNTIMES = ("claude-code", "opencode", "codex")
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime

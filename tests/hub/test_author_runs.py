@@ -63,8 +63,11 @@ def hub(client, github) -> dict:
     return members(client, github)
 
 
-def beat(client, worker: dict, kinds: list[str] | None, checkouts: dict | None = None) -> None:
-    """A heartbeat of ``worker`` whose daemon says it runs ``kinds`` (None: an old daemon that names none)."""
+def beat(
+    client, worker: dict, kinds: list[str] | None, checkouts: dict | None = None, features: list[str] | None = None
+) -> None:
+    """A heartbeat of ``worker`` whose daemon says it runs ``kinds`` (None: an old daemon that names none), and does
+    ``features`` when given."""
     body = {
         "runtimes": worker["runtimes"],
         "checkouts": worker["checkouts"] if checkouts is None else checkouts,
@@ -73,6 +76,8 @@ def beat(client, worker: dict, kinds: list[str] | None, checkouts: dict | None =
     }
     if kinds is not None:
         body["run_kinds"] = kinds
+    if features is not None:
+        body["features"] = features
     response = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
     assert response.status_code == 200, response.text
 
@@ -255,6 +260,33 @@ def test_only_the_owners_author_daemon_with_the_harness_claims_an_author_run_wit
     assert "Do not run `evo-agents hub plan`" in prompt and "AskUserQuestion" in prompt
     assert prompt.endswith(f"# The request of {OWNER}\n{REQUEST}\n")
     assert f"- {HARNESS}: {HARNESS}/" in prompt
+
+
+def test_an_author_runs_prompt_asks_decisions_only_on_a_daemon_that_says_author_decisions(
+    client, hub, hub_db, tmp_path
+):
+    publish_skill(client, hub, tmp_path, "The author mode.")
+    new = author_worker(client, hub["owner"], "new-box")
+    beat(client, new, KINDS, features=[runs.SESSION_PER_STEP, runs.AUTHOR_DECISIONS])
+    old = author_worker(client, hub["owner"], "old-box")  # a daemon of this release's predecessor says none
+    asks = dispatched_author(client, hub["owner"], new["id"])["id"]
+    chats = dispatched_author(client, hub["owner"], old["id"])["id"]
+
+    spec = claim(client, new)
+    assert spec["id"] == asks
+    prompt = spec["prompt"]
+    assert f"`{author.ASK_COMMAND} --category scope` or `--category architecture`" in prompt
+    assert "An open question, without options, goes in that message." in prompt
+    assert "the last message of each of your turns goes to the chat as yours" in prompt
+    assert "Do not use an interactive question tool (AskUserQuestion" in prompt
+    assert "ask it in that last message and end your turn" not in prompt
+
+    spec = claim(client, old)
+    assert spec["id"] == chats
+    prompt = spec["prompt"]
+    assert author.ASK_COMMAND not in prompt, "an older daemon's agent asks in the chat alone"
+    assert "ask it in that last message and end your turn" in prompt
+    assert "Do not use an interactive question tool (AskUserQuestion" in prompt
 
 
 def test_an_author_run_claimed_while_the_hub_has_no_create_exec_plan_skill_fails_saying_so(client, hub, hub_db):
