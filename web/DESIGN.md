@@ -714,6 +714,12 @@ Shared pieces built on them:
   resumed; then a `role="log"` region (polite) with the request, the agent's messages (a 28 px round `running` mark,
   SafeMarkdown on `card`) and the owner's (a neutral mark, plain text on `surface-selected` inside a `brand/20` edge,
   aligned to the end), each with its author and time, the agent's last one tagged Waiting for a reply while it waits;
+  each decision the agent asked (an author run asks them before it has a plan, or after), as the kit's DecisionCard
+  (`where="run"`) right after the agent's message that ended the turn which asked it, in the order asked, indented to
+  the messages' text from `sm` and as wide as a message (46 rem at most): the answer form for the owner with the
+  agent's pick checked, read-only for anyone else, and once answered the compact block with the answer; an answer is
+  never a message of the chat as well. The pill then counts what waits ("2 decisions wait for you"), the reply box and
+  End chat stay, and "Asked you" in the run's Trace shows the Chat with the card in view and focused;
   the typing dots while the agent works; then the owner's reply, the kit's Composer, which posts to the run that takes
   the chat's next message. From xl the Chat fills the session card as its peers do (`fill` on `RunChatPanel`): the
   messages take what the head and the reply box leave and scroll on their own, beside the side column; below xl they
@@ -768,10 +774,12 @@ Shared pieces built on them:
   safe area (`env(safe-area-inset-bottom)`), holds Take over (when offered) and Send answer side by side, 44 px and
   15 px, with no `kbd`; the button submits the form above it (`form=`). Once answered the bar goes and focus comes back
   to the question. The card's `kbd` hides under 768 px everywhere else too (the run's page, Home's sheet).
-- `components/inbox/decision-view.tsx`: the kit's DecisionCard, the same in the sheet and in the side column of a plan
-  run's page. The head on `attention-soft` while the decision is open: the `StatusBadge` "Waiting for you" (for the
-  run's owner; "Waiting for octo" for anyone else), the category as a tag, the run, project, plan and step as links
-  with a quiet underline (on the run's own page only the step), then "asked 6 minutes ago, parks in 23 h 59 min", or
+- `components/inbox/decision-view.tsx`: the kit's DecisionCard, the same in the sheet, in the side column of a plan
+  run's page and in an author run's Chat (after the agent's message that ended the turn which asked it). The head on
+  `attention-soft` while the decision is open: the `StatusBadge` "Waiting for you" (for the run's owner; "Waiting for
+  octo" for anyone else), the category as a tag, the run, project, plan and step as links with a quiet underline (on
+  the run's own page only the step; an author run's decision without a plan says "Author run #N" and the run's title
+  in place of the plan, and links to no plan, in the Inbox, Home's sheet and the phone's screen alike), then "asked 6 minutes ago, parks in 23 h 59 min", or
   "parked 3 hours ago" once the run has parked. When a run parks is the hub's to say (its decision wait is a setting),
   so the card reads it from `GET /v1/me/overview` while the run waits, or takes it from Home. The question in 15/22 px
   500; the agent's context as Markdown through the memories' `SafeMarkdown` (no raw HTML, no images loaded), clamped

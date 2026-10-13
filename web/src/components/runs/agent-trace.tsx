@@ -31,6 +31,7 @@ import { type RepoWeb, splitLinks } from "./forge";
 import { LinkedText } from "./links";
 import type { DescribeMove } from "./log-model";
 import { decisionAnchor, decisionHref, type RunEvent } from "./queries";
+import { TraceTyping } from "./chat-parts";
 import { holdsStepReport } from "./step-report-start";
 import {
   buildTrace,
@@ -71,6 +72,8 @@ export type TraceContext = {
   describe: DescribeMove;
   /** Decisions open now whose card is on this page, which "Asked you" links to; the others link to the Inbox. */
   openDecisions: ReadonlySet<number>;
+  /** An author run's: opens a decision's card in the Chat tab, where every decision of the run is. */
+  showDecision?: (id: number) => void;
   /** The agent is at work: the trace ends with the typing dots. */
   working: boolean;
   /** The run may still write events. */
@@ -317,9 +320,18 @@ function AskRow({ item, context }: { item: Extract<TraceItem, { type: "ask" }>; 
           <span className="min-w-0 text-foreground [overflow-wrap:anywhere]" data-testid="trace-ask-question">
             <LinkedText text={item.question} />
           </span>
-          {onPage ? (
-            <a href={`#${decisionAnchor(item.decisionId)}`} className={link} data-testid="trace-ask-link">
-              {mine ? t("answer") : t("viewDecision")}
+          {onPage || context.showDecision ? (
+            <a
+              href={`#${decisionAnchor(item.decisionId)}`}
+              className={link}
+              onClick={(event) => {
+                if (!context.showDecision) return;
+                event.preventDefault();
+                context.showDecision(item.decisionId);
+              }}
+              data-testid="trace-ask-link"
+            >
+              {mine && onPage ? t("answer") : t("viewDecision")}
             </a>
           ) : (
             <Link href={decisionHref(item.decisionId)} className={link} data-testid="trace-ask-link">
@@ -468,23 +480,6 @@ function signature(item: TraceItem): string {
     default:
       return item.key;
   }
-}
-
-function Typing() {
-  const t = useTranslations("runs.detail.trace");
-  return (
-    <div className="grid grid-cols-[28px_minmax(0,1fr)] gap-x-3 pt-2 pb-1" data-testid="trace-typing">
-      <span className="grid size-7 place-items-center rounded-sm border border-running bg-card text-running" aria-hidden="true">
-        <Bot className="size-4" />
-      </span>
-      <span className="flex items-center gap-[3px]">
-        <span className="sr-only">{t("working")}</span>
-        {[0, 1, 2].map((dot) => (
-          <i key={dot} aria-hidden="true" className="size-[5px] animate-typing rounded-full bg-running" style={{ animationDelay: `${dot * 0.2}s` }} />
-        ))}
-      </span>
-    </div>
-  );
 }
 
 type Virtual = ReturnType<typeof useVirtualizer<HTMLDivElement, HTMLLIElement>>;
@@ -655,7 +650,7 @@ export function AgentTrace({
             ))}
           </ol>
         )}
-        {typing && !empty ? <Typing /> : null}
+        {typing && !empty ? <TraceTyping /> : null}
       </div>
       {!follow && !empty ? (
         <Button

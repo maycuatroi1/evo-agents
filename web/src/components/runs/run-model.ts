@@ -317,3 +317,26 @@ export function chatReplyable(chat: ChatState, run?: Pick<Run, "id" | "finish_re
 export function chatEndable(chat: ChatState, run: Pick<Run, "finish_requested_at">): boolean {
   return chat.status !== "ended" && chat.state !== "queued" && !run.finish_requested_at;
 }
+
+/** Where the decisions of an author run's chat sit: `after` maps a message's index to those shown after it. */
+export type ChatDecisionSlots<D> = { after: Map<number, D[]>; last: D[] };
+
+/**
+ * Where each decision of an author run's chat goes: after the agent's message that ended the turn which asked it (the
+ * first of the agent's messages written at or after it was asked), in the order asked. One asked in the turn the agent
+ * still works on has no such message yet: it goes after every message, in `last`.
+ */
+export function chatDecisionSlots<D extends { id: number; asked_at: string }>(
+  messages: readonly { author: string; at: string }[],
+  decisions: readonly D[],
+): ChatDecisionSlots<D> {
+  const ends = messages.flatMap((message, index) => (message.author === "agent" ? [{ index, at: Date.parse(message.at) }] : []));
+  const slots: ChatDecisionSlots<D> = { after: new Map(), last: [] };
+  const asked = [...decisions].sort((a, b) => Date.parse(a.asked_at) - Date.parse(b.asked_at) || a.id - b.id);
+  for (const decision of asked) {
+    const end = ends.find((message) => message.at >= Date.parse(decision.asked_at));
+    if (end === undefined) slots.last.push(decision);
+    else slots.after.set(end.index, [...(slots.after.get(end.index) ?? []), decision]);
+  }
+  return slots;
+}
