@@ -47,6 +47,7 @@ from tests.hub.test_credentials_api import hub_config as credentials_config
 from tests.hub.test_credentials_api import members as credential_members
 from tests.hub.test_credentials_api import worker_of as credential_worker
 from tests.hub.test_curator import NIGHT, PROJECT, THE_NIGHT, charter_body, fire, grant, put_charter, written
+from tests.hub.test_decisions import ask as ask_decision
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import reported
 from tests.hub.test_review_runs import DRAFT, MCP_HEADERS, answer, answered, collected, proposed
@@ -535,6 +536,15 @@ def queue_now(world, which: str):
             return await getattr(change_routes, f"queue_{which}")(conn, due, gate)
 
     return world.client.portal.call(go)
+
+
+def test_judge_run_asks_no_decision_though_an_author_run_does(world):
+    accepted(world)
+    builder(world)
+    assert moved_on(world) == {"opened": 1}
+    run_id = judge_run(world)["id"]
+    refused = ask_decision(world.client, world.worker, run_id, step_key=None)
+    assert refused.status_code == 404 and f"run {run_id} is a judge run" in refused.json()["message"]
 
 
 def test_judge_and_its_builder_never_run_at_once(world):

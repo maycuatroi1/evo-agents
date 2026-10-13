@@ -724,7 +724,7 @@ decisions = Table(
     _id(),
     Column("run_id", BigInteger, nullable=False),
     Column("project_id", BigInteger, nullable=False),
-    Column("plan_id", Text, nullable=False),
+    Column("plan_id", Text),  # NULL for a decision an author run asked before it put a plan (schema 0027)
     Column("step_key", Text),
     Column("category", Text, nullable=False),
     Column("question", Text, nullable=False),

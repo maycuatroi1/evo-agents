@@ -1,11 +1,12 @@
-"""``evo-agents hub decision`` and ``evo-agents hub notifications``: the decisions the agents of your plan runs ask you,
-and what the hub tells you.
+"""``evo-agents hub decision`` and ``evo-agents hub notifications``: the decisions the agents of your plan runs and
+author runs ask you, and what the hub tells you.
 
 ``decision list`` and ``decision show`` read a project's decisions (GET /v1/projects/{p}/decisions, .../{id}), as any
-reader of the run's plan may. ``decision answer ID`` answers one (POST .../decisions/{id}/answer) with an option of
-the decision (``--option KEY``), words of your own (``--text``, ``-`` reads them from stdin), or both; only the member
-who dispatched the run may, and the answer goes to the agent through the run's inbox, or resumes a parked run on its
-worker. ``docs/notifications.md`` describes decisions, their categories and their life.
+reader of the run may; a decision an author run asked before it put a plan has none, and shows as ``author run #N``.
+``decision answer ID`` answers one (POST .../decisions/{id}/answer) with an option of the decision (``--option KEY``),
+words of your own (``--text``, ``-`` reads them from stdin), or both; only the member who dispatched the run may, and
+the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. ``docs/notifications.md``
+describes decisions, their categories and their life.
 
 ``notifications`` lists your notifications, open decisions first, then newest first (GET /v1/me/notifications), with
 how many are unread and how many decisions wait for your answer (GET /v1/me/notifications/count). ``--read all`` or
@@ -110,7 +111,7 @@ def cmd_list(args) -> int:
             decision["state"],
             decision["category"],
             f"#{decision['run_id']}",
-            decision["plan_id"],
+            decision["plan_id"] or f"author run #{decision['run_id']}",
             decision["step_key"] or "-",
             decision["owner"],
             _one_line(decision["question"], QUESTION_CHARS),
@@ -178,6 +179,14 @@ def _print_options(decision: dict) -> None:
             print(f"  {'':<{width}}  {line}".rstrip())
 
 
+def _run_line(decision: dict, step: str) -> str:
+    """The run of a decision, with its plan and step, or for one an author run asked before it put a plan, the run."""
+    run = f"#{decision['run_id']} ({decision['run_state']})"
+    if decision["plan_id"] is None:
+        return f"author run {run}, before it put a plan"
+    return f"{run} of plan {decision['plan_id']}{step}"
+
+
 @_client_command
 def cmd_show(args) -> int:
     hub, _ = _signed_in()
@@ -189,7 +198,7 @@ def cmd_show(args) -> int:
     print(f"Decision #{decision['id']}: {decision['category']}, {decision['state']}")
     step = f", step {decision['step_key']}" if decision["step_key"] else ""
     lines = [
-        ("run", f"#{decision['run_id']} ({decision['run_state']}) of plan {decision['plan_id']}{step}"),
+        ("run", _run_line(decision, step)),
         ("owner", f"{decision['owner']}, who alone answers it"),
         ("asked", f"{_when(decision['asked_at'])} UTC"),
         *_answer_lines(decision),
@@ -322,7 +331,9 @@ def cmd_notifications(args) -> int:
 
 
 def register_decisions(hsub) -> None:
-    decision = hsub.add_parser("decision", help="the decisions the agents of your plan runs ask you, and your answers")
+    decision = hsub.add_parser(
+        "decision", help="the decisions the agents of your plan runs and author runs ask you, and your answers"
+    )
     dsub = decision.add_subparsers(dest="decision_command", required=True)
     project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
     decision_help = "the decision's id, as `hub decision list` and the notification show it"

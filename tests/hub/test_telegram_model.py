@@ -175,6 +175,33 @@ def test_a_decision_has_a_button_per_option_and_one_for_the_web_and_escapes_what
     assert len(long.text) <= telegram.MAX_TEXT_CHARS and "q" * (telegram.QUESTION_CHARS - 3) + "..." in long.text
 
 
+def test_a_telegram_decision_of_an_author_run_without_a_plan_names_the_run_and_its_title():
+    def message(plan_id, run_title, step_key=None):
+        return telegram.decision_message(
+            decision_id=9,
+            project="evo-agents",
+            run_id=4,
+            plan_id=plan_id,
+            step_key=step_key,
+            category="scope",
+            question="Poll, or subscribe?",
+            options=OPTIONS,
+            url="https://hub.test/inbox?decision=9",
+            link="/inbox?decision=9",
+            run_kind="author",
+            run_title=run_title,
+        )
+
+    titled = message(None, "A wait\nhelper <for> tests")
+    assert "<b>Author run #4 of evo-agents asks a decision</b> (scope, A wait helper &lt;for&gt; tests)" in titled.text
+    assert "None" not in titled.text and len(titled.buttons) == len(OPTIONS) + 1
+    assert "(scope, no plan yet)" in message(None, None).text
+    long = message(None, "t" * 500).text
+    assert "t" * (telegram.RUN_TITLE_CHARS - 3) + "..." in long and "t" * telegram.RUN_TITLE_CHARS not in long
+    planned = message("wait-helper", "A wait helper", "2").text
+    assert "<b>Author run #4 of evo-agents asks a decision</b> (scope, plan wait-helper, step 2)" in planned
+
+
 def test_a_proposal_has_accept_reject_defer_and_the_web_and_no_summary():
     message = telegram.proposal_message(
         proposal_id=3,

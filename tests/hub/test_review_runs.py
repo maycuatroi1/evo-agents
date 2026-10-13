@@ -56,6 +56,7 @@ from tests.hub.test_curator import (
     status_of,
     written,
 )
+from tests.hub.test_decisions import ask as ask_decision
 from tests.hub.test_migrate import move_to
 from tests.hub.test_plan_runs import fleet_worker, push
 from tests.hub.test_plan_runs import plan_body as fleet_body
@@ -356,6 +357,12 @@ def test_only_the_worker_holding_a_review_run_records_findings_and_proposals(rev
     for state in ("verifying", "done"):
         assert report(client, worker, run_id, state).status_code == 200
     assert finding(client, worker, run_id, evidence=evidence).status_code == 404  # it ended
+
+
+def test_a_review_run_asks_no_decision_though_an_author_run_does(review):
+    run_id = held_review(review)
+    refused = ask_decision(review.client, review.worker, run_id, step_key=None)
+    assert refused.status_code == 404 and f"run {run_id} is a review run" in refused.json()["message"]
 
 
 def test_the_mcp_tools_of_the_review_read_the_project_of_the_run(review):
