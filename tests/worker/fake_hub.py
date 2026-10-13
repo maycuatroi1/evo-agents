@@ -54,6 +54,12 @@ class FakeHub:
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
+        # What the worker said of its agent's usage limit (POST .../rate-limit), with the run's id, and what a rejected
+        # report gets: run id -> the answers in order, each with ``leases``, the run's next leases on a failover; a
+        # run without answers is told stop. ``rate_limit_route`` False answers 404, as a hub older than the route.
+        self.rate_limits: list[dict] = []
+        self.rate_limit_answers: dict[int, list[dict]] = {}
+        self.rate_limit_route = True
         self.heartbeats = 0
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
         self.blob_reads: list[str] = []
@@ -96,6 +102,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
+                post("/v1/worker/runs/{id}/rate-limit", self._rate_limit),
                 get("/blobs/{sha}", self._blob),
             ]
         )
@@ -690,6 +697,23 @@ class FakeHub:
         run_id, _ = self._run(request)
         self.credential_calls.append(("give back", run_id))
         return web.json_response({"revoked": len((self.leases.get(run_id) or {}).get("leases") or [])})
+
+    async def _rate_limit(self, request: web.Request) -> web.Response:
+        if not self.rate_limit_route:
+            return _error(404, "not_found", "Not Found")
+        run_id, _ = self._run(request)
+        body = await request.json()
+        self.rate_limits.append({"run_id": run_id, **body})
+        if body.get("status") != "rejected":
+            return web.json_response({"action": "none", "secret_id": 1, "failovers": 0})
+        answers = self.rate_limit_answers.get(run_id) or []
+        if not answers:
+            stop = {"action": "stop", "secret_id": 1, "failovers": 0, "reason": "no other account is ready"}
+            return web.json_response({**stop, "ready_at": body.get("resets_at")})
+        answer = dict(answers.pop(0))
+        if "leases" in answer:
+            self.leases[run_id] = answer.pop("leases")
+        return web.json_response(answer)
 
 
 def _error(status: int, code: str, message: str) -> web.Response:
