@@ -607,7 +607,8 @@ def test_the_panes_script_evaluates_the_runs_leases_and_never_holds_their_values
     assert lines.index("export EVO_RUN_ID=7") < evaluated < lines.index("unset CLAUDECODE"), (
         "after exports, before unsets"
     )
-    done = subprocess.run(["/bin/sh", str(script)], capture_output=True, text=True, timeout=30)
+    shell = {"PATH": os.environ["PATH"]}  # a pane's shell: the GIT_CONFIG_COUNT of a worker run stays out
+    done = subprocess.run(["/bin/sh", str(script)], capture_output=True, text=True, timeout=30, env=shell)
     assert done.stdout.strip() == f"key={token} count=none run=7", done.stderr
     assert not script.exists(), "the script removes itself once it runs"
     without = interactive.write_script(tmp_path / "plain.sh", ["true"], env, tmp_path)

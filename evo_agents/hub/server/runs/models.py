@@ -433,7 +433,9 @@ class HeartbeatRequest(BaseModel):
         None,
         max_length=MAX_RUN_KINDS,
         description="what the daemon does besides its kinds of run: session_per_step, a plan run with a session for "
-        "each step. One that says none takes no such run. A feature this hub does not know is left out",
+        "each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn. "
+        "One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub "
+        "does not know is left out",
     )
 
     def stored(self) -> tuple[dict, dict]:

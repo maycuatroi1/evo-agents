@@ -1935,7 +1935,7 @@ export interface paths {
         };
         /**
          * List Decisions
-         * @description The project's decisions, newest first, of the plans the caller may read.
+         * @description The project's decisions, newest first, of the runs the caller may read.
          */
         get: operations["list_decisions_v1_projects__project__decisions_get"];
         put?: never;
@@ -1995,7 +1995,7 @@ export interface paths {
         put?: never;
         /**
          * Ask
-         * @description Ask the owner of a plan run this worker holds a decision, and notify them.
+         * @description Ask the owner of a plan run or an author run this worker holds a decision, and notify them.
          */
         post: operations["ask_v1_worker_runs__run_id__decisions_post"];
         delete?: never;
@@ -4126,7 +4126,7 @@ export interface components {
             project: string;
             /**
              * Run Id
-             * @description the plan run the decision belongs to
+             * @description the plan run or author run the decision belongs to
              */
             run_id: number;
             /**
@@ -4134,8 +4134,11 @@ export interface components {
              * @enum {string}
              */
             run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
-            /** Plan Id */
-            plan_id: string;
+            /**
+             * Plan Id
+             * @description the run's plan when its agent asked; null for an author run that had put no plan yet
+             */
+            plan_id: string | null;
             /**
              * Step Key
              * @description the step it is about, when the agent named one
@@ -4947,7 +4950,7 @@ export interface components {
             run_kinds?: string[] | null;
             /**
              * Features
-             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step. One that says none takes no such run. A feature this hub does not know is left out
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
         };
@@ -5985,7 +5988,7 @@ export interface components {
             project: string;
             /**
              * Run Id
-             * @description the plan run the decision belongs to
+             * @description the plan run or author run the decision belongs to
              */
             run_id: number;
             /**
@@ -5993,8 +5996,11 @@ export interface components {
              * @enum {string}
              */
             run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
-            /** Plan Id */
-            plan_id: string;
+            /**
+             * Plan Id
+             * @description the run's plan when its agent asked; null for an author run that had put no plan yet
+             */
+            plan_id: string | null;
             /** Plan Title */
             plan_title: string | null;
             /**
@@ -9707,7 +9713,7 @@ export interface components {
             held_runs: number;
             /**
              * Features
-             * @description what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; empty for a daemon that said none
+             * @description what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions; empty for a daemon that said none
              */
             features?: string[];
             /**

@@ -372,9 +372,9 @@ def test_a_claim_whose_worker_hangs_up_while_it_leases_a_run_rolls_the_lease_bac
     run_id = dispatched(hub.client, hub.headers["owner"], [2])[0]["id"]
     spec_of = run_claims._run_spec
 
-    async def slow_spec(conn, leased_id):
+    async def slow_spec(conn, leased_id, features=()):
         await asyncio.sleep(1.5)  # the run is leased in the claim's transaction; the worker hangs up meanwhile
-        return await spec_of(conn, leased_id)
+        return await spec_of(conn, leased_id, features)
 
     monkeypatch.setattr(run_claims, "_run_spec", slow_spec)
     hang_up_claim(hub, worker, wait=0, after=0.5)

@@ -168,6 +168,19 @@ describe("HomePage", () => {
     expect(within(rows[2]).getByText("chưa có worker")).toBeInTheDocument();
   });
 
+  it("names in Needs you an author run's decision, which has no plan, by the run's title, and links to no plan", () => {
+    setup(
+      overview({
+        active_runs: [run(21, "waiting", { kind: "author", plan_id: "", plan_title: null, step_key: null, title: "Let members write plans from the web" })],
+        open_decisions: [{ ...decision(7, true), run_id: 21, plan_id: null, plan_title: null, step_key: null, category: "scope" }],
+      }),
+    );
+    const needs = screen.getByRole("region", { name: "Cần bạn" });
+    const [item] = within(needs).getAllByTestId("needs-you-item");
+    expect(item).toHaveTextContent("demo, author run: Let members write plans from the web");
+    expect(item.querySelector('a[href*="/plans/"]')).toBeNull();
+  });
+
   it("lists the visitor's author runs waiting for a reply, with the agent's last message, linked to their chat", () => {
     setup(
       overview({

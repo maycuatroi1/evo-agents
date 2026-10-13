@@ -5,9 +5,10 @@ After each turn, the owner's messages that came in the meantime start the next t
 that ends with a decision of the run open (a plan run), or any turn (an author run, whose agent talks with its owner
 in the run's chat), moves the run to ``waiting``: the daemon keeps it, with its slot and lease, and the time it waits
 does not count toward its timeout. The owner's answer comes through the inbox and goes to a new turn of the agent in
-the same session (``running`` again). A run the hub parks (no answer within a day) stops at the end of its turn,
-keeps its session and worktrees, and frees its slot; the run that resumes it, claimed with ``resume_of_run_id``, goes
-on in them (``Conversation.adopt``).
+the same session (``running`` again): for a plan run the first answer, for an author run every answer to the decisions
+its agent asked that are open at the end of its turn, or a reply in its chat (``transitions.author_wakes``). A run the
+hub parks (no answer within a day) stops at the end of its turn, keeps its session and worktrees, and frees its slot;
+the run that resumes it, claimed with ``resume_of_run_id``, goes on in them (``Conversation.adopt``).
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ RESUME_PROMPT = (
 
 
 def read_asked(home, run_id: int) -> set[int]:
-    """The decisions the agent of plan run ``run_id`` asked, as ``evo-agents worker ask`` noted them."""
+    """The decisions the agent of plan run or author run ``run_id`` asked, as ``evo-agents worker ask`` noted them."""
     asked: set[int] = set()
     with contextlib.suppress(OSError):
         for line in home.decisions_path(run_id).read_text(encoding="utf-8").splitlines():
@@ -56,7 +57,8 @@ def read_asked(home, run_id: int) -> set[int]:
 class Conversation:
     """The session of the run's agent across its turns (``session_id``), the parked run it goes on from
     (``resume_of``), and what starts each next turn: ``after_turn``, the decisions the run waits for unless the kind
-    brings its own, and the prompt it starts with, ``reply_prompt`` then the owner's messages."""
+    brings its own, and the prompt it starts with, ``reply_prompt`` (or what ``prompt_for`` makes of the messages)
+    then the owner's messages."""
 
     def __init__(
         self,
@@ -66,6 +68,7 @@ class Conversation:
         reply_prompt: str = ANSWER_PROMPT,
         resume_prompt: str = RESUME_PROMPT,
         after_turn: Callable[[], Awaitable[list[dict]]] | None = None,
+        prompt_for: Callable[[list[dict]], str] | None = None,
     ):
         self.run = run
         self.directory = directory
@@ -75,6 +78,7 @@ class Conversation:
         self.reply_prompt = reply_prompt
         self.resume_prompt = resume_prompt
         self.after_turn = after_turn or self.wait_for_decisions
+        self.prompt_for = prompt_for or (lambda messages: self.reply_prompt)
         self.usages: list[dict | None] = []  # the usage each turn's agent ended with, in order (``sessions``)
         run.record["resume_of_run_id"] = self.resume_of
         run.daemon.home.save_run(run.record)
@@ -89,6 +93,8 @@ class Conversation:
         resumable = record is not None and record.get("kind") in runs.RESUME_KINDS
         if resumable and isinstance(record.get("step_sessions"), list):  # a plan run with a session for each step
             run.record["step_sessions"] = list(record["step_sessions"])
+        if resumable:
+            self._adopt_decisions(record, old_id)
         directory = Path(record["dir"]) if resumable and record.get("dir") else None
         if directory is None or not directory.is_dir():
             run.note(
@@ -105,17 +111,22 @@ class Conversation:
                 self.directory.workspaces[workspace.repo] = workspace
         self.directory.path = directory
         self.session_id = self.session_id or record.get("session_id")
+        self._adopt_pushes(old_id)
+        record.update({"resumed_by": run.id, "dir": None, "repos": [], "moved_to": str(directory)})
+        home.save_run(record)
+        names = ", ".join(self.directory.workspaces) or "no repo"
+        run.note(f"Goes on from parked run #{old_id} in {directory}, with its worktrees of {names}.")
+
+    def _adopt_decisions(self, record: dict, old_id: int) -> None:
+        """The decisions the parked run's agent asked and has no answer to yet are this run's to wait for, worktrees
+        or none: an author run waits again for the rest of them after its first turn."""
+        run, home = self.run, self.run.daemon.home
         run.inbox.answered |= {item for item in record.get("answered") or [] if isinstance(item, int)}
         still_open = sorted(read_asked(home, old_id) - run.inbox.answered)
         if still_open:
             lines = "".join(json.dumps({"id": decision_id}) + "\n" for decision_id in still_open)
             with open(home.decisions_path(run.id), "a", encoding="utf-8") as handle:
                 handle.write(lines)
-        self._adopt_pushes(old_id)
-        record.update({"resumed_by": run.id, "dir": None, "repos": [], "moved_to": str(directory)})
-        home.save_run(record)
-        names = ", ".join(self.directory.workspaces) or "no repo"
-        run.note(f"Goes on from parked run #{old_id} in {directory}, with its worktrees of {names}.")
 
     def _adopt_pushes(self, old_id: int) -> None:
         """What the parked run pushed to a default branch is never put back either."""
@@ -167,7 +178,7 @@ class Conversation:
             messages = await self.after_turn()
             if not messages:
                 return
-            prompt = runs.clip(self.reply_prompt + "\n\n" + run.inbox.take(messages), runs.MAX_PROMPT_BYTES)
+            prompt = runs.clip(self.prompt_for(messages) + "\n\n" + run.inbox.take(messages), runs.MAX_PROMPT_BYTES)
 
     def open_asked(self) -> set[int]:
         """The decisions the agent asked whose answers it has not had."""
@@ -209,11 +220,12 @@ class Conversation:
         )
         return await self.wait_for_answer()
 
-    async def wait_for_answer(self) -> list[dict]:
+    async def wait_for_answer(self, wakes: Callable[[list[dict]], bool] = bool) -> list[dict]:
         """Wait for the owner's messages, the answer to a decision among them, without the agent: the worker keeps the
-        run and the heartbeat its lease. Stopped on a cancel or when the hub lets go of the run, Parked when it parks
-        it, and nothing once the owner ended the chat of an author run. The time spent here moves the run's deadline
-        back."""
+        run and the heartbeat its lease; the messages of the inbox the agent has not had once ``wakes`` takes them
+        (any message by default; an author run waits for every answer of a turn, or a reply in the chat). Stopped on
+        a cancel or when the hub lets go of the run, Parked when it parks it, and nothing once the owner ended the
+        chat of an author run. The time spent here moves the run's deadline back."""
         run = self.run
         started = run.loop.time()
         try:
@@ -226,7 +238,7 @@ class Conversation:
                     return []
                 run.inbox_arrived.clear()
                 messages = await run.inbox.unread()
-                if messages:
+                if messages and wakes(messages):
                     run.note(answer_note(messages, self.session_id))
                     return messages
                 await first_of(
