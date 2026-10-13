@@ -72,6 +72,10 @@ at any depth, and `state/` at the root only (a nested `src/state/` is ordinary c
 timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
 is fetched.
+Changing where a source reads from (a git source's `ref:`, `repo:` or `path:`, an exec source's `command:`)
+makes its next run replace what the source read before, even when the old ref has newer commits; within
+one ref, a file keeps the copy whose last commit is newest. Keys such as `refresh:`, `label:`, `include:`
+or `fetch:` do not count as a change of place.
 Before a file enters the corpus, the git connector replaces each secret in its text with a marker naming
 its kind: a private key in PEM (`[redacted:pem]`), a provider's key (Anthropic, OpenAI, AWS, Slack, Google,
 GitHub, hub tokens), the password of a URI, and the literal value of a variable or key named as a password,

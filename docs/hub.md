@@ -766,10 +766,12 @@ does not clear stays on the machine. It reports a line per run and per batch of 
 at most 100 uploads and 256 MiB, each given time in proportion to what it carries. A commit that gets no answer may
 still finish on the hub, so the push asks which of its blobs the project holds before calling it failed. A run that
 fails for a reason that may pass (no answer, 408, 429, 502, 503, 504) is pushed again from its start, up to three times,
-10 and 30 seconds apart; the hub answers what it has already and only the rest is sent. `evo-agents hub kg build
---project demo --wait` queues a build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a
-build succeeded, `evo-agents kg serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by
-the read rule.
+10 and 30 seconds apart; the hub answers what it has already and only the rest is sent. The hub merges the runs of every
+machine the way a local corpus does (`evo_agents/kg/corpus.py`). A source whose `ref:`, `repo:` or `path:` changes
+starts a new epoch on each machine at that machine's first run after the change, so for the files several machines read,
+the runs of the machine that switched last win from then on. `evo-agents hub kg build --project demo --wait` queues a
+build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a build succeeded, `evo-agents kg
+serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule.
 
 A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
 the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
