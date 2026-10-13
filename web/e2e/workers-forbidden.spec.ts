@@ -8,7 +8,8 @@ import { csrfHeader, heartbeat, registerWorker, workersOf } from "./support/work
  * A worker belongs to the member who registered it because the API says so, not because the web hides it: another
  * member sees nothing of it on the pages and gets 404 from every workers route, a reader cannot create a pairing
  * code, a web session cannot register a machine directly, and a hub admin may drain or revoke a worker but never set
- * it going again. The calls go straight to the API with the browser's session, CSRF header included.
+ * it going again nor change its settings. The calls go straight to the API with the browser's session, CSRF header
+ * included.
  */
 test.skip(isDeployed, "registers workers through the local stack");
 
@@ -43,21 +44,22 @@ test("another member sees nothing of my worker, on the pages or through the API"
   const list = await page.request.get("/v1/workers?revoked=true");
   expect(list.status()).toBe(200);
   expect(await list.json()).toEqual([]);
-  const calls: { method: "GET" | "POST"; path: string }[] = [
+  const calls: { method: "GET" | "POST" | "PATCH"; path: string; data?: object }[] = [
     { method: "GET", path: `/v1/workers/${worker.id}` },
+    { method: "PATCH", path: `/v1/workers/${worker.id}`, data: { slots: 4 } },
     { method: "POST", path: `/v1/workers/${worker.id}/drain` },
     { method: "POST", path: `/v1/workers/${worker.id}/undrain` },
     { method: "POST", path: `/v1/workers/${worker.id}/revoke` },
     { method: "GET", path: `/v1/workers/pairings/${pairing.id}` },
   ];
-  for (const { method, path } of calls) {
-    const response = await page.request.fetch(path, { method, headers });
+  for (const { method, path, data } of calls) {
+    const response = await page.request.fetch(path, { method, headers, data });
     expect(response.status(), `${method} ${path}`).toBe(404);
     expect((await response.json()).error).toBe("not_found");
   }
   // Nothing changed for the owner.
   const mine = (await workersOf(owner)).find((w) => w.id === worker.id);
-  expect(mine).toMatchObject({ status: "online", drained_at: null, revoked_at: null });
+  expect(mine).toMatchObject({ status: "online", drained_at: null, revoked_at: null, slots: 1 });
 });
 
 test("a reader cannot create a pairing code, in the dialog or through the API", async ({ page, member }) => {
@@ -115,6 +117,13 @@ test("a hub admin sees every worker and may drain it, but only its owner resumes
   expect(refused.status()).toBe(403);
   expect((await refused.json()).message).toContain(`only ${owner.login}`);
   expect((await workersOf(owner)).find((w) => w.id === worker.id)?.status).toBe("draining");
+
+  // Nor change its settings: the page offers no form, and the hub refuses.
+  await expect(main.getByTestId("worker-settings")).toHaveCount(0);
+  const patched = await page.request.patch(`/v1/workers/${worker.id}`, { data: { slots: 4, name: "admin-named" }, headers: await csrfHeader(page) });
+  expect(patched.status()).toBe(403);
+  expect((await patched.json()).message).toContain(`only ${owner.login}`);
+  expect((await workersOf(owner)).find((w) => w.id === worker.id)).toMatchObject({ slots: 1, name: worker.name });
 
   // The owner can.
   const ownerApi = bearerClient(await machineToken(owner));

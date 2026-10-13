@@ -1317,7 +1317,9 @@ def beat_as_0_9_0(client, worker: dict, held=(), slots: int = 2) -> dict:
 
 def test_a_daemon_of_0_9_0_claims_beats_and_ends_its_runs_with_this_hub(client, hub, hub_db):
     worker = add_worker(client, hub["owner"], "laptop", slots=2)
-    assert beat_as_0_9_0(client, worker) == {"drain": False, "runs": []}
+    # the settings the hub holds (schema 0026) come as one more key, which its daemon leaves alone
+    settings = {"slots": 2, "name": "laptop", "labels": []}
+    assert beat_as_0_9_0(client, worker) == {"drain": False, "runs": [], "settings": settings}
     w = tables.workers
     kept = sql(hub_db, select(w.c.agent_version, w.c.run_kinds).where(w.c.id == worker["id"]))
     assert kept == [("0.9.0", V0_9_0_RUN_KINDS)]
