@@ -222,6 +222,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Secrets | `LockKeyhole` |
 | Accounts, the agent's accounts and their rotation | `UserRoundCog` |
 | Add Claude account; Renew token; a token that ends within 30 days | `UserRoundPlus`; `RefreshCw`; `CalendarClock` |
+| The usage limits of an account | `Gauge` |
 | Knowledge graph | `Network` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
@@ -347,7 +348,13 @@ Shared pieces built on them:
   a chevron, and the up-down chevron only under the pointer or focus (a 44 px target under 768 px). Columns listed in
   `columnClassNames` hide on narrow screens. The admin lists paged by the API keep their filters as a form
   (`FilterBar`, submitted with Filter so a screen reader moving through a select does not reload the list), drawn as
-  the toolbar: labels in `caption` over 32 px fields.
+  the toolbar: labels in `caption` over 32 px fields. A table given `detail` (what a row shows under its cells, such
+  as an account's usage limits) renders each row as a group of its own, a `tbody` (`data-row-group`) holding the row
+  and, when `detail` gives something for it, a second row (`data-row-detail`) whose one cell spans every column: the
+  two hover together (`accent`), the row's actions show while either is hovered, and a hairline parts the group from
+  the next. The table's scroll region is then a size container (`globals.css`), so the detail's content is as wide
+  as the region (`100cqw`) and sticks to its left edge: a table wider than a phone scrolls sideways under it and the
+  detail stays in view.
 - `components/data/data-list.tsx`, the kit's DataTable under 768 px: a table given `mobile` (a row as a phone lists
   it, `DataListRow`) renders, below 768 px, a named list of its rows in the table's order instead, under the same test
   id with `data-layout="list"` (`"table"` otherwise). A row is at least 60 px (52 px `compact`): the title in
@@ -637,6 +644,21 @@ Shared pieces built on them:
   registered one in document order; the knowledge graph's query field too) unless focus is in a field that takes
   text or a dialog is open. Filters live in the URL and change it through `window.history.replaceState`, which
   Next.js syncs with `useSearchParams` without rendering the page on the server again.
+- `components/data/meter.tsx`, the kit's Meter: how much of a whole is used, 0 to 100, as a `rounded-full` bar 8 px
+  high, a `border-control` edge on `surface-sunken` (the edge marks the whole in both themes), filled in `chart-1`,
+  `attention-solid` (`warning`) or `danger-solid` (`danger`); each fill keeps 3:1 on its ground in light and dark.
+  It is a `progressbar` (`aria-valuenow`, 0 to 100), named by `label` or by the element `labelledBy` names, with an
+  optional `aria-valuetext`. The caller writes the figure beside it, in `METER_TEXT[tone]` (`foreground`,
+  `attention`, `danger`), so the tone is never the only cue. It draws a measure, not a state: no pulse, no
+  transition. The Accounts page (`components/accounts/usage-limits.tsx`) uses it for each usage limit of an account,
+  in its row's detail: a line with `Gauge` and "Usage limits, reported 5 minutes ago" (with "Near its limit" or
+  "Limit reached" as a badge when no bar says so), then one window per limit the hub kept, side by side as wide as
+  the region allows (columns of at least 224 px) and stacked on a phone: the name ("Session (5 hours)", "Weekly, all
+  models", "Weekly, Opus") and the share used on one line, the meter, and when it resets in `caption` `fg-subtle`
+  ("Resets in 2 hr 51 min" within a day, "Resets Tue 7:00 AM" within a week, the date past that, "Reset ..." once
+  passed, when it reads 0%). From 80% the meter is `warning`, at 100% or at the limit the CLI rejected `danger`, and
+  that window's figure reads "Limit reached". A Claude account nothing reported for yet says "No usage reported yet"
+  in one quiet line instead of empty bars.
 - `components/data/segmented.tsx`: the kit's segmented control, for two or three ways to show the same thing (a
   plan's board or list, a diff unified or split, a memory rendered or raw). A labelled group of `aria-pressed`
   buttons on `surface-sunken` with 6 px corners, 24 px with 12 px text (44 px under 768 px); the pressed one sits on

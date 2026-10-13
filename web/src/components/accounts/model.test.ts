@@ -10,8 +10,6 @@ import {
   policyProblems,
   policyRows,
   renewalDue,
-  usagePercent,
-  usageResetsAt,
 } from "./model";
 import type { Account, AccountPolicy } from "./queries";
 
@@ -45,22 +43,6 @@ const POLICY: AccountPolicy = {
   max_failovers: 5,
   updated_at: "2026-10-12T08:00:00Z",
 };
-
-describe("an account's last usage", () => {
-  it("reads the highest share of a limit in whole percent, and none before any report", () => {
-    expect(usagePercent(null)).toBeNull();
-    expect(usagePercent({ status: "allowed" })).toBeNull();
-    expect(usagePercent({ status: "allowed_warning", utilization: 0.5, windows: { five_hour: { utilization: 0.854 } } })).toBe(85);
-    expect(usagePercent({ status: "rejected", utilization: 1.4 })).toBe(100);
-  });
-
-  it("resets at the usage's own time, else the latest of its windows'", () => {
-    expect(usageResetsAt({ status: "rejected", resets_at: "2026-10-13T10:00:00Z" })).toBe("2026-10-13T10:00:00Z");
-    const windows = { five_hour: { resets_at: "2026-10-13T10:00:00Z" }, seven_day: { resets_at: "2026-10-18T00:00:00Z" } };
-    expect(usageResetsAt({ status: "allowed", windows })).toBe("2026-10-18T00:00:00Z");
-    expect(usageResetsAt({ status: "allowed" })).toBeNull();
-  });
-});
 
 describe("the policies by project", () => {
   it("lists each project of the accounts and of the policies, the defaults where none is set", () => {
