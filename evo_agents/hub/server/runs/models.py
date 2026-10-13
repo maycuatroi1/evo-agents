@@ -388,7 +388,7 @@ class HeartbeatRequest(BaseModel):
         max_length=500,
         description='keyed <project>/<repo>: {"evo-agents/evo-agents": {"path": "/src/evo-agents", "branch": "main"}}',
     )
-    free_slots: int = Field(ge=0, le=8)
+    free_slots: int = Field(ge=0, le=runs.MAX_SLOTS)
     runs: list[Annotated[int, Field(ge=1, le=MAX_ID)]] = Field(
         default_factory=list, max_length=MAX_HEARTBEAT_RUNS, description="the runs the worker holds"
     )
@@ -455,9 +455,19 @@ class RunControl(BaseModel):
     decisions: int = Field(0, description="decisions of the run still open, waiting for the owner's answer")
 
 
+class WorkerSettings(BaseModel):
+    slots: int = Field(ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
+    name: str
+    labels: list[str]
+
+
 class HeartbeatAnswer(BaseModel):
     drain: bool = Field(description="claim no new run; finish the ones held")
     runs: list[RunControl]
+    settings: WorkerSettings = Field(
+        description="the worker's settings as the hub holds them, which its owner may change (PATCH "
+        "/v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none"
+    )
 
 
 class VerifyResult(BaseModel):
