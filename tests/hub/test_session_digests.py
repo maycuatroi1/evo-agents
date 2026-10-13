@@ -246,6 +246,33 @@ def test_a_digest_of_a_client_that_did_not_count_the_context_reads_back_null(hub
     assert (digest["peak_context_tokens"], digest["compactions"], digest["tool_result_chars"]) == (None, None, None)
 
 
+def test_a_digest_keeps_its_skills_and_kinds_and_one_of_an_older_client_reads_them_null(hub):
+    from tests.hub.test_digest import skill_session
+
+    body = a_digest(hub.tmp_path, skill_session())
+    assert put(hub, "owner", body).status_code == 200
+    digest = shown(hub, "reader").json()["digest"]
+    for key in ("skills", "bash_kinds", "bash_compound", "turns", "interrupts"):
+        assert digest[key] == body[key], key
+    assert digest["skills"][0]["skill"] == "execute-plan" and digest["skills"][0]["typed"] == 1
+
+    added = ("skills", "bash_kinds", "bash_compound", "turns", "interrupts")
+    older = {key: value for key, value in body.items() if key not in added}  # the evo-hub plugin before them
+    assert put(hub, "owner", older).status_code == 200
+    digest = shown(hub, "reader").json()["digest"]
+    assert [digest[key] for key in added] == [None] * len(added)
+
+    skill = body["skills"][0]
+    for broken in (
+        {**body, "skills": [{**skill, "skill": ""}]},
+        {**body, "skills": [{**skill, "calls": -1}]},
+        {**body, "skills": [{**skill, "skill": f"s{n}"} for n in range(101)]},
+        {**body, "bash_kinds": [{"program": "git", "usage_errors": 1}]},
+        {**body, "bash_compound": {"calls": 1, "errors": -1}},
+    ):
+        assert put(hub, "owner", broken).status_code == 422
+
+
 def test_a_worker_token_cannot_push_a_digest(hub):
     from tests.hub.test_runs import add_worker
 

@@ -823,14 +823,17 @@ worker's spool, are added in again, and `hub.prune_run_events` writes the figure
 deletes its events, so they stay when the log goes. The name a call counts under, `gen_ai.tool.name` as
 OpenTelemetry's GenAI conventions call it, is its title for Claude Code, which is the tool's name (`Bash`, `Read`,
 `mcp__server__tool`); Codex and opencode title a call by what it does, so for them it is the call's kind (`execute`,
-`edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool.
+`edit`, `read`, `search`, `fetch`, `think`), and the title for a call of kind `other`, an MCP tool. A call of
+Claude Code's Skill tool also names the skill it loaded (`rawInput.skill`): the row of the Skill tool keeps per skill
+its calls and the calls that failed (`run_tool_stats.skills`, schema 0026; none for a run that ended before it).
 
 `GET .../runs/{id}/tool-stats` answers a run's `runtime`, `state`, `finished_at` and `tools`, each with
-`gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), to whoever
-may read the run. `GET /v1/projects/{p}/tool-stats` adds them up per tool and runtime, with the `runs` that called
-each, over the runs of the plans the caller may read that ended on the last `days` UTC days, today included (1 to
-90, 7 by default), filtered by `plan_id` and `runtime`; `runs` there counts every run that ended in those days. The
-MCP tool `run_tool_stats` answers both, with `run_id` for one run.
+`gen_ai.tool.name`, `calls`, `errors` and `duration_ms`, the most called first (none before the run ends), and
+`skills`, each with `skill`, `calls` and `errors`, to whoever may read the run. `GET /v1/projects/{p}/tool-stats` adds
+them up per tool and runtime, with the `runs` that called each, and per skill with the `runs` that loaded it, over the
+runs of the plans the caller may read that ended on the last `days` UTC days, today included (1 to 90, 7 by default),
+filtered by `plan_id` and `runtime`; `runs` there counts every run that ended in those days. The MCP tool
+`run_tool_stats` answers both, with `run_id` for one run.
 
 ### Messages
 

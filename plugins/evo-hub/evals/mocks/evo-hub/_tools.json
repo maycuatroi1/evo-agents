@@ -477,7 +477,7 @@
     },
     {
       "name": "run_tool_stats",
-      "description": "What the tool calls of runs on workers came to, per tool (gen_ai.tool.name): calls, failed calls and the time they took, kept after the run logs are pruned. With run_id, that run of the project; without it, the runs that ended in the last days, per tool and runtime.",
+      "description": "What the tool calls of runs on workers came to, per tool (gen_ai.tool.name): calls, failed calls and the time they took, and the skills the Skill tool loaded, kept after the run logs are pruned. With run_id, that run of the project; without it, the runs that ended in the last days, per tool and runtime.",
       "inputSchema": {
         "type": "object",
         "properties": {

@@ -115,6 +115,34 @@ class ProgramCount(BaseModel):
     errors: Count
 
 
+class ProgramKinds(BaseModel):
+    program: Name
+    usage_errors: Count = Field(description="failures of a wrong call: a usage line, an unknown option or choice")
+    env_errors: Count = Field(description="failures the environment caused: the hub or the network, a timeout, a block")
+    other_errors: Count
+
+
+class CompoundBash(BaseModel):
+    calls: Count = Field(description="Bash commands that ran several programs")
+    errors: Count = Field(description="their failures whose output named none of their programs")
+    usage_errors: Count = 0
+    env_errors: Count = 0
+    other_errors: Count = 0
+
+
+class SkillCount(BaseModel):
+    skill: Name = Field(description="the skill, as the Skill tool or the person's /name named it")
+    calls: Count = Field(description="loads: through the Skill tool, and typed by the person")
+    typed: Count = Field(description="loads the person typed as /name (Codex: named with $name)")
+    failed: Count = Field(0, description="calls of the Skill tool that answered an error")
+    bash: Count = Field(0, description="Bash commands from each load to the person's next turn")
+    usage_errors: Count = 0
+    env_errors: Count = 0
+    other_errors: Count = 0
+    interrupts: Count = Field(0, description="times the person interrupted the agent in those windows")
+    corrections: Count = Field(0, description="turns that closed a window and read as a correction of the agent")
+
+
 class CommandCount(BaseModel):
     command: str = Field(max_length=digest.COMMAND_CHARS)
     n: Count
@@ -173,6 +201,22 @@ class SessionDigest(BaseModel):
         description="per tool, the characters of its results the model read, the most first; null when a client that "
         "did not count them pushed the digest",
     )
+    bash_kinds: list[ProgramKinds] | None = Field(
+        None,
+        max_length=digest.MAX_PROGRAMS,
+        description="per program with failures, how many of each kind; null when an older client pushed the digest",
+    )
+    bash_compound: CompoundBash | None = Field(
+        None, description="Bash commands that ran several programs; null when a client that did not count them pushed"
+    )
+    skills: list[SkillCount] | None = Field(
+        None,
+        max_length=digest.MAX_SKILLS,
+        description="per skill loaded, its loads and the friction after them, the most loaded first; null when a "
+        "client that did not count them pushed the digest",
+    )
+    interrupts: Count | None = Field(None, description="times the person interrupted the agent")
+    turns: Count | None = Field(None, description="turns of the person, the commands they typed among them")
 
 
 class DigestSummary(BaseModel):

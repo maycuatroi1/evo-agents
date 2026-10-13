@@ -1002,7 +1002,7 @@ schedules = Table(
     UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
 )
 
-# Session digests and the tool figures of runs (0013)
+# Session digests and the tool figures of runs (0013, and the skills of 0026)
 
 session_digests = Table(
     "session_digests",
@@ -1036,6 +1036,7 @@ run_tool_stats = Table(
     Column("calls", Integer, nullable=False),
     Column("errors", Integer, nullable=False),
     Column("duration_ms", BigInteger, nullable=False),
+    Column("skills", JSONB(none_as_null=True)),  # a Python None is SQL NULL, not JSON null
     ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="run_tool_stats_run_id_fkey"),
     PrimaryKeyConstraint("run_id", "tool_name", name="run_tool_stats_pkey"),
 )
@@ -1175,8 +1176,7 @@ telegram_links = Table(
     Index("telegram_links_user_idx", "user_id"),
 )
 
-# The Curator's changes: the plan an accepted proposal became, its pull request, its Judge and its merge; and the repos
-# whose ruleset the hub checked (0017)
+# The Curator's changes: an accepted proposal's plan, pull request, Judge and merge; repos with a checked ruleset (0017)
 
 curator_changes = Table(
     "curator_changes",

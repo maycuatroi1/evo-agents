@@ -219,3 +219,64 @@ def test_the_mcp_tool_run_tool_stats_answers_for_a_run_and_for_the_last_days(hub
     assert both["isError"] is True and "leave them out with run_id" in both["content"][0]["text"]
     hidden = call(hub, "public", {"run_id": run_id})
     assert hidden["isError"] is True and f"has no run {run_id}" in hidden["content"][0]["text"]
+
+
+def skill_events(start: datetime, first_seq: int = 1) -> list[dict]:
+    """Three calls of the Skill tool, as Claude Code's adapter sends them (the input as rawInput): execute-plan twice,
+    a skill that does not exist once, which fails."""
+    timeline = []
+    for n, skill, status in (
+        (1, "execute-plan", "completed"),
+        (2, "no-such-skill", "failed"),
+        (3, "execute-plan", "completed"),
+    ):
+        body = {
+            "toolCallId": f"s{n}",
+            "title": "Skill",
+            "kind": "other",
+            "status": "pending",
+            "rawInput": {"skill": skill},
+        }
+        timeline += [(n, "tool_call", body), (n + 0.5, "tool_call_update", {"toolCallId": f"s{n}", "status": status})]
+    return [
+        {"seq": seq, "at": (start + timedelta(seconds=offset)).isoformat(), "kind": kind, "body": body}
+        for seq, (offset, kind, body) in enumerate(timeline, start=first_seq)
+    ]
+
+
+def test_tool_stats_record_the_skills_the_skill_tool_of_a_run_loaded_and_keep_them_after_pruning(hub):
+    run_id = started_run(hub)
+    start = datetime.now(UTC) - timedelta(hours=1)
+    send(hub, run_id, tool_events(start) + skill_events(start, first_seq=9))
+    moved(hub.client, hub.worker, run_id, "failed", error="the tests fail")
+    loaded = [{"skill": "execute-plan", "calls": 2, "errors": 0}, {"skill": "no-such-skill", "calls": 1, "errors": 1}]
+    shown = per_run(hub, run_id)
+    assert shown["skills"] == loaded
+    assert {"gen_ai.tool.name": "Skill", "calls": 3, "errors": 1, "duration_ms": 1500} in shown["tools"]
+    assert of_project(hub)["skills"] == [{**item, "runs": 1} for item in loaded]
+    s = tables.run_tool_stats
+    stored = sql(hub.db, select(s.c.tool_name, s.c.skills).where(s.c.run_id == run_id).order_by(s.c.tool_name))
+    assert stored == [("Bash", None), ("Edit", None), ("Read", None), ("Skill", loaded)], "SQL NULL on the others"
+
+    text = call(hub, "reader", {"run_id": run_id})["content"][0]["text"]
+    assert "skill execute-plan: 2 loads, 0 failed" in text and "skill no-such-skill: 1 loads, 1 failed" in text
+
+    set_run(hub.db, run_id, finished_at=func.now() - timedelta(days=31))
+    prune(hub)
+    assert events_left(hub, run_id) == 0 and per_run(hub, run_id)["skills"] == loaded, "kept after the pruning"
+
+
+def test_tool_stats_migration_0026_goes_down_to_0025_and_up_again(hub):
+    from tests.hub.test_migrate import move_to
+
+    run_id = started_run(hub)
+    send(hub, run_id, skill_events(datetime.now(UTC) - timedelta(hours=1)))
+    moved(hub.client, hub.worker, run_id, "failed", error="the tests fail")
+    s = tables.run_tool_stats
+    move_to(hub.db, "0025", down=True)
+    assert sql(hub.db, select(func.count()).select_from(s.c.run_id.table)) == [(1,)], "the rows stay, without skills"
+    move_to(hub.db, "0026")
+    assert sql(hub.db, select(s.c.tool_name, s.c.skills)) == [("Skill", None)], "not counted again"
+    bad = s.update().values(skills={"execute-plan": 1})
+    with pytest.raises(Exception, match="run_tool_stats_skills_check"):
+        sql(hub.db, bad)

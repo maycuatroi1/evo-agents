@@ -513,7 +513,10 @@ roles, its GitHub App and the ruleset it needs, and Telegram. This section and t
 Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
 `curator.collect` counts the night's figures, without any model, from the session digests, the runs and their tool
 figures, the plans and the decisions of the last `review.days` of the charter (7 by default): the failures per tool
-and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
+and per program (each program with its `usage_errors` and `env_errors`), the skills (per skill its loads in sessions,
+typed with `/name` among them, and in runs, the friction after each load next to the baseline of every session, the
+interrupts and corrections, and what came of the runs that loaded it: done, the steps whose verify the worker ran again
+at `evo-agents worker step done`, failed and lost by cause), the failures that come from the environment by cause (a command the harness blocked, the hub
 answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
 one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
@@ -712,6 +715,20 @@ model, the tokens, the session's id and its directory. It also holds the largest
 (`peak_context_tokens`: its input, cache creation and cache read tokens), how many times the context was compacted
 (`compactions`, the `compact_boundary` lines of the transcript) and the characters of each tool's results
 (`tool_result_chars`); the hub keeps them, and `digest_show` returns them, null in a digest an older client pushed.
+A command that runs several programs (`a && b`, `a | b`, `a; b`) counts a call for each, and a failure counts for a
+program only when the command ran it alone or a line of the output starts with its name and a colon
+(`evo-agents kg scrub: error: ...`); the other failures of such commands are counted apart (`bash_compound`), so
+`evo-agents kg scrub --help; echo ======`, which zsh failed, is not a failure of evo-agents. `bash_kinds` splits each
+program's failures by kind: `usage_errors` (a wrong call: a usage line, an unrecognized argument, an invalid choice, or
+evo-agents' exit status 2), `env_errors` (the environment: the hub answering 5xx, the network, a timeout, a command the
+harness blocked, or evo-agents' 69 and 75) and `other_errors`. `skills` counts each skill the session loaded, through
+the Skill tool (its input's `skill`) or typed by the person as `/name` (the transcript's
+`<command-name>/name</command-name>`, which fires no Skill call and no PreToolUse hook; Claude Code's own commands,
+`/compact`, `/clear`, `/model` and the like, are not skills), and in the window from each load to the person's next
+turn the Bash commands, their failures by kind, the person's interrupts (`[Request interrupted by user`) and whether
+the turn that closed it corrected the agent (`evo_agents/hub/friction.py`). `turns` and `interrupts` are the session's.
+These fields are null in a digest an older evo-hub plugin pushed; the hub takes such a digest as before and does not
+count stored digests again.
 Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
@@ -761,7 +778,9 @@ usage comes from the running `total_token_usage` (the cached part moved to `cach
 commands, edits and errors from the normalized `item_completed` item stream (shell runs, MCP calls, file changes and web
 searches), and `compactions` from the `ContextCompaction` items. The `js`/node_repl and agent-spawning tools that the
 item stream does not normalize are not counted, and `files_read` is 0 since Codex reads files through the shell, which
-the commands already hold.
+the commands already hold. A Codex digest counts a skill only when the person named it (`$name`), which the rollout
+marks with a message of the person that starts with `<skill>` and names it; a skill the model reads on its own with
+`cat .../SKILL.md` leaves no such mark and is not counted. Its interrupts are the `turn_aborted` events.
 
 What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
 source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in
