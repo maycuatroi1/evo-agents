@@ -66,7 +66,7 @@ function AccountItem({ taken }: { taken: RunAccount }) {
           {t("failovers", { count: taken.failovers })}
         </Badge>
       </div>
-      <p className="text-xs text-muted-foreground">
+      <p className="text-xs text-pretty text-muted-foreground [overflow-wrap:anywhere]">
         <span className="font-mono">{taken.env_var}</span> · {t.rich("chosen", { time: () => <When at={taken.chosen_at} /> })}
       </p>
       {taken.events.length > 0 ? (
