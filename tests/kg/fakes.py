@@ -39,6 +39,8 @@ def run(ctx):
         item = make_item(sid, raw["key"], raw["text"], raw["rev"], raw.get("rev_time", "2026-10-01T00:00:00Z"))
         if raw.get("label"):  # the item's own label, which raises the source's
             item["label"] = raw["label"]
+        if raw.get("path"):  # the file the item is, as a file connector gives it
+            item["props"] = {"path": raw["path"]}
         item = finalize_item(item)
         if raw.get("corrupt"):
             item["hash"] = "sha256:" + "0" * 64

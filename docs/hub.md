@@ -791,11 +791,15 @@ runs pushed before it did keep them on the hub, in their source blobs and in the
 finds them with `evo-agents hub kg scrub` (every project, or `--project demo`). It reads each built graph and source
 blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000 objects and 256 MiB a
 page), with the connector's patterns, and lists those holding a secret by hash, kind, size and the kinds of secret,
-never a value. A graph is read from the api's cache when it is there. A source blob is read as a document, since the
-hub does not know its path: a bare value after `=` counts as a literal. Run logs hold references only and are not
-read. Each object found has a state. `newest` is the graph the `kg_*` tools read, and `live` a source blob that a run
-still in use refers to: a run waiting for its commit, the newest full run of its source (a complete listing and an
-ok end), or a run after that. Anything else is `old`. Counting changes nothing.
+never a value. A graph is read from the api's cache when it is there. A source blob is read as the file the items of
+the project's run logs say it is (their `props.path`), as `evo-agents kg scrub` reads it on a machine: in code a bare
+value after `=` is an expression, in a config file or a document a literal. A blob no item names with a path is read
+as a document. The first page that meets a source blob that may hold a secret reads every run log of the project for
+those paths, so it takes longer; the api keeps them, and reads only the logs of new runs after that. Run logs hold
+references only and are not themselves scanned. Each object found has a state. `newest` is the graph the `kg_*`
+tools read, and `live` a source blob that a run still in use refers to: a run waiting for its commit, the newest full
+run of its source (a complete listing and an ok end), or a run after that. Anything else is `old`. Counting changes
+nothing.
 
 `--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer), then has the hub
 delete the old objects (`POST /v1/admin/kg/scrub/purge`, at most 1000 hashes a request). The hub reads each one again
