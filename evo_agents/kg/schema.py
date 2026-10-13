@@ -43,6 +43,8 @@ HUB_RELATIONS = {
     "member_of": ("Symbol", "Symbol"),
     "imports": ("File", "File"),
     "calls": ("Symbol", "Symbol"),
+    "inherits": ("Symbol", "Symbol"),  # a class to a class or interface it extends, implements or mixes in
+    "overrides": ("Symbol", "Symbol"),  # a method to the method of the same name up its class's chain
     "mentions": ("*", "*"),
     "implements": ("*", "*"),
     "verifies": ("*", "*"),

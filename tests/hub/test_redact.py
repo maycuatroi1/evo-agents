@@ -113,3 +113,19 @@ def test_redact_patterns_are_compiled_once_and_cover_every_kind():
     sources = " ".join(pattern.pattern for pattern, _ in redaction.SECRET_PATTERNS)
     for word in ("sk-ant-", "AKIA", "xox", "AIza", "Basic", "TOKEN"):
         assert word in sources, word
+
+
+def test_redact_shares_its_key_patterns_with_the_knowledge_graph():
+    """The hub and the git connector of the knowledge graph read the same key formats from a module outside
+    evo_agents.hub (evo_agents.secret_patterns), which a core install of the graph imports."""
+    from evo_agents import secret_patterns
+    from evo_agents.hub import log
+
+    digest = {pattern for pattern, _ in redaction.SECRET_PATTERNS}
+    logs = {pattern for pattern, _ in log._PATTERNS}
+    graph = dict(secret_patterns.PROVIDER_KEYS)
+    for kind in ("anthropic_key", "openai_key", "aws_key_id", "slack_token", "google_api_key"):
+        assert graph[kind] in digest, kind
+    for kind in ("github_token", "hub_token"):
+        assert graph[kind] in logs, kind
+    assert secret_patterns.URI_PASSWORD in logs

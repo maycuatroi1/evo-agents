@@ -7,12 +7,15 @@ OpenLineage RunEvent, and stable: keys keep their meaning, and a key that does n
 shape version::
 
     sync   v, event="sync", run_id, project, source, status, started_at, finished_at, trigger, evo_agents,
-           connector, connector_version, items, tombstones, removals, rejected, errors, issues, held
+           connector, connector_version, items, tombstones, removals, rejected, errors, issues, held, redactions
     build  v, event="build", build_id, project, status, started_at, finished_at, trigger, evo_agents,
            content_hash, items, units, nodes, edges, errors, issues, verified, rebuilt_from, exception
 
 ``status`` is ok or failed. ``trigger`` is schedule when EVO_KG_TRIGGER=schedule, which the LaunchAgent sets,
 and manual otherwise. ``errors`` and ``issues`` are counts; ``held`` counts the removals a guard held back.
+``redactions`` maps the id of each item the connector redacted secrets from (the git connector does,
+``evo_agents.kg.redact``) to the number of each kind it replaced, ``{"repo:file:compose.yml": {"password": 2}}``,
+and is empty when it replaced none: the only place a line names an item, and never with a value.
 A build that failed before writing has a null build_id and content_hash; one that raised names the
 exception type in ``exception``; ``verified`` is null unless the build was verified. Appending never fails
 the run it records: an OSError becomes a warning on stderr.
@@ -91,6 +94,7 @@ def record_sync(
             "errors": result.errors,
             "issues": len(result.issues),
             "held": sum(h["count"] for h in result.held),
+            "redactions": result.redactions,
         },
     )
 

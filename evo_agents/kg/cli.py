@@ -29,6 +29,9 @@ def _print_runs(results) -> None:
             f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
             f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
         )
+        if r.redactions:
+            redacted = sum(sum(kinds.values()) for kinds in r.redactions.values())
+            print(f"     redacted: {redacted} secret(s) in {len(r.redactions)} item(s), counted in audit.jsonl")
         for h in r.held:
             print(f"     held: {h['count']} removal(s) in {h['scope']}: {h['reason']}")
             print("           review, then run: evo-agents kg sync --accept-removals --source " + r.source)
@@ -425,6 +428,7 @@ def register(sub) -> None:
     pre_search.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
     pre_search.set_defaults(func=cmd_hook_pre_search)
 
-    from evo_agents.kg import cli_graph
+    from evo_agents.kg import cli_graph, cli_scrub
 
     cli_graph.register(ksub, with_project)
+    cli_scrub.register(ksub)
