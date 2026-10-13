@@ -18,8 +18,11 @@ What is read, and what a purge does with it:
   tombstones is the merged state's record, or while its run is still being written. A purge deletes each log not in
   use that refers to a blob it deletes, and rewrites each finished log in use that refers to a kept one, under the
   same name: of its item and tombstone records it keeps those the merged state holds, and every other line as it was.
-  No log left then names a blob that is gone, and replaying the logs still gives the merged state: no record removed
-  won it. A rewritten log has the format every version reads. ``hub kg push`` asks the hub which runs it holds by run
+  A record is the one the merged state holds when its full order key is the one ``corpus.sqlite`` holds, the epoch
+  its run's header names first (``evo_agents.kg.corpus.order_key``), so a record of a run that a change of its
+  source's ref superseded counts as lost, whatever its revision time. No log left then names a blob that is gone, and
+  replaying the logs still gives the merged state: no record removed won it, and the run lines that carry the epochs
+  stay. A rewritten log has the format every version reads. ``hub kg push`` asks the hub which runs it holds by run
   id and never sends a run it holds again, so a rewritten log only leaves the machine for a run the hub lacks. The one
   run it cannot mend is a run the hub holds as pending (an earlier push stopped before its commit): its log on the hub
   names the blobs a purge deleted, and the hub refuses another log for it. A blob a log still being written refers
@@ -58,7 +61,7 @@ from pathlib import Path
 
 from evo_agents import __version__, filelock
 from evo_agents.kg import audit
-from evo_agents.kg.corpus import Corpus, order_key
+from evo_agents.kg.corpus import Corpus, order_key, run_epoch
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.redact import redact_file
 from evo_agents.secret_patterns import PROVIDER_KEYS
@@ -321,7 +324,11 @@ def project_dirs(home: Path) -> list[tuple[str, Path]]:
     return found
 
 
-Key = tuple[str, str, str, str]  # the order key of the record the merged state holds (evo_agents.kg.corpus.order_key)
+# The order key of the record the merged state holds (evo_agents.kg.corpus.order_key): epoch, revision time, revision,
+# run id, tie.
+Key = tuple[str, str, str, str, str]
+RUN = 3  # the index of the run id in a Key
+NO_KEY: Key = ("", "", "", "", "")
 
 
 @dataclass
@@ -346,7 +353,10 @@ def _winners(root: Path) -> tuple[dict[str, Key], set[str]]:
         return winners, live
     db = sqlite3.connect(f"{path.resolve().as_uri()}?mode=ro", uri=True)
     try:
-        query = "SELECT item_id, deleted, k_time, k_rev, k_run, k_tie, record FROM items"
+        columns = {row[1] for row in db.execute("PRAGMA table_info(items)")}
+        # A corpus no sync has opened since epochs came keeps the empty epoch of its records, as Corpus would add it.
+        epoch = "k_epoch" if "k_epoch" in columns else "''"
+        query = f"SELECT item_id, deleted, {epoch}, k_time, k_rev, k_run, k_tie, record FROM items"
         for item_id, deleted, *key, record in db.execute(query):
             winners[item_id] = tuple(key)
             if not deleted:
@@ -356,10 +366,11 @@ def _winners(root: Path) -> tuple[dict[str, Key], set[str]]:
     return winners, live
 
 
-def won(record: dict, run_id: str | None, winners: dict[str, Key]) -> bool:
-    """Whether the item or tombstone ``record`` of run ``run_id`` is the record the merged state holds for its id."""
+def won(record: dict, run_id: str | None, epoch: str, winners: dict[str, Key]) -> bool:
+    """Whether the item or tombstone ``record`` of run ``run_id``, whose header names ``epoch``, is the record the
+    merged state holds for its id: its full order key, the epoch first, is the one the state holds."""
     key = winners.get(record.get("id"))
-    return key is not None and run_id is not None and key[2] == run_id and order_key(record, run_id) == key
+    return key is not None and run_id is not None and key[RUN] == run_id and order_key(record, run_id, epoch) == key
 
 
 def _log_files(root: Path) -> list[Path]:
@@ -381,7 +392,7 @@ def _read_logs(root: Path, winners: dict[str, Key]) -> _Logs:
                 run_id = record.get("run_id")
             if kind not in ("item", "tombstone"):
                 continue
-            if run_id is not None and (winners.get(record.get("id")) or ("", "", ""))[2] == run_id:
+            if run_id is not None and winners.get(record.get("id"), NO_KEY)[RUN] == run_id:
                 in_use = True
             for ref in blob_refs(record) if kind == "item" else ():
                 refs.add(ref)
@@ -445,15 +456,16 @@ def _logs_to_rewrite(logs: _Logs, kept: set[str], winners: dict[str, Key]) -> li
     for path in logs.files:
         if not kept or path.name not in logs.in_use or path.suffix == ".jsonl":
             continue
-        run_id = None
+        run_id, epoch = None, ""
         with contextlib.closing(Corpus.read_log(path)) as records:
             for record in records:
                 kind = record.get("type")
                 if kind == "run":
-                    run_id = record.get("run_id")
-                elif kind == "item" and kept.intersection(blob_refs(record)) and not won(record, run_id, winners):
-                    found.append(path.name)
-                    break
+                    run_id, epoch = record.get("run_id"), run_epoch(record)
+                elif kind == "item" and kept.intersection(blob_refs(record)):
+                    if not won(record, run_id, epoch, winners):
+                        found.append(path.name)
+                        break
     return found
 
 
@@ -574,20 +586,22 @@ def compact(path: Path, *, fts: str | None = None) -> str | None:
 
 def rewrite_log(path: Path, winners: dict[str, Key], by_run: dict[str, set[str]]) -> int | None:
     """Rewrite the finished run log at ``path`` in place: of its item and tombstone records, keep those the merged
-    state holds (``winners``), and every other line as it was. The number of records it dropped; None, and the log
-    left as it was, when it does not hold every record of its run the merged state holds (``by_run``: item ids by the
-    run whose record won)."""
+    state holds (``winners``), and every other line as it was, the run line that names the epoch too. The number of
+    records it dropped; None, and the log left as it was, when it does not hold every record of its run the merged
+    state holds (``by_run``: item ids by the run whose record won)."""
     tmp = path.with_name(f".{path.name}.{os.getpid()}.tmp")
-    run_id, kept, dropped = None, set(), 0
+    run_id, epoch, kept, dropped = None, "", set(), 0
     try:
         with open(tmp, "wb") as raw:
             with io.TextIOWrapper(gzip.GzipFile(path.name, "wb", fileobj=raw), encoding="utf-8") as out:
                 for record in Corpus.read_log(path):
                     kind = record.get("type")
-                    if kind == "run" and run_id is None:
-                        run_id = record.get("run_id")
+                    if kind == "run":  # as Corpus.merge reads a log: the epoch of the latest run line
+                        epoch = run_epoch(record)
+                        if run_id is None:
+                            run_id = record.get("run_id")
                     if kind in ("item", "tombstone"):
-                        if not won(record, run_id, winners):
+                        if not won(record, run_id, epoch, winners):
                             dropped += 1
                             continue
                         kept.add(record["id"])
@@ -610,7 +624,7 @@ def _rewrite_logs(scan: ProjectScan) -> tuple[int, int]:
     winners, _ = _winners(scan.root)
     by_run: dict[str, set[str]] = {}
     for item_id, key in winners.items():
-        by_run.setdefault(key[2], set()).add(item_id)
+        by_run.setdefault(key[RUN], set()).add(item_id)
     rewritten = dropped = 0
     for name in scan.rewrite:
         path = scan.root / "log" / name

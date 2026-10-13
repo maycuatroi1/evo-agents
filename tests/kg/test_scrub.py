@@ -12,6 +12,7 @@ import gzip
 import hashlib
 import json
 import os
+import random
 import shutil
 import sqlite3
 import subprocess
@@ -24,7 +25,7 @@ from evo_agents.cli import main
 from evo_agents.kg import scrub as scrub_module
 from evo_agents.kg.build import build_project, memo_path
 from evo_agents.kg.connectors import git as git_connector
-from evo_agents.kg.corpus import Corpus
+from evo_agents.kg.corpus import BASE_EPOCH, Corpus
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.redact import redact_file
 from evo_agents.kg.scrub import (
@@ -42,9 +43,10 @@ from evo_agents.kg.scrub import (
     secrets_in_json,
 )
 from evo_agents.kg.serve import Session
-from evo_agents.kg.sync import sync_project
+from evo_agents.kg.sync import accept_removals, sync_project, sync_source
 from tests.kg.conftest import doc
 from tests.kg.projects import make_project
+from tests.kg.test_lineage import commit, git, git_project
 from tests.kg.test_redact import (
     COMPOSE,
     COMPOSE_PASSWORD,
@@ -363,6 +365,98 @@ def test_scrub_purge_compacts_a_run_log_held_in_use_by_its_winning_tombstone(fak
         {"type": "tombstone", "id": "docs:doc:e", "rev": "1", "rev_time": "2026-10-01T00:00:00Z", "derived": "listing"}
     ]
     assert_compacted(project, kept, state, content)
+
+
+def test_scrub_purge_drops_the_records_a_change_of_ref_superseded(tmp_path, kg_env, monkeypatch):
+    """A source moved to a ref whose commits are older: its next run starts a new epoch and supersedes what the old
+    ref gave, newer commit times and all. A removal the guard held keeps the old run in use, so its record of a file
+    read before redaction keeps that blob. The purge counts the superseded record as lost and drops it; the logs left,
+    whose run lines still name their epochs, replay in any order to the merged state."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    git(repo, "init", "-q", "-b", "main")
+    commit(repo, "2026-09-01T09:00:00Z", {"docs/guide.md": "# Guide\n", "docker-compose.yml": "services: {}\n"})
+    git(repo, "branch", "deploy")
+    commit(repo, "2026-10-01T09:00:00Z", {"docker-compose.yml": COMPOSE, "docs/main-only.md": "# Main only\n"})
+    guard = "    deletion: {max_removal_ratio: 0.1, min_scope: 0}\n"
+    with monkeypatch.context() as patched:
+        patched.setattr(git_connector, "redact_file", lambda text, path: (text, {}))
+        main_run = sync_source(git_project(tmp_path, kg_env, repo, "main", guard), "app")
+    assert main_run.ok and files_holding(kg_env / "proj")  # the control: the value is on disk
+    project = git_project(tmp_path, kg_env, repo, "deploy", guard)
+    switched = sync_source(project, "app")
+    assert switched.ok and switched.held and switched.removals == 0  # docs/main-only.md stays, from the main run
+
+    corpus = project.corpus()
+    compose = corpus.get("app:file:docker-compose.yml")
+    assert compose.run_id == switched.run_id and compose.record["rev_time"] < "2026-10-01"  # older, and it won
+    assert corpus.get("app:file:docs/main-only.md").run_id == main_run.run_id
+    content = build_project(project).content_hash
+    state, replayed = states(project)
+    assert state == replayed
+
+    first = Path(main_run.log)
+    found = scan_project(project.name, project.root)
+    kept = {f.sha256 for f in found.found(KEPT)}
+    assert {(f.state, tuple(f.items)) for f in found.blobs} == {(KEPT, ("app:file:docker-compose.yml",))}
+    assert found.rewrite == [first.name] and found.logs == []
+    with holding_sources(project.root):
+        deleted = purge(found)
+    assert (deleted["blobs"], deleted["logs"], deleted["rewritten"], deleted["dropped"]) == (1, 0, 1, 2)
+
+    entries = [record for record in records_of(first) if record["type"] in ("item", "tombstone")]
+    assert [record["id"] for record in entries] == ["app:file:docs/main-only.md"]
+    assert records_of(first)[0]["epoch"] == BASE_EPOCH
+    assert_compacted(project, kept, state, content)
+    corpus = Corpus(project.name, project.home)
+    try:
+        rng = random.Random(5)
+        for _ in range(4):
+            order = corpus.log_files() * 2
+            rng.shuffle(order)
+            assert corpus.state_digest(corpus.rebuild_state(order)) == state
+    finally:
+        corpus.close()
+
+    assert accept_removals(project, "app") == 1  # the held removal goes on from the rewritten log
+    assert states(project)[0] == states(project)[1]
+    assert project.corpus().get("app:file:docs/main-only.md").deleted
+
+
+def test_scrub_purge_reads_a_corpus_no_sync_opened_since_epochs(fake_project):
+    """A kg home an older version wrote: run lines without an epoch, and no k_epoch column, which a scan, reading the
+    corpus without writing it, does not add. Its records have the empty epoch, so the purge still finds the records
+    its runs won."""
+    project, fake = fake_project
+    fake.set(items=[doc("a", LEAKY, rev="1"), doc("b", rev="1")])
+    first = Path(sync_project(project)[0].log)
+    fake.set(items=[doc("a", VAULT, rev="2")], listing=False)
+    sync_project(project)
+    for path in (project.root / "log").glob("*.jsonl.gz"):
+        records = [{k: v for k, v in r.items() if k not in ("epoch", "lineage")} for r in records_of(path)]
+        path.write_bytes(gzip.compress("".join(json.dumps(r, sort_keys=True) + "\n" for r in records).encode()))
+    db = sqlite3.connect(project.root / "corpus.sqlite")
+    with db:
+        db.execute("ALTER TABLE items DROP COLUMN k_epoch")
+        db.execute("DROP TABLE lineages")
+    db.close()
+    content = build_project(project).content_hash
+    state, replayed = states(project)  # opening the corpus adds the column back, every record with the empty epoch
+    assert state == replayed
+    db = sqlite3.connect(project.root / "corpus.sqlite")
+    with db:
+        db.execute("ALTER TABLE items DROP COLUMN k_epoch")
+    db.close()
+
+    found = scan_project(project.name, project.root)
+    assert found.rewrite == [first.name] and len(found.found(KEPT)) == 1
+    with holding_sources(project.root):
+        deleted = purge(found)
+    assert (deleted["rewritten"], deleted["dropped"], found.warnings) == (1, 1, [])
+    db = sqlite3.connect(f"{(project.root / 'corpus.sqlite').as_uri()}?mode=ro", uri=True)
+    assert "k_epoch" not in {row[1] for row in db.execute("PRAGMA table_info(items)")}
+    db.close()
+    assert_compacted(project, {f.sha256 for f in found.found(KEPT)}, state, content)
 
 
 def test_scrub_keeps_a_kept_blob_a_log_still_being_written_names(fake_project, capsys):
