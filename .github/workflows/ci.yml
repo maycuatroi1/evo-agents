@@ -224,18 +224,19 @@ jobs:
       - name: API types match the API
         run: pnpm gen:api && git diff --exit-code -- src/lib/api/schema.d.ts
 
-  # Playwright (with axe) in four shards, each against a local hub on a Postgres service of its own (in memory, as the
+  # Playwright (with axe) in six shards of 2 workers each (4 workers saturated a runner: a knowledge graph page's axe
+  # test went from 14 s to over 30 s), each against a local hub on a Postgres service of its own (in memory, as the
   # test jobs') and a production build of its own, signing in through a fake GitHub. The specs seed what they read
   # under unique names, so a shard needs nothing from another. Every spec runs in Chromium; e2e/terminal.spec.ts runs
   # in Firefox too (playwright.config.ts).
   web-e2e:
-    name: web-e2e (${{ matrix.shard }}/4)
+    name: web-e2e (${{ matrix.shard }}/6)
     needs: changes
     if: needs.changes.outputs.web == 'true'
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -289,7 +290,7 @@ jobs:
           key: next-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ hashFiles('web/src/**') }}
           restore-keys: next-${{ hashFiles('web/pnpm-lock.yaml') }}-
       - run: pnpm exec playwright install --with-deps chromium firefox
-      - run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
+      - run: pnpm exec playwright test --shard=${{ matrix.shard }}/6
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
