@@ -75,6 +75,9 @@ here.
   else Claude Code's own choice. Claude Code has no command that lists its models; for the heartbeat, ``models``
   gives the aliases its ``--model`` help names (``'opus'``, ``'sonnet'`` and the like), and a run may name any model
   the CLI takes.
+- A turn that ends with an error that reads as the account's usage limit (``limit_of_text``) gives an outcome with
+  ``limit`` set, and its ``rate_limit_event`` messages reach the run's log raw: ``evo_agents.worker.runner.limits``
+  reports them and moves the run to another account.
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -96,6 +99,7 @@ import sys
 import tempfile
 import uuid
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub import author, curator, digest, runs
@@ -159,6 +163,10 @@ FOLLOW_UP_AFTER = 15.0
 TURN_GRACE = 5.0
 # The results of a session the run's budget stopped, and the cap each one names (Outcome.cap).
 CAP_RESULTS = {"error_max_budget_usd": "cost", "error_max_turns": "turns"}
+# The text of a turn that ended on the account's usage limit, as Claude Code words it: "Claude AI usage limit
+# reached|1791507000" (the reset as a unix time), "5-hour limit reached ∙ resets 3pm", "You've hit your limit".
+USAGE_LIMIT = re.compile(r"usage limit|hit your (?:usage )?limit|\blimit reached\b|out of extra usage", re.I)
+RESET_STAMP = re.compile(r"\|\s*(\d{9,11})\b")
 # The statuses of a task that has ended: task_notification says stopped, task_updated killed, for the same end.
 TERMINAL_TASK = frozenset({"completed", "failed", "stopped", "killed"})
 # The id of a background command in the text of its Bash result.
@@ -441,6 +449,26 @@ def _opens_turn(message) -> bool:
     return isinstance(message, sdk.SystemMessage) and message.subtype == "init"
 
 
+def unix_time(value) -> str | None:
+    """A unix time of the CLI as ISO 8601 in UTC; None for anything else."""
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or value <= 0:
+        return None
+    try:
+        return datetime.fromtimestamp(value, UTC).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return None
+
+
+def limit_of_text(text: str | None) -> dict | None:
+    """The limit an error of the agent's turn names, when it reads as the account's usage limit: ``{status:
+    rejected}``, with resets_at when the text carries the reset as a unix time; None otherwise."""
+    if not text or not USAGE_LIMIT.search(text):
+        return None
+    found = RESET_STAMP.search(text)
+    resets_at = unix_time(int(found[1])) if found else None
+    return {"status": "rejected", **({"resets_at": resets_at} if resets_at else {})}
+
+
 def _raw_of(message) -> dict:
     """A message of the SDK as the CLI wrote it, as far as the SDK keeps it."""
     data = getattr(message, "data", None)
@@ -672,7 +700,8 @@ class ClaudeCodeAdapter(QueueAdapter):
             return Outcome(False, cut(self._cap_error(cap, last)), usage, summary, cap=cap)
         if last.is_error or last.subtype != "success":
             detail = last.result or ", ".join(str(error) for error in last.errors or []) or last.stop_reason
-            return Outcome(False, cut(f"claude-code ended its turn with {last.subtype}: {detail}"), usage, summary)
+            error = cut(f"claude-code ended its turn with {last.subtype}: {detail}")
+            return Outcome(False, error, usage, summary, limit=limit_of_text(str(detail or "")))
         return Outcome(True, None, usage, summary)
 
     def _cap_error(self, cap: str, last) -> str:

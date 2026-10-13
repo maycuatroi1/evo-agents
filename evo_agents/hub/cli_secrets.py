@@ -1,4 +1,5 @@
-"""``evo-agents hub secret set|list|delete``: the owner's secrets on the hub (``docs/credentials.md``).
+"""``evo-agents hub secret set|list|delete`` and ``hub account``: the owner's secrets on the hub, and their env secrets
+as accounts (``docs/credentials.md``).
 
 ``set`` writes a secret whole, value included (PUT /v1/secrets/{name}), creating it or replacing the one of that name.
 The value never comes from the command line, where ``ps`` and the shell's history would see it: it is read from stdin
@@ -10,20 +11,37 @@ token on its expiry date.
 
 ``list`` prints the caller's own secrets without their values (GET /v1/secrets), and ``delete`` deletes one (DELETE
 /v1/secrets/{name}): its value and bindings go, and the leases of it still out are revoked. ``hub run credentials``,
-in ``run_cli``, lists the leases one run got of them. Standard library only, like the rest of the client.
+in ``run_cli``, lists the leases one run got of them.
+
+``hub account`` sees the caller's env secrets as accounts, one of which a run takes among several for the same
+variable. ``account list`` prints them, never a value (GET /v1/accounts); ``account set`` changes the weight or
+priority of one, ``account pause`` and ``account resume`` keep new runs off it or let them take it again (PATCH
+/v1/accounts/{name}). ``account policy PROJECT`` prints the caller's policy for a project (GET
+/v1/account-policies/{project}); with a flag it sets it, the flags given over the policy as it is now (PUT), and
+``--reset`` drops it, so the defaults hold again (DELETE). Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
 
+import argparse
 import getpass
 import re
 import sys
 from datetime import UTC, datetime
 from urllib.parse import quote
 
+from evo_agents.hub.accounts import (
+    MAX_COOLDOWN_SECONDS,
+    MAX_FAILOVERS,
+    MAX_PRIORITY,
+    MAX_WEIGHT,
+    MIN_COOLDOWN_SECONDS,
+    STRATEGIES,
+)
 from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
-from evo_agents.hub.contract import json_option, returns_array
+from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, SECRET_KINDS, SECRET_NAME, env_name_refusal
+from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -254,3 +272,282 @@ def register_secrets(hsub) -> None:
     )
     delete.add_argument("name", metavar="NAME")
     delete.set_defaults(func=cmd_delete)
+
+    register_accounts(hsub)
+
+
+# `hub account`: the env secrets as accounts (docs/credentials.md, section Accounts)
+
+
+# The keys of an account in `hub account list --json` and `set|pause|resume --json` (`evo-agents hub contract print`).
+ACCOUNT_KEYS = (
+    "name",
+    "env_var",
+    "projects",
+    "workers",
+    "weight",
+    "priority",
+    "paused_at",
+    "cooldown_until",
+    "cooldown_reason",
+    "last_leased_at",
+    "expires_at",
+    "state",
+    "last_usage",
+    "last_usage_at",
+    "runs_24h",
+    "runs_7d",
+    "cost_24h_usd",
+    "cost_7d_usd",
+    "held_by",
+)
+# The keys of a policy in `hub account policy --json`.
+POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
+POLICY_FLAGS = ("strategy", "cooldown_seconds", "failover", "max_failovers")
+
+
+def _account_path(name: str) -> str:
+    return f"/v1/accounts/{quote(name, safe='')}"
+
+
+def _policy_path(project: str) -> str:
+    return f"/v1/account-policies/{quote(project, safe='')}"
+
+
+BOUNDS = {
+    "weight": (0, MAX_WEIGHT, "--weight"),
+    "priority": (0, MAX_PRIORITY, "--priority"),
+    "cooldown_seconds": (MIN_COOLDOWN_SECONDS, MAX_COOLDOWN_SECONDS, "--cooldown"),
+    "max_failovers": (0, MAX_FAILOVERS, "--max-failovers"),
+}
+
+
+def _out_of_bounds(given: dict) -> str | None:
+    """Why a number of ``given`` is not one the hub takes; None when each is."""
+    for key, value in given.items():
+        if key in BOUNDS and not BOUNDS[key][0] <= value <= BOUNDS[key][1]:
+            low, high, flag = BOUNDS[key]
+            return f"{flag} is a whole number from {low} to {high}, not {value}"
+    return None
+
+
+def _account_line(account: dict) -> str:
+    return (
+        f"Account {account['name']} ({account['env_var']}): {account['state']}, weight {account['weight']}, "
+        f"priority {account['priority']}."
+    )
+
+
+def _change_account(args, body: dict) -> int:
+    if not SECRET_NAME.fullmatch(args.name):
+        return _usage_error(f"{args.name!r} is not a secret's name")
+    hub, _ = _signed_in()
+    account = hub.call("PATCH", _account_path(args.name), body)
+    if args.json:
+        _print_json(account)
+    else:
+        print(_account_line(account))
+    return 0
+
+
+@_client_command
+def cmd_account_list(args) -> int:
+    hub, _ = _signed_in()
+    found = hub.call("GET", "/v1/accounts")
+    if args.json:
+        _print_json(found)
+        return 0
+    if not found:
+        print("You keep no env secret on this hub; `evo-agents hub secret set --kind env` adds one.")
+        return 0
+    rows = [
+        (
+            a["name"],
+            a["env_var"],
+            a["state"],
+            a["weight"],
+            a["priority"],
+            _when(a["cooldown_until"]),
+            _usage_text(a["last_usage"]),
+            f"{a['runs_24h']}/{a['runs_7d']}",
+            money(a["cost_7d_usd"]),
+            " ".join(f"#{run['run_id']}" for run in a["held_by"]) or "-",
+            ", ".join(a["projects"]),
+            ", ".join(a["workers"]) or "any",
+        )
+        for a in found
+    ]
+    header = ("NAME", "VARIABLE", "STATE", "WEIGHT", "PRIORITY", "COOLS UNTIL", "USAGE", "RUNS 24H/7D", "COST 7D")
+    _table((*header, "HELD BY", "PROJECTS", "WORKERS"), rows)
+    return 0
+
+
+def _percent(share) -> str:
+    """A utilization the CLI gave, as a fraction (0.85) or a percent (85), as `` 85%``; empty for none."""
+    if not isinstance(share, int | float):
+        return ""
+    return f" {share * 100 if share <= 1 else share:.0f}%"
+
+
+def _usage_text(usage: dict | None) -> str:
+    """The last usage a run's CLI reported, short: ``five_hour 85% (allowed_warning)``; ``-`` for none."""
+    if not usage:
+        return "-"
+    return f"{usage.get('rate_limit_type') or 'usage'}{_percent(usage.get('utilization'))} ({usage['status']})"
+
+
+def _state_text(account: dict) -> str:
+    state = account["state"]
+    if state == "cooling":
+        return f"cooling until {_when(account['cooldown_until'])} UTC ({account['cooldown_reason'] or 'usage limit'})"
+    if state == "paused":
+        return f"paused since {_when(account['paused_at'])} UTC"
+    if state == "expired":
+        return f"expired at {_when(account['expires_at'])} UTC"
+    return "ready"
+
+
+@_client_command
+def cmd_account_show(args) -> int:
+    if not SECRET_NAME.fullmatch(args.name):
+        return _usage_error(f"{args.name!r} is not a secret's name")
+    hub, _ = _signed_in()
+    a = hub.call("GET", _account_path(args.name))
+    if args.json:
+        _print_json(a)
+        return 0
+    held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
+    usage = _usage_text(a["last_usage"])
+    reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
+    print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
+    print(f"  Projects: {', '.join(a['projects']) or '-'}; workers: {', '.join(a['workers']) or 'any of yours'}.")
+    print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {_when(a['last_leased_at'])} UTC.")
+    print(f"  Last usage: {usage}{reported}.")
+    print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
+    print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
+    print(f"  Held by: {held}.")
+    return 0
+
+
+@_client_command
+def cmd_account_set(args) -> int:
+    body = {key: getattr(args, key) for key in ("weight", "priority") if getattr(args, key) is not None}
+    if not body:
+        return _usage_error("give --weight, --priority or both")
+    if (refusal := _out_of_bounds(body)) is not None:
+        return _usage_error(refusal)
+    return _change_account(args, body)
+
+
+@_client_command
+def cmd_account_pause(args) -> int:
+    return _change_account(args, {"paused": True})
+
+
+@_client_command
+def cmd_account_resume(args) -> int:
+    return _change_account(args, {"paused": False})
+
+
+def _print_policy(policy: dict) -> None:
+    failover = f"on, at most {policy['max_failovers']} time(s)" if policy["failover"] else "off"
+    origin = f"set {_when(policy['updated_at'])} UTC" if policy["updated_at"] else "the defaults"
+    print(
+        f"Project {policy['project']} ({origin}): strategy {policy['strategy']}, cooldown "
+        f"{policy['cooldown_seconds']} s, failover {failover}."
+    )
+
+
+@_client_command
+def cmd_account_policy(args) -> int:
+    given = {key: getattr(args, key) for key in POLICY_FLAGS if getattr(args, key) is not None}
+    if args.reset and given:
+        return _usage_error("--reset drops the policy: give it alone")
+    if (refusal := _out_of_bounds(given)) is not None:
+        return _usage_error(refusal)
+    hub, _ = _signed_in()
+    path = _policy_path(args.project)
+    if args.reset:
+        hub.call("DELETE", path)
+        policy = hub.call("GET", path)
+    elif given:
+        now = hub.call("GET", path)
+        policy = hub.call("PUT", path, {**{key: now[key] for key in POLICY_FLAGS}, **given})
+    else:
+        policy = hub.call("GET", path)
+    if args.json:
+        _print_json(policy)
+    else:
+        _print_policy(policy)
+    return 0
+
+
+def _named(sub, command: str, help: str, func) -> argparse.ArgumentParser:
+    parser = sub.add_parser(command, help=help)
+    parser.add_argument("name", metavar="NAME", help="one of your env secrets")
+    json_option(parser, returns_object(*ACCOUNT_KEYS, schema="Account"))
+    parser.set_defaults(func=func)
+    return parser
+
+
+def register_accounts(hsub) -> None:
+    account = hsub.add_parser(
+        "account", help="your env secrets as accounts runs rotate among, and your policy for each project"
+    )
+    asub = account.add_subparsers(dest="account_command", required=True)
+
+    listed = asub.add_parser(
+        "list", help="your accounts: variable, state, weight, priority, usage, runs and cost, never the value"
+    )
+    json_option(listed, returns_array(*ACCOUNT_KEYS, schema="Account"))
+    listed.set_defaults(func=cmd_account_list)
+
+    _named(
+        asub,
+        "show",
+        "one account: state, last usage, runs and cost over 24 hours and 7 days, runs holding it",
+        cmd_account_show,
+    )
+    changed = _named(asub, "set", "change the weight or priority of an account", cmd_account_set)
+    changed.add_argument(
+        "--weight",
+        type=int,
+        metavar="N",
+        help=f"0 to {MAX_WEIGHT}: its share in a weighted-round-robin pool; 0 leaves the pool",
+    )
+    changed.add_argument(
+        "--priority",
+        type=int,
+        metavar="N",
+        help=f"0 to {MAX_PRIORITY}: the lower, the sooner a fill-first pool takes it",
+    )
+    _named(asub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_account_pause)
+    _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
+
+    policy = asub.add_parser(
+        "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"
+    )
+    policy.add_argument("project", metavar="PROJECT")
+    policy.add_argument("--strategy", choices=STRATEGIES, help="how a run picks among your accounts")
+    policy.add_argument(
+        "--cooldown",
+        dest="cooldown_seconds",
+        type=int,
+        metavar="SECONDS",
+        help="how long an account cools down after a usage limit that gave no reset time",
+    )
+    policy.add_argument(
+        "--failover",
+        action=argparse.BooleanOptionalAction,
+        default=None,
+        help="whether a run that hits a usage limit goes on with another account",
+    )
+    policy.add_argument(
+        "--max-failovers",
+        type=int,
+        metavar="N",
+        help=f"0 to {MAX_FAILOVERS}: at most how many times a run moves on",
+    )
+    policy.add_argument("--reset", action="store_true", help="drop your policy: the defaults hold again")
+    json_option(policy, returns_object(*POLICY_KEYS, schema="AccountPolicy"))
+    policy.set_defaults(func=cmd_account_policy)

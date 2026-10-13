@@ -33,6 +33,7 @@
     "globalSkills": "Skill dùng chung",
     "workers": "Worker",
     "secrets": "Secret",
+    "accounts": "Tài khoản",
     "runDiff": "Diff",
     "inbox": "Inbox",
     "monitor": "Monitor",
@@ -1833,6 +1834,144 @@
       "failed": "Không xoá được secret {name}"
     }
   },
+  "accounts": {
+    "title": "Tài khoản",
+    "count": "{count, plural, other {# tài khoản}}",
+    "caption": "Tài khoản của bạn",
+    "listSummary": "Các env secret của bạn mà các run lần lượt dùng cho cùng một biến. Chỉ mình bạn thấy, và không giá trị nào được hiển thị.",
+    "secrets": "Secret",
+    "columns": {
+      "account": "Tài khoản",
+      "state": "Trạng thái",
+      "projects": "Dự án",
+      "workers": "Worker",
+      "usage": "Mức dùng gần nhất",
+      "runs": "Run 24 giờ / 7 ngày",
+      "cost": "Chi phí 24 giờ / 7 ngày",
+      "heldBy": "Đang dùng bởi",
+      "actions": "Thao tác"
+    },
+    "anyWorker": "Mọi worker của bạn",
+    "state": {
+      "ready": "Sẵn sàng",
+      "cooling": "Đang nghỉ",
+      "paused": "Tạm dừng",
+      "expired": "Hết hạn"
+    },
+    "until": "đến <time></time>",
+    "rank": "trọng số {weight}, ưu tiên {priority}",
+    "usage": {
+      "none": "Chưa có báo cáo",
+      "percent": "Đã dùng {percent}%",
+      "status": {
+        "allowed": "Còn dùng được",
+        "allowed_warning": "Gần chạm giới hạn",
+        "rejected": "Đã chạm giới hạn"
+      },
+      "resets": "đặt lại <time></time>",
+      "reported": "Báo cáo lúc <time></time>"
+    },
+    "runsTitle": "{day, plural, other {# run}} trong 24 giờ, {week, plural, other {# run}} trong 7 ngày",
+    "costTitle": "Ước tính từ mức dùng của các run: {day} trong 24 giờ, {week} trong 7 ngày",
+    "notHeld": "Không run nào",
+    "heldLabel": "Mở run #{id} của {project}",
+    "edit": "Sửa",
+    "editLabel": "Sửa trọng số và ưu tiên của {name}",
+    "pause": "Tạm dừng",
+    "pauseLabel": "Tạm dừng tài khoản {name}",
+    "resume": "Tiếp tục",
+    "resumeLabel": "Cho tài khoản {name} hoạt động lại",
+    "paused": "Đã tạm dừng tài khoản {name}",
+    "pausedText": "Không run mới nào dùng nó; run đang giữ nó vẫn giữ.",
+    "resumed": "Tài khoản {name} hoạt động lại",
+    "resumedText": "Các run có thể dùng nó trở lại.",
+    "pauseFailed": "Không tạm dừng được {name}",
+    "resumeFailed": "Không cho {name} hoạt động lại được",
+    "empty": {
+      "title": "Chưa có tài khoản nào",
+      "description": "Một tài khoản là một env secret của bạn, chẳng hạn token của <code>claude setup-token</code> cho <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Thêm vài cái cho cùng một biến ở trang Secret, và các run sẽ lần lượt dùng chúng."
+    },
+    "errors": {
+      "forbidden": "Hub từ chối: một policy cần quyền writer trên dự án của nó.",
+      "notFound": "Nó không còn nữa, hoặc bạn không còn thấy nó. Danh sách đã được tải lại.",
+      "invalid": "Hub từ chối một giá trị ngoài giới hạn.",
+      "network": "Không kết nối được tới hub. Hãy thử lại sau giây lát.",
+      "server": "Hub không trả lời được. Hãy thử lại, và gửi kèm request id nếu lỗi còn tiếp diễn.",
+      "apiMessage": "Thông báo của API: {message}",
+      "requestId": "Mã request: {id}"
+    },
+    "form": {
+      "title": "Sửa tài khoản {name}",
+      "description": "Cách một nhóm tài khoản cùng biến chọn nó. Trọng số là phần của nó trong weighted round robin, 0 thì bỏ nó ra; ưu tiên càng thấp, fill first càng chọn nó sớm.",
+      "weight": "Trọng số",
+      "weightHint": "Từ 0 đến {max}.",
+      "priority": "Ưu tiên",
+      "priorityHint": "Từ 0 đến {max}, càng thấp càng sớm.",
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "cancel": "Huỷ",
+      "saved": "Đã đổi tài khoản {name}",
+      "savedText": "Run tiếp theo chọn tài khoản sẽ đọc thay đổi này.",
+      "failed": "Không đổi được {name}",
+      "problems": {
+        "whole": "Nhập một số nguyên.",
+        "range": "Nhập một số từ {min} đến {max}."
+      }
+    },
+    "policies": {
+      "title": "Xoay vòng theo dự án",
+      "description": "Cách các run của bạn trong mỗi dự án chọn giữa các tài khoản, và việc run làm khi tài khoản của nó chạm giới hạn. Dự án bạn chưa đặt gì sẽ dùng mặc định.",
+      "caption": "Policy xoay vòng của bạn theo dự án",
+      "columns": {
+        "project": "Dự án",
+        "strategy": "Chiến lược",
+        "cooldown": "Thời gian nghỉ mặc định",
+        "failover": "Failover",
+        "actions": "Thao tác"
+      },
+      "strategy": {
+        "round-robin": "Round robin",
+        "weighted-round-robin": "Weighted round robin",
+        "fill-first": "Fill first"
+      },
+      "strategyHint": {
+        "round-robin": "Lần lượt từng tài khoản.",
+        "weighted-round-robin": "Lần lượt, mỗi tài khoản theo trọng số của nó.",
+        "fill-first": "Dùng tài khoản ưu tiên thấp nhất tới khi chạm giới hạn, rồi tới cái tiếp theo."
+      },
+      "defaults": "Mặc định",
+      "custom": "Của bạn",
+      "minutes": "{minutes, plural, other {# phút}}",
+      "failoverOn": "Bật, {count, plural, other {tối đa # lần}}",
+      "failoverOff": "Tắt: run dừng lại",
+      "edit": "Sửa",
+      "editLabel": "Sửa policy cho {project}",
+      "reset": "Đặt lại",
+      "resetLabel": "Đặt policy cho {project} về mặc định",
+      "resetDone": "Đã đặt lại policy cho {project}",
+      "resetText": "Mặc định được áp dụng trở lại.",
+      "resetFailed": "Không đặt lại được policy cho {project}",
+      "empty": "Gắn một tài khoản vào một dự án để đặt cách các run của nó chọn tài khoản.",
+      "loadFailed": "Không đọc được policy của bạn."
+    },
+    "policyForm": {
+      "title": "Policy cho {project}",
+      "description": "Của riêng bạn: run của thành viên khác trong dự án này theo policy của họ.",
+      "strategy": "Chiến lược",
+      "cooldown": "Thời gian nghỉ mặc định, tính bằng phút",
+      "cooldownHint": "Một tài khoản nghỉ bao lâu sau khi chạm giới hạn mà không kèm thời điểm đặt lại: từ {min} đến {max}.",
+      "failover": "Failover",
+      "failoverHint": "Run chạm giới hạn sẽ tiếp tục trong session của nó với một tài khoản khác.",
+      "maxFailovers": "Số lần failover tối đa mỗi run",
+      "maxFailoversHint": "Từ 0 đến {max}.",
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "cancel": "Huỷ",
+      "saved": "Đã lưu policy cho {project}",
+      "savedText": "Các run được giao từ giờ sẽ theo policy này.",
+      "failed": "Không lưu được policy cho {project}"
+    }
+  },
   "runs": {
     "title": "Run",
     "metaTitle": "Run của {project}",
@@ -2546,6 +2685,24 @@
         "notRevoked": "chưa",
         "secrets": "Secret"
       },
+      "accounts": {
+        "title": "Tài khoản",
+        "link": "Tài khoản",
+        "failed": "Không đọc được các tài khoản của run này.",
+        "how": {
+          "manual": "Chọn tay",
+          "worker": "Gắn với worker",
+          "charter": "Do charter chỉ định",
+          "pool": "Từ nhóm tài khoản",
+          "cooling": "Tất cả đang nghỉ: cái sớm hết nghỉ nhất"
+        },
+        "gone": "một tài khoản đã xoá",
+        "failovers": "{count, plural, =0 {Chưa failover} other {# lần failover}}",
+        "chosen": "Nhận lúc <time></time>",
+        "failover": "<b>{account}</b> chạm giới hạn; run tiếp tục với <b>{to}</b>",
+        "stop": "<b>{account}</b> chạm giới hạn; không còn tài khoản nào, nên run dừng lại",
+        "cooling": "Nó nghỉ đến <time></time>."
+      },
       "actions": {
         "diff": "Xem diff",
         "diffstat": "thêm {insertions} dòng, bớt {deletions} dòng",
@@ -2623,7 +2780,15 @@
       },
       "reviewSub": "Lần review ban đêm của <curatorLink>Curator</curatorLink> cho dự án: chỉ đọc, không đổi gì. <proposalsLink>Các đề xuất của nó</proposalsLink>",
       "authorPlanSub": "Plan <planLink>{plan}</planLink>: {title}. Viết từ yêu cầu của bạn trong chat với agent.",
-      "authorNewSub": "Một plan mới: {title}. Viết từ yêu cầu trong chat với agent."
+      "authorNewSub": "Một plan mới: {title}. Viết từ yêu cầu trong chat với agent.",
+      "rerun": {
+        "title": "Chạy lại run #{id}?",
+        "description": "Chạy lại run với cùng runtime, model, chế độ, cách duyệt, thời gian tối đa và worker, theo bản hiện tại của plan.",
+        "confirm": "Chạy lại",
+        "pending": "Đang chạy lại…",
+        "cancel": "Thôi",
+        "hubSays": "Hub báo: {message}"
+      }
     },
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
@@ -2772,6 +2937,18 @@
           "toastAfterTurn": "Run kết thúc ở trạng thái done sau lượt của agent."
         }
       }
+    },
+    "account": {
+      "label": "Tài khoản",
+      "byRules": "Tự động, theo quy tắc của bạn",
+      "option": "{name} ({variable})",
+      "onWorkers": "{name} ({variable}), chỉ trên {workers}",
+      "paused": "{name} ({variable}), đang tạm dừng",
+      "keep": "Như run #{id}: tài khoản đã chọn tay cho nó, nếu có",
+      "hint": "Run dùng tài khoản bạn chọn và giữ nó, không chuyển sang tài khoản khác. Tự động để quy tắc của bạn cho dự án chọn khi một worker nhận run.",
+      "none": "Chưa tài khoản nào của bạn được gắn với dự án {project}, nên quy tắc chọn trong credential sẵn có của worker. Gắn một tài khoản ở trang Secret.",
+      "rerunHint": "Mặc định, lần chạy lại dùng tài khoản đã chọn tay cho run #{id}, hoặc theo quy tắc nếu không chọn. Tài khoản chọn tay được giữ, không chuyển sang tài khoản khác.",
+      "expired": "{name} ({variable}), đã hết hạn"
     }
   },
   "insights": {

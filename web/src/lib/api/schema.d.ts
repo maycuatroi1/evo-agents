@@ -1543,7 +1543,8 @@ export interface paths {
         /**
          * Rerun
          * @description Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
-         *     the plan's current revision.
+         *     the plan's current revision, and the account picked by hand for it; the body, which may be left out, picks
+         *     another account or asks the rules for one.
          */
         post: operations["rerun_v1_projects__project__runs__run_id__rerun_post"];
         delete?: never;
@@ -2764,10 +2765,346 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Accounts
+         * @description The caller's own env secrets as accounts, by variable and name, without their values, with their figures
+         *     (``account_views``); a hub admin's own too.
+         */
+        get: operations["list_accounts_v1_accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/accounts/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Account
+         * @description The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.
+         */
+        get: operations["get_account_v1_accounts__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change Account
+         * @description Change the weight or priority of the caller's account ``name``, or pause or resume it.
+         */
+        patch: operations["change_account_v1_accounts__name__patch"];
+        trace?: never;
+    };
+    "/v1/account-policies": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Account Policies
+         * @description The caller's own policies, by project; a project without one has the defaults.
+         */
+        get: operations["list_account_policies_v1_account_policies_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/account-policies/{project}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Account Policy
+         * @description The caller's policy for ``project``, the defaults when they set none.
+         */
+        get: operations["get_account_policy_v1_account_policies__project__get"];
+        /**
+         * Put Account Policy
+         * @description Set the caller's policy for ``project`` whole; the writer role on it.
+         */
+        put: operations["put_account_policy_v1_account_policies__project__put"];
+        post?: never;
+        /**
+         * Delete Account Policy
+         * @description Drop the caller's policy for ``project``: the defaults hold again. 404 when they set none.
+         */
+        delete: operations["delete_account_policy_v1_account_policies__project__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/runs/{run_id}/accounts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Accounts
+         * @description The accounts run ``run_id`` took, by variable, and each usage limit it hit; for the member who dispatched it.
+         */
+        get: operations["run_accounts_v1_projects__project__runs__run_id__accounts_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/rate-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Rate Limit
+         * @description Keep the usage the CLI gave for the account of one of the run's leases; on a usage limit, cool the account
+         *     down and move the run to the next one when its owner's policy lets it, as the module says.
+         */
+        post: operations["report_rate_limit_v1_worker_runs__run_id__rate_limit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * Account
+         * @description One of the caller's env secrets as an account: everything but its value.
+         */
+        Account: {
+            /** Name */
+            name: string;
+            /**
+             * Env Var
+             * @description the variable it sets
+             */
+            env_var: string;
+            /**
+             * Projects
+             * @description the projects whose runs may take it
+             */
+            projects: string[];
+            /**
+             * Workers
+             * @description the workers it is bound to; empty for any worker of its owner
+             */
+            workers: string[];
+            /**
+             * Weight
+             * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
+             */
+            weight: number;
+            /**
+             * Priority
+             * @description 0 to 1000: the lower, the sooner a fill-first pool takes it
+             */
+            priority: number;
+            /**
+             * Paused At
+             * @description when its owner paused it; null while it may be taken
+             */
+            paused_at: string | null;
+            /**
+             * Cooldown Until
+             * @description until when it cools down after a usage limit
+             */
+            cooldown_until: string | null;
+            /**
+             * Cooldown Reason
+             * @description why it cools down
+             */
+            cooldown_reason: string | null;
+            /**
+             * Last Leased At
+             * @description when a run last took it
+             */
+            last_leased_at: string | null;
+            /** Expires At */
+            expires_at: string | null;
+            /**
+             * State
+             * @description ready, cooling, paused or expired, now
+             * @enum {string}
+             */
+            state: "ready" | "cooling" | "paused" | "expired";
+            /** @description what a run's CLI last said of its usage; null before any */
+            last_usage: components["schemas"]["AccountUsage"] | null;
+            /**
+             * Last Usage At
+             * @description when a run reported that usage
+             */
+            last_usage_at: string | null;
+            /**
+             * Runs 24H
+             * @description the runs that took it in the last 24 hours
+             */
+            runs_24h: number;
+            /**
+             * Runs 7D
+             * @description the runs that took it in the last 7 days
+             */
+            runs_7d: number;
+            /**
+             * Cost 24H Usd
+             * @description what those runs cost in the last 24 hours, in USD, from their usage
+             */
+            cost_24h_usd: number;
+            /**
+             * Cost 7D Usd
+             * @description what those runs cost in the last 7 days, in USD, an estimate
+             */
+            cost_7d_usd: number;
+            /**
+             * Held By
+             * @description the runs a worker holds now with it
+             */
+            held_by: components["schemas"]["HeldBy"][];
+        };
+        /** AccountChange */
+        AccountChange: {
+            /**
+             * Weight
+             * @description its share in a weighted pool; 0 leaves it
+             */
+            weight?: number | null;
+            /**
+             * Priority
+             * @description the lower, the sooner in a fill-first pool
+             */
+            priority?: number | null;
+            /**
+             * Paused
+             * @description true pauses it, so no new run takes it; false resumes it
+             */
+            paused?: boolean | null;
+        };
+        /** AccountPolicy */
+        AccountPolicy: {
+            /**
+             * Strategy
+             * @description how a run picks among the accounts
+             * @default round-robin
+             * @enum {string}
+             */
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            /**
+             * Cooldown Seconds
+             * @description how long an account cools down after a usage limit that gave no reset time
+             * @default 3600
+             */
+            cooldown_seconds: number;
+            /**
+             * Failover
+             * @description whether a run that hits a usage limit goes on with another account
+             * @default true
+             */
+            failover: boolean;
+            /**
+             * Max Failovers
+             * @description at most how many times a run moves on
+             * @default 3
+             */
+            max_failovers: number;
+            /** Project */
+            project: string;
+            /**
+             * Updated At
+             * @description when the caller set it; null for the defaults
+             */
+            updated_at: string | null;
+        };
+        /** AccountPolicyWrite */
+        AccountPolicyWrite: {
+            /**
+             * Strategy
+             * @description how a run picks among the accounts
+             * @default round-robin
+             * @enum {string}
+             */
+            strategy: "round-robin" | "weighted-round-robin" | "fill-first";
+            /**
+             * Cooldown Seconds
+             * @description how long an account cools down after a usage limit that gave no reset time
+             * @default 3600
+             */
+            cooldown_seconds: number;
+            /**
+             * Failover
+             * @description whether a run that hits a usage limit goes on with another account
+             * @default true
+             */
+            failover: boolean;
+            /**
+             * Max Failovers
+             * @description at most how many times a run moves on
+             * @default 3
+             */
+            max_failovers: number;
+        };
+        /**
+         * AccountUsage
+         * @description What the agent's CLI last said of an account's usage, in a rate_limit_event.
+         */
+        AccountUsage: {
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "allowed" | "allowed_warning" | "rejected";
+            /** Rate Limit Type */
+            rate_limit_type?: string | null;
+            /** Resets At */
+            resets_at?: string | null;
+            /** Utilization */
+            utilization?: number | null;
+            /** Windows */
+            windows?: {
+                [key: string]: components["schemas"]["AccountUsageWindow"];
+            } | null;
+        };
+        /** AccountUsageWindow */
+        AccountUsageWindow: {
+            /** Utilization */
+            utilization?: number | null;
+            /** Resets At */
+            resets_at?: string | null;
+        };
         /** ActiveRun */
         ActiveRun: {
             /** Id */
@@ -2949,6 +3286,11 @@ export interface components {
              * @enum {integer}
              */
             timeout_h: 1 | 2 | 4;
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             */
+            account?: string | null;
         };
         /** AuthoredPlan */
         AuthoredPlan: {
@@ -4068,6 +4410,11 @@ export interface components {
              * @description the model each run uses, as its runtime names it (opencode: provider/model); null: the runtime's own choice
              */
             model?: string | null;
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             */
+            account?: string | null;
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -4603,6 +4950,15 @@ export interface components {
              * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step. One that says none takes no such run. A feature this hub does not know is left out
              */
             features?: string[] | null;
+        };
+        /** HeldBy */
+        HeldBy: {
+            /** Run Id */
+            run_id: number;
+            /** Project */
+            project: string;
+            /** State */
+            state: string;
         };
         /** HiddenResult */
         HiddenResult: {
@@ -6144,6 +6500,11 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
+             */
+            account?: string | null;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -6635,6 +6996,76 @@ export interface components {
              */
             queued: boolean;
         };
+        /** RateLimitAnswer */
+        RateLimitAnswer: {
+            /**
+             * Action
+             * @description none: usage kept, go on; failover: ask for the run's leases again, the new account's value is in them, and go on in the same session; stop: end the run failed with cause rate_limit
+             * @enum {string}
+             */
+            action: "none" | "failover" | "stop";
+            /**
+             * Secret Id
+             * @description the account the run has now, by its secret's id
+             */
+            secret_id: number;
+            /**
+             * Failovers
+             * @description the times the run moved to another account
+             */
+            failovers: number;
+            /**
+             * Cooldown Until
+             * @description with rejected: until when the account cools
+             */
+            cooldown_until?: string | null;
+            /**
+             * Ready At
+             * @description with stop: when an account is ready first
+             */
+            ready_at?: string | null;
+            /**
+             * Reason
+             * @description with stop: why the run cannot move
+             */
+            reason?: string | null;
+        };
+        /** RateLimitReport */
+        RateLimitReport: {
+            /**
+             * Lease Id
+             * @description the lease of the env secret the agent ran with, one the run holds
+             */
+            lease_id: number;
+            /**
+             * Status
+             * @description what the CLI said: rejected when the account hit its usage limit, else its usage alone
+             * @enum {string}
+             */
+            status: "allowed" | "allowed_warning" | "rejected";
+            /**
+             * Rate Limit Type
+             * @description the limit, such as five_hour or seven_day
+             */
+            rate_limit_type?: string | null;
+            /**
+             * Resets At
+             * @description when the limit resets, when the CLI said
+             */
+            resets_at?: string | null;
+            /**
+             * Utilization
+             * @description the share of the limit used
+             */
+            utilization?: number | null;
+            /**
+             * Windows
+             * @description the usage of each window the CLI listed
+             */
+            windows?: {
+                [key: string]: components["schemas"]["UsageWindow"];
+            } | null;
+        };
         /** ReadRequest */
         ReadRequest: {
             /**
@@ -6819,6 +7250,23 @@ export interface components {
             repo: string;
             /** Path */
             path: string;
+        };
+        /**
+         * Rerun
+         * @description What a rerun may change of the run it reruns; no body keeps everything.
+         */
+        Rerun: {
+            /**
+             * Account
+             * @description one of the caller's env secrets bound to the project, by name: the rerun takes it, with no failover; null keeps the account picked by hand for the run rerun, if one was, else the rules pick
+             */
+            account?: string | null;
+            /**
+             * Account By Rule
+             * @description true: the rules of the caller's policy pick the account, not the one picked for the run
+             * @default false
+             */
+            account_by_rule: boolean;
         };
         /** Results */
         Results: {
@@ -7211,6 +7659,66 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+        };
+        /** RunAccount */
+        RunAccount: {
+            /** Env Var */
+            env_var: string;
+            /**
+             * Account
+             * @description the account the run has now, by name
+             */
+            account: string | null;
+            /**
+             * How
+             * @description picked by hand, bound to the worker, by the charter, the pool, cooling
+             * @enum {string}
+             */
+            how: "manual" | "worker" | "charter" | "pool" | "cooling";
+            /**
+             * Failovers
+             * @description the times the run moved to another account
+             */
+            failovers: number;
+            /**
+             * Chosen At
+             * Format: date-time
+             */
+            chosen_at: string;
+            /**
+             * Events
+             * @description each usage limit the run hit with it, oldest first
+             */
+            events: components["schemas"]["RunAccountEvent"][];
+        };
+        /** RunAccountEvent */
+        RunAccountEvent: {
+            /**
+             * At
+             * Format: date-time
+             */
+            at: string;
+            /**
+             * Action
+             * @description the run moved to another account, or it stopped
+             * @enum {string}
+             */
+            action: "failover" | "stop";
+            /**
+             * Account
+             * @description the account that hit its usage limit, by name
+             */
+            account: string | null;
+            /**
+             * To
+             * @description with failover: the account the run went on with
+             */
+            to: string | null;
+            /**
+             * Cooldown Until
+             * @description until when the account cools down
+             */
+            cooldown_until: string | null;
         };
         /** RunBlobCommit */
         RunBlobCommit: {
@@ -8969,6 +9477,13 @@ export interface components {
              * @description when the URLs stop working
              */
             expires_at: string;
+        };
+        /** UsageWindow */
+        UsageWindow: {
+            /** Utilization */
+            utilization?: number | null;
+            /** Resets At */
+            resets_at?: string | null;
         };
         /** UserGrant */
         UserGrant: {
@@ -14754,7 +15269,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["Rerun"] | null;
+            };
+        };
         responses: {
             /** @description Successful Response */
             201: {
@@ -18832,6 +19351,485 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["GivenBack"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_accounts_v1_accounts_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_account_v1_accounts__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's env secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    change_account_v1_accounts__name__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description one of the caller's env secrets */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountChange"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Account"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_account_policies_v1_account_policies_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPolicy"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    get_account_policy_v1_account_policies__project__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_account_policy_v1_account_policies__project__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AccountPolicyWrite"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AccountPolicy"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_account_policy_v1_account_policies__project__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_accounts_v1_projects__project__runs__run_id__accounts_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RunAccount"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_rate_limit_v1_worker_runs__run_id__rate_limit_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RateLimitReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RateLimitAnswer"];
                 };
             };
             /** @description Unauthorized */

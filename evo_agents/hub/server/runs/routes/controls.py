@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
-from evo_agents.hub.server.runs.models import REFUSALS, Run, RunId
+from evo_agents.hub.server.runs.models import REFUSALS, Rerun, Run, RunId
 from evo_agents.hub.server.runs.service.controls import approve_run, ask_control, cancel_run, rerun_run
 from evo_agents.hub.server.security import CurrentUser
 
@@ -41,7 +41,10 @@ async def approve(request: Request, project: ProjectName, run_id: RunId, user: C
 
 
 @router.post("/{project}/runs/{run_id}/rerun", status_code=201, response_model=Run, responses=REFUSALS)
-async def rerun(request: Request, project: ProjectName, run_id: RunId, user: CurrentUser) -> Run:
+async def rerun(
+    request: Request, project: ProjectName, run_id: RunId, user: CurrentUser, body: Rerun | None = None
+) -> Run:
     """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
-    the plan's current revision."""
-    return await rerun_run(request.app.state.engine, user, project, run_id)
+    the plan's current revision, and the account picked by hand for it; the body, which may be left out, picks
+    another account or asks the rules for one."""
+    return await rerun_run(request.app.state.engine, user, project, run_id, body)

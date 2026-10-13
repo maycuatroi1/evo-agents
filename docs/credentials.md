@@ -146,8 +146,8 @@ the plan's steps not done when it was dispatched) and their origins from `projec
 `normalize_origin` (`git@host:path` and `ssh://git@host[:port]/path` included). It then leases what the run's owner
 bound to the run's project, bound to no worker or to this one, and not past its `expires_at`:
 
-- each `env` secret, one per variable: a secret bound to this worker wins over one bound to any worker, then the
-  first by name;
+- one `env` secret per variable, the run's account for it (section "Accounts" below): with one secret per variable
+  and no policy, that secret, as in 0.13;
 - each `git` secret whose `url_prefix` covers one of those origins, the longest prefix for each origin;
 - a GitHub App token for the origins on github.com that no `git` secret covers and that the run's owner may push to
   on GitHub, one per installation: a lease of kind `git` named `github-app:<owner>` for `https://github.com/<owner>`,
@@ -183,6 +183,117 @@ lease's id, until it expires, so the hub can revoke it. Asked again, a run gets 
 `GITHUB_TOKEN_REFRESH_SECONDS` or more left, and new ones in new leases after that; the tokens they replace go on
 working until they expire, so a push that took one is not cut off. GitHub is asked between two transactions, never
 while the run's row is locked; when the run ended in between, the tokens just made are revoked and the answer is 404.
+
+## Accounts
+
+A member may keep several `env` secrets for the same variable bound to the same project, such as two subscriptions of
+the agent's runtime (`claude-a`, `claude-b`); each is an **account**, and a run gets one of them per variable
+(`evo_agents/hub/server/account_choice.py`, migration 0027). The hub picks it in the transaction that leases it, with
+the run's row locked and the accounts it weighs locked in the order of their ids, so two runs asking at once cannot
+take the same turn:
+
+1. the account the run took already: a run keeps its account on every ask for its leases and in every step, and a run
+   that resumes another takes the one that run took;
+2. else the accounts bound to this worker (for a run of the Curator: only those its charter lists in `env_secrets`),
+   then the others bound to the project, by the strategy of the owner's policy for the project:
+   - `round-robin` (the default): each run takes the account whose turn it is;
+   - `weighted-round-robin`: each account takes runs in proportion to its `weight`; weight 0 leaves the pool;
+   - `fill-first`: the lowest `priority` (then the name) while it is usable;
+   an account its owner paused, or one cooling down until `cooldown_until`, is skipped;
+3. when every account left cools down, the one whose cooldown ends first, and a `system` event of the run says so;
+   when every one is paused, none, and an event says that. An event names the account by its secret's id, never by
+   name or value.
+
+A member may also pick the account by hand when dispatching: `account` on the body of `POST .../runs`,
+`.../plan-runs` and `.../author-runs` (`--account NAME` on `evo-agents hub run dispatch|plan|author`, and the Account
+select of every dispatch form on the web) names one of their env secrets bound to the project. The hub checks it in the
+transaction that queues the run and records it in `run_accounts` with how `manual`, so step 1 above keeps it on every
+lease; an account picked by hand is never failed over to another one, and its rotation does not move. A name that is
+not an env secret of the dispatcher's is 404; one past its end, paused, not bound to the project, bound only to other
+workers, or bound to some workers while the run is not pinned to one of them, is 422 saying why, and nothing is queued.
+`POST .../runs/{id}/rerun` keeps the account picked by hand for the run it reruns, checked again the same way; its body
+(`--account NAME` or `--account-by-rule` on `hub run rerun`, the Rerun dialog on the web) names another one or asks the
+rules (`account_by_rule`). A body without `account` dispatches as before. Audit rows of the dispatch end with
+`account=secret:<id>`.
+
+When the agent of a headless run (a step run, a plan run or an author run of Claude Code) hits its account's usage
+limit, the worker says so: the CLI's `rate_limit_event` with status `rejected`, or a result whose error reads as a
+usage limit. It calls `POST /v1/worker/runs/{id}/rate-limit` with the lease of the account (`lease_id`), the
+`status`, the limit's `rate_limit_type`, the reset time (`resets_at`) when the CLI gave one, and the usage
+(`utilization`, `windows`); an event with status `allowed` or `allowed_warning` is reported the same way and only
+keeps the usage on the account (`accounts.last_usage`). On `rejected` the hub cools the account down until the reset,
+else for the policy's `cooldown_seconds`. When the run may fail over (failover on, its account not picked by hand,
+fewer than `max_failovers` moves, another account ready by the rules above), the hub moves its `run_accounts` row to
+the next account, counts one more failover, revokes the old lease and answers `failover`; the worker asks for the
+run's leases again, swaps the value in the agent's environment and in the run's socket, stops the agent and goes on in
+the same session with the new account. Else it answers `stop` with the reason and the earliest time an account is
+ready again, and the worker ends the run `failed` with cause `rate_limit` and that time in its error. A `system`
+event of the run records each switch or stop, and the audit row `account.failover` each switch
+(`... run:<id> env=<variable> from=secret:<id> to=secret:<id>`): both name the accounts by secret id, never by name
+or value. A worker of an older release never calls the route, and its runs fail as before. An interactive pane only
+shows the event: the person at it switches by hand.
+
+`run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool` or
+`cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
+cooldown, rotation and the last usage a run reported (`last_usage`, `last_usage_at`); `account_policies` holds a
+member's policy for a project: `strategy`, `cooldown_seconds` (60 to 604800, default 3600), `failover` (default on) and
+`max_failovers` (0 to 20, default 3).
+
+The routes are the member's own, a hub admin included, and never carry a value:
+
+- `GET /v1/accounts`: the caller's env secrets as accounts, with `name`, `env_var`, `projects`, `workers`, `weight`,
+  `priority`, `paused_at`, `cooldown_until`, `cooldown_reason`, `last_leased_at`, `expires_at` and `state` (`ready`,
+  `cooling`, `paused` or `expired`), and its figures (`evo_agents/hub/server/account_views.py`): the last usage a run's
+  CLI reported (`last_usage`, `last_usage_at`), the runs that took it in the last 24 hours and 7 days (`runs_24h`,
+  `runs_7d`: a run took it at its first lease of it) and their estimated cost in USD from their usage (`cost_24h_usd`,
+  `cost_7d_usd`: a run that failed over counts with each account it took), and the runs a worker holds with it now
+  (`held_by`); `GET /v1/accounts/{name}` gives one of them, 404 for a name that is not the caller's;
+- `PATCH /v1/accounts/{name}` with `weight`, `priority` or `paused`: 404 for a name that is not the caller's; audit
+  `account.set` names the secret by id;
+- `GET /v1/account-policies`, `GET|PUT|DELETE /v1/account-policies/{project}`: the caller's policy for a project they
+  may read (the defaults, `updated_at` null, when they set none); `PUT` needs the writer role; audits
+  `account.policy-put` and `account.policy-delete`;
+- `GET /v1/projects/{project}/runs/{id}/accounts`, for the member who dispatched the run alone (403 for anyone else,
+  as for its credentials): per variable, the account the run has now by name, how it came by it, its failovers, and
+  each usage limit it hit (`events`: `failover` with the account it moved `to`, or `stop`), read from the run's
+  `system` events, which carry `account_event`, `to_secret_id` and `cooldown_until` besides the secret ids.
+
+The web's Accounts page (next to Secrets in the sidebar) shows the same and edits weight, priority, pause and each
+project's policy; the run page shows the run's accounts and their failovers. `evo-agents hub
+account list|show|set|pause|resume|policy` call them:
+
+```sh
+evo-agents hub account list                                   # state, weight, priority, usage, runs, cost, holders
+evo-agents hub account show claude-a                          # one account and its figures, never the value
+evo-agents hub account set claude-b --weight 3 --priority 1
+evo-agents hub account pause claude-a                         # a run that holds it keeps it
+evo-agents hub account resume claude-a
+evo-agents hub account policy demo --strategy weighted-round-robin --cooldown 1800 --no-failover
+evo-agents hub account policy demo --reset                    # the defaults again
+```
+
+### Compared with a proxy
+
+CLIProxyAPIPlus (github.com/kaitranntt/CLIProxyAPIPlus) solves a near problem another way: a process on the machine
+that the CLI reaches through `ANTHROPIC_BASE_URL`, which logs in to each account with OAuth, keeps its refresh token,
+and picks an account for each request (`routing.strategy` round-robin or fill-first, with weights), retries a request on
+another account when one answers with its quota spent (`request-retry`), cools that account down, keeps a session on
+one account while it can (`session-affinity`), and has a management panel. The hub takes the same rules (round-robin,
+weighted, fill-first, cooldown, failover, a page that shows each account) and applies them per run, not per request:
+
+- a run keeps one account for its whole life, and moves only when that account hits its limit, so the session's prompt
+  cache and the account's usage figures stay with one account, and what a run cost is the cost on the account it ran on;
+- the value stays a lease, as every secret here: the worker holds it in memory for the run that needs it, and the hub
+  revokes it when the run ends or fails over. A proxy would hold every account's token, and its refresh token, for as
+  long as it runs, on a path every request of every agent goes through, and would see each prompt;
+- nothing sits between the CLI and Anthropic: no process to keep up on each worker or on the hub, no request rewritten,
+  no identity changed, and the CLI's own `rate_limit_event` says when an account is spent;
+- an account is the token `claude setup-token` makes, which the hub already leases; there is no OAuth login with a
+  refresh token to keep alive.
+
+What the proxy does that the hub does not: it moves a request, not a run, so an agent in a terminal pane goes on by
+itself, and it covers other providers and their limits. Here an interactive pane only shows the event, and only Claude
+Code reports a limit; the usage an account shows is what the CLI said last.
 
 ## What a run got
 

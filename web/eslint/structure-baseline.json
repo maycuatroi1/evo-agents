@@ -12,7 +12,7 @@
     "src/components/memories/memory-browser.tsx": 484,
     "src/components/palette/command-palette.tsx": 698,
     "src/components/runs/agent-trace.tsx": 678,
-    "src/components/runs/dispatch-dialog.tsx": 547,
+    "src/components/runs/dispatch-dialog.tsx": 529,
     "src/components/runs/queries.ts": 453,
     "src/components/runs/run-chat.tsx": 493,
     "src/components/runs/run-log.tsx": 603,

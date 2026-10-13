@@ -70,6 +70,15 @@ TERMINAL_CLOSE = "terminal.close"
 # A member's secrets belong to no one project; the target is the secret's name, never its value.
 SECRET_PUT = "secret.put"  # the owner created a secret or replaced it, value included
 SECRET_DELETE = "secret.delete"  # the owner deleted it: its sealed value and bindings went, its leases were revoked
+# A member's accounts (docs/credentials.md, section Accounts): an env secret's settings, by its id ("secret:<id>
+# weight=<n> priority=<n> paused=<yes|no>"), and the member's policy for a project, in that project ("<project>
+# strategy=<s> cooldown=<seconds> failover=<yes|no> max_failovers=<n>", or the project alone when it was dropped).
+ACCOUNT_SET = "account.set"  # the owner changed the weight or priority of an account, or paused or resumed it
+ACCOUNT_POLICY_PUT = "account.policy-put"  # the member set their policy for the project
+ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the defaults hold again
+# A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
+# run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
+ACCOUNT_FAILOVER = "account.failover"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

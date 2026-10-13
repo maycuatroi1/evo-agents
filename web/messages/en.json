@@ -33,6 +33,7 @@
     "globalSkills": "Shared skills",
     "workers": "Workers",
     "secrets": "Secrets",
+    "accounts": "Accounts",
     "runDiff": "Diff",
     "inbox": "Inbox",
     "monitor": "Monitor",
@@ -1833,6 +1834,144 @@
       "failed": "Couldn't delete secret {name}"
     }
   },
+  "accounts": {
+    "title": "Accounts",
+    "count": "{count, plural, one {# account} other {# accounts}}",
+    "caption": "Your accounts",
+    "listSummary": "Your env secrets that runs take in turn for the same variable. Yours alone, and no value is ever shown.",
+    "secrets": "Secrets",
+    "columns": {
+      "account": "Account",
+      "state": "State",
+      "projects": "Projects",
+      "workers": "Workers",
+      "usage": "Last usage",
+      "runs": "Runs 24 h / 7 d",
+      "cost": "Cost 24 h / 7 d",
+      "heldBy": "Held by",
+      "actions": "Actions"
+    },
+    "anyWorker": "Any of yours",
+    "state": {
+      "ready": "Ready",
+      "cooling": "Cooling",
+      "paused": "Paused",
+      "expired": "Expired"
+    },
+    "until": "until <time></time>",
+    "rank": "weight {weight}, priority {priority}",
+    "usage": {
+      "none": "Not reported",
+      "percent": "{percent}% used",
+      "status": {
+        "allowed": "Allowed",
+        "allowed_warning": "Near its limit",
+        "rejected": "Limit reached"
+      },
+      "resets": "resets <time></time>",
+      "reported": "Reported <time></time>"
+    },
+    "runsTitle": "{day, plural, one {# run} other {# runs}} in 24 hours, {week, plural, one {# run} other {# runs}} in 7 days",
+    "costTitle": "Estimated from the usage of its runs: {day} in 24 hours, {week} in 7 days",
+    "notHeld": "No run",
+    "heldLabel": "Open run #{id} of {project}",
+    "edit": "Edit",
+    "editLabel": "Edit the weight and priority of {name}",
+    "pause": "Pause",
+    "pauseLabel": "Pause account {name}",
+    "resume": "Resume",
+    "resumeLabel": "Resume account {name}",
+    "paused": "Account {name} paused",
+    "pausedText": "No new run takes it; a run that holds it keeps it.",
+    "resumed": "Account {name} resumed",
+    "resumedText": "Runs may take it again.",
+    "pauseFailed": "Couldn't pause {name}",
+    "resumeFailed": "Couldn't resume {name}",
+    "empty": {
+      "title": "No account yet",
+      "description": "An account is one of your env secrets, such as a token of <code>claude setup-token</code> for <code>CLAUDE_CODE_OAUTH_TOKEN</code>. Add several for the same variable on the Secrets page, and runs take them in turn."
+    },
+    "errors": {
+      "forbidden": "The hub refused: a policy needs the writer role on its project.",
+      "notFound": "It is gone, or you can no longer see it. The lists were reloaded.",
+      "invalid": "The hub refused a value out of its bounds.",
+      "network": "The hub could not be reached. Try again in a moment.",
+      "server": "The hub failed to answer. Try again, and quote the request id if it goes on.",
+      "apiMessage": "API message: {message}",
+      "requestId": "Request id: {id}"
+    },
+    "form": {
+      "title": "Edit account {name}",
+      "description": "How a pool of the same variable picks it. The weight is its share in a weighted round robin, 0 leaving it out; the lower the priority, the sooner fill first takes it.",
+      "weight": "Weight",
+      "weightHint": "0 to {max}.",
+      "priority": "Priority",
+      "priorityHint": "0 to {max}, the lower the sooner.",
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": "Account {name} changed",
+      "savedText": "The next run that picks an account reads it.",
+      "failed": "Couldn't change {name}",
+      "problems": {
+        "whole": "Enter a whole number.",
+        "range": "Enter a number from {min} to {max}."
+      }
+    },
+    "policies": {
+      "title": "Rotation by project",
+      "description": "How your runs in each project pick among your accounts, and what a run does when its account hits a usage limit. A project you set nothing for has the defaults.",
+      "caption": "Your rotation policy by project",
+      "columns": {
+        "project": "Project",
+        "strategy": "Strategy",
+        "cooldown": "Default cooldown",
+        "failover": "Failover",
+        "actions": "Actions"
+      },
+      "strategy": {
+        "round-robin": "Round robin",
+        "weighted-round-robin": "Weighted round robin",
+        "fill-first": "Fill first"
+      },
+      "strategyHint": {
+        "round-robin": "Each account in turn.",
+        "weighted-round-robin": "In turn, each as often as its weight says.",
+        "fill-first": "The lowest priority until it hits its limit, then the next."
+      },
+      "defaults": "Defaults",
+      "custom": "Yours",
+      "minutes": "{minutes, plural, one {# minute} other {# minutes}}",
+      "failoverOn": "On, {count, plural, one {at most once} other {at most # times}}",
+      "failoverOff": "Off: the run stops",
+      "edit": "Edit",
+      "editLabel": "Edit the policy for {project}",
+      "reset": "Reset",
+      "resetLabel": "Reset the policy for {project} to the defaults",
+      "resetDone": "Policy for {project} reset",
+      "resetText": "The defaults hold again.",
+      "resetFailed": "Couldn't reset the policy for {project}",
+      "empty": "Bind an account to a project to set how its runs pick one.",
+      "loadFailed": "Could not read your policies."
+    },
+    "policyForm": {
+      "title": "Policy for {project}",
+      "description": "Your own: other members' runs in this project follow theirs.",
+      "strategy": "Strategy",
+      "cooldown": "Default cooldown, in minutes",
+      "cooldownHint": "How long an account rests after a usage limit that came without a reset time: {min} to {max}.",
+      "failover": "Fail over",
+      "failoverHint": "A run that hits a usage limit goes on in its session with another account.",
+      "maxFailovers": "Failovers per run, at most",
+      "maxFailoversHint": "0 to {max}.",
+      "save": "Save",
+      "saving": "Saving",
+      "cancel": "Cancel",
+      "saved": "Policy for {project} saved",
+      "savedText": "Runs dispatched from now on follow it.",
+      "failed": "Couldn't save the policy for {project}"
+    }
+  },
   "runs": {
     "title": "Runs",
     "metaTitle": "Runs of {project}",
@@ -2546,6 +2685,24 @@
         "notRevoked": "not yet",
         "secrets": "Secrets"
       },
+      "accounts": {
+        "title": "Accounts",
+        "link": "Accounts",
+        "failed": "Could not read the accounts of this run.",
+        "how": {
+          "manual": "Picked by hand",
+          "worker": "Bound to the worker",
+          "charter": "Named by the charter",
+          "pool": "From the pool",
+          "cooling": "All cooling: the first to be back"
+        },
+        "gone": "a deleted account",
+        "failovers": "{count, plural, =0 {No failover} one {# failover} other {# failovers}}",
+        "chosen": "Taken <time></time>",
+        "failover": "<b>{account}</b> hit its usage limit; the run went on with <b>{to}</b>",
+        "stop": "<b>{account}</b> hit its usage limit; no account was left, so the run stopped",
+        "cooling": "It cools down until <time></time>."
+      },
       "actions": {
         "diff": "View diff",
         "diffstat": "{insertions, plural, one {# line added} other {# lines added}}, {deletions, plural, one {# removed} other {# removed}}",
@@ -2623,7 +2780,15 @@
       },
       "reviewSub": "The night's review of the project by the <curatorLink>Curator</curatorLink>: it reads and changes nothing. <proposalsLink>Its proposals</proposalsLink>",
       "authorPlanSub": "Plan <planLink>{plan}</planLink>: {title}. Written from your request in a chat with the agent.",
-      "authorNewSub": "A new plan: {title}. Written from the request in a chat with the agent."
+      "authorNewSub": "A new plan: {title}. Written from the request in a chat with the agent.",
+      "rerun": {
+        "title": "Rerun run #{id}?",
+        "description": "The run again, with the same runtime, model, mode, approval, timeout and worker, at the plan's current revision.",
+        "confirm": "Rerun",
+        "pending": "Rerunning…",
+        "cancel": "Keep it",
+        "hubSays": "The hub says: {message}"
+      }
     },
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
@@ -2772,6 +2937,18 @@
           "toastAfterTurn": "The run ends done after the agent's turn."
         }
       }
+    },
+    "account": {
+      "label": "Account",
+      "byRules": "Auto, by the rules of your policy",
+      "option": "{name} ({variable})",
+      "onWorkers": "{name} ({variable}), on {workers} only",
+      "paused": "{name} ({variable}), paused",
+      "keep": "As run #{id}: its account picked by hand, if any",
+      "hint": "The run takes the account you pick and keeps it, with no failover to another one. Auto lets your policy for the project pick when a worker takes the run.",
+      "none": "None of your accounts is bound to project {project}, so your policy picks among the workers' own credentials. Bind one on the Secrets page.",
+      "rerunHint": "By default the rerun takes the account picked by hand for run #{id}, or the rules when none was. An account picked by hand is kept, with no failover.",
+      "expired": "{name} ({variable}), expired"
     }
   },
   "insights": {
