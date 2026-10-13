@@ -33,7 +33,7 @@ export default defineConfig({
   // reporter puts it on the check as an error annotation.
   retries: process.env.CI ? 1 : 0,
   failOnFlakyTests: Boolean(process.env.CI),
-  workers: 4, // in CI too: a shard's runner has 4 vCPUs, and the specs seed under unique names
+  workers: process.env.CI ? 2 : 4,
   timeout: 30_000,
   expect: { timeout: 10_000 },
   reporter: process.env.CI ? [["list"], ["github"], ["html", { open: "never" }]] : [["list"]],
