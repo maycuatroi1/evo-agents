@@ -1,6 +1,6 @@
 import { randomBytes } from "node:crypto";
 
-import type { Page } from "@playwright/test";
+import type { Page, Request } from "@playwright/test";
 
 import { call } from "../../src/lib/api/client";
 import type { components } from "../../src/lib/api/schema";
@@ -42,14 +42,17 @@ export async function runCredentialsOf(account: Account, project: string, runId:
 }
 
 /**
- * Everything the page receives from now on, as text, to look for a value in: documents, data and scripts alike, each
- * read as soon as it has arrived whole. A run's live stream never ends while the run is active, so it is left out; its
- * events are read through the API. A body the browser dropped before it could be read (a page navigated away from)
- * counts as empty.
+ * Everything the page receives from now until the returned function is called, as text, to look for a value in:
+ * documents, data and scripts alike, each read as soon as it has arrived whole. A run's live stream never ends while
+ * the run is active, so it is left out; its events are read through the API. A body the browser dropped before it
+ * could be read (a page navigated away from) counts as empty.
+ *
+ * Calling the function stops the recording and waits for every read it started. A read started later would still be
+ * talking to the browser when the test ends, and fail the test once its page closes.
  */
 export function recordResponses(page: Page): () => Promise<string[]> {
   const bodies: Promise<string>[] = [];
-  page.on("requestfinished", (request) => {
+  const read = (request: Request) => {
     bodies.push(
       request.response().then(async (response) => {
         if (!response || (response.headers()["content-type"] ?? "").includes("text/event-stream")) return "";
@@ -57,6 +60,10 @@ export function recordResponses(page: Page): () => Promise<string[]> {
         return Promise.race([response.text().catch(() => ""), timeout]);
       }),
     );
-  });
-  return () => Promise.all(bodies);
+  };
+  page.on("requestfinished", read);
+  return () => {
+    page.off("requestfinished", read);
+    return Promise.all(bodies);
+  };
 }
