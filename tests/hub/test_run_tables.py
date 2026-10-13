@@ -502,7 +502,9 @@ def pairing(selector: str, name: str, **values):
             errors.CheckViolation,
             id="pairing-used-without-worker",
         ),
-        pytest.param(update_of(tables.worker_pairings, PAIRING, slots=9), errors.CheckViolation, id="pairing-slots-9"),
+        pytest.param(
+            update_of(tables.worker_pairings, PAIRING, slots=17), errors.CheckViolation, id="pairing-slots-17"
+        ),
         # runs
         pytest.param(update_of(tables.runs, RUN, timeout_s=299), errors.CheckViolation, id="timeout-299"),
         pytest.param(update_of(tables.runs, RUN, timeout_s=14401), errors.CheckViolation, id="timeout-14401"),
@@ -559,7 +561,7 @@ def pairing(selector: str, name: str, **values):
         pytest.param(
             update_of(tables.runs, RUN, requested_runtime="gemini"), errors.CheckViolation, id="requested-gemini"
         ),
-        pytest.param(update_of(tables.workers, WORKER, free_slots=9), errors.CheckViolation, id="free-slots-9"),
+        pytest.param(update_of(tables.workers, WORKER, free_slots=17), errors.CheckViolation, id="free-slots-17"),
         pytest.param(
             update_of(tables.runs, DONE_RUN, finished_at=None), errors.CheckViolation, id="done-without-finished-at"
         ),
@@ -647,12 +649,13 @@ def test_constraints_refuse_bad_rows(db, statement, error):
         conn.execute(refused)
 
 
-@pytest.mark.parametrize("slots", [0, 9])
-def test_a_worker_has_one_to_eight_slots(db, slots):
+@pytest.mark.parametrize("slots", [0, 17])
+def test_a_worker_has_one_to_sixteen_slots(db, slots):  # eight until schema 0026
     conn, ids = db
     refused = spare_worker(slots=slots)(ids)
     with pytest.raises(errors.CheckViolation):
         conn.execute(refused)
+    conn.execute(spare_worker(slots=16)(ids))
 
 
 def test_constraints_accept_good_rows(db):

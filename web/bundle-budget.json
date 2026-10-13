@@ -64,8 +64,8 @@
       "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/curator/charter": {
-      "kB": 330.1,
-      "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
+      "kB": 330,
+      "reason": "Turbopack repacked the chunks every route shares when the plan's Graph view gained its step inspector (it loads with the Graph, next/dynamic); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/curator/proposals": {
       "kB": 327.3,
@@ -112,7 +112,7 @@
       "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/runs": {
-      "kB": 322,
+      "kB": 321.9,
       "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/p/[project]/runs/[id]": {
@@ -148,7 +148,7 @@
       "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     },
     "/workers/[id]": {
-      "kB": 317.2,
+      "kB": 317.9,
       "reason": "Turbopack repacked the chunks every route shares when the run page's step report moved behind next/dynamic (trace-report-lazy.tsx); the modules this route loads are byte for byte the same, only their grouping into chunks moved."
     }
   }

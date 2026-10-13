@@ -14,7 +14,11 @@ joins are limited per client address, a code is kept as an HMAC under the sessio
 worker, and a locked code counts against the member's five until it expires.
 
 And step 10 of the worker-credentials plan: only the owner, from a web session, sets who may dispatch to a worker,
-and a machine token gets 403 there."""
+and a machine token gets 403 there.
+
+And step 1 of the worker-settings-web plan: only the owner, from a web session or with their machine token, changes
+a worker's slots (up to 16), labels and name with PATCH /v1/workers/{id}; each change is audited, the values it has
+change nothing, and the next heartbeat answer carries them."""
 
 import hashlib
 import hmac
@@ -577,6 +581,138 @@ def test_dispatch_from_is_set_by_the_owner_from_a_web_session_only_and_audited(c
     assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
     gone = client.post(path, json={"value": "web"}, headers=owner_web)
     assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+
+
+# Settings: slots, labels and name
+
+
+def settings_of(db, worker_id: int) -> tuple:
+    workers = tables.workers
+    return sql(db, select(workers.c.slots, workers.c.labels, workers.c.name).where(workers.c.id == worker_id))[0]
+
+
+def test_the_owner_patches_the_worker_settings_from_the_web_or_a_machine_token_and_each_change_is_audited(
+    client, hub, hub_db, github
+):
+    answer = joined(client, paired(client, hub["owner"], labels=["mac"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+
+    changed = client.patch(path, json={"slots": 16, "labels": ["gpu", "mac", "gpu"]}, headers=owner_web)
+    assert changed.status_code == 200, changed.text
+    assert (changed.json()["slots"], changed.json()["labels"], changed.json()["name"]) == (
+        16,
+        ["gpu", "mac"],
+        "mac-mini",
+    )
+    assert settings_of(hub_db, worker_id) == (16, ["gpu", "mac"], "mac-mini")
+    target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    assert audit_rows(hub_db, "worker.update") == [(f"{target} slots=1->16 labels=[mac]->[gpu,mac]", OWNER)]
+
+    # the values it has already change nothing and write no audit row, from either credential
+    for headers in (owner_web, hub["owner"]):
+        same = client.patch(path, json={"slots": 16, "labels": ["gpu", "mac"], "name": "mac-mini"}, headers=headers)
+        assert same.status_code == 200 and same.json()["slots"] == 16, same.text
+    assert len(audit_rows(hub_db, "worker.update")) == 1
+
+    # the owner's machine token changes them too; a name differing only in case is a change of the worker's own name
+    renamed = client.patch(path, json={"name": "Mac-Mini", "slots": 3, "labels": []}, headers=hub["owner"])
+    assert renamed.status_code == 200, renamed.text
+    assert (renamed.json()["name"], renamed.json()["slots"], renamed.json()["labels"]) == ("Mac-Mini", 3, [])
+    assert (f"{target} slots=16->3 labels=[gpu,mac]->[] name=mac-mini->Mac-Mini", OWNER) in audit_rows(
+        hub_db, "worker.update"
+    )
+    assert client.get(path, headers=hub["owner"]).json()["name"] == "Mac-Mini"
+    assert [w["slots"] for w in client.get("/v1/workers", headers=hub["owner"]).json()] == [3]
+    assert len(audit_rows(hub_db, "worker.update")) == 2
+
+
+def test_a_patch_of_the_worker_settings_is_refused_to_all_but_its_owner_and_for_bad_values(client, hub, hub_db, github):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+    joined(client, paired(client, hub["owner"], name="build-box")["code"])
+
+    # a hub admin sees the worker and may drain it, never change it: 403, by token or on the web; anyone else 404
+    for headers in (hub["admin"], web_writes(client, github, ADMIN, ADMIN_ID)):
+        refused = client.patch(path, json={"slots": 4}, headers=headers)
+        assert refused.status_code == 403 and f"only {OWNER}, who owns worker {worker_id}" in refused.json()["message"]
+    for headers in (hub["other"], web_writes(client, github, OTHER, OTHER_ID)):
+        assert client.patch(path, json={"slots": 4}, headers=headers).status_code == 404
+    assert client.patch("/v1/workers/999999", json={"slots": 4}, headers=hub["owner"]).status_code == 404
+    # a web session writes only with its CSRF header; the worker's own token works on its routes only
+    assert client.patch(path, json={"slots": 4}, headers={"Cookie": owner_web["Cookie"]}).status_code == 403
+    assert client.patch(path, json={"slots": 4}, headers=worker_headers(answer["token"])).status_code == 403
+
+    # a name another live worker of the owner holds, in any case, is 409
+    taken = client.patch(path, json={"name": "BUILD-BOX", "slots": 4}, headers=owner_web)
+    assert taken.status_code == 409 and "BUILD-BOX" in taken.json()["message"]
+
+    # values out of range, or none at all, are 422
+    for body in (
+        {"slots": 0},
+        {"slots": 17},
+        {"slots": "many"},
+        {"labels": ["no spaces"]},
+        {"labels": [f"l{n}" for n in range(17)]},
+        {"name": "-starts-with-a-dash"},
+        {"name": "x" * 101},
+        {},
+        {"slots": None},
+    ):
+        refused = client.patch(path, json=body, headers=owner_web)
+        assert refused.status_code == 422, (body, refused.text)
+    assert settings_of(hub_db, worker_id) == (1, [], "mac-mini")
+    assert audit_rows(hub_db, "worker.update") == []
+
+    # a revoked worker is 409, and its name is free for another worker of the owner
+    assert client.post(f"/v1/workers/{worker_id}/revoke", headers=hub["owner"]).status_code == 200
+    gone = client.patch(path, json={"slots": 4}, headers=owner_web)
+    assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+    box = [w for w in client.get("/v1/workers", headers=hub["owner"]).json() if w["name"] == "build-box"][0]
+    reused = client.patch(f"/v1/workers/{box['id']}", json={"name": "mac-mini"}, headers=owner_web)
+    assert reused.status_code == 200 and reused.json()["name"] == "mac-mini"
+
+
+def test_pairings_registrations_and_heartbeats_take_up_to_sixteen_slots(client, hub, hub_db):
+    assert pair(client, hub["owner"], slots=17).status_code == 422
+    answer = joined(client, paired(client, hub["owner"], slots=16)["code"])
+    assert answer["worker"]["slots"] == 16
+    body = {"name": "build-box", "projects": ["demo"], **HOST}
+    assert client.post("/v1/workers", json={**body, "slots": 17}, headers=hub["owner"]).status_code == 422
+    registered = client.post("/v1/workers", json={**body, "slots": 16}, headers=hub["owner"])
+    assert registered.status_code == 201 and registered.json()["worker"]["slots"] == 16
+    beat = {"free_slots": 16}
+    assert client.post("/v1/worker/heartbeat", json=beat, headers=worker_headers(answer["token"])).status_code == 200
+    assert client.get(f"/v1/workers/{answer['worker']['id']}", headers=hub["owner"]).json()["free_slots"] == 16
+    too_many = client.post("/v1/worker/heartbeat", json={"free_slots": 17}, headers=worker_headers(answer["token"]))
+    assert too_many.status_code == 422
+
+
+def test_a_heartbeat_answer_carries_the_settings_the_owner_patched(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"], slots=2, labels=["mac"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+
+    def beat(free_slots: int) -> dict:
+        response = client.post("/v1/worker/heartbeat", json={"free_slots": free_slots}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"]}
+    patched = client.patch(f"/v1/workers/{worker_id}", json={"slots": 6, "name": "big-mac"}, headers=hub["owner"])
+    assert patched.status_code == 200, patched.text
+    first = beat(2)  # what the daemon held before it read the answer
+    assert first["settings"] == {"slots": 6, "name": "big-mac", "labels": ["mac"]}
+    assert first["drain"] is False and first["runs"] == []
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 2
+    beat(6)
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 6
+    # fewer slots than the daemon reported free: the hub keeps free_slots within the slots it holds
+    client.patch(f"/v1/workers/{worker_id}", json={"slots": 1}, headers=hub["owner"])
+    assert beat(6)["settings"]["slots"] == 1
+    assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 1
 
 
 def seed_plan(db, project: str = "demo") -> dict:
