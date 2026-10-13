@@ -27,7 +27,14 @@
           "cooldown_reason",
           "last_leased_at",
           "expires_at",
-          "state"
+          "state",
+          "last_usage",
+          "last_usage_at",
+          "runs_24h",
+          "runs_7d",
+          "cost_24h_usd",
+          "cost_7d_usd",
+          "held_by"
         ],
         "schema": "Account"
       }
@@ -66,7 +73,14 @@
           "cooldown_reason",
           "last_leased_at",
           "expires_at",
-          "state"
+          "state",
+          "last_usage",
+          "last_usage_at",
+          "runs_24h",
+          "runs_7d",
+          "cost_24h_usd",
+          "cost_7d_usd",
+          "held_by"
         ],
         "schema": "Account"
       }
@@ -184,7 +198,14 @@
           "cooldown_reason",
           "last_leased_at",
           "expires_at",
-          "state"
+          "state",
+          "last_usage",
+          "last_usage_at",
+          "runs_24h",
+          "runs_7d",
+          "cost_24h_usd",
+          "cost_7d_usd",
+          "held_by"
         ],
         "schema": "Account"
       }
@@ -239,7 +260,60 @@
           "cooldown_reason",
           "last_leased_at",
           "expires_at",
-          "state"
+          "state",
+          "last_usage",
+          "last_usage_at",
+          "runs_24h",
+          "runs_7d",
+          "cost_24h_usd",
+          "cost_7d_usd",
+          "held_by"
+        ],
+        "schema": "Account"
+      }
+    },
+    "hub account show": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "env_var",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "last_usage",
+          "last_usage_at",
+          "runs_24h",
+          "runs_7d",
+          "cost_24h_usd",
+          "cost_7d_usd",
+          "held_by"
         ],
         "schema": "Account"
       }
@@ -19347,7 +19421,7 @@
             "accounts"
           ],
           "summary": "List Accounts",
-          "description": "The caller's own env secrets as accounts, by variable and name, without their values; a hub admin's own too.",
+          "description": "The caller's own env secrets as accounts, by variable and name, without their values, with their figures\n(``account_views``); a hub admin's own too.",
           "operationId": "list_accounts_v1_accounts_get",
           "responses": {
             "200": {
@@ -19378,6 +19452,80 @@
         }
       },
       "/v1/accounts/{name}": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Get Account",
+          "description": "The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets.",
+          "operationId": "get_account_v1_accounts__name__get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+                "description": "one of the caller's env secrets",
+                "title": "Name"
+              },
+              "description": "one of the caller's env secrets"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Account"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
         "patch": {
           "tags": [
             "accounts"
@@ -19720,6 +19868,111 @@
           }
         }
       },
+      "/v1/projects/{project}/runs/{run_id}/accounts": {
+        "get": {
+          "tags": [
+            "accounts"
+          ],
+          "summary": "Run Accounts",
+          "description": "The accounts run ``run_id`` took, by variable, and each usage limit it hit; for the member who dispatched it.",
+          "operationId": "run_accounts_v1_projects__project__runs__run_id__accounts_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/RunAccount"
+                    },
+                    "title": "Response Run Accounts V1 Projects  Project  Runs  Run Id  Accounts Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/rate-limit": {
         "post": {
           "tags": [
@@ -19918,6 +20171,58 @@
               ],
               "title": "State",
               "description": "ready, cooling, paused or expired, now"
+            },
+            "last_usage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AccountUsage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what a run's CLI last said of its usage; null before any"
+            },
+            "last_usage_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Usage At",
+              "description": "when a run reported that usage"
+            },
+            "runs_24h": {
+              "type": "integer",
+              "title": "Runs 24H",
+              "description": "the runs that took it in the last 24 hours"
+            },
+            "runs_7d": {
+              "type": "integer",
+              "title": "Runs 7D",
+              "description": "the runs that took it in the last 7 days"
+            },
+            "cost_24h_usd": {
+              "type": "number",
+              "title": "Cost 24H Usd",
+              "description": "what those runs cost in the last 24 hours, in USD, from their usage"
+            },
+            "cost_7d_usd": {
+              "type": "number",
+              "title": "Cost 7D Usd",
+              "description": "what those runs cost in the last 7 days, in USD, an estimate"
+            },
+            "held_by": {
+              "items": {
+                "$ref": "#/components/schemas/HeldBy"
+              },
+              "type": "array",
+              "title": "Held By",
+              "description": "the runs a worker holds now with it"
             }
           },
           "type": "object",
@@ -19933,7 +20238,14 @@
             "cooldown_reason",
             "last_leased_at",
             "expires_at",
-            "state"
+            "state",
+            "last_usage",
+            "last_usage_at",
+            "runs_24h",
+            "runs_7d",
+            "cost_24h_usd",
+            "cost_7d_usd",
+            "held_by"
           ],
           "title": "Account",
           "description": "One of the caller's env secrets as an account: everything but its value."
@@ -20085,6 +20397,102 @@
           "additionalProperties": false,
           "type": "object",
           "title": "AccountPolicyWrite"
+        },
+        "AccountUsage": {
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": [
+                "allowed",
+                "allowed_warning",
+                "rejected"
+              ],
+              "title": "Status"
+            },
+            "rate_limit_type": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rate Limit Type"
+            },
+            "resets_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resets At"
+            },
+            "utilization": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Utilization"
+            },
+            "windows": {
+              "anyOf": [
+                {
+                  "additionalProperties": {
+                    "$ref": "#/components/schemas/AccountUsageWindow"
+                  },
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Windows"
+            }
+          },
+          "type": "object",
+          "required": [
+            "status"
+          ],
+          "title": "AccountUsage",
+          "description": "What the agent's CLI last said of an account's usage, in a rate_limit_event."
+        },
+        "AccountUsageWindow": {
+          "properties": {
+            "utilization": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Utilization"
+            },
+            "resets_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resets At"
+            }
+          },
+          "type": "object",
+          "title": "AccountUsageWindow"
         },
         "ActiveRun": {
           "properties": {
@@ -24390,6 +24798,29 @@
             "free_slots"
           ],
           "title": "HeartbeatRequest"
+        },
+        "HeldBy": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "project",
+            "state"
+          ],
+          "title": "HeldBy"
         },
         "HiddenResult": {
           "properties": {
@@ -30680,6 +31111,130 @@
             "finished_at"
           ],
           "title": "Run"
+        },
+        "RunAccount": {
+          "properties": {
+            "env_var": {
+              "type": "string",
+              "title": "Env Var"
+            },
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "the account the run has now, by name"
+            },
+            "how": {
+              "type": "string",
+              "enum": [
+                "manual",
+                "worker",
+                "charter",
+                "pool",
+                "cooling"
+              ],
+              "title": "How",
+              "description": "picked by hand, bound to the worker, by the charter, the pool, cooling"
+            },
+            "failovers": {
+              "type": "integer",
+              "title": "Failovers",
+              "description": "the times the run moved to another account"
+            },
+            "chosen_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Chosen At"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/RunAccountEvent"
+              },
+              "type": "array",
+              "title": "Events",
+              "description": "each usage limit the run hit with it, oldest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "env_var",
+            "account",
+            "how",
+            "failovers",
+            "chosen_at",
+            "events"
+          ],
+          "title": "RunAccount"
+        },
+        "RunAccountEvent": {
+          "properties": {
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            },
+            "action": {
+              "type": "string",
+              "enum": [
+                "failover",
+                "stop"
+              ],
+              "title": "Action",
+              "description": "the run moved to another account, or it stopped"
+            },
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "the account that hit its usage limit, by name"
+            },
+            "to": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To",
+              "description": "with failover: the account the run went on with"
+            },
+            "cooldown_until": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cooldown Until",
+              "description": "until when the account cools down"
+            }
+          },
+          "type": "object",
+          "required": [
+            "at",
+            "action",
+            "account",
+            "to",
+            "cooldown_until"
+          ],
+          "title": "RunAccountEvent"
         },
         "RunBlobCommit": {
           "properties": {

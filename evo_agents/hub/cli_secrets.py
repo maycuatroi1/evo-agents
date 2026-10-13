@@ -41,6 +41,7 @@ from evo_agents.hub.accounts import (
 from evo_agents.hub.cli_client import _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.credentials import MAX_SECRET_BYTES, SECRET_KINDS, SECRET_NAME, env_name_refusal
+from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
 DAY = re.compile(r"[0-9]{4}-[0-9]{2}-[0-9]{2}")
@@ -292,6 +293,13 @@ ACCOUNT_KEYS = (
     "last_leased_at",
     "expires_at",
     "state",
+    "last_usage",
+    "last_usage_at",
+    "runs_24h",
+    "runs_7d",
+    "cost_24h_usd",
+    "cost_7d_usd",
+    "held_by",
 )
 # The keys of a policy in `hub account policy --json`.
 POLICY_KEYS = ("strategy", "cooldown_seconds", "failover", "max_failovers", "project", "updated_at")
@@ -360,14 +368,64 @@ def cmd_account_list(args) -> int:
             a["weight"],
             a["priority"],
             _when(a["cooldown_until"]),
-            _when(a["last_leased_at"]),
+            _usage_text(a["last_usage"]),
+            f"{a['runs_24h']}/{a['runs_7d']}",
+            money(a["cost_7d_usd"]),
+            " ".join(f"#{run['run_id']}" for run in a["held_by"]) or "-",
             ", ".join(a["projects"]),
             ", ".join(a["workers"]) or "any",
         )
         for a in found
     ]
-    header = ("NAME", "VARIABLE", "STATE", "WEIGHT", "PRIORITY", "COOLS UNTIL", "LAST LEASED", "PROJECTS", "WORKERS")
-    _table(header, rows)
+    header = ("NAME", "VARIABLE", "STATE", "WEIGHT", "PRIORITY", "COOLS UNTIL", "USAGE", "RUNS 24H/7D", "COST 7D")
+    _table((*header, "HELD BY", "PROJECTS", "WORKERS"), rows)
+    return 0
+
+
+def _percent(share) -> str:
+    """A utilization the CLI gave, as a fraction (0.85) or a percent (85), as `` 85%``; empty for none."""
+    if not isinstance(share, int | float):
+        return ""
+    return f" {share * 100 if share <= 1 else share:.0f}%"
+
+
+def _usage_text(usage: dict | None) -> str:
+    """The last usage a run's CLI reported, short: ``five_hour 85% (allowed_warning)``; ``-`` for none."""
+    if not usage:
+        return "-"
+    return f"{usage.get('rate_limit_type') or 'usage'}{_percent(usage.get('utilization'))} ({usage['status']})"
+
+
+def _state_text(account: dict) -> str:
+    state = account["state"]
+    if state == "cooling":
+        return f"cooling until {_when(account['cooldown_until'])} UTC ({account['cooldown_reason'] or 'usage limit'})"
+    if state == "paused":
+        return f"paused since {_when(account['paused_at'])} UTC"
+    if state == "expired":
+        return f"expired at {_when(account['expires_at'])} UTC"
+    return "ready"
+
+
+@_client_command
+def cmd_account_show(args) -> int:
+    if not SECRET_NAME.fullmatch(args.name):
+        return _usage_error(f"{args.name!r} is not a secret's name")
+    hub, _ = _signed_in()
+    a = hub.call("GET", _account_path(args.name))
+    if args.json:
+        _print_json(a)
+        return 0
+    held = ", ".join(f"run #{run['run_id']} ({run['project']}, {run['state']})" for run in a["held_by"]) or "no run"
+    usage = _usage_text(a["last_usage"])
+    reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
+    print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
+    print(f"  Projects: {', '.join(a['projects']) or '-'}; workers: {', '.join(a['workers']) or 'any of yours'}.")
+    print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {_when(a['last_leased_at'])} UTC.")
+    print(f"  Last usage: {usage}{reported}.")
+    print(f"  Runs: {a['runs_24h']} in 24 hours ({money(a['cost_24h_usd'])}), {a['runs_7d']} in 7 days", end="")
+    print(f" ({money(a['cost_7d_usd'])}, estimated from their usage).")
+    print(f"  Held by: {held}.")
     return 0
 
 
@@ -438,10 +496,18 @@ def register_accounts(hsub) -> None:
     )
     asub = account.add_subparsers(dest="account_command", required=True)
 
-    listed = asub.add_parser("list", help="your accounts: variable, state, weight, priority, never the value")
+    listed = asub.add_parser(
+        "list", help="your accounts: variable, state, weight, priority, usage, runs and cost, never the value"
+    )
     json_option(listed, returns_array(*ACCOUNT_KEYS, schema="Account"))
     listed.set_defaults(func=cmd_account_list)
 
+    _named(
+        asub,
+        "show",
+        "one account: state, last usage, runs and cost over 24 hours and 7 days, runs holding it",
+        cmd_account_show,
+    )
     changed = _named(asub, "set", "change the weight or priority of an account", cmd_account_set)
     changed.add_argument(
         "--weight",

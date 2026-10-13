@@ -114,6 +114,16 @@ def _note(env_var: str, current: int, moved: Failover) -> str:
     return f"{limited}: the run stops, {moved.reason}; an account is ready again at {ready}"
 
 
+def _event(env_var: str, current: int, moved: Failover) -> dict:
+    """The run's ``system`` event of a usage limit: the note, and what the run page reads of it (``account_views``):
+    ``account_event`` failover with the account moved to, or stop; accounts by secret id alone."""
+    body = {"text": _note(env_var, current, moved), "env_var": env_var, "secret_id": current}
+    body["cooldown_until"] = moved.cooling_until.isoformat()
+    if moved.secret is None:
+        return {**body, "account_event": "stop"}
+    return {**body, "account_event": "failover", "to_secret_id": moved.secret.id, "failovers": moved.failovers}
+
+
 async def _revoke(conn: AsyncConnection, lease_id: int) -> None:
     cl = tables.credential_leases
     await conn.execute(update(cl).where(cl.c.id == lease_id, cl.c.revoked_at.is_(None)).values(revoked_at=func.now()))
@@ -134,9 +144,7 @@ async def report_rate_limit(
             return RateLimitAnswer(action="none", secret_id=current, failovers=0)
         reason = f"usage limit {report.rate_limit_type or 'reached'}, reported by run {run_id}"
         moved = await fail_over(conn, survey.run, survey.secrets, env_var, current, (report.resets_at, reason))
-        await write_event(
-            conn, run_id, {"text": _note(env_var, current, moved), "env_var": env_var, "secret_id": current}
-        )
+        await write_event(conn, run_id, _event(env_var, current, moved))
         if moved.secret is None:
             log.info("rate limited, no failover", extra={"run_id": run_id, "secret_id": current, "why": moved.reason})
             return RateLimitAnswer(

@@ -3,9 +3,11 @@
 
 An account is one of the caller's env secrets (``evo_agents.hub.server.secrets``) seen as one a run may take among
 several for the same variable. GET /v1/accounts lists the caller's own, live: name, variable, bindings, weight,
-priority, when it was paused, until when it cools down and why, when a run last took it, its end, and its state
-(``accounts.ACCOUNT_STATES``); never a value. PATCH /v1/accounts/{name} changes its weight or priority, or pauses
-(``paused: true``) or resumes it; a name that is not one of the caller's live env secrets is 404, whoever's it is.
+priority, when it was paused, until when it cools down and why, when a run last took it, its end, its state
+(``accounts.ACCOUNT_STATES``) and its figures (``account_views``: its last usage, its runs and their cost over 24
+hours and 7 days, the runs holding it); never a value. GET /v1/accounts/{name} gives one of them. PATCH
+/v1/accounts/{name} changes its weight or priority, or pauses (``paused: true``) or resumes it; a name that is not one
+of the caller's live env secrets is 404, whoever's it is.
 
 A policy is the caller's for one project: GET /v1/account-policies lists the caller's own; GET
 /v1/account-policies/{project} gives the caller's policy for a project they can see, the defaults
@@ -47,6 +49,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, account_figures
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -81,6 +84,13 @@ class Account(BaseModel):
     last_leased_at: datetime | None = Field(description="when a run last took it")
     expires_at: datetime | None
     state: Literal[ACCOUNT_STATES] = Field(description="ready, cooling, paused or expired, now")
+    last_usage: AccountUsage | None = Field(description="what a run's CLI last said of its usage; null before any")
+    last_usage_at: datetime | None = Field(description="when a run reported that usage")
+    runs_24h: int = Field(description="the runs that took it in the last 24 hours")
+    runs_7d: int = Field(description="the runs that took it in the last 7 days")
+    cost_24h_usd: float = Field(description="what those runs cost in the last 24 hours, in USD, from their usage")
+    cost_7d_usd: float = Field(description="what those runs cost in the last 7 days, in USD, an estimate")
+    held_by: list[HeldBy] = Field(description="the runs a worker holds now with it")
 
 
 class AccountChange(BaseModel):
@@ -140,21 +150,35 @@ def _accounts(owner_id: int, name: str | None = None):
     return statement if name is None else statement.where(s.c.name == name)
 
 
-def _account(row) -> Account:
+def _account(row, figures: Figures | None = None) -> Account:
     values = dict(row._mapping)
     del values["id"]
     now = values.pop("now")
     state = account_state(row.paused_at, row.cooldown_until, row.expires_at, now)
-    return Account(**values, state=state)
+    return Account(**values, state=state, **vars(figures or Figures()))
 
 
 @router.get("/accounts", response_model=list[Account])
 async def list_accounts(request: Request, user: CurrentUser, response: Response) -> list[Account]:
-    """The caller's own env secrets as accounts, by variable and name, without their values; a hub admin's own too."""
+    """The caller's own env secrets as accounts, by variable and name, without their values, with their figures
+    (``account_views``); a hub admin's own too."""
     async with request.app.state.engine.begin() as conn:
-        found = [_account(row) for row in await conn.execute(_accounts(user.user_id))]
+        rows = (await conn.execute(_accounts(user.user_id))).all()
+        figures = await account_figures(conn, user.user_id)
     response.headers.update(NO_STORE)
-    return found
+    return [_account(row, figures.get(row.id)) for row in rows]
+
+
+@router.get("/accounts/{name}", response_model=Account, responses=REFUSALS)
+async def get_account(request: Request, name: AccountName, user: CurrentUser, response: Response) -> Account:
+    """The caller's account ``name`` with its figures; 404 for a name that is not one of the caller's env secrets."""
+    async with request.app.state.engine.begin() as conn:
+        row = (await conn.execute(_accounts(user.user_id, name))).one_or_none()
+        if row is None:
+            raise HTTPException(404, NO_ACCOUNT.format(name=name))
+        figures = await account_figures(conn, user.user_id, [row.id])
+    response.headers.update(NO_STORE)
+    return _account(row, figures.get(row.id))
 
 
 def _paused(change: AccountChange, kept):
@@ -175,7 +199,8 @@ async def change_account(
         made = insert(a).values(secret_id=row.id, **values, **_paused(body, None))
         changed = {**values, **_paused(body, a.c.paused_at), "updated_at": func.now()}
         await conn.execute(made.on_conflict_do_update(index_elements=[a.c.secret_id], set_=changed))
-        found = _account((await conn.execute(_accounts(user.user_id, name))).one())
+        figures = await account_figures(conn, user.user_id, [row.id])
+        found = _account((await conn.execute(_accounts(user.user_id, name))).one(), figures.get(row.id))
         paused = "yes" if found.paused_at is not None else "no"
         target = f"{audit_target(row.id)} weight={found.weight} priority={found.priority} paused={paused}"
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.ACCOUNT_SET, target=target)

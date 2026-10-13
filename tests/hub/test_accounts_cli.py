@@ -27,11 +27,18 @@ def account_cli(monkeypatch, capsys, home, *args: str):
 
 def test_the_account_commands_are_in_the_contract():
     printed = commands()
-    names = {"hub account list", "hub account set", "hub account pause", "hub account resume", "hub account policy"}
+    names = {
+        "hub account list",
+        "hub account show",
+        "hub account set",
+        "hub account pause",
+        "hub account resume",
+        "hub account policy",
+    }
     assert names <= set(printed)
     assert printed["hub account list"]["json"]["schema"] == "Account"
     assert printed["hub account list"]["json"]["kind"] == "array"
-    for command in ("hub account set", "hub account pause", "hub account resume"):
+    for command in ("hub account show", "hub account set", "hub account pause", "hub account resume"):
         assert printed[command]["json"]["schema"] == "Account"
         assert "value" not in printed[command]["json"]["keys"]
     assert printed["hub account policy"]["json"]["schema"] == "AccountPolicy"
@@ -92,6 +99,14 @@ def test_list_set_pause_and_policy_without_ever_printing_a_value(hub, monkeypatc
     assert resumed.out == f"Account claude-a ({VAR}): ready, weight 1, priority 0.\n"
     not_mine = account_cli(monkeypatch, capsys, owner, "pause", "claude-theirs")
     assert not_mine.code != 0
+    shown = as_json(account_cli(monkeypatch, capsys, owner, "show", "claude-b", "--json"))
+    assert_json_keys("hub account show", shown)
+    assert (shown["name"], shown["runs_24h"], shown["runs_7d"], shown["held_by"]) == ("claude-b", 0, 0, [])
+    told = ok(account_cli(monkeypatch, capsys, owner, "show", "claude-b"))
+    assert told.out.startswith(f"Account claude-b ({VAR}): ready.\n")
+    assert "  Runs: 0 in 24 hours ($0.00), 0 in 7 days ($0.00, estimated from their usage).\n" in told.out
+    assert "  Held by: no run.\n" in told.out and "  Last usage: -.\n" in told.out
+    assert account_cli(monkeypatch, capsys, owner, "show", "claude-theirs").code != 0
 
     default = ok(account_cli(monkeypatch, capsys, owner, "policy", PROJECT))
     assert default.out == (
@@ -110,7 +125,7 @@ def test_list_set_pause_and_policy_without_ever_printing_a_value(hub, monkeypatc
     theirs_policy = as_json(account_cli(monkeypatch, capsys, other, "policy", PROJECT, "--json"))
     assert theirs_policy["updated_at"] is None
 
-    for result in (listed, table, changed, paused, resumed, not_mine, default, set_):
+    for result in (listed, table, changed, paused, resumed, not_mine, told, default, set_):
         nowhere(result, *values.values(), theirs)
 
 
