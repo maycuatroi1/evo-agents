@@ -7,7 +7,9 @@ passes on raw as an ``output`` event: ``{"type": "rate_limit_event", "rate_limit
 "unifiedWindows": {"five_hour": {"utilization": 0.01, "resetsAt": 1791507000}, ...}}}``, ``status`` being ``allowed``,
 ``allowed_warning`` (with ``utilization`` and ``surpassedThreshold``) or ``rejected``. While the run holds a lease of
 CLAUDE_CODE_OAUTH_TOKEN, each one is reported to the hub (``WorkerHub.rate_limit``) with the lease's id, and the hub
-keeps the usage on the account; an older hub refuses it and nothing else changes.
+keeps the usage on the account; an older hub refuses it and nothing else changes. The reports of one run reach the
+hub in the order of the events: each usage report waits for the one before it, and the report of a limit waits for
+them all, so the hub never keeps an ``allowed`` sent before a ``rejected`` as the account's last usage.
 
 A ``rejected`` event, unless the CLI goes on with overage, means the account hit its limit: the agent is stopped. The
 same holds when the turn ended with an error that reads as a usage limit (``claude_code.limit_of_text``, which the
@@ -21,6 +23,7 @@ name or value. A run moves at most MAX_FAILOVERS times here, whatever the hub an
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import TYPE_CHECKING
 
@@ -98,6 +101,7 @@ class Limits:
         self.run = run
         self.rejected: dict | None = None  # the limit a rejected event of the agent that runs now gave
         self.moves = 0
+        self.reports: asyncio.Task | None = None  # the last usage report sent, which the next one waits for
 
     def lease_id(self) -> int | None:
         """The id of the run's lease of CLAUDE_CODE_OAUTH_TOKEN, the account the hub may move; None for none."""
@@ -114,7 +118,7 @@ class Limits:
         lease = self.lease_id()
         if report["status"] != "rejected":
             if lease is not None and self.run.credentials.hub is not None:
-                self.run.spawn(self._usage(lease, report))
+                self.reports = self.run.spawn(self._usage(lease, report, self.reports))
             return
         if self.rejected is None:
             self.rejected = report
@@ -122,13 +126,20 @@ class Limits:
                 self.run.note("The agent's account hit its usage limit: stopping the agent.")
                 self.run.spawn(agent.interrupt())
 
-    async def _usage(self, lease: int, report: dict) -> None:
+    async def _usage(self, lease: int, report: dict, before: asyncio.Task | None) -> None:
         from evo_agents.worker.hubapi import HubProblem  # aiohttp is the worker extra's: a core install imports limits
 
+        await self._sent(before)
         try:
             await self.run.credentials.hub.rate_limit(self.run.id, {"lease_id": lease, **report})
         except HubProblem as exc:  # an older hub, or one that did not answer: the usage is not kept
             log.info("usage not reported", extra={"run_id": self.run.id, "error": str(exc)})
+
+    @staticmethod
+    async def _sent(report: asyncio.Task | None) -> None:
+        """Wait until ``report`` reached the hub, failed or was cancelled; raise nothing of its own."""
+        if report is not None and not report.done():
+            await asyncio.wait({report})
 
     async def after(self, outcome: Outcome) -> Outcome | None:
         """How the agent's end counts once its usage limit is reported: None when the run moved to another account
@@ -145,6 +156,7 @@ class Limits:
             return self._failed(outcome, f"{said}; the run moved {self.moves} times already", limit.get("resets_at"))
         from evo_agents.worker.hubapi import HubProblem  # aiohttp is the worker extra's: a core install imports limits
 
+        await self._sent(self.reports)  # the usage the agent reported before its limit reaches the hub first
         try:
             answer = await hub.rate_limit(self.run.id, {"lease_id": lease, **limit})
         except HubProblem as exc:
