@@ -27,7 +27,6 @@ from typing import TYPE_CHECKING
 from evo_agents.hub import runs
 from evo_agents.hub.accounts import MAX_FAILOVERS
 from evo_agents.worker.adapter import AgentEvent, Outcome
-from evo_agents.worker.hubapi import HubProblem
 from evo_agents.worker.runner.common import log
 from evo_agents.worker.runtimes.claude_code import OAUTH_TOKEN, unix_time
 
@@ -124,6 +123,8 @@ class Limits:
                 self.run.spawn(agent.interrupt())
 
     async def _usage(self, lease: int, report: dict) -> None:
+        from evo_agents.worker.hubapi import HubProblem  # aiohttp is the worker extra's: a core install imports limits
+
         try:
             await self.run.credentials.hub.rate_limit(self.run.id, {"lease_id": lease, **report})
         except HubProblem as exc:  # an older hub, or one that did not answer: the usage is not kept
@@ -142,6 +143,8 @@ class Limits:
             return self._failed(outcome, f"{said}; the run holds no account of the hub to move", limit.get("resets_at"))
         if self.moves >= MAX_FAILOVERS:
             return self._failed(outcome, f"{said}; the run moved {self.moves} times already", limit.get("resets_at"))
+        from evo_agents.worker.hubapi import HubProblem  # aiohttp is the worker extra's: a core install imports limits
+
         try:
             answer = await hub.rate_limit(self.run.id, {"lease_id": lease, **limit})
         except HubProblem as exc:
