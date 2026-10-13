@@ -23,6 +23,7 @@ from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import ActiveRun, AuthorRunDispatch, Dispatch, PlanRunDispatch, Run, available
+from evo_agents.hub.server.runs.service.accounts import Picked, pick_account, record_pick
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.views import (
     Activity,
@@ -196,9 +197,10 @@ async def queue_run(
     timeout_s: int,
     pinned: Pinned | None,
     parent: int | None = None,
+    picked: tuple[Picked, ...] = (),
 ) -> int:
-    """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction; HTTPException when the step
-    may not run now."""
+    """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
+    by hand; HTTPException when the step may not run now."""
     body = held.body
     try:
         step = body["steps"][step_index(body, key)]
@@ -244,6 +246,8 @@ async def queue_run(
         if isinstance(exc.orig, psycopg.errors.CheckViolation):
             raise HTTPException(422, f"step {key}: its repo or branch name is not one a run can hold") from None
         raise
+    for account in picked:
+        await record_pick(conn, run_id, account)
     active[key] = ActiveRun(id=run_id, state="queued", dispatched_by=user.login)
     await notify_queued(conn, run_id)
     return run_id
@@ -265,8 +269,18 @@ def no_plan_run(activity: Activity, plan_id: str) -> None:
         )
 
 
+async def _picked(conn: AsyncConnection, user: Principal, access: ProjectAccess, name, pinned) -> Picked | None:
+    """The account ``name`` picked by hand for the run, checked (``service.accounts``); None when none is named."""
+    return None if name is None else await pick_account(conn, user, access, name, pinned)
+
+
+def _account_text(picked: Picked | None) -> str:
+    return "" if picked is None else picked.audit_text()
+
+
 async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) -> list[Run]:
-    """Queue a run of each step named, all of them or none; each one goes to a worker of the caller."""
+    """Queue a run of each step named, all of them or none; each one goes to a worker of the caller, and takes the
+    account named by hand, if one is."""
     keys = list(dict.fromkeys(str(step) for step in body.steps))
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
@@ -274,6 +288,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
+        picked = await _picked(conn, user, access, body.account, pinned)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
         no_plan_run(activity, body.plan_id)
@@ -292,8 +307,9 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 approval=body.approval,
                 timeout_s=body.timeout_min * 60,
                 pinned=pinned,
+                picked=() if picked is None else (picked,),
             )
-            target = run_target(project, body.plan_id, key, run_id)
+            target = run_target(project, body.plan_id, key, run_id) + _account_text(picked)
             await audit.record(
                 conn,
                 actor_id=user.user_id,
@@ -355,6 +371,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         held = await plan_routes._visible(conn, access, body.plan_id, None)
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
+        picked = await _picked(conn, user, access, body.account, pinned)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
         if activity.plan_run is not None:
@@ -401,8 +418,9 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
                     f"plan {held.plan_id}: a repo or branch name, or the number of repos, is not one a run can hold",
                 ) from None
             raise
+        await record_pick(conn, run_id, picked)
         await notify_queued(conn, run_id)
-        target = run_target(project, held.plan_id, None, run_id)
+        target = run_target(project, held.plan_id, None, run_id) + _account_text(picked)
         await audit_run(conn, user, access, audit.RUN_DISPATCH_PLAN, target)
         view = await run_view(conn, run_id)
     log.info(
@@ -451,6 +469,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
             raise HTTPException(422, f"{problem}; nothing was dispatched")
         runtime = author.AUTHOR_RUNTIMES[0] if body.runtime == "any" else body.runtime
         pinned = await pinnable(conn, user, access, body.worker_id)
+        picked = await _picked(conn, user, access, body.account, pinned)
         repos = await _author_repos(conn, access, pinned)
         _fits(pinned, access, "author", [repos[0]["repo"]], runtime)
         revision = None
@@ -486,8 +505,10 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
                     422, "a repo name, or the number of repos, is not one a run can hold; nothing was dispatched"
                 ) from None
             raise
+        await record_pick(conn, run_id, picked)
         await notify_queued(conn, run_id)
-        await audit_run(conn, user, access, audit.RUN_DISPATCH_AUTHOR, f"{project}/author run:{run_id}")
+        target = f"{project}/author run:{run_id}{_account_text(picked)}"
+        await audit_run(conn, user, access, audit.RUN_DISPATCH_AUTHOR, target)
         view = await run_view(conn, run_id)
     log.info(
         "author run dispatched",
