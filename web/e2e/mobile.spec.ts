@@ -227,6 +227,34 @@ test("every list is a list of rows that open their page", async ({ page, member 
   await expectNoSeriousViolations(page, "memories filter sheet at 375 px");
 });
 
+test("the plan's graph opens a step in a bottom sheet, its controls 44 px, and gives the focus back on close", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "customer" }]);
+  const project = me.projects[0];
+  await seedPlans(me, project);
+  await open(page, `/p/${project}/plans/${ACTIVE_PLAN}?view=graph`);
+  const canvas = main(page).getByTestId("step-graph-canvas");
+  await expect(canvas).toHaveAttribute("data-ready", "true");
+  for (const name of ["Zoom in", "Zoom out", "Fit the plan"]) await touchSized(canvas.getByRole("button", { name, exact: true }), name);
+
+  const node = canvas.locator('[data-testid="graph-step"][data-step="10"]');
+  await node.click();
+  const sheet = page.getByRole("dialog");
+  await expect(sheet.getByTestId("inspector-body")).toHaveAttribute("data-step", "10");
+  await expect(page).toHaveURL(/[?&]step=10(&|$)/);
+  await expect(sheet.getByTestId("inspector-title")).toBeFocused();
+  for (const id of ["inspector-previous", "inspector-next", "inspector-close", "inspector-open-page"]) await touchSized(sheet.getByTestId(id), id);
+  for (const button of await sheet.getByRole("button", { name: /^Select step/ }).all()) {
+    await touchSized(button, `the step button ${await button.getAttribute("data-step")}`);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(PHONE.width);
+  await expectNoSeriousViolations(page, "step inspector sheet at 375 px");
+
+  await sheet.getByTestId("inspector-close").click();
+  await expect(sheet).toHaveCount(0);
+  await expect(page).not.toHaveURL(/[?&]step=/);
+  await expect(page.locator(".react-flow__node:focus").getByTestId("graph-step")).toHaveAttribute("data-step", "10");
+});
+
 test("the admin lists are rows, and their filter forms apply from the sheet", async ({ page, signInAs }) => {
   await signInAs(ADMIN_ACCOUNT);
   await machineToken(ADMIN_ACCOUNT); // a machine token next to the web sessions

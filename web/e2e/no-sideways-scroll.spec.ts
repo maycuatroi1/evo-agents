@@ -81,6 +81,14 @@ async function seedProject(me: Member): Promise<Visit[]> {
         await shown("steps-table")(page);
       },
     },
+    {
+      // The graph with a step selected: its inspector beside the canvas from 1024 px, a bottom sheet below.
+      path: `/p/${project}/plans/${ACTIVE_PLAN}?view=graph&step=12`,
+      ready: async (page) => {
+        await expect(page.getByTestId("step-graph-canvas")).toHaveAttribute("data-ready", "true");
+        await expect(page.getByTestId("inspector-body")).toHaveAttribute("data-step", "12");
+      },
+    },
     { path: `/p/${project}/plans/${ACTIVE_PLAN}/revisions?from=1&to=3`, ready: shown("diff-hunk") },
     { path: `/p/${project}/memories`, ready: shown("memories-table") },
     { path: `/p/${project}/memories/${memory.id}`, ready: shown("revision-history") },
