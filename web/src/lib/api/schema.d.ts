@@ -4603,7 +4603,7 @@ export interface components {
             run_kinds?: string[] | null;
             /**
              * Features
-             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step. One that says none takes no such run. A feature this hub does not know is left out
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
         };
@@ -9198,7 +9198,7 @@ export interface components {
             held_runs: number;
             /**
              * Features
-             * @description what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; empty for a daemon that said none
+             * @description what its daemon said it does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions; empty for a daemon that said none
              */
             features?: string[];
             /**

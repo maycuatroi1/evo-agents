@@ -7,8 +7,10 @@ It serves the bundles of skills too, as the blob store does through a presigned 
 token), for the author runs it queues with ``skills``.
 
 The test drives the rest: it queues runs, answers decisions (an answer to a parked run queues the run that resumes it,
-pinned, with ``resume_of_run_id`` and the session, as ``decisions._resume`` does), parks a waiting run as the reaper
-would, sets what a run's ask for credentials gets (``leases``, nothing by default), and reads what the worker sent.
+pinned, with ``resume_of_run_id`` and the session, as ``decisions._resume`` does; for a parked author run, only once
+none of its decisions is open, the run that resumes it taking the answers its inbox holds), parks a waiting run as
+the reaper would, sets what a run's ask for credentials gets (``leases``, nothing by default), and reads what the
+worker sent.
 """
 
 from __future__ import annotations
@@ -324,6 +326,14 @@ class FakeHub:
         decision.update(state="answered", answer=option)
         run_id = decision["run_id"]
         run = self.runs[run_id]
+        text = f"Answer to decision #{decision_id} ({decision['category']}): {decision['question']}\n"
+        text += f"Chosen option: {option}."
+        answer = {"id": next(self._messages), "text": text, "decision_id": decision_id, "delivered": False}
+        if run["state"] == "parked" and run["spec"]["kind"] == "author":
+            self.inbox[run_id].append(answer)
+            if any(d["run_id"] == run_id and d["state"] == "open" for d in self.decisions.values()):
+                return run_id  # it waits in the parked run's inbox until the last answer, or a reply
+            return self._resume_author(run_id)
         if run["state"] == "parked":
             spec = run["spec"]
             kept = {"session_per_step": True} if spec.get("session_per_step") else {}  # as the hub's resume keeps it
@@ -336,12 +346,31 @@ class FakeHub:
                 if other["run_id"] == run_id and other["state"] == "open":
                     other["run_id"] = new_id
             run_id = new_id
-        text = f"Answer to decision #{decision_id} ({decision['category']}): {decision['question']}\n"
-        text += f"Chosen option: {option}."
-        self.inbox[run_id].append(
-            {"id": next(self._messages), "text": text, "decision_id": decision_id, "delivered": False}
-        )
+        self.inbox[run_id].append(answer)
         return run_id
+
+    def _resume_author(self, run_id: int) -> int:
+        """Queue the author run that resumes parked author run ``run_id`` on the same terms, with its open decisions and
+        the messages of its inbox not delivered yet; the new run's id."""
+        run = self.runs[run_id]
+        spec = run["spec"]
+        new_id = self.queue_author_run(
+            [item["repo"] for item in spec["repos"]],
+            spec.get("skills") or [],
+            prompt=spec["prompt"],
+            plan_id=spec["plan_id"],
+            resume_of=run_id,
+            session_id=run.get("session_id"),
+        )
+        self._move(run_id, "done")
+        run["resumed_by"] = new_id
+        for other in self.decisions.values():
+            if other["run_id"] == run_id and other["state"] == "open":
+                other["run_id"] = new_id
+        kept = [message for message in self.inbox[run_id] if not message["delivered"]]
+        self.inbox[run_id] = [message for message in self.inbox[run_id] if message["delivered"]]
+        self.inbox[new_id].extend(kept)
+        return new_id
 
     def reply(self, run_id: int, text: str) -> int:
         """The owner's reply in the chat of an author run, as POST .../messages leaves it; the run whose inbox took
@@ -349,18 +378,7 @@ class FakeHub:
         run = self.runs[run_id]
         assert run["spec"]["kind"] == "author", run["spec"]["kind"]
         if run["state"] == "parked":
-            spec = run["spec"]
-            new_id = self.queue_author_run(
-                [item["repo"] for item in spec["repos"]],
-                spec.get("skills") or [],
-                prompt=spec["prompt"],
-                plan_id=spec["plan_id"],
-                resume_of=run_id,
-                session_id=run.get("session_id"),
-            )
-            self._move(run_id, "done")
-            run["resumed_by"] = new_id
-            run_id = new_id
+            run_id = self._resume_author(run_id)
         assert self.runs[run_id]["state"] in runs.MESSAGE_STATES, self.runs[run_id]["state"]
         self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
         return run_id
@@ -620,7 +638,9 @@ class FakeHub:
         )
 
     async def _decision(self, request: web.Request) -> web.Response:
-        run_id, _ = self._held_plan_run(request)
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in ("plan", "author"):
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a plan run or an author run")
         body = await request.json()
         if body.get("category") not in runs.DECISION_CATEGORIES:
             return _error(422, "invalid", "not a decision category")
