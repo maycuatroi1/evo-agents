@@ -15,12 +15,13 @@ import {
   Server,
   Shield,
   Sparkles,
+  UserRoundCog,
 } from "lucide-react";
 import type { Route } from "next";
 
 /**
  * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas; the hub-wide areas
- * (workers, secrets, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
+ * (workers, secrets, accounts, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
  * a hub-wide area one entry to HUB_NAV, and one label under `nav` in messages/vi.json and messages/en.json. Icons follow
  * the Iconography table of web/DESIGN.md.
  */
@@ -40,6 +41,7 @@ export type NavLabel =
   | "myMemories"
   | "globalSkills"
   | "secrets"
+  | "accounts"
   | "admin";
 
 /**
@@ -86,6 +88,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
 export const HUB_NAV: readonly HubNavItem[] = [
   { label: "workers", icon: Server, href: "/workers" },
   { label: "secrets", icon: LockKeyhole, href: "/secrets" },
+  { label: "accounts", icon: UserRoundCog, href: "/accounts" },
   { label: "myMemories", icon: Brain, href: "/memories" },
   { label: "globalSkills", icon: Sparkles, href: "/skills" },
   { label: "admin", icon: Shield, href: "/admin", adminOnly: true },
