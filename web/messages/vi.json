@@ -2899,7 +2899,7 @@
           "waiting": "{you, select, yes {Đang chờ bạn} other {Đang chờ {login}}}",
           "ended": "Chat đã kết thúc",
           "ending": "Kết thúc sau lượt của agent",
-          "waitingDecisions": "{you, select, yes {{count, plural, other {# quyết định đang chờ bạn}}} other {{count, plural, other {# quyết định đang chờ {login}}}}}"
+          "waitingDecisions": "{count, plural, other {# quyết định}} đang chờ {you, select, yes {bạn} other {{login}}}"
         },
         "continues": "Chat này tiếp tục ở <link>run #{id}</link>.",
         "noPlan": "Chưa có plan trên hub",

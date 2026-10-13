@@ -2899,7 +2899,7 @@
           "waiting": "{you, select, yes {Waiting for you} other {Waiting for {login}}}",
           "ended": "Chat ended",
           "ending": "Ending after the agent's turn",
-          "waitingDecisions": "{you, select, yes {{count, plural, one {# decision waits for you} other {# decisions wait for you}}} other {{count, plural, one {# decision waits for {login}} other {# decisions wait for {login}}}}}"
+          "waitingDecisions": "{count, plural, one {# decision waits} other {# decisions wait}} {you, select, yes {for you} other {for {login}}}"
         },
         "continues": "This chat goes on in <link>run #{id}</link>.",
         "noPlan": "No plan on the hub yet",
