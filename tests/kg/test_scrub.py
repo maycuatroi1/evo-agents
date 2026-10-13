@@ -36,6 +36,7 @@ from evo_agents.kg.scrub import (
     might_hold_secret,
     project_dirs,
     purge,
+    rewrite_log,
     run_summary,
     scan_project,
     secrets_in_json,
@@ -239,24 +240,161 @@ def test_scrub_purge_keeps_live_copies_until_a_sync_replaces_them(synced_before_
     assert build_project(project).ok  # every blob the corpus uses is there
 
 
-def test_scrub_keeps_an_old_blob_a_run_in_use_still_names(fake_project):
+LEAKY = f"# A\n\n```\nDB_PASSWORD: {LITERAL}\n```\n"
+VAULT = "# A\n\nThe password is in the vault.\n"
+
+
+def records_of(path: Path) -> list[dict]:
+    """Every line of the run log at ``path``, read strictly: a file cut short or not gzip raises."""
+    with gzip.open(path, "rt", encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle]
+
+
+def blob_files(root: Path) -> set[str]:
+    return {path.parent.name + path.name for path in (root / "blobs" / "sha256").glob("*/*")}
+
+
+def states(project) -> tuple[str, str]:
+    """The digest of the merged state, and of the state the run logs replay to."""
+    corpus = Corpus(project.name, project.home)
+    try:
+        return corpus.state_digest(), corpus.state_digest(corpus.rebuild_state())
+    finally:
+        corpus.close()
+
+
+def scrub_line(project) -> dict:
+    lines = [json.loads(line) for line in (project.root / "audit.jsonl").read_text().splitlines()]
+    (line,) = [line for line in lines if line["event"] == "scrub"]
+    return line
+
+
+def assert_compacted(project, kept: set[str], state: str, content: str) -> None:
+    """After a purge that rewrote run logs in use: the kept blobs are gone and no file holds a value, the merged
+    state is the same and the logs left replay to it, and a cold verified build gives the same graph."""
+    assert kept and not kept & blob_files(project.root)
+    assert files_holding(project.root) == []
+    assert states(project) == (state, state)
+    verified = build_project(project, verify=True, cold=True)
+    assert verified.ok and verified.verify["match"] and verified.content_hash == content
+    assert scan_project(project.name, project.root).clean
+    assert not list((project.root / "log").glob(".*"))  # no temporary file left
+
+
+def test_scrub_purge_compacts_a_run_log_whose_item_record_from_before_redaction_names_a_kept_blob(fake_project, capsys):
     project, fake = fake_project
-    secret = f"DB_PASSWORD: {LITERAL}\n"
-    fake.set(items=[doc("a", f"# A\n\n```\n{secret}```\n", rev="1"), doc("b", rev="1")])
+    fake.set(items=[doc("a", LEAKY, rev="1"), doc("b", rev="1")])
+    first = Path(sync_project(project)[0].log)
+    fake.set(items=[doc("a", VAULT, rev="2")], listing=False)  # b not listed: the first run still holds b's record
     sync_project(project)
-    fake.set(items=[doc("a", "# A\n\nThe password is in the vault.\n", rev="2")], listing=False)  # b not listed
-    sync_project(project)
+    content = build_project(project).content_hash
+    state, replayed = states(project)
+    assert state == replayed
 
     found = scan_project(project.name, project.root)
-    assert found.blobs and found.found(OLD) == [] and found.found(LIVE) == []
     assert {(f.state, tuple(f.items), tuple(f.secrets.items())) for f in found.blobs} == {
         (KEPT, ("docs:doc:a",), (("password", 1),))
     }
-    assert found.logs == []  # the first run still holds b's record
-    purge(found)
-    assert {f.sha256 for f in found.blobs} <= {
-        p.parent.name + p.name for p in (project.root / "blobs" / "sha256").glob("*/*")
-    }
+    assert found.logs == [] and found.rewrite == [first.name] and found.counts()["rewrite"] == 1
+    before = records_of(first)
+    code, out, err = kg("--project", project.name, capsys=capsys)
+    assert code == 0, err
+    assert f"kept {len(found.blobs)}: only records the corpus no longer holds refer to them" in out
+    assert "--purge rewrites those 1 run log(s) without such records, then deletes them" in out
+
+    code, out, err = kg("--project", project.name, "--purge", "--yes", capsys=capsys)
+    assert code == 0, err
+    assert not leaked(out + err)
+    assert f"About to delete 0 old blob(s) and {len(found.blobs)} kept blob(s)" in out
+    assert "after rewriting 1 run log(s) in use" in out
+    assert f"{project.name}: deleted {len(found.blobs)} blob(s)" in out
+    assert "rewrote 1 run log(s) in use without the 1 record(s) the corpus no longer holds" in out
+
+    after = records_of(first)  # the same name, still a complete gzip file
+    assert after == [record for record in before if record.get("id") != "docs:doc:a"]
+    assert after[0]["type"] == "run" and len(after) == len(before) - 1
+    assert [record["id"] for record in after if record["type"] == "item"] == ["docs:doc:b"]
+    assert_compacted(project, {f.sha256 for f in found.blobs}, state, content)
+    line = scrub_line(project)
+    assert (line["rewritten"], line["dropped"], line["blobs"], line["kept"], line["logs"]) == (
+        1,
+        1,
+        len(found.blobs),
+        len(found.blobs),
+        0,
+    )
+    assert line["secrets"] == {"password": len(found.blobs)} and not leaked(json.dumps(line))
+
+    fake.set(items=[doc("a", VAULT, rev="3"), doc("b", rev="2")])  # syncs go on from the rewritten logs
+    assert all(r.ok for r in sync_project(project))
+    assert build_project(project).ok and states(project)[0] == states(project)[1]
+
+
+def test_scrub_purge_compacts_a_run_log_held_in_use_by_its_winning_tombstone(fake_project):
+    """A full run that removed an item stays in use while its tombstone wins; its records of the items it listed
+    before they were redacted then keep their blobs. The purge keeps the tombstone and drops those records."""
+    project, fake = fake_project
+    others = [doc(key, rev="1") for key in "bcd"]
+    fake.set(items=[doc("a", LEAKY, rev="1"), *others, doc("e", rev="1")])
+    first = Path(sync_project(project)[0].log)
+    fake.set(items=[doc("a", LEAKY, rev="1"), *others])  # e is gone: the complete listing removes it
+    removing = sync_project(project)[0]
+    assert removing.removals == 1
+    second = Path(removing.log)
+    fake.set(items=[doc("a", VAULT, rev="2"), *others])
+    sync_project(project)
+    content = build_project(project).content_hash
+    state, _ = states(project)
+
+    found = scan_project(project.name, project.root)
+    kept = {f.sha256 for f in found.found(KEPT)}
+    assert kept and found.found(OLD) == [] and found.found(LIVE) == []
+    assert found.rewrite == [second.name]  # in use for e's tombstone
+    assert found.logs == [first.name]  # no record of the first run wins any more
+    with holding_sources(project.root):
+        deleted = purge(found)
+    assert (deleted["blobs"], deleted["logs"], deleted["rewritten"], deleted["dropped"]) == (len(kept), 1, 1, 4)
+
+    assert not first.exists()
+    entries = [record for record in records_of(second) if record["type"] in ("item", "tombstone")]
+    assert entries == [
+        {"type": "tombstone", "id": "docs:doc:e", "rev": "1", "rev_time": "2026-10-01T00:00:00Z", "derived": "listing"}
+    ]
+    assert_compacted(project, kept, state, content)
+
+
+def test_scrub_keeps_a_kept_blob_a_log_still_being_written_names(fake_project, capsys):
+    project, fake = fake_project
+    fake.set(items=[doc("a", LEAKY, rev="1"), doc("b", rev="1")])
+    first = Path(sync_project(project)[0].log)
+    fake.set(items=[doc("a", VAULT, rev="2")], listing=False)
+    sync_project(project)
+    crashed = project.root / "log" / "01890000-0000-7000-8000-000000000000.jsonl"  # as a sync that crashed leaves it
+    crashed.write_text("".join(json.dumps(record) + "\n" for record in records_of(first)), encoding="utf-8")
+
+    found = scan_project(project.name, project.root)
+    kept = {f.sha256 for f in found.found(KEPT)}
+    assert kept and found.pinned == kept and found.doomed() == [] and found.rewrite == []
+    code, out, err = kg("--project", project.name, capsys=capsys)
+    assert f"{len(kept)} of them stay, named by a run log a sync left unfinished" in out
+    with holding_sources(project.root):
+        assert purge(found)["blobs"] == 0
+    assert kept <= blob_files(project.root)
+
+
+def test_rewrite_log_leaves_a_log_lacking_a_record_the_corpus_holds(fake_project):
+    project, fake = fake_project
+    fake.set(items=[doc("a", LEAKY, rev="1"), doc("b", rev="1")])
+    first = Path(sync_project(project)[0].log)
+    fake.set(items=[doc("a", VAULT, rev="2")], listing=False)
+    sync_project(project)
+    winners, _ = scrub_module._winners(project.root)
+    run_id = records_of(first)[0]["run_id"]
+    before = first.read_bytes()
+
+    assert rewrite_log(first, winners, {run_id: {"docs:doc:b", "docs:doc:gone"}}) is None
+    assert first.read_bytes() == before and not list(first.parent.glob(".*"))
+    assert rewrite_log(first, winners, {run_id: {"docs:doc:b"}}) == 1
 
 
 def test_scrub_purge_deletes_memo_rows_holding_a_secret(fake_project):
@@ -321,6 +459,10 @@ def test_run_summary_says_whether_a_run_was_full(fake_project):
     partial = Path(sync_project(project)[0].log)
     assert run_summary(full).full and not run_summary(partial).full
     assert run_summary(full).source == "docs" and len(run_summary(full).refs) >= 1
+    assert run_summary(full).paths == {}  # these items name no file
+    fake.set(items=[{**doc("a", rev="3"), "path": "docs/a.md"}])
+    named = run_summary(Path(sync_project(project)[0].log))
+    assert named.paths and set(named.paths) == named.refs and set().union(*named.paths.values()) == {"docs/a.md"}
     with gzip.open(full, "rt") as handle:
         assert json.loads(handle.readline())["run_id"] == run_summary(full).run_id
 

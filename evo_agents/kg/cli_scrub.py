@@ -2,8 +2,9 @@
 
 By default it only reads: for each project, the blobs holding a secret with their state (old, live, kept), the paths
 and item ids that refer to them and the kinds of secret they hold, the run logs of old runs that would go with them,
-and the memo and graph rows holding one. ``--purge`` prints what it is about to delete, asks before deleting (or takes
-``--yes``), deletes, and compacts the memo and the graph. Nothing it prints or writes holds a value.
+the run logs in use a purge would rewrite, and the memo and graph rows holding one. ``--purge`` prints what it is about
+to delete, asks before deleting (or takes ``--yes``), rewrites those logs, deletes, and compacts the memo and the
+graph. Nothing it prints or writes holds a value.
 """
 
 from __future__ import annotations
@@ -56,7 +57,11 @@ def _print_states(scan) -> None:
             "connector does), then scrub again"
         )
     if counts[KEPT]:
-        print(f"  kept {counts[KEPT]}: an older record of a run still in use refers to them")
+        pinned = f"; {len(scan.pinned)} of them stay, named by a run log a sync left unfinished" if scan.pinned else ""
+        print(
+            f"  kept {counts[KEPT]}: only records the corpus no longer holds refer to them, in run logs still in use; "
+            f"--purge rewrites those {counts['rewrite']} run log(s) without such records, then deletes them{pinned}"
+        )
     if counts["memo"]:
         print(f"  memo: {counts['memo']} row(s); --purge deletes them and the next build computes them again")
     if counts["graph"]:
@@ -80,15 +85,17 @@ def print_scan(scan) -> None:
 
 
 def _plan_line(total: dict, projects: int) -> str:
+    kept = total["to_delete"] - total[OLD]
+    rewrite = f", after rewriting {total['rewrite']} run log(s) in use" if total["rewrite"] else ""
     return (
-        f"{total[OLD]} old blob(s) ({_size(total['bytes'])}), {total['logs']} run log(s) of old runs and "
-        f"{total['memo']} memo row(s) in {projects} project(s)"
+        f"{total[OLD]} old blob(s)" + (f" and {kept} kept blob(s)" if kept else "") + f" ({_size(total['bytes'])}), "
+        f"{total['logs']} run log(s) of old runs and {total['memo']} memo row(s) in {projects} project(s){rewrite}"
     )
 
 
 def _confirmed(args, total: dict, projects: int) -> bool:
     """Whether to go on with the purge: nothing to delete, --yes, or a yes at the prompt."""
-    if not (total[OLD] or total["logs"] or total["memo"]):
+    if not (total["to_delete"] or total["logs"] or total["rewrite"] or total["memo"]):
         if not args.json:
             print("Nothing to delete; compacting the memo and the graph.")
         return True
@@ -129,9 +136,15 @@ def _purge_all(args, scans: list) -> int:
         shown = len(scan.warnings)
         deleted = purge(scan)
         if not args.json:
+            rewritten = (
+                f"; rewrote {deleted['rewritten']} run log(s) in use without the {deleted['dropped']} record(s) the "
+                "corpus no longer holds"
+                if deleted["rewritten"]
+                else ""
+            )
             print(
                 f"{scan.project}: deleted {deleted['blobs']} blob(s) ({_size(deleted['bytes'])}), {deleted['logs']} "
-                f"run log(s) and {deleted['memo']} memo row(s); memo and graph compacted"
+                f"run log(s) and {deleted['memo']} memo row(s){rewritten}; memo and graph compacted"
             )
             for warning in scan.warnings[shown:]:
                 print(f"  warning: {warning}")
