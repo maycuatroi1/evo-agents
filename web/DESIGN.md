@@ -860,7 +860,13 @@ Shared pieces built on them:
   before the stream's state. The composer shows under the Trace and the Raw log, not under the Terminal.
 - The Trace (`agent-trace.tsx`, `trace-model.ts`), the kit's AgentTrace and the first tab, reads the same events as
   the Raw log (`useRunLog` keeps them beside its lines): consecutive `agent_message_chunk` events are one message
-  (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; `agent_thought_chunk` events fold into
+  (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; a message that holds a step's report (the
+  plan-step contract: `step:` then `result: pass | fail`, read by `step-report.ts`) is a card instead
+  (`trace-report.tsx`): the result as a run pill (Pass `done`, Fail `failed`), "Step 1", the branch and commits as
+  `Identifier` chips linked to the forge, the files outside the step's scope and a stash when there are any, the
+  decisions as a numbered list and the notes, both Markdown, then Files and Verify as folded rows like a tool call's
+  (Verify open when the step failed; the commands one per line at each `&&`, `||` and `;`, wrapped with a hanging
+  indent, the output as it is); words around the report stay Markdown; `agent_thought_chunk` events fold into
   "Thought for 3.2s" (from the event before them) over the words that follow; a `tool_call` and its
   `tool_call_update` events, matched by `toolCallId` in seq order whatever order they arrived in, are one row: the
   tool's name (or its kind's for a title that is a command or a path, as Codex and opencode give), what the agent said

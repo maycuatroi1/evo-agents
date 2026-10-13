@@ -123,6 +123,47 @@ describe("AgentTrace", () => {
     expect(screen.getByTestId("trace-typing")).toHaveTextContent("Agent đang làm việc.");
   });
 
+  it("shows a step's report as a card, its verify folded when it passed", async () => {
+    seq = 0;
+    const text = [
+      "step: 1",
+      "result: pass",
+      "commits: d4664cd",
+      "branch: feat/worker-settings-web",
+      "files: evo_agents/hub/runs.py, tests/hub/test_runs.py (new)",
+      "outside_scope: none",
+      "verify_command: ruff check .",
+      "verify_output: |",
+      "  All checks passed!",
+      "decisions: |",
+      "  Decision: The answer key is `settings`.",
+      "  Decision: A body with no field set is 422.",
+      "notes: Step 2 must read the new key.",
+    ].join("\n");
+    show([ev("agent_message_chunk", { content: { type: "text", text } })], {
+      webOfBranch: () => ({ url: "https://github.com/octo/evo", forge: "github" }),
+    });
+    const card = screen.getByTestId("trace-report");
+    expect(card).toHaveAttribute("data-result", "pass");
+    expect(card).toHaveAccessibleName("Báo cáo bước 1");
+    expect(within(card).getByTestId("trace-report-result")).toHaveTextContent("Đạt");
+    expect(within(card).getByRole("link", { name: /d4664cd/ })).toHaveAttribute("href", "https://github.com/octo/evo/commit/d4664cd");
+    expect(within(card).getByRole("link", { name: /feat\/worker-settings-web/ })).toHaveAttribute(
+      "href",
+      "https://github.com/octo/evo/tree/feat/worker-settings-web",
+    );
+    const decisions = within(card).getByTestId("trace-report-decisions");
+    expect(within(decisions).getAllByRole("listitem")).toHaveLength(2);
+    expect(within(decisions).getByText("settings").tagName).toBe("CODE");
+    expect(within(card).getByTestId("trace-report-notes")).toHaveTextContent("Step 2 must read the new key.");
+    expect(within(card).getByTestId("trace-report-files")).toHaveTextContent("2 file, 1 file mới");
+    const verify = within(card).getByTestId("trace-report-verify");
+    expect(verify).not.toHaveAttribute("open");
+    await userEvent.setup().click(within(verify).getByText("Kiểm tra"));
+    expect(within(verify).getByTestId("trace-report-output")).toHaveTextContent("All checks passed!");
+    expect(screen.queryByTestId("trace-message")).toBeNull();
+  });
+
   it("says why it is empty", () => {
     show([], { active: true });
     expect(screen.getByTestId("trace-empty")).toHaveTextContent("Đang chờ sự kiện đầu tiên của run…");

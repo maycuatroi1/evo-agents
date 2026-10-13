@@ -2222,6 +2222,26 @@
           "seconds": "{seconds}.{tenths}s",
           "minutes": "{minutes}m {seconds}s",
           "hours": "{hours}h {minutes}m"
+        },
+        "report": {
+          "label": "Report of step {step}",
+          "title": "Step {step}",
+          "pass": "Pass",
+          "fail": "Fail",
+          "branch": "Branch",
+          "commits": "Commits",
+          "noCommit": "No commit",
+          "outsideScope": "Outside the step's scope",
+          "stash": "Stash",
+          "decisions": "{count, plural, one {# decision} other {# decisions}}",
+          "notes": "Notes",
+          "files": "Files",
+          "filesCount": "{count, plural, one {# file} other {# files}}",
+          "filesCountNew": "{count, plural, one {# file} other {# files}}, {added} new",
+          "verify": "Verify",
+          "command": "The plan's command",
+          "effective": "Run as",
+          "output": "Output"
         }
       },
       "usage": {

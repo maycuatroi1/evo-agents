@@ -2222,6 +2222,26 @@
           "seconds": "{seconds},{tenths} giây",
           "minutes": "{minutes} phút {seconds} giây",
           "hours": "{hours} giờ {minutes} phút"
+        },
+        "report": {
+          "label": "Báo cáo bước {step}",
+          "title": "Bước {step}",
+          "pass": "Đạt",
+          "fail": "Không đạt",
+          "branch": "Branch",
+          "commits": "Commit",
+          "noCommit": "Không có commit",
+          "outsideScope": "Ngoài phạm vi của bước",
+          "stash": "Stash",
+          "decisions": "{count, plural, other {# quyết định}}",
+          "notes": "Ghi chú",
+          "files": "File",
+          "filesCount": "{count, plural, other {# file}}",
+          "filesCountNew": "{count, plural, other {# file}}, {added} file mới",
+          "verify": "Kiểm tra",
+          "command": "Lệnh của plan",
+          "effective": "Lệnh đã chạy",
+          "output": "Output"
         }
       },
       "usage": {
