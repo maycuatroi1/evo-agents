@@ -153,6 +153,7 @@ class StepRun:
                 run.outcome.error or f"{run.runtime} ended before its turn completed",
                 usage=run.outcome.usage,
                 cap=run.outcome.cap,
+                cause=run.outcome.cause,
             )
 
     async def commit_and_push(self) -> tuple[str, dict]:

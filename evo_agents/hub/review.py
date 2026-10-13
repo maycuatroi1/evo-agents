@@ -143,6 +143,7 @@ RUN_FAILURE_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
     ("worker_stopped", re.compile(r"was stopped while|failed while running|daemon stopped", re.I)),
     ("origin", re.compile(r"lists no origin", re.I)),
     ("credentials", ENVIRONMENT_CAUSES[4][1]),
+    ("rate_limit", re.compile(r"usage limit|rate.?limit", re.I)),
     (
         "push_conflict",
         re.compile(

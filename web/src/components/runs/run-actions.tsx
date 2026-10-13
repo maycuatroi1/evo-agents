@@ -2,7 +2,6 @@
 
 import { Ban, Check, FileDiff, Hand, HeartPulse, Info, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
@@ -23,7 +22,8 @@ import { CommandLine } from "@/components/workers/command-line";
 import { cn } from "@/lib/utils";
 
 import { useRunControl, useRunFailure } from "./hooks";
-import { HELD_STATES, type Run, type RunControl, runDiffHref, runHref, STEADY_GAP_SECONDS, STEADY_SECONDS } from "./queries";
+import { HELD_STATES, type Run, type RunControl, runDiffHref, STEADY_GAP_SECONDS, STEADY_SECONDS } from "./queries";
+import { RerunDialog } from "./rerun-dialog";
 import { readDiffstat, type RunControls } from "./run-model";
 
 /** The tmux session a takeover opens on the worker, and the Remote Control name Claude Code gives it (docs/workers.md). */
@@ -120,19 +120,19 @@ function TakeoverDialog({
 /**
  * The run's actions in its header, as the state and the visitor's rights allow (`runControls`), in the kit's order:
  * Take over (a dialog with the attach command and Remote Control), the diff once the worker uploaded one (with its
- * `+12 −3` when the worker reported a diffstat), Rerun, Hand back, Approve, and Cancel last (asked to confirm). Each
- * control waits for the hub's answer, then says what happened in a toast; a failure inside a dialog stays there, any
- * other stays as a toast until dismissed.
+ * `+12 −3` when the worker reported a diffstat), Rerun (a dialog with the account it takes), Hand back, Approve, and
+ * Cancel last (asked to confirm). Each control waits for the hub's answer, then says what happened in a toast; a
+ * failure inside a dialog stays there, any other stays as a toast until dismissed.
  */
 export function RunActions({ run, controls }: { run: Run; controls: RunControls }) {
   const t = useTranslations("runs.detail.actions");
   const format = useFormatter();
-  const router = useRouter();
   const control = useRunControl(run);
   const failure = useRunFailure();
   const [confirming, setConfirming] = useState<"cancel" | "takeover" | null>(null);
   const [dialogError, setDialogError] = useState<WriteFailure | null>(null);
   const [acting, setActing] = useState<RunControl | null>(null);
+  const [rerunning, setRerunning] = useState(false);
 
   const act = (action: RunControl) => {
     if (control.isPending) return;
@@ -141,16 +141,6 @@ export function RunActions({ run, controls }: { run: Run; controls: RunControls 
     control.mutate(action, {
       onSuccess: (answer) => {
         setConfirming(null);
-        if (action === "rerun") {
-          notify({
-            tone: "success",
-            text: t("toast.rerun", { id: answer.id }),
-            description: t("toast.rerunText", { of: run.id }),
-            link: { label: t("toast.openRun"), href: runHref(answer.project, answer.id) },
-          });
-          router.push(runHref(answer.project, answer.id));
-          return;
-        }
         const held = (HELD_STATES as readonly string[]).includes(answer.state);
         if (action === "cancel") {
           notify(
@@ -219,7 +209,7 @@ export function RunActions({ run, controls }: { run: Run; controls: RunControls 
         </Button>
       ) : null}
       {controls.rerun ? (
-        <Button type="button" variant="outline" onClick={() => act("rerun")} aria-disabled={control.isPending || undefined} busy={busy("rerun")} data-testid="run-rerun">
+        <Button type="button" variant="outline" onClick={() => setRerunning(true)} aria-disabled={control.isPending || undefined} data-testid="run-rerun">
           <RotateCcw aria-hidden="true" />
           {t("rerun")}
         </Button>
@@ -274,6 +264,7 @@ export function RunActions({ run, controls }: { run: Run; controls: RunControls 
         onConfirm={() => act("cancel")}
         testId="cancel-run-dialog"
       />
+      {controls.rerun ? <RerunDialog run={run} open={rerunning} onOpenChange={setRerunning} errorView={(error) => <InlineError {...error} />} /> : null}
       <TakeoverDialog
         run={run}
         open={confirming === "takeover"}

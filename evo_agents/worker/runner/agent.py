@@ -9,6 +9,8 @@ CLAUDE_CODE_OAUTH_TOKEN) is noted once a run (``note_environment``). On Claude C
 subscription login alone (plan decision 14): ANTHROPIC_API_KEY is left out of its agent's environment, and a machine
 that has no subscription login for it fails the run before the agent starts, saying so (``Adapter.login_refusal``).
 The agent of a run on Claude Code gets the auto-compact window of ``claude_code.compact_window`` in its environment.
+A headless agent whose account hits its usage limit is stopped, and goes on in the same session with another account
+when the hub moves the run to one (``limits``); else the run fails with cause rate_limit.
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ from evo_agents.hub import curator, runs
 from evo_agents.worker import interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
+from evo_agents.worker.runner.limits import FAILOVER_PROMPT, Limits
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
 from evo_agents.worker.runtimes.claude_code import compact_window
@@ -54,6 +57,7 @@ class Agent:
         self.handback_asked = asyncio.Event()
         self.environment_noted: set[str] = set()  # the lines of environment_notes written already
         self.terminal = Terminal(run, self)
+        self.limits = Limits(run)  # the usage limit of the agent's account, and the move to another one
 
     # The runtime
 
@@ -221,6 +225,10 @@ class Agent:
                 outcome = await self.headless(cls, prompt, session_id)
                 session_id = self.adapter.session_id or session_id
                 self.run.check()
+                outcome = await self.limits.after(outcome)
+                if outcome is None:  # the run moved to another account: a new agent goes on in the session
+                    prompt = FAILOVER_PROMPT if session_id else first_prompt
+                    continue
                 if self.takeover_asked and session_id and self.interactive_unsupported(cls) is None:
                     in_terminal = True
                     continue
@@ -325,6 +333,7 @@ class Agent:
         async for item in adapter.events():
             if isinstance(item, AgentEvent):
                 run.event(item.kind, item.body, item.at)
+                self.limits.see(self, item)
             if not self.group_noted and looks < NOTE_GROUP_LOOKS:  # a runtime that started after start returned
                 looks += 1
                 pid = self.group_of(adapter)

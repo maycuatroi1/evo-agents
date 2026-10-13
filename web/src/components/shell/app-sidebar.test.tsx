@@ -115,6 +115,7 @@ describe("AppSidebar", () => {
       "nav-kg",
       "nav-workers",
       "nav-secrets",
+      "nav-accounts",
       "nav-myMemories",
       "nav-globalSkills",
     ]);

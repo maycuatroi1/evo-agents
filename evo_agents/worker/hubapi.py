@@ -180,6 +180,12 @@ class WorkerHub:
         answer = await self.call("DELETE", f"/v1/worker/runs/{int(run_id)}/credentials")
         return answer if isinstance(answer, dict) else {}
 
+    async def rate_limit(self, run_id: int, body: dict) -> dict:
+        """Say what the agent's CLI said of the account behind a lease of the run (``evo_agents.worker.runner.limits``):
+        ``{action, secret_id, failovers, ...}``; an older hub without the route answers 404 (Refused)."""
+        answer = await self.call("POST", f"/v1/worker/runs/{int(run_id)}/rate-limit", body)
+        return answer if isinstance(answer, dict) else {}
+
     # A plan run: its plan, its steps, its decisions and its notices
 
     async def plan(self, run_id: int) -> dict:

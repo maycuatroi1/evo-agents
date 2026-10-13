@@ -275,6 +275,20 @@ evo-agents hub secret list
 evo-agents hub run credentials 41 --project demo   # the leases run 41 got, given back or not; never their values
 ```
 
+Several `env` secrets for the same variable bound to one project are accounts, such as two Claude subscriptions: each
+run takes one of them by the rotation you set for the project (round-robin by default, weighted-round-robin or
+fill-first) and keeps it, and a headless Claude Code run whose account hits its usage limit goes on in the same session
+with the next one. `hub account` shows and weighs them, and `--account` picks one by hand
+([docs/credentials.md](docs/credentials.md), section "Accounts"):
+
+```sh
+pbpaste | evo-agents hub secret set claude-b --kind env --env-var CLAUDE_CODE_OAUTH_TOKEN --project demo
+evo-agents hub account list                        # state, usage, runs and cost of each account; never a value
+evo-agents hub account policy demo --strategy fill-first --cooldown 1800
+evo-agents hub account pause claude-a
+evo-agents hub run dispatch rollout 2 --account claude-b --project demo
+```
+
 ### Running a hub
 
 The hub is an API server, a job worker and a web interface, published as two images on GHCR for each release and run
