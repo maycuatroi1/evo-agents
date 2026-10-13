@@ -61,6 +61,8 @@ class FakeHub:
         self.rate_limit_answers: dict[int, list[dict]] = {}
         self.rate_limit_route = True
         self.heartbeats = 0
+        # the worker's settings each heartbeat answer carries ({slots, name, labels}); None: none, as a hub before 0026
+        self.settings: dict | None = None
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
         self.blob_reads: list[str] = []
         self._ids = itertools.count(101)
@@ -475,7 +477,10 @@ class FakeHub:
                 )
             else:
                 controls.append({"id": run_id, "held": False, "state": None, "lease_expires_at": None, "cancel": True})
-        return web.json_response({"drain": False, "runs": controls})
+        answer = {"drain": False, "runs": controls}
+        if self.settings is not None:
+            answer["settings"] = self.settings
+        return web.json_response(answer)
 
     async def _state(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)

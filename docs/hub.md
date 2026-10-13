@@ -28,7 +28,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | Home, `/` | what waits on you, what runs and what ended lately over the projects of your grants, with your workers; a decision answered in a sheet over it, a failed step rerun from it; the author runs that wait for your reply in their chat | `GET /v1/me/overview` |
 | Monitor, `/monitor` | every run in flight over the projects of your grants, and a grid of live tiles that shares out the window (up to nine within it, then four columns that scroll): each tile a run's state, worker, time, plan steps and the tail of its trace, for viewing only; `?runs=project:id,...` names the tiles, ended runs included, and without it the grid follows every run in flight | `GET /v1/me/overview`, `.../runs/{id}`, `.../stream?after=` (200 events before `last_seq`), `.../events?after=` while a stream fails |
 | a run, `/p/{project}/runs/{id}` | its phases on a timeline; the Trace of its events (messages, thinking, each tool call with its argument, exit code, duration and output), the raw log and the owner's terminal as tabs; its tokens by type and the cost the agent reported; for an author run a Chat tab first among them (`?tab=chat`): the agent's and the owner's messages, whose turn it is, a reply box, End chat and a link to the plan it wrote or revises; for a plan run with a session for each step a Step sessions card, each step's agent session with its id to copy, the largest context it read and its cache reads; from 1280 px the session and the side column scroll on their own; a repo links to its forge page from the project's origin, and on GitHub or GitLab its branch and commit too | `.../runs/{id}`, `.../events`, `.../stream`, `.../chat`, `.../messages`, `.../finish`, `GET /v1/projects/{project}` |
-| a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
+| a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | a plan's steps as Board (by status, the default), List (in plan order) or Graph (`?view=graph`): the graph of their dependencies top to bottom, a step under every step it waits for, lines solid when the step waited for is done and dashed while it is not, Ready steps tagged, a dependency implied by another one not drawn; a step selected (`&step=11`) dims what it neither waits for nor unblocks and opens a read-only inspector beside the graph from 1024 px and in a bottom sheet below, with its dependencies, what waits for it, What to do, Verify, Evidence, its acceptance criteria and a link to the step's page; the view is kept in the URL and on the browser for the next plan; New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
 
@@ -83,7 +83,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
-| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
+| workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
@@ -347,7 +347,11 @@ without the run. Schema 0023 adds `workers.steady_since`, the first heartbeat of
 none more than 30 seconds late, which holds the next attempt of a run lost on a worker back from it until it has been
 steady for 120 seconds (`docs/workers.md`, Run states); going back to 0022 drops it. Schema 0024 adds
 `runs.failure_cause`, why a run failed as its worker reported it (`docs/workers.md`, Preflight and failure causes);
-going back to 0023 drops it, and the Curator's figures read every cause from the error again.
+going back to 0023 drops it, and the Curator's figures read every cause from the error again. Schema 0026 lets a
+worker hold up to 16 runs at once: the CHECKs of `workers.slots`, `workers.free_slots` and `worker_pairings.slots` go
+from 8 to 16, and the owner changes a worker's slots, labels and name with `PATCH /v1/workers/{id}` (`docs/workers.md`,
+Routes); going back to 0025 narrows them to 8 again and refuses, naming them, while a worker not revoked or a pairing
+neither used nor expired holds more than 8 slots.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -997,14 +1001,15 @@ nothing; a `v*` tag pushes them to GHCR with the version as tag:
   `next build` fixes the `/v1` rewrite into the image, and the build argument `EVO_HUB_API_INTERNAL_URL` sets its
   target, `http://api:8080` by default. Build with `--build-arg EVO_HUB_API_INTERNAL_URL=<url>` for another address.
 
-`deploy/hub/docker-compose.yml` runs the three services from those images and builds nothing. Postgres is not in it:
+`deploy/hub/docker-compose.yml` builds the three services from the checkout it is in and gives the images those names,
+tagged `EVO_HUB_VERSION`; `docker compose up` without `--build` pulls that release from GHCR instead. Postgres is not in it:
 point `EVO_HUB_DSN` at a database the platform manages, reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK`
 (default `dokploy-network`). The volumes `api-cache` and `worker-cache` are caches; deleting them loses nothing. Set
 the variables in the platform's environment, never in a committed file. `deploy/hub/.env.example` lists them:
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
-| `EVO_HUB_VERSION` | compose | image tag: a release's tag without the `v` |
+| `EVO_HUB_VERSION` | compose | image tag: a release's tag without the `v` to pull it, or a name such as `main` for images built from the checkout |
 | `EVO_HUB_DSN` | api, worker | `postgresql://` URI of the hub database (required) |
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
@@ -1052,10 +1057,29 @@ every join for 10 minutes. List the address or network the proxy reaches the api
 the shared network, and nothing wider: a listed address can claim any client address in `X-Forwarded-For`, and `*`
 lets every client do that. The default trusts nobody new.
 
+### Deploying main
+
+`.github/workflows/deploy.yml` deploys every push to main once `ci` passes on it. The platform (Dokploy) holds the
+compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds the three images there with
+`docker compose up -d --build`; no image of main goes through GHCR. The job:
+
+1. stops when main has moved past its commit, since the platform clones main as it is and the newer commit's own `ci`
+   run deploys it;
+2. reads the schema the hub runs from `/v1/health`, fails when this commit does not know it, and runs the platform's
+   Postgres backup first when the newest file under `evo_agents/hub/migrations/versions/` is another revision, or
+   when the hub does not answer, since api and worker migrate as they start;
+3. asks the platform to deploy, waits for the deployment to end `done`, then for `/v1/health` to report `status` ok
+   and this commit's schema.
+
+The environment `production` of the repository, open to main only, holds the secret `DOKPLOY_API_KEY` and the
+variables `DOKPLOY_URL`, `DOKPLOY_COMPOSE_ID`, `DOKPLOY_BACKUP_ID` and `EVO_HUB_URL`. A run of the workflow by hand
+(`workflow_dispatch`) deploys main again. `/v1/health` reports the version of the last release on main, not the
+commit: the Dokploy deployment's title (`main <short sha>`) and description (the run's URL) name the commit.
+
 ### Running the stack locally
 
-`deploy/hub/docker-compose.dev.yml` adds, on top of the production file, image builds from this checkout, Postgres
-16, moto as the S3 store, and a one-off service that creates the bucket. `deploy/hub/.env.example` works with it as
+`deploy/hub/docker-compose.dev.yml` adds, on top of the production file, which builds the images from this checkout,
+Postgres 16, moto as the S3 store, and a one-off service that creates the bucket. `deploy/hub/.env.example` works with it as
 it is:
 
 ```sh

@@ -391,3 +391,20 @@
 .wterm.hub-terminal ::selection {
   background: rgb(140 157 255 / 35%);
 }
+
+/* The Graph of a plan's steps (React Flow, components/plans/step-graph.tsx). Plain CSS rather than arbitrary variants,
+   since Tailwind reads the underscores of React Flow's class names as spaces; unlayered, so it wins over React Flow's
+   own unlayered base.css by specificity. A step's focus is the kit's 2 px ring; the attribution stays, in fg-muted
+   on the card rather than React Flow's white box. */
+.plan-graph .react-flow__node:focus-visible {
+  border-radius: 8px;
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+.plan-graph .react-flow__attribution {
+  background: color-mix(in oklab, var(--card) 80%, transparent);
+  border-top-left-radius: 6px;
+}
+.plan-graph .react-flow__attribution a {
+  color: var(--muted-foreground);
+}

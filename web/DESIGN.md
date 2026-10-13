@@ -217,6 +217,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Morning brief of the Curator | `Sunrise` |
 | Telegram, the member's chat | `Smartphone` |
 | Plans | `ListChecks` |
+| A plan's steps as Board, List, Graph | `Columns3`, `LayoutList`, `Waypoints` |
 | Workers | `Server` |
 | Secrets | `LockKeyhole` |
 | Accounts, the agent's accounts and their rotation | `UserRoundCog` |
@@ -566,6 +567,66 @@ Shared pieces built on them:
   the one sentence "Read-only. Plans change from the CLI with `evo harness step`; each change adds a revision." and a
   ghost Copy button that copies the command (`useClipboard` of `identifier.tsx`: it selects the command where the
   clipboard is refused, and says which in a toast). It is a `note` named "Read-only".
+- `plans/step-board.tsx`, a plan's Steps: Board (by status, the default), List (in plan order) and Graph (the
+  dependencies) in the kit's segmented control (`Columns3`, `LayoutList`, `Waypoints`), with the search and the Repo
+  filter before it. The view is the URL's `view` (`view=graph`), written with `history.replaceState`, so Back leaves
+  the page rather than undoing a view, and kept in localStorage (`hub.plans.stepView`) for the next plan opened
+  without one; a `view` the page does not know, or storage that holds junk or refuses to be read, is Board without an
+  error (`step-view.ts`). A filter's count of matching steps is said in a polite `aria-live` region in every view.
+- A plan's Graph (`plans/step-graph*.tsx`, `step-inspector.tsx`, the pure model in `lib/plan-graph`), read only:
+  - Loading. React Flow (`@xyflow/react`) and dagre (`@dagrejs/dagre`), pinned to exact versions, load with
+    `next/dynamic` on the client only when Graph is chosen, so Board, List and the page's first load never fetch
+    them (`step-graph-lazy.tsx`). The frame is 512 px high, 640 px from 768 px (`GRAPH_FRAME`); a `Skeleton` of the
+    same height holds it while the chunk loads, and a chunk that fails shows a `danger` `StatePanel`, "The graph did
+    not load", with Use Board.
+  - Layout (`lib/plan-graph/layout.ts`, no React, no DOM, tested in vitest). Top to bottom: every step with no
+    dependency it can draw sits in the first row, and a step sits below every step it depends on. Within a row the
+    steps go in plan order from left to right where that adds no crossing (dagre orders them; a drawing whose rows
+    mostly stand against the plan is mirrored). A dependency already implied through another one (1 to 6 when 6 also
+    waits for 5, which waits for 1), one naming a key the plan lacks and one closing a cycle in a hand-written plan
+    are not drawn but are still returned and listed in the inspector; a cycle never hangs or throws. Lines are
+    routed by the layout, not by React Flow: square, running down through a row only in the lane dagre kept free,
+    turning only at the middle of the gap between two rows, so no line crosses another step's box. Boxes are 264 by
+    52 px, 30 px between rows and 24 px between columns. The same model gives each step Ready (pending, every
+    dependency of the plan done), the dependencies not done, its ancestors and its descendants.
+  - A step's box (`StepNode`): `card` with a `border-strong` edge and 6 px corners; the status icon in the tone Board
+    gives it, the key in mono `fg-muted` with tabular figures, the title in 12 px over at most two lines (the full
+    title in the tooltip and in the box's accessible name with its status), and a `success` Ready tag once it is
+    Ready. A pending step still waiting has a dashed `neutral-solid` border; the selected one a `brand` border and
+    ring on `surface-selected`. No coloured left edge, no gradient, no emoji.
+  - Lines (`StepEdge`): 1.5 px `neutral-solid` with an arrowhead into the step that waits; solid when the step waited
+    for is done, dashed (5 4) when it is not; 2 px `brand` when it joins the selected step.
+  - The legend above the canvas (`Legend`): the count of steps in each of the four statuses with their icons, the
+    Ready count, a solid sample "Dependency done", a dashed one "Not done yet", and "N dependencies not drawn" with
+    why in its tooltip; at its end, zoom in, zoom out and fit as ghost icon buttons (44 px under 768 px), in the bar
+    rather than over the canvas, so no step ever sits under them.
+  - The canvas: `canvas` behind a dot grid in `border-strong` (16 px); a drag pans, the wheel scrolls the page and
+    never zooms. It opens on the whole plan, centred and never past zoom 1, while that reads at zoom 0.6 or more;
+    a larger plan (agent-hub's 29 steps) opens at 0.6 with its first row at the top and its first step in view,
+    and the rest is a pan, a zoom out or Fit away; Fit always shows the whole plan (`lib/plan-graph/viewport.ts`).
+    A link with `step=` then pans to that step. React Flow's attribution stays in its bottom right corner, 10 px
+    `fg-muted` on `card` at 80 % (`.plan-graph` in `globals.css`: Tailwind's arbitrary variants read the
+    underscores of React Flow's class names as spaces, so its classes are styled in plain CSS).
+  - Selecting. A click, Enter or Space on a step selects it: the steps outside its ancestors and descendants dim to
+    40 % (their lines to 35 %), and the search and Repo filter dim the steps they do not keep rather than hide them.
+    The selected step is the URL's `step` (its key, `step=11`), replaced as `view` is; a link with `step=` and no
+    `view` opens Graph with that step selected and brought into view. Leaving Graph drops `step`. A click on the
+    empty canvas clears the selection.
+  - The inspector (`step-inspector.tsx`): the key, the status pill, previous and next step in plan order, close; a
+    `success` callout "Ready: every step it depends on is done." or Waits on the steps not done; Repo, Done at,
+    Blocks progress; Depends on, every dependency the step declares, drawn or not (an implied or cyclic one says so),
+    each a button that selects that step and pans it into view; Waiting for this; What to do, Verify, Evidence (its
+    first three lines, then Show all), Note; the plan's acceptance criteria the step names, each quoted; and Open
+    step page, a `brand` link to the step's page. It has no Run this step and changes nothing. From 1024 px it is a
+    320 px column (384 px from 1280 px) on the right of the canvas in the same card, with an empty state
+    (`MousePointerClick`, "No step selected") until a step is selected. Below 1024 px it is a bottom sheet (at most
+    85 % of the screen high, its own scroll) that opens with the selection, puts the focus on the step's title, and
+    gives the focus back to the step when it closes by its close button, Esc or a tap outside.
+  - Keys. Tab reaches the steps (a 2 px `ring` outline); Up and Down go to the step of the row above or below whose
+    centre is nearest, Left and Right along the row (`lib/plan-graph/navigate.ts`); Enter or Space selects; Esc
+    closes the inspector and leaves the focus on the step. A step the focus reaches is panned into view.
+  - Motion. Zoom and fit take `duration-base`, a pan to a step `duration-slow`; under `prefers-reduced-motion` both
+    are instant, as the boxes' 120 ms fade is.
 - `components/data/search-field.tsx` and `facet-group.tsx`: the kit's search input, a magnifier, the field and the
   `/` key while it is empty, a clear button once it holds text, committed after a pause or on Enter; and a facet as
   the kit's filter chips, a labelled group of `aria-pressed` toggles, 28 px with 6 px corners, the count after the
@@ -800,7 +861,13 @@ Shared pieces built on them:
   before the stream's state. The composer shows under the Trace and the Raw log, not under the Terminal.
 - The Trace (`agent-trace.tsx`, `trace-model.ts`), the kit's AgentTrace and the first tab, reads the same events as
   the Raw log (`useRunLog` keeps them beside its lines): consecutive `agent_message_chunk` events are one message
-  (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; `agent_thought_chunk` events fold into
+  (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; a message that holds a step's report (the
+  plan-step contract: `step:` then `result: pass | fail`, read by `step-report.ts`) is a card instead
+  (`trace-report.tsx`): the result as a run pill (Pass `done`, Fail `failed`), "Step 1", the branch and commits as
+  `Identifier` chips linked to the forge, the files outside the step's scope and a stash when there are any, the
+  decisions as a numbered list and the notes, both Markdown, then Files and Verify as folded rows like a tool call's
+  (Verify open when the step failed; the commands one per line at each `&&`, `||` and `;`, wrapped with a hanging
+  indent, the output as it is); words around the report stay Markdown; `agent_thought_chunk` events fold into
   "Thought for 3.2s" (from the event before them) over the words that follow; a `tool_call` and its
   `tool_call_update` events, matched by `toolCallId` in seq order whatever order they arrived in, are one row: the
   tool's name (or its kind's for a title that is a command or a path, as Codex and opencode give), what the agent said

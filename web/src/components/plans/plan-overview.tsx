@@ -23,7 +23,8 @@ import { PlanNotFound } from "./plan-not-found";
 import { PlanProgress } from "./progress";
 import { Prose, ValueView } from "./prose";
 import { RepoStatusBadge } from "./status";
-import { formatDay, StepBoard } from "./step-board";
+import { formatDay } from "./depends-on";
+import { StepBoard } from "./step-board";
 
 /** The sections the page names in Vietnamese and English; any other key of a plan is shown under its own name. */
 const SECTION_NAMES = [
@@ -248,7 +249,7 @@ function Overview({ project, plan, activity }: { project: string; plan: Plan; ac
         <Intro view={view} />
         <PlanProgress counts={counts} />
       </div>
-      <StepBoard project={project} planId={plan.plan_id} steps={view.steps} />
+      <StepBoard project={project} planId={plan.plan_id} steps={view.steps} acceptance={plan.body.acceptance} />
       <Repos repos={view.repos} />
       <OtherSections sections={view.sections} />
     </>

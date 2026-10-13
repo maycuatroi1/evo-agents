@@ -188,7 +188,7 @@ while the run's row is locked; when the run ended in between, the tokens just ma
 
 A member may keep several `env` secrets for the same variable bound to the same project, such as two subscriptions of
 the agent's runtime (`claude-a`, `claude-b`); each is an **account**, and a run gets one of them per variable
-(`evo_agents/hub/server/account_choice.py`, migration 0026). The hub picks it in the transaction that leases it, with
+(`evo_agents/hub/server/account_choice.py`, migration 0027). The hub picks it in the transaction that leases it, with
 the run's row locked and the accounts it weighs locked in the order of their ids, so two runs asking at once cannot
 take the same turn:
 

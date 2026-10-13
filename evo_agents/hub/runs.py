@@ -65,6 +65,7 @@ HEARTBEAT_SECONDS = 15  # how often the daemon sends a heartbeat
 OFFLINE_AFTER_SECONDS = 300  # a worker with no heartbeat for longer than this is offline
 LEASE_SECONDS = 300  # a claim and each heartbeat set a held run's lease to expire this long after now
 CLAIM_WAIT_SECONDS = 25  # the longest a claim waits for a run before answering that there is none
+MAX_SLOTS = 16  # runs a worker holds at once at most (workers.slots, as schema 0026 bounds it); 1 is the least
 MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's expired lease fails it
 # The next attempt of a run lost on a worker goes back to that worker only once it is steady: its heartbeats have
 # come for STEADY_SECONDS, none more than STEADY_GAP_SECONDS after the one before (unlike a laptop that slept, or one

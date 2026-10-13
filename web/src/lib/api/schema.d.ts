@@ -1219,7 +1219,11 @@ export interface paths {
         delete?: never;
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Update Worker
+         * @description Change the worker's slots, labels or name: its owner only, from a web session or with their machine token.
+         */
+        patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
     };
     "/v1/workers/{worker_id}/drain": {
@@ -4908,6 +4912,8 @@ export interface components {
             drain: boolean;
             /** Runs */
             runs: components["schemas"]["RunControl"][];
+            /** @description the worker's settings as the hub holds them, which its owner may change (PATCH /v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none */
+            settings: components["schemas"]["WorkerSettings"];
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
@@ -9786,6 +9792,36 @@ export interface components {
              */
             allow_web_terminal: boolean;
         };
+        /** WorkerSettings */
+        WorkerSettings: {
+            /**
+             * Slots
+             * @description runs the worker holds at once
+             */
+            slots: number;
+            /** Name */
+            name: string;
+            /** Labels */
+            labels: string[];
+        };
+        /**
+         * WorkerUpdate
+         * @description What PATCH /v1/workers/{id} changes: each field it gives, at least one; a field left out or null stays.
+         */
+        WorkerUpdate: {
+            /**
+             * Slots
+             * @description runs the worker holds at once
+             */
+            slots?: number | null;
+            /** Labels */
+            labels?: string[] | null;
+            /**
+             * Name
+             * @description unique among the owner's workers not revoked
+             */
+            name?: string | null;
+        };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
             /** Error */
@@ -14064,6 +14100,77 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_worker_v1_workers__worker_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["WorkerUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

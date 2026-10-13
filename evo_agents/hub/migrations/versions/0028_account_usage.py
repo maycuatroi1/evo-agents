@@ -1,7 +1,7 @@
 """Account usage: what the last rate_limit_event a run reported said of an account, and when.
 
-Revision ID: 0027
-Revises: 0026
+Revision ID: 0028
+Revises: 0027
 Create Date: 2026-10-13
 
 ``evo_agents.hub.server.rate_limits`` writes both: a worker reports the usage its agent's CLI gave for the account a
@@ -9,15 +9,15 @@ run holds, and the hub keeps the last one. last_usage is a JSON object (status, 
 utilization, windows), never a credential value; last_usage_at is when the hub stored it. Both are null for an
 account no run reported on, which is every account after this revision: nothing that exists changes meaning.
 
-Going back drops the two columns, which is the schema that schema 0026 runs on.
+Going back drops the two columns, which is the schema that schema 0027 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0027"
-down_revision = "0026"
+revision = "0028"
+down_revision = "0027"
 branch_labels = None
 depends_on = None
 

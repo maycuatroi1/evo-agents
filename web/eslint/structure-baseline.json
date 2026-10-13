@@ -11,7 +11,7 @@
     "src/components/kg/build-status.tsx": 429,
     "src/components/memories/memory-browser.tsx": 484,
     "src/components/palette/command-palette.tsx": 698,
-    "src/components/runs/agent-trace.tsx": 702,
+    "src/components/runs/agent-trace.tsx": 682,
     "src/components/runs/dispatch-dialog.tsx": 529,
     "src/components/runs/queries.ts": 453,
     "src/components/runs/run-chat.tsx": 493,
@@ -21,7 +21,7 @@
     "src/components/shell/shortcuts.tsx": 524,
     "src/components/ui/sidebar.tsx": 712,
     "src/components/workers/register-dialog.tsx": 726,
-    "src/components/workers/worker-detail.tsx": 468
+    "src/components/workers/worker-detail.tsx": 419
   },
   "imports": {
     "src/components/admin/overview-model.ts": [

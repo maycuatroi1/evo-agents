@@ -43,6 +43,9 @@ WORKER_UNDRAIN = "worker.undrain"
 WORKER_REVOKE = "worker.revoke"  # the worker and its token are revoked, its runs released
 # The owner set, on the web, who may hand the worker runs: "worker:<id> name=<n> owner=<login> dispatch_from=<any|web>"
 WORKER_DISPATCH_FROM = "worker.dispatch_from"
+# The owner changed the worker's settings; the target names each field that changed, "<field>=<was>-><is>", after
+# "worker:<id> name=<n> owner=<login>": "slots=1->4 labels=[]->[gpu,mac] name=old->new", never a token.
+WORKER_UPDATE = "worker.update"
 # Runs happen in a project, which the caller names; a target is "<project>/<plan>#<step> run:<id>" ("<project>/<plan>
 # run:<id>" for a plan run), never a prompt or evidence.
 RUN_DISPATCH = "run.dispatch"  # a member queued a run of a ready step

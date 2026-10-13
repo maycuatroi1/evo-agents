@@ -27,13 +27,13 @@ import { SafeMarkdown } from "@/components/memories/markdown";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-import { splitLinks } from "./forge";
+import { type RepoWeb, splitLinks } from "./forge";
 import { LinkedText } from "./links";
 import type { DescribeMove } from "./log-model";
 import { decisionAnchor, decisionHref, type RunEvent } from "./queries";
+import { parseStepReport } from "./step-report";
 import {
   buildTrace,
-  cutOutput,
   openByDefault,
   type ToolCall,
   toolLabel,
@@ -41,14 +41,16 @@ import {
   type TraceItem,
 } from "./trace-model";
 import { KIND_ICON, useTraceDuration } from "./trace-look";
+import { StepReportCard } from "./trace-report";
+import { TermBlock } from "./trace-term";
 import type { LogStatus } from "./use-run-log";
 
 /**
  * The kit's AgentTrace, the default tab of a run's page: what the agent did, step by step (trace-model.ts reads the
  * events): its messages, its thinking folded under "Thought for 9s", each tool call as one row (folded, opened when it
  * failed; the output on `term-bg`, cut at 20 lines with "Show the full output"), the plan as a checklist, the owner's
- * messages, "Asked you" for a decision with a link to its card, and the moves between states in `caption`. A running
- * run ends with the typing dots. It reads the same events as the Raw log (SSE, then polling), in a `role="log"` region
+ * messages, "Asked you" for a decision with a link to its card, and the moves between states in `caption`. A step's
+ * report, the message a step's agent ends with, is a card (trace-report.tsx). A running run ends with the typing dots. It reads the same events as the Raw log (SSE, then polling), in a `role="log"` region
  * (polite) that follows the newest item unless the person scrolled up; past 500 items only the ones in view render.
  * Tool rows are `details`, so they open and close without script. Every http and https address in what the trace shows
  * is a link to a new tab (links.tsx); the one in a tool row's folded line is text there, since a link inside its
@@ -73,6 +75,8 @@ export type TraceContext = {
   working: boolean;
   /** The run may still write events. */
   active: boolean;
+  /** The web page of the run's repo on a branch, which a step report's branch and commits link to. */
+  webOfBranch?: (branch: string | null) => RepoWeb | null;
 };
 
 function useTimes() {
@@ -123,42 +127,6 @@ function Row({ icon: Icon, look, head, at, children, system = false }: { icon: L
 
 function Who({ children }: { children: ReactNode }) {
   return <span className="font-semibold text-foreground">{children}</span>;
-}
-
-/** Text on the terminal surface, cut at 20 lines unless the person asks for all of it. */
-function TermBlock({ text, diff = false, label, testId }: { text: string; diff?: boolean; label?: string; testId: string }) {
-  const t = useTranslations("runs.detail.trace");
-  const [whole, setWhole] = useState(false);
-  const { shown, total, cut } = cutOutput(text);
-  const body = whole ? text.replace(/\n$/, "") : shown;
-  return (
-    <div className="min-w-0 border-t border-term-border first:border-t-0" data-testid={testId}>
-      {label ? <p className="bg-term-bg px-3 pt-2 font-mono text-[11px] leading-4 text-term-muted">{label}</p> : null}
-      <pre
-        className="m-0 max-h-[32rem] overflow-auto bg-term-bg px-3 py-2.5 font-mono text-xs leading-[18px] whitespace-pre text-term-fg [font-variant-ligatures:none]"
-        tabIndex={0}
-      >
-        {diff
-          ? body.split("\n").map((line, index) => (
-              <span key={index} className={cn("block", line.startsWith("+") ? "text-term-ok" : line.startsWith("-") ? "text-term-error" : "")}>
-                {line ? <LinkedText text={line} tone="term" /> : " "}
-              </span>
-            ))
-          : <LinkedText text={body} tone="term" />}
-      </pre>
-      {cut ? (
-        <button
-          type="button"
-          className="block w-full border-t border-term-border bg-term-bg px-3 py-1.5 text-left font-mono text-xs text-term-muted hover:bg-term-row hover:text-term-fg max-md:min-h-11"
-          aria-expanded={whole}
-          onClick={() => setWhole((value) => !value)}
-          data-testid="trace-output-more"
-        >
-          {whole ? t("showLess", { count: 20 }) : t("showFull", { count: total })}
-        </button>
-      ) : null}
-    </div>
-  );
 }
 
 function ToolMeta({ tool, active, now }: { tool: ToolCall; active: boolean; now: number | null }) {
@@ -261,10 +229,14 @@ function ToolRow({ tool, at, open, onToggle, active }: { tool: ToolCall; at: str
   );
 }
 
-function AgentRow({ item }: { item: Extract<TraceItem, { type: "agent" }> }) {
+const reportProse = (text: string) => <SafeMarkdown className="text-[13px] leading-5" testId="trace-report-text">{text}</SafeMarkdown>;
+
+function AgentRow({ item, context }: { item: Extract<TraceItem, { type: "agent" }>; context: TraceContext }) {
   const t = useTranslations("runs.detail.trace");
   const short = useTraceDuration();
   const thought = item.thought;
+  // A step's report, which Markdown would fold into one paragraph, shows as a card between the words around it.
+  const found = useMemo(() => parseStepReport(item.text), [item.text]);
   return (
     <Row icon={Bot} look="agent" at={item.at} head={<Who>{t("agent")}</Who>}>
       <div className="flex min-w-0 flex-col gap-2">
@@ -280,7 +252,15 @@ function AgentRow({ item }: { item: Extract<TraceItem, { type: "agent" }> }) {
             </div>
           </details>
         ) : null}
-        {item.text ? <SafeMarkdown className="leading-[21px]" testId="trace-message">{item.text}</SafeMarkdown> : null}
+        {found ? (
+          <>
+            {found.lead ? <SafeMarkdown className="leading-[21px]" testId="trace-message">{found.lead}</SafeMarkdown> : null}
+            <StepReportCard report={found.report} prose={reportProse} web={context.webOfBranch?.(found.report.branch) ?? null} />
+            {found.tail ? <SafeMarkdown className="leading-[21px]" testId="trace-message">{found.tail}</SafeMarkdown> : null}
+          </>
+        ) : item.text ? (
+          <SafeMarkdown className="leading-[21px]" testId="trace-message">{item.text}</SafeMarkdown>
+        ) : null}
       </div>
     </Row>
   );
@@ -457,7 +437,7 @@ const Item = memo(
   function Item({ item, context, open, onToggle }: { item: TraceItem; context: TraceContext; open: boolean; onToggle: (key: string, open: boolean) => void; signature: string }) {
     switch (item.type) {
       case "agent":
-        return <AgentRow item={item} />;
+        return <AgentRow item={item} context={context} />;
       case "tool":
         return <ToolRow tool={item.tool} at={item.at} open={open} onToggle={(value) => onToggle(item.key, value)} active={context.active} />;
       case "plan":
