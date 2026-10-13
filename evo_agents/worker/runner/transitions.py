@@ -154,6 +154,18 @@ def waits_for_owner(asked: Collection[int], open_decisions: int) -> bool:
     return bool(asked) or open_decisions > 0
 
 
+def author_wakes(messages: Iterable[dict], open_asked: Collection[int]) -> bool:
+    """Whether the owner's ``messages`` start the next turn of an author run's agent, whose turn ended with the
+    decisions ``open_asked`` unanswered: a message of the chat (one that answers no decision) does, and answers do once
+    they answer every one of ``open_asked``. Any message does when none is open; none starts nothing."""
+    messages = list(messages)
+    if not messages:
+        return False
+    answers = {m["decision_id"] for m in messages if isinstance(m.get("decision_id"), int)}
+    chat = any(not isinstance(m.get("decision_id"), int) for m in messages)
+    return chat or not set(open_asked) - answers
+
+
 def answer_note(messages: Iterable[dict], session_id: str | None) -> str:
     """The note of the owner's messages that end a wait: the decisions they answer, and the session that goes on."""
     answers = sorted(m["decision_id"] for m in messages if isinstance(m.get("decision_id"), int))

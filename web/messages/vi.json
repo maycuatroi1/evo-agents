@@ -317,7 +317,8 @@
       "asked": "hỏi <time></time>",
       "parksIn": "tạm gác sau {duration}",
       "parked": "tạm gác <time></time>",
-      "more": "{count, plural, other {còn # quyết định trong Inbox}}"
+      "more": "{count, plural, other {còn # quyết định trong Inbox}}",
+      "whereAuthor": "{project}, author run{titled, select, yes {: {title}} other {}}"
     },
     "flight": {
       "title": "Đang diễn ra",
@@ -2984,7 +2985,8 @@
           "working": "Agent đang làm",
           "waiting": "{you, select, yes {Đang chờ bạn} other {Đang chờ {login}}}",
           "ended": "Chat đã kết thúc",
-          "ending": "Kết thúc sau lượt của agent"
+          "ending": "Kết thúc sau lượt của agent",
+          "waitingDecisions": "{count, plural, other {# quyết định}} đang chờ {you, select, yes {bạn} other {{login}}}"
         },
         "continues": "Chat này tiếp tục ở <link>run #{id}</link>.",
         "noPlan": "Chưa có plan trên hub",
@@ -3243,7 +3245,9 @@
       "parked": "tạm gác <time></time>",
       "showMore": "Xem thêm",
       "showLess": "Thu gọn",
-      "agentsPick": "Agent đề xuất"
+      "agentsPick": "Agent đề xuất",
+      "authorRunLink": "Author run #{id}",
+      "authorRun": "author run #{id}"
     },
     "answer": {
       "title": "Trả lời quyết định #{id}",

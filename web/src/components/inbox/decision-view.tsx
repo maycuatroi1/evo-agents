@@ -4,7 +4,7 @@ import { ChevronDown, CircleCheck, Clock, Eraser, Lock, Terminal } from "lucide-
 import type { Route } from "next";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type FormEvent, type KeyboardEvent, type ReactNode, type Ref, useEffect, useId, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, type Ref, useEffect, useId, useRef, useState } from "react";
 
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { useNow } from "@/components/kg/use-now";
@@ -24,8 +24,9 @@ import { Ago } from "@/components/workers/ago";
 import { isSendShortcut, useModifierKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
-import { AgentPickTag, DecisionCategoryBadge } from "./badges";
-import { useAnswerDecision, useAnswerFailure, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
+import { DecisionCategoryBadge } from "./badges";
+import { type HeadingLevel, OptionCard, OptionList, Question } from "./decision-options";
+import { useAnswerDecision, useAnswerFailure, useDecisionRunTitle, useDecisionTerminalHref, useInboxViewer, useParksAt } from "./hooks";
 import {
   type AnswerAccess,
   answerAccess,
@@ -36,18 +37,16 @@ import {
   initialOption,
   parkTiming,
 } from "./model";
-import { type Decision, type DecisionOption, MAX_ANSWER_BYTES } from "./queries";
+import { type Decision, MAX_ANSWER_BYTES } from "./queries";
 
 /**
  * The kit's DecisionCard (web/DESIGN.md, components/inbox): an agent's question to the owner of its plan run, the
  * context it gave, the options with the agent's pick chosen, and one answer that lets the agent go on. The same card
- * sits in the Inbox's sheet, in the sheet Home opens, and in the side column of a plan run's page.
+ * sits in the Inbox's sheet, in the sheet Home opens, in the side column of a plan run's page and in an author run's Chat.
  */
 
 /** The byte count shows once an answer passes this share of the limit. */
 const COUNT_FROM = 0.75;
-
-type HeadingLevel = 2 | 3;
 
 /** A link in the card's head: text colour with a quiet underline, cobalt under the pointer. */
 const HEAD_LINK =
@@ -94,19 +93,45 @@ export function DecisionStatePill({ decision, access, size }: { decision: Decisi
 }
 
 /**
+ * Where a decision comes from: the project, then its plan and step; or, for an author run's (it has no plan), the run's
+ * title, which says what the run is about. Nothing links to a plan the decision does not have.
+ */
+export function DecisionWhere({ decision, link, className }: { decision: Decision; link: string; className?: string }) {
+  const t = useTranslations("inbox.decision");
+  const title = useDecisionRunTitle(decision);
+  return (
+    <span className={cn("[overflow-wrap:anywhere]", className)} data-testid="decision-where">
+      <span className="font-mono">{decision.project}</span>
+      {" / "}
+      {decision.plan_id === null ? (
+        <span data-testid="decision-run-title">{title ?? t("authorRun", { id: decision.run_id })}</span>
+      ) : (
+        <>
+          <Link href={planHref(decision.project, decision.plan_id)} className={cn(link, "font-mono font-normal")} data-testid="decision-plan-link">
+            {decision.plan_id}
+          </Link>
+          {decision.step_key !== null ? (
+            <>
+              {", "}
+              <Link href={stepHref(decision.project, decision.plan_id, decision.step_key)} className={link} data-testid="decision-step-link">
+                {t("stepLink", { key: decision.step_key })}
+              </Link>
+            </>
+          ) : null}
+        </>
+      )}
+    </span>
+  );
+}
+
+/**
  * The card's head: the decision's state as the kit's pill (Waiting for you, for the run's owner), its category, where
- * it comes from (the run, the project, plan and step; on the run's own page only the step), and when it was asked and
+ * it comes from (the run, the project, plan and step, or an author run's title; on the run's own page only the step), and when it was asked and
  * when the run parks, or who answered and when. Amber while it waits for a person, sunken once it is closed.
  */
 function DecisionHead({ decision, where, access, parksAt }: { decision: Decision; where: "inbox" | "run"; access: AnswerAccess; parksAt: string | null }) {
   const t = useTranslations("inbox.decision");
   const open = decision.state === "open";
-  const step =
-    decision.step_key !== null ? (
-      <Link href={stepHref(decision.project, decision.plan_id, decision.step_key)} className={HEAD_LINK} data-testid="decision-step-link">
-        {t("stepLink", { key: decision.step_key })}
-      </Link>
-    ) : null;
   return (
     <div
       className={cn(
@@ -120,23 +145,15 @@ function DecisionHead({ decision, where, access, parksAt }: { decision: Decision
       {where === "inbox" ? (
         <>
           <Link href={runHref(decision.project, decision.run_id)} className={cn(HEAD_LINK, "tabular-nums")} data-testid="decision-run-link">
-            {t("runLink", { id: decision.run_id })}
+            {decision.plan_id === null ? t("authorRunLink", { id: decision.run_id }) : t("runLink", { id: decision.run_id })}
           </Link>
-          <span className="inline-flex min-w-0 flex-wrap items-center gap-x-1 [overflow-wrap:anywhere]" data-testid="decision-where">
-            <span className="font-mono">{decision.project}</span>
-            <span aria-hidden="true">/</span>
-            <span>
-              <Link href={planHref(decision.project, decision.plan_id)} className={cn(HEAD_LINK, "font-mono font-normal")} data-testid="decision-plan-link">
-                {decision.plan_id}
-              </Link>
-              {step ? "," : null}
-            </span>
-            {step}
-          </span>
+          <DecisionWhere decision={decision} link={HEAD_LINK} className="min-w-0" />
         </>
-      ) : (
-        step
-      )}
+      ) : decision.plan_id !== null && decision.step_key !== null ? (
+        <Link href={stepHref(decision.project, decision.plan_id, decision.step_key)} className={HEAD_LINK} data-testid="decision-step-link">
+          {t("stepLink", { key: decision.step_key })}
+        </Link>
+      ) : null}
       {decision.state === "answered" ? (
         <span className="ml-auto" data-testid="decision-answered-by">
           {t.rich("answeredBy", {
@@ -153,35 +170,6 @@ function DecisionHead({ decision, where, access, parksAt }: { decision: Decision
         <AskedTiming decision={decision} parksAt={parksAt} />
       ) : null}
     </div>
-  );
-}
-
-function Question({
-  level,
-  id,
-  headingRef,
-  quiet,
-  children,
-}: {
-  level: HeadingLevel;
-  id: string;
-  headingRef?: Ref<HTMLHeadingElement>;
-  quiet: boolean;
-  children: ReactNode;
-}) {
-  const Tag = level === 2 ? "h2" : "h3";
-  return (
-    <Tag
-      id={id}
-      ref={headingRef}
-      tabIndex={headingRef ? -1 : undefined}
-      className={cn(
-        "rounded-xs whitespace-pre-line text-pretty outline-none [overflow-wrap:anywhere] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
-        quiet ? "text-[13px] leading-[19px] font-normal text-muted-foreground" : "text-[15px] leading-[22px] font-medium text-foreground",
-      )}
-    >
-      {children}
-    </Tag>
   );
 }
 
@@ -239,95 +227,6 @@ export function FoldedContext({ text, screen = false }: { text: string; screen?:
           {open ? t("showLess") : t("showMore")}
         </Button>
       ) : null}
-    </div>
-  );
-}
-
-/**
- * An option as the kit's radio card: the label with the agent's pick tagged, then what it does next. On the phone's
- * screen (`screen`) it has 14 px of padding, a 15 px title and a 14 px description.
- */
-function OptionCard({
-  option,
-  name,
-  checked,
-  onPick,
-  screen = false,
-}: {
-  option: DecisionOption;
-  name: string;
-  checked: boolean;
-  onPick: () => void;
-  screen?: boolean;
-}) {
-  const id = useId();
-  return (
-    <label
-      htmlFor={id}
-      className={cn(
-        "grid cursor-pointer grid-cols-[16px_minmax(0,1fr)] gap-3 rounded-sm border border-border-strong bg-card transition-colors hover:bg-accent max-md:min-h-11",
-        "has-checked:border-brand has-checked:bg-surface-selected",
-        screen ? "p-3.5" : "p-3",
-      )}
-      data-testid={`decision-choice-${option.key}`}
-      data-key={option.key}
-      data-checked={checked || undefined}
-    >
-      <input
-        id={id}
-        type="radio"
-        name={name}
-        value={option.key}
-        checked={checked}
-        onChange={onPick}
-        className="mt-0.5 size-4 cursor-pointer accent-brand"
-        aria-labelledby={`${id}-title`}
-        aria-describedby={option.description ? `${id}-description` : undefined}
-      />
-      <OptionText option={option} id={id} screen={screen} />
-    </label>
-  );
-}
-
-function OptionText({ option, id, screen = false }: { option: DecisionOption; id: string; screen?: boolean }) {
-  return (
-    <span className="flex min-w-0 flex-col gap-0.5">
-      <span
-        id={`${id}-title`}
-        className={cn("flex flex-wrap items-center gap-2 font-medium text-foreground [overflow-wrap:anywhere]", screen ? "text-[15px] leading-[22px]" : "text-sm")}
-      >
-        {option.label}
-        {/* A space for the accessible name ("Deploy now Agent's pick"); a flex container does not draw it. */}
-        {option.recommended ? <> <AgentPickTag /></> : null}
-      </span>
-      {option.description ? (
-        <span
-          id={`${id}-description`}
-          className={cn("whitespace-pre-line text-muted-foreground [overflow-wrap:anywhere]", screen ? "text-sm leading-5" : "text-[13px] leading-[18px]")}
-        >
-          {option.description}
-        </span>
-      ) : null}
-    </span>
-  );
-}
-
-/** The options as they were offered, for anyone who cannot answer, the agent's pick tagged. */
-export function OptionList({ decision, screen = false }: { decision: Decision; screen?: boolean }) {
-  const t = useTranslations("inbox.answer");
-  const ids = useId();
-  return (
-    <div className="flex flex-col gap-2" data-testid="decision-options">
-      <p id={`${ids}-legend`} className="sr-only">
-        {t("legend")}
-      </p>
-      <ul className="flex flex-col gap-2" aria-labelledby={`${ids}-legend`}>
-        {decision.options.map((option, index) => (
-          <li key={option.key} className={cn("rounded-sm border bg-card", screen ? "p-3.5" : "p-3")} data-testid="decision-option" data-key={option.key}>
-            <OptionText option={option} id={`${ids}-${index}`} screen={screen} />
-          </li>
-        ))}
-      </ul>
     </div>
   );
 }

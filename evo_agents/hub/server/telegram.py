@@ -209,8 +209,17 @@ class TelegramChannel(Channel):
             restricted = _restricted((await conn.execute(query)).one_or_none())
         extra: dict = {"restricted": restricted}
         if notification.decision_id is not None:
-            d = tables.decisions
-            query = select(d.c.question, d.c.category, d.c.plan_id, d.c.step_key, d.c.options, d.c.state)
+            d, r = tables.decisions, tables.runs
+            query = select(
+                d.c.question,
+                d.c.category,
+                d.c.plan_id,
+                d.c.step_key,
+                d.c.options,
+                d.c.state,
+                r.c.kind.label("run_kind"),
+                r.c.title.label("run_title"),
+            ).join_from(d, r, r.c.id == d.c.run_id)
             row = (await conn.execute(query.where(d.c.id == notification.decision_id))).one_or_none()
             extra["decision"] = None if row is None else dict(row._mapping)
         if notification.proposal_id is not None:
@@ -245,6 +254,8 @@ class TelegramChannel(Channel):
                 options=decision["options"] or [],
                 url=url,
                 link=notification.link,
+                run_kind=decision.get("run_kind"),
+                run_title=decision.get("run_title"),
             )
         if notification.kind == "proposal":
             if not proposal or proposal["state"] != "open":  # never its summary, whatever it became

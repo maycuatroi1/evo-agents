@@ -317,7 +317,8 @@
       "asked": "asked <time></time>",
       "parksIn": "parks in {duration}",
       "parked": "parked <time></time>",
-      "more": "{count, plural, one {# more in the inbox} other {# more in the inbox}}"
+      "more": "{count, plural, one {# more in the inbox} other {# more in the inbox}}",
+      "whereAuthor": "{project}, author run{titled, select, yes {: {title}} other {}}"
     },
     "flight": {
       "title": "In flight",
@@ -2984,7 +2985,8 @@
           "working": "Agent is working",
           "waiting": "{you, select, yes {Waiting for you} other {Waiting for {login}}}",
           "ended": "Chat ended",
-          "ending": "Ending after the agent's turn"
+          "ending": "Ending after the agent's turn",
+          "waitingDecisions": "{count, plural, one {# decision waits} other {# decisions wait}} {you, select, yes {for you} other {for {login}}}"
         },
         "continues": "This chat goes on in <link>run #{id}</link>.",
         "noPlan": "No plan on the hub yet",
@@ -3243,7 +3245,9 @@
       "parked": "parked <time></time>",
       "showMore": "Show more",
       "showLess": "Show less",
-      "agentsPick": "Agent's pick"
+      "agentsPick": "Agent's pick",
+      "authorRunLink": "Author run #{id}",
+      "authorRun": "author run #{id}"
     },
     "answer": {
       "title": "Answer decision #{id}",

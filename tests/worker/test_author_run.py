@@ -16,14 +16,21 @@ in them and in its session."""
 
 from __future__ import annotations
 
+import asyncio
+import json
+import os
 from pathlib import Path
 
 import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
-from evo_agents.hub import author, skills
+from evo_agents.cli import main as cli_main
+from evo_agents.hub import author, runs, skills
+from evo_agents.worker.home import WorkerConfig, WorkerHome
+from tests.worker.fake_hub import TOKEN
 from tests.worker.test_plan_runs import (
+    PROJECT,
     WAIT,
     git,
     machine,  # noqa: F401 (a fixture)
@@ -392,3 +399,236 @@ def test_a_parked_author_run_keeps_its_directory_and_the_reply_resumes_it_there_
     texts = hub.texts(resumed)
     assert any(f"Goes on from parked run #{parked}" in text for text in texts)
     assert not any("Skills from the hub" in text for text in texts), "the parked run's skills stay; none is fetched"
+
+
+# Decisions (criteria a3 and a4 of the author-run-decisions plan)
+
+
+def ask_decision(category: str, question: str) -> dict:
+    """The agent's `evo-agents worker ask` of a decision with two options, the first recommended."""
+    return {
+        "cli": [
+            "ask",
+            "--category",
+            category,
+            "--question",
+            question,
+            "--option",
+            "a=First:the smaller change",
+            "--option",
+            "b=Second",
+            "--recommended",
+            "a",
+        ]
+    }
+
+
+TWO_DECISIONS = [
+    ask_decision("scope", "Cover alpha alone?"),
+    ask_decision("architecture", "Poll or subscribe?"),
+    {"say": "I read the harness and asked decisions #1 and #2."},
+]
+WAITS_FOR_DECISIONS = "the run waits until its owner answered each one or replied in the chat"
+
+
+def asked_ids(machine, run_id: int) -> list[int]:  # noqa: F811 (the fixture's value)
+    path = machine.home.decisions_path(run_id)
+    return [json.loads(line)["id"] for line in path.read_text(encoding="utf-8").splitlines()]
+
+
+def test_an_author_runs_agent_asks_decisions_with_worker_ask_and_its_daemon_says_the_feature(machine):  # noqa: F811
+    machine.scenarios({"author": TWO_DECISIONS, "author/2": [{"say": "Plan wait-helper is on the hub."}]})
+
+    async def body(hub, daemon):
+        assert runs.AUTHOR_DECISIONS in runs.WORKER_FEATURES and runs.SESSION_PER_STEP in runs.WORKER_FEATURES
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(run_id)
+        assert runs.AUTHOR_DECISIONS in hub.last_heartbeat["features"]
+        assert runs.SESSION_PER_STEP in hub.last_heartbeat["features"], "the features it said before stay"
+        first, second = hub.decisions[1], hub.decisions[2]
+        assert (first["run_id"], first["category"], first["question"]) == (run_id, "scope", "Cover alpha alone?")
+        assert first["options"] == [
+            {"key": "a", "label": "First", "description": "the smaller change"},
+            {"key": "b", "label": "Second"},
+        ]
+        assert first["recommended"] == "a" and "step_key" not in first
+        assert (second["run_id"], second["category"]) == (run_id, "architecture")
+        assert hub.runs[run_id]["chat"] == ["I read the harness and asked decisions #1 and #2."]
+        await wait_for(lambda: any(WAITS_FOR_DECISIONS in text for text in hub.texts(run_id)), "the note of the wait")
+        assert any("decision #1, #2 open" in text for text in hub.texts(run_id))
+        hub.answer(1, "a")
+        hub.answer(2, "b")
+        await wait_for(lambda: len(hub.runs[run_id].get("chat", [])) == 2, "the agent's turn on the answers")
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
+        assert asked_ids(machine, run_id) == [1, 2], "ask noted each decision where the daemon waits on it"
+
+    with_daemon(machine, body)
+    first, second = machine.commands()
+    for asked, decision_id in ((first, 1), (second, 2)):
+        assert asked["exit"] == 0, asked
+        assert f"Decision #{decision_id} is open" in asked["stdout"]
+        assert "end your turn with your message to the member in the chat" in asked["stdout"]
+
+
+def test_an_author_run_waits_for_every_answer_of_a_turn_and_its_agent_takes_them_in_one_turn(machine):  # noqa: F811
+    machine.scenarios({"author": TWO_DECISIONS, "author/2": [{"say": "Alpha alone, by subscription: plan put."}]})
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(run_id)
+        await wait_for(lambda: any(WAITS_FOR_DECISIONS in text for text in hub.texts(run_id)), "the note of the wait")
+        assert hub.answer(1, "a") == run_id
+        await asyncio.sleep(1.0)  # a few heartbeats: one answer of two starts no turn
+        assert hub.runs[run_id]["state"] == "waiting" and len(machine.starts()) == 1
+        assert hub.answer(2, "b") == run_id
+        await wait_for(lambda: len(hub.runs[run_id].get("chat", [])) == 2, "the agent's turn on the answers")
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
+        assert hub.moves(run_id) == [
+            "leased",
+            "running",
+            "waiting",
+            "running",
+            "waiting",
+            "running",
+            "verifying",
+            "done",
+        ]
+        assert hub.decisions[1]["delivered"] and hub.decisions[2]["delivered"]
+
+    with_daemon(machine, body)
+    first, second = machine.starts()
+    assert second["resume"] == first["session"], "the answers go on in the agent's session"
+    assert second["prompt"].startswith(author.ANSWERS_PROMPT)
+    assert "Answer to decision #1 (scope): Cover alpha alone?\nChosen option: a." in second["prompt"]
+    assert "Answer to decision #2 (architecture): Poll or subscribe?\nChosen option: b." in second["prompt"]
+
+
+def test_a_reply_wakes_an_author_run_waiting_for_answers_and_it_waits_again_for_the_rest(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "author": TWO_DECISIONS,
+            "author/2": [{"say": "Alpha alone, then. Decision #2 is still open."}],
+            "author/3": [{"say": "Subscription it is: plan put."}],
+        }
+    )
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        run_id = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(run_id)
+        await wait_for(lambda: any(WAITS_FOR_DECISIONS in text for text in hub.texts(run_id)), "the note of the wait")
+        hub.answer(1, "a")
+        assert hub.reply(run_id, "Go on with what you have.") == run_id
+        await wait_for(lambda: len(hub.runs[run_id].get("chat", [])) == 2, "the agent's turn on the reply")
+        await wait_for(lambda: any("decision #2 open" in text for text in hub.texts(run_id)), "the wait for #2")
+        assert hub.runs[run_id]["state"] == "waiting" and len(machine.starts()) == 2
+        hub.answer(2, "b")
+        await wait_for(lambda: len(hub.runs[run_id].get("chat", [])) == 3, "the agent's turn on the last answer")
+        assert await ended_by_owner(hub, run_id) == "done", hub.texts(run_id)
+
+    with_daemon(machine, body)
+    _, second, third = machine.starts()
+    assert second["prompt"].startswith(author.REPLY_PROMPT + author.ANSWERS_TOO)
+    assert "Answer to decision #1 (scope)" in second["prompt"]
+    assert second["prompt"].endswith("Go on with what you have.")
+    assert third["prompt"].startswith(author.ANSWERS_PROMPT)
+    assert "Answer to decision #2 (architecture)" in third["prompt"] and "decision #1" not in third["prompt"]
+
+
+def test_a_parked_author_run_resumes_once_every_decision_is_answered_with_the_answers_in_its_first_turn(
+    machine,  # noqa: F811
+):
+    machine.scenarios({"author": TWO_DECISIONS, "author/resume": [{"say": "Both answered: plan put."}]})
+    found = {}
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        parked = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(parked, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(parked)
+        hub.park(parked)
+        await wait_for(lambda: parked not in daemon.runs, "the parked run to free its slot")
+        assert hub.answer(1, "a") == parked, "one answer of two resumes nothing"
+        assert hub.runs[parked]["state"] == "parked" and not hub.queue
+        resumed = hub.answer(2, "b")
+        assert resumed != parked and hub.runs[resumed]["spec"]["resume_of_run_id"] == parked
+        await wait_for(lambda: len(hub.runs[resumed].get("chat", [])) == 1, "the resumed run's first turn")
+        assert await ended_by_owner(hub, resumed) == "done", hub.texts(resumed)
+        found.update(parked=parked, resumed=resumed, hub=hub)
+
+    with_daemon(machine, body)
+    resumed = found["resumed"]
+    first, again = machine.starts()
+    assert again["run"] == resumed and again["resume"] == first["session"]
+    assert again["prompt"].startswith(author.RESUME_PROMPT.format(id=resumed))
+    assert "Answer to decision #1 (scope)" in again["prompt"]
+    assert "Answer to decision #2 (architecture)" in again["prompt"]
+    assert found["hub"].moves(resumed) == ["leased", "running", "waiting", "running", "verifying", "done"]
+
+
+def test_a_parked_author_run_resumed_by_a_reply_takes_the_answers_and_waits_again_for_the_rest(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "author": TWO_DECISIONS,
+            "author/resume": [{"say": "Alpha alone. Decision #2 is still open."}],
+            "author/2": [{"say": "Subscription it is: plan put."}],
+        }
+    )
+    found = {}
+
+    async def body(hub, daemon):
+        ticket = hub.add_skill(author.AUTHOR_SKILL, 3, skill_bundle(machine.tmp))
+        parked = hub.queue_author_run(["alpha"], [ticket])
+        assert await hub.wait_state(parked, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(parked)
+        hub.park(parked)
+        await wait_for(lambda: parked not in daemon.runs, "the parked run to free its slot")
+        hub.answer(1, "a")
+        resumed = hub.reply(parked, "Go on with what you have.")
+        assert resumed != parked and hub.decisions[2]["run_id"] == resumed
+        await wait_for(lambda: any("decision #2 open" in text for text in hub.texts(resumed)), "the wait for #2")
+        assert hub.runs[resumed]["state"] == "waiting" and len(machine.starts()) == 2
+        assert sorted(asked_ids(machine, resumed)) == [1, 2], "the parked run's decisions came with it"
+        hub.answer(2, "b")
+        await wait_for(lambda: len(hub.runs[resumed].get("chat", [])) == 2, "the turn on the last answer")
+        assert await ended_by_owner(hub, resumed) == "done", hub.texts(resumed)
+        found.update(resumed=resumed)
+
+    with_daemon(machine, body)
+    resumed = found["resumed"]
+    _, again, last = machine.starts()
+    assert again["prompt"].startswith(author.RESUME_PROMPT.format(id=resumed))
+    assert "Answer to decision #1 (scope)" in again["prompt"] and again["prompt"].endswith("Go on with what you have.")
+    assert last["run"] == resumed and last["prompt"].startswith(author.ANSWERS_PROMPT)
+    assert "Answer to decision #2 (architecture)" in last["prompt"]
+
+
+@pytest.mark.parametrize(
+    ("kind", "why"),
+    [
+        ("step", "run 41 is a run of one step: only the agent of a plan run or an author run uses"),
+        ("review", "run 41 is a review run, which reads only"),
+        ("judge", "run 41 is a judge run, which reads and judges only"),
+    ],
+)
+def test_worker_ask_works_in_a_plan_or_author_run_and_refuses_in_other_runs_saying_why(
+    kind, why, tmp_path, monkeypatch, capsys
+):
+    for key in [key for key in os.environ if key.startswith("EVO_RUN_")]:
+        monkeypatch.delenv(key)
+    home = WorkerHome(tmp_path / "worker")
+    monkeypatch.setenv("EVO_WORKER_HOME", str(home.root))
+    home.save(WorkerConfig(url="http://127.0.0.1:9", worker_id=1, name="mac", projects=[PROJECT]), TOKEN)
+    monkeypatch.setenv("EVO_RUN_ID", "41")
+    home.save_run({"id": 41, "kind": kind, "finished_at": None})
+    argv = ["worker", "ask", "--category", "scope", "--question", "Now?", "--option", "a=A", "--option", "b=B"]
+    assert cli_main(argv) == 1
+    err = capsys.readouterr().err
+    assert why in err and "`evo-agents worker ask`" in err
+    assert "a plan run or an author run" in err
+    assert not home.decisions_path(41).exists()
+
+    with pytest.raises(SystemExit):
+        cli_main(["worker", "--help"])
+    shown = " ".join(capsys.readouterr().out.split())
+    assert "inside a plan run or an author run: ask the run's owner a decision" in shown

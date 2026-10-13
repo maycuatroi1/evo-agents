@@ -276,6 +276,52 @@ def test_a_model_needs_the_runtime_that_names_it(monkeypatch, capsys, tmp_path, 
     assert result.err.startswith("error: --model names a model as one runtime names it, so it needs --runtime")
 
 
+def test_decision_cli_shows_an_author_run_decision_without_a_plan_as_the_author_run(monkeypatch, capsys, tmp_path):
+    from evo_agents.hub import decision_cli
+
+    planless = {
+        "id": 12,
+        "project": "demo",
+        "run_id": 40,
+        "run_state": "waiting",
+        "plan_id": None,
+        "step_key": None,
+        "category": "scope",
+        "question": "Poll, or subscribe?",
+        "context": None,
+        "options": [{"key": "poll", "label": "Poll", "description": None, "recommended": True}],
+        "recommended": "poll",
+        "state": "open",
+        "owner": "owner",
+        "answer_option": None,
+        "answer_text": None,
+        "answered_by": None,
+        "answer_run_id": None,
+        "asked_at": AT,
+        "answered_at": None,
+        "delivered_at": None,
+    }
+    planned = {**planless, "id": 13, "plan_id": "wait-helper", "step_key": "2"}
+
+    class Answers:
+        def call(self, method, path, body=None):
+            if path.endswith("/decisions/12"):
+                return planless
+            return {"decisions": [planned, planless], "total": 2, "limit": 50, "offset": 0}
+
+    monkeypatch.setattr(decision_cli, "_signed_in", lambda: (Answers(), None))
+    home = tmp_path / "home"
+    table = ok(cli(monkeypatch, capsys, home, "hub", "decision", "list", "--project", "demo")).out
+    (row,) = [line for line in table.splitlines() if line.startswith("#12")]
+    assert "author run #40" in row and "None" not in row and "null" not in row
+    (row,) = [line for line in table.splitlines() if line.startswith("#13")]
+    assert "wait-helper" in row and "author run" not in row
+    shown = ok(cli(monkeypatch, capsys, home, "hub", "decision", "show", "12", "--project", "demo")).out
+    (run_line,) = [line for line in shown.splitlines() if line.strip().startswith("run ")]
+    assert run_line.split(None, 1)[1] == "author run #40 (waiting), before it put a plan"
+    assert "None" not in shown and "null" not in shown
+
+
 @pytest.mark.parametrize(
     "args, problem",
     [

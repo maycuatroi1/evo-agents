@@ -385,9 +385,10 @@ export async function reportStep(live: LiveWorker, runId: number, key: string, s
   await workerCall(live, `/v1/worker/runs/${runId}/steps/${key}`, { status, repo });
 }
 
-/** What an agent's ask may say beyond the default: its category, context, options and pick. */
+/** What an agent's ask may say beyond the default: its category, context, options and pick; no step for an author run's. */
 export type DecisionAsk = {
   category?: string;
+  step_key?: string | null;
   context?: string | null;
   options?: { key: string; label: string; description?: string }[];
   recommended?: string | null;

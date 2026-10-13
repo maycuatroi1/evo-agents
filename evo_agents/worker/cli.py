@@ -12,7 +12,9 @@
 - ``step KEY STATUS``, ``ask``, ``notify``, ``plan``: the commands of a plan run's agent, which report a step (the
   verify commands run again, the repo committed and pushed), ask the run's owner a decision, send the owner a notice,
   and print the plan as the hub holds it now. They read the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record
-  there, call the hub with the worker's token, and refuse to run outside a plan run of this worker.
+  there, call the hub with the worker's token, and refuse to run outside a plan run of this worker; ``ask`` and
+  ``plan`` work inside an author run too, whose agent asks its owner a question with options as a decision. ``ask``
+  notes the decision's id in the run's file of decisions (``home.decisions_path``), which the daemon waits on.
 - ``finding`` and ``propose``: the commands of a review run's agent (the Curator's Reviewer), which record a finding
   and a proposal with their evidence (``evo_agents.hub.review.parse_evidence``); the hub computes a proposal's tier.
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
@@ -492,8 +494,8 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
         raise WorkerStateError(
-            f"`evo-agents worker {command}` works only inside a {kinds[0]} run of this worker: {RUN_VARIABLE} is not "
-            "set. The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
+            f"`evo-agents worker {command}` works only inside {_kinds_of(kinds)} of this worker: {RUN_VARIABLE} is "
+            "not set. The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
         )
     run_id = int(raw)
     home = WorkerHome()
@@ -515,7 +517,8 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
         if kind == "review":
             raise WorkerStateError(
                 f"run {run_id} is a review run, which reads only: it records what it finds with `evo-agents worker "
-                f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`"
+                f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`, which only the agent "
+                f"of {_kinds_of(kinds)} uses"
             )
         if kind == "author":
             raise WorkerStateError(
@@ -525,13 +528,19 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
         if kind == "judge":
             raise WorkerStateError(
                 f"run {run_id} is a judge run, which reads and judges only: its verdict is the JSON object that ends "
-                f"the agent's last message, not `evo-agents worker {command}`"
+                f"the agent's last message, not `evo-agents worker {command}`, which only the agent of "
+                f"{_kinds_of(kinds)} uses"
             )
         raise WorkerStateError(
-            f"run {run_id} is a run of one step: only the agent of a plan run uses `evo-agents worker {command}`; a "
-            f"run of one step writes {runs.RESULT_FILE} instead"
+            f"run {run_id} is a run of one step: only the agent of {_kinds_of(kinds)} uses `evo-agents worker "
+            f"{command}`; a run of one step writes {runs.RESULT_FILE} instead"
         )
     return _AgentRun(run_id, home, config, token, record)
+
+
+def _kinds_of(kinds: tuple[str, ...]) -> str:
+    """The runs of ``kinds`` in words: "a plan run", "a plan run or an author run"."""
+    return " or ".join(f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind} run" for kind in kinds)
 
 
 def _with_hub(agent: _AgentRun, work):
@@ -800,7 +809,7 @@ def _option(text: str) -> dict:
 
 @_worker_command
 def cmd_ask(args) -> int:
-    agent = _agent_run("ask")
+    agent = _agent_run("ask", ("plan", "author"))
     options = [_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
@@ -834,6 +843,14 @@ def cmd_ask(args) -> int:
     with open(agent.home.decisions_path(agent.run_id), "a", encoding="utf-8") as handle:  # the daemon waits on it
         handle.write(noted + "\n")
     print(f"Decision #{decision_id} is open: {' '.join(args.question.split())}")
+    if agent.record.get("kind") == "author":
+        print(
+            "Ask the other decisions of this turn now, then end your turn with your message to the member in the chat: "
+            "what you found, what you decided yourself and the decisions you asked. The run waits until the member "
+            "answered each one or replied in the chat, and your next turn in this session takes the answers, each as a "
+            f"message naming its decision, #{decision_id} among them."
+        )
+        return 0
     print(
         "Go on with the work that does not depend on the answer. When none is left, end your turn: the run waits "
         f"for its owner, and the answer comes back in this session as a message naming decision #{decision_id}."
@@ -1153,7 +1170,7 @@ def register(sub) -> None:
     env.add_argument("--run", type=int, required=True, help="the run's id")
     env.set_defaults(func=cmd_env)
 
-    # The agent of a plan run runs these; outside one they refuse.
+    # The agent of a plan run runs these, and of an author run ask and plan; outside one they refuse.
     step = wsub.add_parser(
         "step", help="inside a plan run: report a step of the plan; done runs its verify commands again and pushes"
     )
@@ -1169,7 +1186,9 @@ def register(sub) -> None:
     )
     step.set_defaults(func=cmd_step)
 
-    ask = wsub.add_parser("ask", help="inside a plan run: ask the run's owner a decision; prints its id")
+    ask = wsub.add_parser(
+        "ask", help="inside a plan run or an author run: ask the run's owner a decision; prints its id"
+    )
     ask.add_argument("--category", required=True, choices=runs.DECISION_CATEGORIES, help="what kind of decision")
     ask.add_argument("--question", required=True, help="the question, in a sentence or two")
     ask.add_argument("--context-file", help="a markdown file of context for the owner, at most 16 KiB (- for stdin)")
@@ -1181,7 +1200,7 @@ def register(sub) -> None:
         help="an option; repeat it, 2 to 6 times",
     )
     ask.add_argument("--recommended", metavar="KEY", help="the key of the option you recommend")
-    ask.add_argument("--step", help="the step of the plan it is about")
+    ask.add_argument("--step", help="the step of the run's plan it is about (an author run: once it put the plan)")
     ask.set_defaults(func=cmd_ask)
 
     notify = wsub.add_parser(
