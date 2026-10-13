@@ -1074,7 +1074,7 @@ compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds 
 The environment `production` of the repository, open to main only, holds the secret `DOKPLOY_API_KEY` and the
 variables `DOKPLOY_URL`, `DOKPLOY_COMPOSE_ID`, `DOKPLOY_BACKUP_ID` and `EVO_HUB_URL`. A run of the workflow by hand
 (`workflow_dispatch`) deploys main again. `/v1/health` reports the version of the last release on main, not the
-commit: the Dokploy deployment's title (`main <short sha>`) and description (the run's URL) name the commit.
+commit: the Dokploy deployment names it, with the commit's message as title and `Commit: <sha>` as description.
 
 ### Running the stack locally
 

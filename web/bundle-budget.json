@@ -121,7 +121,7 @@
     },
     "/p/[project]/runs/[id]": {
       "kB": 427.2,
-      "reason": "The Trace shows a step's report as a card (step-report.ts, trace-report.tsx, trace-term.tsx, main 6033862): main's own build measures this route at 424.5 kB, the same as this branch. The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry."
+      "reason": "A step's report shows as a card in the Trace (6033862), its parser and card loaded on demand (trace-report-lazy.tsx, main 391aa3e). The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry."
     },
     "/p/[project]/runs/[id]/diff": {
       "kB": 293,
