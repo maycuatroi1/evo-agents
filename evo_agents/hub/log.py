@@ -24,6 +24,8 @@ from collections import Counter
 from datetime import UTC, datetime
 from urllib.parse import parse_qsl, quote, unquote, urlencode, urlsplit, urlunsplit
 
+from evo_agents.secret_patterns import GITHUB_TOKEN, HUB_TOKEN, URI_PASSWORD
+
 MASK = "***"
 MIN_SECRET_LENGTH = 3  # shorter values would mask ordinary words; DSN passwords are never that short in use
 
@@ -46,13 +48,13 @@ QUERY_SECRETS = (
 
 _PATTERNS = (
     # scheme://user:password@host, any scheme
-    (re.compile(r"(?P<head>\b[A-Za-z][A-Za-z0-9+.-]*://[^:/@\s]*:)[^@\s/]+@"), r"\g<head>" + MASK + "@"),
+    (URI_PASSWORD, r"\g<head>" + MASK + "@"),
     # password=... in a libpq key=value DSN or a query string, quoted or bare
     (re.compile(r"(?P<head>\bpassword\s*=\s*)(?:'(?:[^'\\]|\\.)*'|[^\s&]+)", re.IGNORECASE), r"\g<head>" + MASK),
-    (re.compile(r"\b(?P<head>ev[hsw]_)[A-Za-z0-9_-]{8,}"), r"\g<head>" + MASK),
+    (HUB_TOKEN, r"\g<head>" + MASK),
     # a pairing code, XXXX-XXXX of Crockford base32 (no I, L, O or U), standing on its own
     (re.compile(r"(?<![A-Za-z0-9_-])[0-9A-HJKMNP-TV-Z]{4}-[0-9A-HJKMNP-TV-Z]{4}(?![A-Za-z0-9_-])"), MASK),
-    (re.compile(r"\b(?P<head>gh[opsur]_|github_pat_)[A-Za-z0-9_]{16,}"), r"\g<head>" + MASK),
+    (GITHUB_TOKEN, r"\g<head>" + MASK),
     (re.compile(r"(?P<head>\bBearer\s+)[A-Za-z0-9._~+/=-]{8,}", re.IGNORECASE), r"\g<head>" + MASK),
     # SigV4: X-Amz-Signature= and X-Amz-Credential= of a presigned URL, Signature= and Credential= of a header,
     # and the "Signature:" line botocore logs at debug level

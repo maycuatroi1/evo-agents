@@ -1,4 +1,4 @@
-"""``evo-agents hub kg push|builds|build|prune``, and the hub backend of ``kg serve`` and ``kg query``.
+"""``evo-agents hub kg push|builds|build|prune|scrub``, and the hub backend of ``kg serve`` and ``kg query``.
 
 ``push`` sends the runs a project's corpus holds and the hub lacks (``evo_agents.hub.kg_push``): ``--project P`` one
 project of this machine, ``--all`` every project of projects.json the hub takes a push for. It reports its progress on
@@ -6,6 +6,9 @@ stderr, a line per run and per batch of blobs, and its outcome on stdout. ``buil
 jobs still queued; ``build`` (the writer role) queues one and with ``--wait`` waits until it has finished, exiting 1
 when it failed. ``prune`` (a hub admin) runs the retention of built graphs now (``evo_agents.hub.kg_prune``): the
 artifacts of graphs older than each project's ``--keep`` newest leave the bucket, and ``--dry-run`` only says which.
+``scrub`` (a hub admin) reads every built graph and source blob of a project, or of every project, page by page
+(``evo_agents.hub.server.kg_scrub``) and lists those holding a secret by hash, kind and the kinds of secret, never a
+value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), and has the hub delete the old ones.
 
 ``open_session`` picks where kg_* are answered. ``local`` reads the store on this machine, as before the hub.
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
@@ -31,6 +34,9 @@ WAIT_INTERVAL = 2.0
 DEFAULT_WAIT = 1800.0
 FINISHED = ("succeeded", "failed")
 PRUNE_TIMEOUT = 600.0  # seconds a prune may take: it deletes objects in the blob store
+SCRUB_TIMEOUT = 600.0  # seconds one page of a scrub, or one purge, may take: it reads objects in the blob store
+PURGE_BATCH = 500  # hashes in one purge request; the hub takes 1000
+SCRUB_SHOWN = 20  # objects listed per project in text; --json lists them all
 
 
 def _base(project: str) -> str:
@@ -213,6 +219,124 @@ def cmd_prune(args) -> int:
     return 0
 
 
+# Old copies of secrets
+
+
+def scrub_scan(hub: Hub, project: str, progress=None) -> dict:
+    """Every page of POST /v1/admin/kg/scrub for ``project``, added up; ``purged`` is None until a purge."""
+    report = {"project": project, "scanned": 0, "scanned_bytes": 0, "missing": 0, "found": [], "purged": None}
+    after = None
+    while True:
+        body = {"project": project, **({"after": after} if after else {})}
+        page = hub.call("POST", "/v1/admin/kg/scrub", body, timeout=SCRUB_TIMEOUT)
+        for key in ("scanned", "scanned_bytes", "missing"):
+            report[key] += page[key]
+        report["found"] += page["found"]
+        if progress:
+            progress(f"{project}: {report['scanned']} object(s) read, {len(report['found'])} hold a secret")
+        after = page["next"]
+        if not after:
+            return report
+
+
+def scrub_purge(hub: Hub, report: dict) -> None:
+    """Ask the hub to delete the old objects ``report`` found, PURGE_BATCH at a time; what it answered goes into
+    ``report["purged"]``."""
+    old = [found["sha256"] for found in report["found"] if found["state"] == "old"]
+    purged = {"purged": [], "kept": [], "builds": 0, "deleted": 0, "deleted_bytes": 0, "pending": 0}
+    for start in range(0, len(old), PURGE_BATCH):
+        body = {"project": report["project"], "sha256": old[start : start + PURGE_BATCH]}
+        answer = hub.call("POST", "/v1/admin/kg/scrub/purge", body, timeout=SCRUB_TIMEOUT)
+        for key in ("purged", "kept"):
+            purged[key] += answer[key]
+        for key in ("builds", "deleted", "deleted_bytes"):
+            purged[key] += answer[key]
+        purged["pending"] = answer["pending"]
+    report["purged"] = purged
+
+
+def scrub_json(purge: bool, reports: list[dict]) -> dict:
+    """What ``hub kg scrub --json`` prints."""
+    return {"purge": purge, "projects": reports}
+
+
+def _old(reports: list[dict]) -> list[dict]:
+    return [found for report in reports for found in report["found"] if found["state"] == "old"]
+
+
+def _print_scrub(report: dict) -> None:
+    found = report["found"]
+    states = {state: sum(1 for f in found if f["state"] == state) for state in ("old", "live", "newest")}
+    print(
+        f"{report['project']}: {len(found)} of {report['scanned']} object(s) hold a secret: {states['old']} old, "
+        f"{states['live']} live source blob(s), {states['newest']} newest graph(s)"
+        + (f"; {report['missing']} missing from the bucket" if report["missing"] else "")
+    )
+    for item in found[:SCRUB_SHOWN]:
+        kinds = ", ".join(f"{kind} {count}" for kind, count in item["secrets"].items())
+        print(f"  {item['state']:<6}  {item['kind']:<8}  {item['sha256'][:16]}  {_bytes(item['size'])}  {kinds}")
+    if len(found) > SCRUB_SHOWN:
+        print(f"  and {len(found) - SCRUB_SHOWN} more: --json lists them all")
+
+
+def _print_purged(report: dict) -> None:
+    purged = report["purged"]
+    reasons = {}
+    for kept in purged["kept"]:
+        reasons[kept["reason"]] = reasons.get(kept["reason"], 0) + 1
+    kept = ", ".join(f"{count} {reason}" for reason, count in sorted(reasons.items()))
+    print(
+        f"{report['project']}: deleted {len(purged['purged'])} object(s), {_bytes(purged['deleted_bytes'])} left the "
+        f"bucket; {purged['builds']} build(s) lost their graph" + (f"; kept {kept}" if kept else "")
+    )
+    if purged["pending"]:
+        print(f"{purged['pending']} object(s) still wait to be deleted; the next prune tries again.", file=sys.stderr)
+
+
+def _scrub_confirmed(args, reports: list[dict]) -> bool:
+    old = _old(reports)
+    graphs = sum(1 for found in old if found["kind"] == "kg-graph")
+    size = _bytes(sum(found["size"] for found in old))
+    if not args.json:
+        print(
+            f"About to delete {len(old)} old object(s) of the hub, {graphs} graph(s) and {len(old) - graphs} source "
+            f"blob(s), {size}. This cannot be undone."
+        )
+    return args.yes or input("Delete them? [y/N] ").strip().lower() in ("y", "yes")
+
+
+@_client_command
+def cmd_scrub(args) -> int:
+    if args.purge and not args.yes and (args.json or not sys.stdin.isatty()):
+        print("error: --purge deletes for good; pass --yes too when no terminal can confirm it", file=sys.stderr)
+        return 2
+    hub, _ = _signed_in()
+    names = [args.project] if args.project else [p["name"] for p in hub.call("GET", "/v1/projects")]
+    reports = [scrub_scan(hub, name, None if args.json else _progress) for name in names]
+    if not args.json:
+        for report in reports:
+            _print_scrub(report)
+    if not args.purge:
+        if args.json:
+            _print_json(scrub_json(False, reports))
+        else:
+            print(f"Count only, nothing was deleted. --purge deletes the {len(_old(reports))} old object(s).")
+        return 0
+    if _old(reports) and not _scrub_confirmed(args, reports):
+        print("Nothing was deleted.")
+        return 1
+    for report in reports:
+        if any(found["state"] == "old" for found in report["found"]):
+            scrub_purge(hub, report)
+            if not args.json:
+                _print_purged(report)
+    if args.json:
+        _print_json(scrub_json(True, reports))
+    elif not _old(reports):
+        print("Nothing to delete.")
+    return 0
+
+
 def register_kg(hsub) -> None:
     from evo_agents.hub.cli import _positive
 
@@ -257,6 +381,15 @@ def register_kg(hsub) -> None:
         returns_object("dry_run", "keep", "projects", "deleted", "deleted_bytes", "pending", schema="KgPruned"),
     )
     prune.set_defaults(func=cmd_prune)
+
+    scrub = ksub.add_parser(
+        "scrub", help="find old graphs and source blobs holding a secret, and with --purge delete them (a hub admin)"
+    )
+    scrub.add_argument("--project", help="project name on the hub (default: every project)")
+    scrub.add_argument("--purge", action="store_true", help="delete the old ones; newest graphs and live blobs stay")
+    scrub.add_argument("--yes", action="store_true", help="with --purge: delete without asking")
+    json_option(scrub, returns_object("purge", "projects"))
+    scrub.set_defaults(func=cmd_scrub)
 
 
 # The hub backend of kg serve and kg query

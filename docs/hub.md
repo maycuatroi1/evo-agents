@@ -76,7 +76,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | health | `GET /v1/health`, `GET /v1/health/live` |
 | sign-in | `/v1/auth/config`, `/v1/auth/github`, `/v1/auth/whoami`, `/v1/auth/logout`, `/v1/auth/web/{login,callback,csrf,logout}` |
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
-| admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune` |
+| admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
@@ -777,12 +777,45 @@ therefore uploads nothing: it points at that artifact, and `artifact_reused_from
 Every hour the worker deletes the artifacts of graphs older than each project's `EVO_HUB_KG_KEEP_ARTIFACTS` newest (3 by
 default; an artifact several builds share counts once, and the newest always stays). A pruned build keeps its row, its
 content hash and its counts, gets `artifact_pruned_at`, and loses `artifact_sha256`, so no row names an object that is
-gone. Run logs, source blobs and skill bundles are never deleted. A hub admin can run the same retention by hand:
+gone. The retention never deletes run logs, source blobs or skill bundles. A hub admin can run it by hand:
 
 ```sh
 evo-agents hub kg prune --dry-run              # what would go, for every project; changes nothing
 evo-agents hub kg prune --project demo --keep 5
 ```
+
+**Secrets in old copies.** The git connector redacts secrets before a file enters a corpus (see the README), but
+runs pushed before it did keep them on the hub, in their source blobs and in the graphs built from them. A hub admin
+finds them with `evo-agents hub kg scrub` (every project, or `--project demo`). It reads each built graph and source
+blob a project holds in the bucket, page by page (`POST /v1/admin/kg/scrub`, at most 1000 objects and 256 MiB a
+page), with the connector's patterns, and lists those holding a secret by hash, kind, size and the kinds of secret,
+never a value. A graph is read from the api's cache when it is there. A source blob is read as a document, since the
+hub does not know its path: a bare value after `=` counts as a literal. Run logs hold references only and are not
+read. Each object found has a state. `newest` is the graph the `kg_*` tools read, and `live` a source blob that a run
+still in use refers to: a run waiting for its commit, the newest full run of its source (a complete listing and an
+ok end), or a run after that. Anything else is `old`. Counting changes nothing.
+
+`--purge` says what it is about to delete and asks first (`--yes` when no terminal can answer), then has the hub
+delete the old objects (`POST /v1/admin/kg/scrub/purge`, at most 1000 hashes a request). The hub reads each one again
+and keeps those that hold no secret any more, are in use, or are not the project's, saying why. For the rest, in one
+transaction holding the blob lock, it drops the project's `blobs` rows, marks the builds of a deleted graph pruned as
+the retention does, records the objects no other project holds for deletion, and writes one `kg.scrub` audit row
+counting what went. Then it deletes the objects and drops the deleted graphs from its cache. Delete in this order, so
+the newest graph and the live blobs are the redacted ones and nothing the project uses holds a secret:
+
+```sh
+evo-agents kg sync --build --push              # on each machine: runs with the secrets redacted
+evo-agents hub kg build --project demo --wait  # the newest graph, from the redacted runs
+evo-agents hub kg scrub                        # count, change nothing
+evo-agents hub kg scrub --purge                # delete the old copies, after a yes
+```
+
+Which blob is live is a guess from the newest full run of each source. When the merge kept an older record (a removal
+the deletion guard held back, or an older checkout pushed after a newer one), a blob in use may count as old. Deleting
+it makes the project's next build fail, naming the blob, and pushing a new run of that source mends it. The worker's
+cache under `<data dir>/kg/home` holds the corpus as a machine's kg home does, old blobs included:
+`EVO_KG_HOME=<data dir>/kg/home evo-agents kg scrub --all --purge --yes` in the worker's container cleans it the same
+way, or delete the cache, and the next build fetches what it needs again.
 
 ## Blobs on R2
 
@@ -790,8 +823,9 @@ Postgres holds metadata; the blob store holds bytes. The bucket stays private, a
 be limited to that one bucket. Keys:
 
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
-  blob never changes. The hub deletes only built graphs that the retention dropped (see above), and only once no row
-  refers to them. The `blobs` table says which projects hold each.
+  blob never changes. The hub deletes only built graphs that the retention dropped, and the old graphs and source
+  blobs holding a secret that an admin's scrub deleted (see above), and only once no row refers to them. The `blobs`
+  table says which projects hold each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 
 An upload takes three calls. The client asks `POST /v1/blobs/uploads` for presigned PUT URLs (valid 15 minutes, for
