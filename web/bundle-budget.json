@@ -120,8 +120,8 @@
       "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
     },
     "/p/[project]/runs/[id]": {
-      "kB": 427.2,
-      "reason": "A step's report shows as a card in the Trace (6033862), its parser and card loaded on demand (trace-report-lazy.tsx, main 391aa3e). The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry."
+      "kB": 427.5,
+      "reason": "A step's report shows as a card in the Trace (6033862), its parser and card loaded on demand (trace-report-lazy.tsx, main 391aa3e). The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry. An author run's Chat shows its decisions as DecisionCards after the agent's message that asked them, with the count of those that wait (author-run-decisions step 3)."
     },
     "/p/[project]/runs/[id]/diff": {
       "kB": 293,
@@ -152,8 +152,8 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/workers/[id]": {
-      "kB": 318.4,
-      "reason": "The owner's Settings card (name, slots and labels, saved with PATCH /v1/workers/{id}) shows on the worker page as it loads. Loading it with next/dynamic took 0.5 kB off this route but made Turbopack repack shared chunks and put /admin/members/[login] 1.4 kB over, so it stays a static import. The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 319.0,
+      "reason": "The owner's Settings card (name, slots and labels, saved with PATCH /v1/workers/{id}) shows on the worker page as it loads. Loading it with next/dynamic took 0.5 kB off this route but made Turbopack repack shared chunks and put /admin/members/[login] 1.4 kB over, so it stays a static import. The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. Its runs list shares the run model and messages that now place an author run's decisions in its Chat (author-run-decisions step 3)."
     }
   }
 }
