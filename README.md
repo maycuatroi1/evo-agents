@@ -16,6 +16,7 @@ Status: early prototype. Interfaces will change.
 ```sh
 uv tool install 'evo-ak[graphify]'   # or: pip install 'evo-ak[graphify]' (PyPI name; the command is evo-agents)
 uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents'   # unreleased main
+uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents@nightly'   # main as of last night, its ci green
 # or, from a checkout: python -m pip install -e '.[test,graphify]'
 ```
 

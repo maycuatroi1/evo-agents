@@ -1,19 +1,36 @@
 name: ci
 
+# Two weights. A pull request and a push to main run the light one: Linux on Python 3.12, the Python of the hub's
+# image, then the web's checks and its end-to-end tests, since main deploys to the hub once ci passes (deploy.yml). The
+# full one adds Python 3.11 on Linux, and macOS and Windows on both Pythons: release.yml runs it on a v* tag before it
+# builds anything, and a manual run with `full` runs it on any branch. No linter runs here: ruff, ESLint, import-linter
+# and the structure budgets of tests/test_structure.py are commands to run when wanted (docs/structure.md).
 on:
   push:
     branches: [main]
   pull_request:
+  workflow_call:
+    inputs:
+      full:
+        description: "Python 3.11 too, and macOS and Windows"
+        type: boolean
+        default: true
+  workflow_dispatch:
+    inputs:
+      full:
+        description: "Python 3.11 too, and macOS and Windows"
+        type: boolean
+        default: true
 
-# A new push to a pull request cancels the run of the push before it; every push to main runs to the end.
+# A new push to a pull request cancels the run of the push before it; every other run goes to the end.
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   # What a pull request touches, so a change to web/ alone skips the Python tests and a change to the tests or the
-  # docs alone skips the web. A push to main runs everything. The Python tests count every file outside web/ (they read
-  # docs/, plugins/ and the harness files too) and the two files of web/ they read: package.json, which
+  # docs alone skips the web. Every other run runs everything. The Python tests count every file outside web/ (they
+  # read docs/, plugins/ and the harness files too) and the two files of web/ they read: package.json, which
   # tests/release/test_versions.py checks names no version, and README.md, which tests/hub/test_contract.py reads.
   # The web counts web/ and the package, since its end-to-end tests run against `hub serve` from this checkout, but
   # not the knowledge graph builder (evo_agents/kg/) or a markdown file: a pull request that changes only those, the
@@ -24,8 +41,10 @@ jobs:
       contents: read
       pull-requests: read
     outputs:
-      python: ${{ github.event_name == 'push' || steps.filter.outputs.python == 'true' || steps.filter.outputs.read_by_python == 'true' }}
-      web: ${{ github.event_name == 'push' || steps.filter.outputs.web == 'true' }}
+      python: ${{ github.event_name != 'pull_request' || steps.filter.outputs.python == 'true' || steps.filter.outputs.read_by_python == 'true' }}
+      web: ${{ github.event_name != 'pull_request' || steps.filter.outputs.web == 'true' }}
+      full: ${{ inputs.full == true }}
+      pythons: ${{ inputs.full == true && '["3.11", "3.12"]' || '["3.12"]' }}
     steps:
       - id: filter
         if: github.event_name == 'pull_request'
@@ -47,11 +66,14 @@ jobs:
               - '!evo_agents/kg/**'
               - '!**/*.md'
 
-  # Linux runs everything, the hub tests included, against a Postgres service container, in three jobs per Python that
+  # Linux runs everything, the hub tests included, against a Postgres service container, in five jobs per Python that
   # run in parallel: tests/worker in one, where with the worker extra and tmux the daemon runs against a hub end to
-  # end, takeover and handback in tmux included, and the rest of the suite in two halves (EVO_TEST_SHARD, which
-  # tests/conftest.py reads: each half keeps every other test of the collection, so the two run each test once).
+  # end, takeover and handback in tmux included, and the rest of the suite in four parts (EVO_TEST_SHARD, which
+  # tests/conftest.py reads: each part keeps every fourth test of the collection, so the four run each test once).
   # Every job prints its 20 slowest tests.
+  #
+  # The Postgres of a job is thrown away with it, so it keeps its data in memory (tmpfs) and writes nothing through:
+  # every hub test creates a database from a template and drops it, and those writes cost more than most tests.
   test:
     name: test (ubuntu-latest, ${{ matrix.python }}, ${{ matrix.part }})
     needs: changes
@@ -59,8 +81,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        python: ["3.11", "3.12"]
-        part: ["1/2", "2/2", worker]
+        python: ${{ fromJSON(needs.changes.outputs.pythons) }}
+        part: ["1/4", "2/4", "3/4", "4/4", worker]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -70,6 +92,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
+          --tmpfs /var/lib/postgresql/data
           --health-cmd "pg_isready -U postgres"
           --health-interval 2s
           --health-timeout 5s
@@ -77,6 +100,11 @@ jobs:
     env:
       EVO_HUB_TEST_DSN: postgresql://postgres:test@localhost:5432/postgres
     steps:
+      - name: Postgres without fsync
+        run: >-
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -q
+          -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off"
+          -c "ALTER SYSTEM SET full_page_writes = off" -c "SELECT pg_reload_conf()"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -90,22 +118,7 @@ jobs:
       - name: Install tmux, for the interactive runs of the worker
         if: matrix.part == 'worker'
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends tmux
-      - run: ruff check .
-      - run: ruff format --check .
-      # The package boundaries (import-linter, contracts in pyproject.toml), then the size and complexity budgets, with
-      # their baseline and the contracts' exceptions compared against main so neither grows (docs/structure.md). They
-      # look at the code, not at a part of the suite, so they run once per Python, in the shortest job: tests/worker.
-      - name: Package boundaries (lint-imports)
-        if: matrix.part == 'worker'
-        run: lint-imports
-      - name: Structure budgets against main (tests/test_structure.py)
-        if: matrix.part == 'worker'
-        env:
-          EVO_STRUCTURE_BASE: origin/main
-        run: |
-          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
-          pytest -q tests/test_structure.py
-      - name: Half ${{ matrix.part }} of the tests outside tests/worker
+      - name: Part ${{ matrix.part }} of the tests outside tests/worker
         if: matrix.part != 'worker'
         env:
           EVO_TEST_SHARD: ${{ matrix.part }}
@@ -114,12 +127,13 @@ jobs:
         if: matrix.part == 'worker'
         run: pytest -q -n 4 --durations=20 tests/worker
 
-  # Service containers run on Linux only. macOS installs the core package without the hub-server and worker extras,
-  # and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that need a hub or the worker's SDKs.
+  # The full run only. Service containers run on Linux only: macOS and Windows install the core package without the
+  # hub-server and worker extras, and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that
+  # need a hub or the worker's SDKs.
   test-macos:
     name: test (macos-latest, ${{ matrix.python }})
     needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: needs.changes.outputs.full == 'true' && needs.changes.outputs.python == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -130,15 +144,17 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e '.[test,graphify]'
-      - run: ruff check .
-      - run: ruff format --check .
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv pip install --system -e '.[test,graphify]'
       - run: pytest -q
 
   test-windows:
     name: test (windows-latest, ${{ matrix.python }})
     needs: changes
-    if: needs.changes.outputs.python == 'true'
+    if: needs.changes.outputs.full == 'true' && needs.changes.outputs.python == 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -149,11 +165,16 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: ${{ matrix.python }}
-      - run: python -m pip install -e ".[test,graphify]"
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv pip install --system -e ".[test,graphify]"
       - run: python -m pytest -q -n 4 --durations=20
 
-  # The web under web/ without a browser: lint, types, unit tests, and the drift check of the API types against the
-  # FastAPI OpenAPI, which needs this checkout's Python but no database.
+  # The web under web/ without a browser: the First Load JS budgets on a production build first, since they fail the
+  # most often, then types, unit tests, and the drift check of the API types against the FastAPI OpenAPI, which needs
+  # this checkout's Python but no database.
   web-check:
     name: web-check
     needs: changes
@@ -161,6 +182,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       PYTHON: python
+      NEXT_TELEMETRY_DISABLED: "1"
     defaults:
       run:
         working-directory: web
@@ -184,24 +206,37 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
       - run: pnpm install --frozen-lockfile
-      - run: pnpm lint
+      # The build reuses what an earlier build of the same lockfile left, as the end-to-end tests' builds do.
+      - uses: actions/cache@v4
+        with:
+          path: web/.next/cache
+          key: next-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ hashFiles('web/src/**') }}
+          restore-keys: next-${{ hashFiles('web/pnpm-lock.yaml') }}-
+      - run: pnpm build
+      # First Load JS of every route against web/bundle-budget.json; a budget raised or a route added over main's file
+      # needs a reason in its entry (web/scripts/bundle-budget.mjs).
+      - name: First Load JS within its budget
+        run: |
+          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
+          node scripts/bundle-budget.mjs --base origin/main
       - run: pnpm typecheck
       - run: pnpm test
       - name: API types match the API
         run: pnpm gen:api && git diff --exit-code -- src/lib/api/schema.d.ts
 
-  # Playwright (with axe) in four shards, each against a local hub on a Postgres service of its own and a production
-  # build of its own, signing in through a fake GitHub. The specs seed what they read under unique names, so a shard
-  # needs nothing from another. Every spec runs in Chromium; e2e/terminal.spec.ts runs in Firefox too
-  # (playwright.config.ts). The first shard then checks the First Load JS budgets on its build.
+  # Playwright (with axe) in six shards of 2 workers each (4 workers saturated a runner: a knowledge graph page's axe
+  # test went from 14 s to over 30 s), each against a local hub on a Postgres service of its own (in memory, as the
+  # test jobs') and a production build of its own, signing in through a fake GitHub. The specs seed what they read
+  # under unique names, so a shard needs nothing from another. Every spec runs in Chromium; e2e/terminal.spec.ts runs
+  # in Firefox too (playwright.config.ts).
   web-e2e:
-    name: web-e2e (${{ matrix.shard }}/4)
+    name: web-e2e (${{ matrix.shard }}/6)
     needs: changes
     if: needs.changes.outputs.web == 'true'
     strategy:
       fail-fast: false
       matrix:
-        shard: [1, 2, 3, 4]
+        shard: [1, 2, 3, 4, 5, 6]
     runs-on: ubuntu-latest
     services:
       postgres:
@@ -211,6 +246,7 @@ jobs:
         ports:
           - 5432:5432
         options: >-
+          --tmpfs /var/lib/postgresql/data
           --health-cmd "pg_isready -U postgres"
           --health-interval 2s
           --health-timeout 5s
@@ -222,6 +258,12 @@ jobs:
       run:
         working-directory: web
     steps:
+      - name: Postgres without fsync
+        working-directory: .
+        run: >-
+          docker exec ${{ job.services.postgres.id }} psql -U postgres -q
+          -c "ALTER SYSTEM SET fsync = off" -c "ALTER SYSTEM SET synchronous_commit = off"
+          -c "ALTER SYSTEM SET full_page_writes = off" -c "SELECT pg_reload_conf()"
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
@@ -248,14 +290,7 @@ jobs:
           key: next-${{ hashFiles('web/pnpm-lock.yaml') }}-${{ hashFiles('web/src/**') }}
           restore-keys: next-${{ hashFiles('web/pnpm-lock.yaml') }}-
       - run: pnpm exec playwright install --with-deps chromium firefox
-      - run: pnpm exec playwright test --shard=${{ matrix.shard }}/4
-      # First Load JS of every route, on the production build Playwright just served, against web/bundle-budget.json;
-      # a budget raised or a route added over main's file needs a reason in its entry (web/scripts/bundle-budget.mjs).
-      - name: First Load JS within its budget
-        if: matrix.shard == 1
-        run: |
-          git fetch --no-tags --depth=1 origin +refs/heads/main:refs/remotes/origin/main
-          node scripts/bundle-budget.mjs --base origin/main
+      - run: pnpm exec playwright test --shard=${{ matrix.shard }}/6
       - uses: actions/upload-artifact@v4
         if: failure()
         with:
@@ -266,8 +301,9 @@ jobs:
             web/e2e/.stack/hub-serve.log
           retention-days: 7
 
-  # The check the main branch's ruleset requires: green when every job above passed or was skipped because the pull
-  # request does not touch what it tests, red when one failed or was cancelled, or when `changes` itself did not run.
+  # The check the main branch's ruleset requires: green when every job above passed or was skipped because the run is
+  # light or the pull request does not touch what it tests, red when one failed or was cancelled, or when `changes`
+  # itself did not run.
   ci-ok:
     name: ci-ok
     if: always()
