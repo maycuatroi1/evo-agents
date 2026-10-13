@@ -457,6 +457,53 @@ def test_0026_takes_up_to_sixteen_slots_and_going_back_refuses_a_live_worker_ove
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0026") :]
 
 
+def _author_run(ids):
+    """The INSERT of a queued author run of the seeded user in demo, on no plan, returning its id."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "author", "request": "A wait helper."}
+    row |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless", "approval": "auto"}
+    row |= {"timeout_s": 3600, "state": "queued", "repos": [{"repo": "harness", "branch": "main"}]}
+    return insert(runs).values(row).returning(runs.c.id)
+
+
+def _decision_row(ids, run_id: int, plan_id: str | None):
+    """The INSERT of an open decision of ``run_id`` on ``plan_id``, returning its id."""
+    decisions = hub_tables.decisions
+    options = [{"key": "a", "label": "A"}, {"key": "b", "label": "B"}]
+    row = {"run_id": run_id, "project_id": ids["project"], "plan_id": plan_id, "category": "scope"}
+    row |= {"question": "Which one?", "options": options}
+    return insert(decisions).values(row).returning(decisions.c.id)
+
+
+def test_0027_lets_an_author_decision_have_no_plan_and_going_back_deletes_those_with_their_inbox_rows(hub_db):
+    move_to(hub_db, "0026")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        with pytest.raises(errors.NotNullViolation):  # every decision had a plan before 0027
+            conn.execute(_decision_row(ids, run_id, None))
+    move_to(hub_db, "0027")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        planless = one(conn, _decision_row(ids, run_id, None))
+        planned = one(conn, _decision_row(ids, run_id, "wait-helper"))
+        for decision_id in (planless, planned):
+            conn.execute(
+                insert(t.run_inbox).values(run_id=run_id, sent_by=ids["user"], body="A.", decision_id=decision_id)
+            )
+            notice = {"user_id": ids["user"], "kind": "decision", "project_id": ids["project"], "title": "Asks"}
+            conn.execute(insert(t.notifications).values(**notice, run_id=run_id, decision_id=decision_id))
+
+    # Going back deletes the decision without a plan, the answer in the inbox and the notification naming it.
+    move_to(hub_db, "0026", down=True)
+    assert query(hub_db, select(t.decisions.c.id, t.decisions.c.plan_id)) == [(planned, "wait-helper")]
+    assert query(hub_db, select(t.run_inbox.c.decision_id)) == [(planned,)]
+    assert query(hub_db, select(t.notifications.c.decision_id)) == [(planned,)]
+    with live.connect(hub_db) as conn, pytest.raises(errors.NotNullViolation):
+        conn.execute(_decision_row(ids, run_id, None))
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0027") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)
