@@ -1,7 +1,7 @@
 import { NextRequest } from "next/server";
 import { describe, expect, it } from "vitest";
 
-import { config, proxy, RUN_STREAM } from "./proxy";
+import { CHAT_STREAM, config, proxy, RUN_STREAM } from "./proxy";
 
 const SESSION = `evs_${"b".repeat(43)}`;
 
@@ -63,6 +63,19 @@ describe("proxy", () => {
       expect(RUN_STREAM.test(path), path).toBe(false);
     }
     expect(config.matcher).toContain("/v1/projects/:project/runs/:id/stream");
+  });
+
+  it("asks for a chat's event stream unencoded too", () => {
+    const response = proxy(request("/v1/chats/7/stream", undefined, { "accept-encoding": "gzip, br", "last-event-id": "41" }));
+    expect(response.headers.get("location")).toBeNull();
+    expect(response.headers.get("x-middleware-request-accept-encoding")).toBe("identity");
+    expect(response.headers.get("x-middleware-request-last-event-id")).toBe("41");
+    expect(response.headers.get("content-security-policy")).toBeNull();
+    expect(CHAT_STREAM.test("/v1/chats/7/stream")).toBe(true);
+    for (const path of ["/v1/chats/7/events", "/v1/chats/x/stream", "/v1/chats/7/stream/more", "/v1/chats/stream"]) {
+      expect(CHAT_STREAM.test(path), path).toBe(false);
+    }
+    expect(config.matcher).toContain("/v1/chats/:id/stream");
   });
 
   it("does not run on the API or on build assets", () => {

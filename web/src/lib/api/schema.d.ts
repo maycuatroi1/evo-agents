@@ -2899,6 +2899,411 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agents
+         * @description The agent profiles of the project, the default first, then by handle.
+         */
+        get: operations["list_agents_v1_projects__project__agents_get"];
+        put?: never;
+        /**
+         * Create Agent
+         * @description Create an agent profile of the project, at version 1.
+         */
+        post: operations["create_agent_v1_projects__project__agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Agent
+         * @description One agent profile of the project, deleted or not.
+         */
+        get: operations["show_agent_v1_projects__project__agents__handle__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Agent
+         * @description Soft-delete an agent profile: it takes no new run; its handle stays taken and it reads as before.
+         */
+        delete: operations["delete_agent_v1_projects__project__agents__handle__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit Agent
+         * @description Change an agent profile: the fields given, as its next version; nothing changes for values it has already.
+         */
+        patch: operations["edit_agent_v1_projects__project__agents__handle__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Versions
+         * @description Every version of the profile, the latest first: the rules a run of that version had.
+         */
+        get: operations["agent_versions_v1_projects__project__agents__handle__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Avatar
+         * @description The profile's avatar image; 404 when it has none.
+         */
+        get: operations["get_avatar_v1_projects__project__agents__handle__avatar_get"];
+        /**
+         * Put Avatar
+         * @description Set the profile's avatar, a PNG, JPEG or WebP image, as its next version.
+         */
+        put: operations["put_avatar_v1_projects__project__agents__handle__avatar_put"];
+        post?: never;
+        /**
+         * Delete Avatar
+         * @description Drop the profile's avatar, as its next version: the web draws its initial on its colour again.
+         */
+        delete: operations["delete_avatar_v1_projects__project__agents__handle__avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Chats
+         * @description The chats the caller is in, the latest active first, with the unread messages of others.
+         */
+        get: operations["list_chats_v1_chats_get"];
+        put?: never;
+        /**
+         * Create Chat
+         * @description Create a chat with the caller in it, and the people and agents given.
+         */
+        post: operations["create_chat_v1_chats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Chat
+         * @description The chat with its people and agents.
+         */
+        get: operations["show_chat_v1_chats__chat_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Update Chat
+         * @description Change the chat's budget: what its agents' runs may cost in 24 hours. Only its creator does.
+         */
+        patch: operations["update_chat_v1_chats__chat_id__patch"];
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Messages
+         * @description The chat and the latest ``limit`` messages before ``before``, or of one thread, oldest first.
+         */
+        get: operations["list_messages_v1_chats__chat_id__messages_get"];
+        put?: never;
+        /**
+         * Send Message
+         * @description Send a message to the chat, in the thread of ``reply_to`` when given.
+         */
+        post: operations["send_message_v1_chats__chat_id__messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/messages/{message_id}/reactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * React
+         * @description Put an emoji on a message; nothing changes when the caller put it already.
+         */
+        post: operations["react_v1_chats__chat_id__messages__message_id__reactions_post"];
+        /**
+         * Unreact
+         * @description Take the caller's emoji off a message; nothing changes when it is not there.
+         */
+        delete: operations["unreact_v1_chats__chat_id__messages__message_id__reactions_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Chat
+         * @description Say how far the caller read: the seq of the last event they saw, at most the chat's last.
+         */
+        post: operations["read_chat_v1_chats__chat_id__read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/people/{login}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Person
+         * @description Add a person to the chat; nothing changes when they are in it.
+         */
+        put: operations["add_person_v1_chats__chat_id__people__login__put"];
+        post?: never;
+        /**
+         * Remove Person
+         * @description Leave the chat, or, for its creator, take a person out of it.
+         */
+        delete: operations["remove_person_v1_chats__chat_id__people__login__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/agents/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Add Agent
+         * @description Add an agent to the chat (the writer role on its project); nothing changes when it is in it.
+         */
+        put: operations["add_agent_v1_chats__chat_id__agents__handle__put"];
+        post?: never;
+        /**
+         * Remove Agent
+         * @description Take an agent out of the chat.
+         */
+        delete: operations["remove_agent_v1_chats__chat_id__agents__handle__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Events
+         * @description The chat's events after ``after``, oldest first; ``more`` when there are later ones.
+         */
+        get: operations["list_events_v1_chats__chat_id__events_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/{chat_id}/stream": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Stream
+         * @description The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no
+         *     longer read the chat. A ``: ping`` comment keeps an idle stream open.
+         */
+        get: operations["stream_v1_chats__chat_id__stream_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chat/messages": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Message
+         * @description A message of the run's agent in a chat it is in: the run's thread for a chat run.
+         */
+        post: operations["post_message_v1_worker_runs__run_id__chat_messages_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chat/reactions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * React
+         * @description Put an emoji of the run's agent on a message of a chat it is in, or take it off.
+         */
+        post: operations["react_v1_worker_runs__run_id__chat_reactions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chat/mentions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mention
+         * @description A message of the run's agent that hands the work to agent ``handle`` of the chat (see the module's docstring).
+         */
+        post: operations["mention_v1_worker_runs__run_id__chat_mentions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Create Chat
+         * @description A new chat of the run's agent and the person at the origin of the chain, with the people named.
+         */
+        post: operations["create_chat_v1_worker_runs__run_id__chats_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chat/pulls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pushed
+         * @description The worker pushed the chat run's branch of a repo: its draft pull request, linked in the thread.
+         */
+        post: operations["pushed_v1_worker_runs__run_id__chat_pulls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3175,6 +3580,243 @@ export interface components {
              */
             current: boolean;
         };
+        /**
+         * Agent
+         * @description An agent profile, with field names close to an A2A Agent Card's (name, description, iconUrl).
+         */
+        Agent: {
+            /** Handle */
+            handle: string;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Instructions */
+            instructions: string;
+            /** Color */
+            color: string;
+            /**
+             * Icon Url
+             * @description GET of the avatar on this hub; null: draw the initial on the colour
+             */
+            icon_url: string | null;
+            /** Avatar Sha256 */
+            avatar_sha256: string | null;
+            /**
+             * Is Default
+             * @description the project's default profile, @<project>: every permission
+             */
+            is_default: boolean;
+            permissions: components["schemas"]["AgentPermissions"];
+            /**
+             * Restricted
+             * @description the axes that are allowlists, in the order of the seven
+             */
+            restricted: string[];
+            /** Version */
+            version: number;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Deleted At
+             * @description when it was deleted: it takes no new run, and reads as before
+             */
+            deleted_at: string | null;
+        };
+        /**
+         * AgentAxis
+         * @description One axis of a profile's permissions: every value (all), or those of ``allow`` alone (allowlist).
+         */
+        AgentAxis: {
+            /**
+             * Mode
+             * @default all
+             * @enum {string}
+             */
+            mode: "all" | "allowlist";
+            /**
+             * Allow
+             * @description empty for mode all
+             */
+            allow?: string[];
+        };
+        /** AgentChatIn */
+        AgentChatIn: {
+            /** Title */
+            title: string;
+            /**
+             * People
+             * @description logins besides the person who dispatched the run, who is in it anyway
+             */
+            people?: string[];
+        };
+        /** AgentCreate */
+        AgentCreate: {
+            /**
+             * Handle
+             * @description unique on the hub, no project's name; it stays
+             */
+            handle: string;
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Instructions
+             * @description added to the system prompt of the profile's runs
+             * @default
+             */
+            instructions: string;
+            /**
+             * Color
+             * @description default: one picked by the handle
+             */
+            color?: string | null;
+            permissions?: components["schemas"]["AgentPermissions"];
+        };
+        /**
+         * AgentEdit
+         * @description What to change; a field left out stays as it is.
+         */
+        AgentEdit: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Color */
+            color?: string | null;
+            /** @description the seven axes whole; an axis left out allows all */
+            permissions?: components["schemas"]["AgentPermissions"] | null;
+            /**
+             * If Version
+             * @description 409 unless the profile is at this version now
+             */
+            if_version?: number | null;
+        };
+        /** AgentHanded */
+        AgentHanded: {
+            message: components["schemas"]["GroupMessage"];
+            /**
+             * Run Id
+             * @description the run of the agent mentioned: new, or the one of its session it woke
+             */
+            run_id: number | null;
+            /**
+             * Refusal
+             * @description why the mention handed no work, as the thread says too
+             */
+            refusal: string | null;
+        };
+        /** AgentMentionIn */
+        AgentMentionIn: {
+            /**
+             * Body
+             * @description at most 16384 bytes of UTF-8
+             */
+            body: string;
+            /**
+             * Chat Id
+             * @description a chat the run's agent is in; null: the chat of a chat run
+             */
+            chat_id?: number | null;
+            /**
+             * Reply To
+             * @description a message whose thread it goes in; null: the run's thread
+             */
+            reply_to?: number | null;
+            /**
+             * Handle
+             * @description the agent of the chat the message hands work to, @ left out
+             */
+            handle: string;
+        };
+        /** AgentMessageIn */
+        AgentMessageIn: {
+            /**
+             * Body
+             * @description at most 16384 bytes of UTF-8
+             */
+            body: string;
+            /**
+             * Chat Id
+             * @description a chat the run's agent is in; null: the chat of a chat run
+             */
+            chat_id?: number | null;
+            /**
+             * Reply To
+             * @description a message whose thread it goes in; null: the run's thread
+             */
+            reply_to?: number | null;
+        };
+        /**
+         * AgentPermissions
+         * @description What the runs of a profile may use, on seven axes; an axis left out allows all.
+         */
+        AgentPermissions: {
+            /** @description secret names, and github-app for the App's token */
+            credential?: components["schemas"]["AgentAxis"];
+            /** @description read, edit, bash, web, agent, mcp:<server> */
+            tool?: components["schemas"]["AgentAxis"];
+            /** @description skill names, global or the project's */
+            skill?: components["schemas"]["AgentAxis"];
+            /** @description worker names, or label:<label> */
+            worker?: components["schemas"]["AgentAxis"];
+            /** @description the other projects whose runs it may take */
+            project?: components["schemas"]["AgentAxis"];
+            /** @description model names, as a runtime names them */
+            model?: components["schemas"]["AgentAxis"];
+            /** @description claude-code, opencode, codex */
+            runtime?: components["schemas"]["AgentAxis"];
+        };
+        /** AgentReactionIn */
+        AgentReactionIn: {
+            /** Message Id */
+            message_id: number;
+            /** Emoji */
+            emoji: string;
+            /**
+             * Remove
+             * @description take the emoji off instead
+             * @default false
+             */
+            remove: boolean;
+        };
+        /** AgentVersion */
+        AgentVersion: {
+            /** Version */
+            version: number;
+            /**
+             * Body
+             * @description the profile as this version had it: handle, name, permissions and the rest
+             */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Changed By */
+            changed_by: string;
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+        };
         /** AnswerIn */
         AnswerIn: {
             /**
@@ -3291,6 +3933,11 @@ export interface components {
              * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
+            /**
+             * Profile
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            profile?: string | null;
         };
         /** AuthoredPlan */
         AuthoredPlan: {
@@ -3313,6 +3960,14 @@ export interface components {
             label?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** AvatarUpload */
+        AvatarUpload: {
+            /**
+             * Data
+             * @description the image, base64: PNG, JPEG or WebP, at most 524288 bytes
+             */
+            data: string;
         };
         /** Blob */
         Blob: {
@@ -3769,6 +4424,217 @@ export interface components {
              */
             env_secrets?: string[];
         };
+        /** Chat */
+        Chat: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** People */
+            people: components["schemas"]["ChatPerson"][];
+            /** Agents */
+            agents: components["schemas"]["ChatAgent"][];
+            /**
+             * Label
+             * @description the labels of its agents' projects: every person in it clears them
+             */
+            label: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Restricted
+             * @description a project of its agents is restricted: its notices name it and link only
+             */
+            restricted: boolean;
+            /**
+             * Last Seq
+             * @description the number of its last event
+             */
+            last_seq: number;
+            /**
+             * Last Read Seq
+             * @description how far the reader read
+             */
+            last_read_seq: number;
+            /**
+             * Budget Usd
+             * @description what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it
+             */
+            budget_usd: number;
+        };
+        /** ChatAgent */
+        ChatAgent: {
+            /** Handle */
+            handle: string;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /** Color */
+            color: string;
+            /** Icon Url */
+            icon_url: string | null;
+            /**
+             * Is Default
+             * @description the project's default agent, which @<project> names
+             */
+            is_default: boolean;
+            /**
+             * Deleted
+             * @description deleted since it was added: it takes no new work
+             */
+            deleted: boolean;
+            /** Added By */
+            added_by: string | null;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+        };
+        /**
+         * ChatAuthor
+         * @description Who wrote a message or put a reaction: a person, an agent or the hub itself.
+         */
+        ChatAuthor: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "person" | "agent" | "hub";
+            /**
+             * Login
+             * @description a person's
+             */
+            login?: string | null;
+            /**
+             * Handle
+             * @description an agent's, @ left out
+             */
+            handle?: string | null;
+            /**
+             * Project
+             * @description an agent's project
+             */
+            project?: string | null;
+            /**
+             * Name
+             * @description what the web shows: a person's login, an agent's name, or hub
+             */
+            name: string;
+            /**
+             * Color
+             * @description an agent's colour, #rrggbb
+             */
+            color?: string | null;
+            /**
+             * Icon Url
+             * @description an agent's avatar on this hub; null: its initial on its colour
+             */
+            icon_url?: string | null;
+            /**
+             * Deleted
+             * @description an agent deleted since: it takes no new work, and keeps its name
+             * @default false
+             */
+            deleted: boolean;
+        };
+        /** ChatCreate */
+        ChatCreate: {
+            /** Title */
+            title: string;
+            /**
+             * People
+             * @description logins; the creator is in it anyway
+             */
+            people?: string[];
+            /**
+             * Agents
+             * @description handles, @ left out
+             */
+            agents?: string[];
+        };
+        /** ChatEvent */
+        ChatEvent: {
+            /** Seq */
+            seq: number;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "message" | "reaction_added" | "reaction_removed" | "member_added" | "member_removed";
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** @description a message event's message, as it reads now */
+            message?: components["schemas"]["GroupMessage"] | null;
+            reaction?: components["schemas"]["ChatReactionChange"] | null;
+            member?: components["schemas"]["ChatMemberChange"] | null;
+        };
+        /** ChatEvents */
+        ChatEvents: {
+            /** Events */
+            events: components["schemas"]["ChatEvent"][];
+            /** Last Seq */
+            last_seq: number;
+            /** More */
+            more: boolean;
+        };
+        /** ChatMemberChange */
+        ChatMemberChange: {
+            /** @description the person or agent added or removed */
+            member: components["schemas"]["ChatAuthor"];
+            /**
+             * By
+             * @description the person who added or removed them
+             */
+            by: string | null;
+        };
+        /**
+         * ChatMention
+         * @description A name a message mentions, as the hub read it when the message was sent.
+         */
+        ChatMention: {
+            /**
+             * Name
+             * @description as written, lowered, @ left out
+             */
+            name: string;
+            /**
+             * Via
+             * @description how it reached a member; null: it reached none
+             */
+            via: ("login" | "handle" | "project" | "thread") | null;
+            /**
+             * Login
+             * @description the person it reached
+             */
+            login: string | null;
+            /**
+             * Handle
+             * @description the agent it reached, or would have
+             */
+            handle: string | null;
+            /**
+             * Refusal
+             * @description why it reached no member (not in the chat, deleted), or why the agent it reached took no work
+             */
+            refusal: string | null;
+            /**
+             * Run Id
+             * @description the run of the agent the mention handed work to, or woke
+             */
+            run_id?: number | null;
+        };
         /** ChatMessage */
         ChatMessage: {
             /**
@@ -3799,6 +4665,45 @@ export interface components {
              */
             at: string;
         };
+        /** ChatMessageIn */
+        ChatMessageIn: {
+            /**
+             * Body
+             * @description at most 16384 bytes of UTF-8
+             */
+            body: string;
+            /**
+             * Reply To
+             * @description the message it answers: it goes in its thread
+             */
+            reply_to?: number | null;
+        };
+        /** ChatPage */
+        ChatPage: {
+            chat: components["schemas"]["Chat"];
+            /**
+             * Messages
+             * @description oldest first; those the reader's grants do not reach left out
+             */
+            messages: components["schemas"]["GroupMessage"][];
+            /**
+             * More
+             * @description there are older messages: ask again with before= the first seq
+             */
+            more: boolean;
+        };
+        /** ChatPerson */
+        ChatPerson: {
+            /** Login */
+            login: string;
+            /** Added By */
+            added_by: string | null;
+            /**
+             * Added At
+             * Format: date-time
+             */
+            added_at: string;
+        };
         /** ChatPost */
         ChatPost: {
             /**
@@ -3816,6 +4721,138 @@ export interface components {
              * @description its event in the run's log
              */
             seq: number;
+        };
+        /** ChatPull */
+        ChatPull: {
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Url
+             * @description the draft pull request, or the branch; null when the hub knows neither
+             */
+            url: string | null;
+            /**
+             * Number
+             * @description the pull request's number on GitHub
+             */
+            number: number | null;
+            /**
+             * Opened
+             * @description the hub opened it now; false for one open already, or none
+             */
+            opened: boolean;
+            /**
+             * Message Id
+             * @description the agent's message in the thread that says so
+             */
+            message_id: number;
+        };
+        /** ChatPushed */
+        ChatPushed: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description the run's branch, chat/<id>
+             */
+            branch: string;
+            /**
+             * Head
+             * @description the commit the branch has now
+             */
+            head: string;
+        };
+        /** ChatReaction */
+        ChatReaction: {
+            /** Emoji */
+            emoji: string;
+            /** Count */
+            count: number;
+            /**
+             * Mine
+             * @description whether the reader put it
+             */
+            mine: boolean;
+            /**
+             * People
+             * @description the logins of the people who put it, first first
+             */
+            people: string[];
+            /**
+             * Agents
+             * @description the handles of the agents that put it
+             */
+            agents: string[];
+        };
+        /** ChatReactionChange */
+        ChatReactionChange: {
+            /** Message Id */
+            message_id: number;
+            /** Emoji */
+            emoji: string;
+            by: components["schemas"]["ChatAuthor"];
+            /**
+             * Count
+             * @description how many put the emoji on the message after the change
+             */
+            count: number;
+        };
+        /** ChatReactionIn */
+        ChatReactionIn: {
+            /** Emoji */
+            emoji: string;
+        };
+        /** ChatRead */
+        ChatRead: {
+            /** Last Read Seq */
+            last_read_seq: number;
+            /** Unread */
+            unread: number;
+        };
+        /** ChatReadIn */
+        ChatReadIn: {
+            /**
+             * Seq
+             * @description the seq of the last event the member read
+             */
+            seq: number;
+        };
+        /** ChatSummary */
+        ChatSummary: {
+            /** Id */
+            id: number;
+            /** Title */
+            title: string;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Last Message At */
+            last_message_at: string | null;
+            /** Last Seq */
+            last_seq: number;
+            /**
+             * Unread
+             * @description messages of others after the reader's last read
+             */
+            unread: number;
+            /** People */
+            people: string[];
+            /** Agents */
+            agents: string[];
+        };
+        /** ChatUpdate */
+        ChatUpdate: {
+            /**
+             * Budget Usd
+             * @description what the runs of the chat's agents may cost in 24 hours, in USD
+             */
+            budget_usd: number;
         };
         /**
          * CheckoutReport
@@ -4418,6 +5455,11 @@ export interface components {
              * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
+            /**
+             * Profile
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            profile?: string | null;
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -4849,6 +5891,52 @@ export interface components {
              */
             kinds: components["schemas"]["KindCount"][];
         };
+        /** GroupMessage */
+        GroupMessage: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: number;
+            /**
+             * Seq
+             * @description the chat event that brought it: events?after= and Last-Event-ID take it
+             */
+            seq: number;
+            /**
+             * Thread Root Id
+             * @description the first message of its thread; null when it starts none
+             */
+            thread_root_id: number | null;
+            /**
+             * Reply Count
+             * @description the messages of the thread it starts
+             */
+            reply_count: number;
+            author: components["schemas"]["ChatAuthor"];
+            /**
+             * Run Id
+             * @description the run of the agent that wrote it
+             */
+            run_id: number | null;
+            /** Body */
+            body: string;
+            /** Mentions */
+            mentions: components["schemas"]["ChatMention"][];
+            /** Reactions */
+            reactions: components["schemas"]["ChatReaction"][];
+            /**
+             * Label
+             * @description the labels of the projects of the chat's agents when it was sent
+             */
+            label: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -4950,7 +6038,7 @@ export interface components {
             run_kinds?: string[] | null;
             /**
              * Features
-             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
         };
@@ -5768,7 +6856,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -6076,7 +7164,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat";
             /** Project */
             project: string;
             /** Plan Id */
@@ -6511,6 +7599,11 @@ export interface components {
              * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
+            /**
+             * Profile
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            profile?: string | null;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -7460,10 +8553,10 @@ export interface components {
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat";
             /** Project */
             project: string;
             /**
@@ -7665,6 +8758,36 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /**
+             * Profile
+             * @description the handle of the agent profile the run went under; null for a run from before schema 0030
+             */
+            profile?: string | null;
+            /**
+             * Profile Id
+             * @description that profile's id, which its handle names for good
+             */
+            profile_id?: number | null;
+            /**
+             * Profile Version
+             * @description the version of the profile whose rules apply to the run
+             */
+            profile_version?: number | null;
+            /**
+             * Chat Id
+             * @description a chat run's group chat; null for any other run
+             */
+            chat_id?: number | null;
+            /**
+             * Chat Message Id
+             * @description the message of the chat that started a chat run: the mention, or the reply that woke it
+             */
+            chat_message_id?: number | null;
+            /**
+             * Hop
+             * @description a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most 3); null for any other run
+             */
+            hop?: number | null;
         };
         /** RunAccount */
         RunAccount: {
@@ -8130,6 +9253,21 @@ export interface components {
              * @description when the run gave it back or the hub took it; null while out
              */
             revoked_at: string | null;
+            /**
+             * Profile
+             * @description the handle of the agent profile it was handed out under; null for a lease before schema 0030
+             */
+            profile?: string | null;
+            /**
+             * Profile Id
+             * @description that profile's id
+             */
+            profile_id?: number | null;
+            /**
+             * Profile Version
+             * @description the version of that profile
+             */
+            profile_version?: number | null;
         };
         /** RunList */
         RunList: {
@@ -8149,6 +9287,31 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /**
+         * RunProfile
+         * @description The agent profile of a claimed run, at the version the run went under, for its worker to apply what the hub
+         *     cannot (``evo_agents.hub.profiles``): tool, skill and model in the agent session, and the instructions.
+         */
+        RunProfile: {
+            /** Handle */
+            handle: string;
+            /** Version */
+            version: number;
+            /** Name */
+            name: string;
+            /**
+             * Instructions
+             * @description to add to the agent's system prompt; empty for none
+             */
+            instructions: string;
+            /**
+             * Permissions
+             * @description the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}
+             */
+            permissions: {
+                [key: string]: unknown;
+            };
         };
         /** RunPush */
         RunPush: {
@@ -8223,7 +9386,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat";
             /** Project */
             project: string;
             /**
@@ -8322,6 +9485,8 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /** @description the agent profile the run went under; null for a run from before schema 0030 */
+            profile?: components["schemas"]["RunProfile"] | null;
         };
         /** RunState */
         RunState: {
@@ -19872,6 +21037,1942 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_v1_projects__project__agents_get: {
+        parameters: {
+            query?: {
+                /** @description include the deleted ones */
+                deleted?: boolean;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_v1_projects__project__agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_agent_v1_projects__project__agents__handle__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_v1_projects__project__agents__handle__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_agent_v1_projects__project__agents__handle__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    agent_versions_v1_projects__project__agents__handle__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentVersion"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_avatar_v1_projects__project__agents__handle__avatar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/webp": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_avatar_v1_projects__project__agents__handle__avatar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvatarUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_avatar_v1_projects__project__agents__handle__avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_chats_v1_chats_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_chat_v1_chats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_chat_v1_chats__chat_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    update_chat_v1_chats__chat_id__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatUpdate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_messages_v1_chats__chat_id__messages_get: {
+        parameters: {
+            query?: {
+                /** @description messages before this seq */
+                before?: number | null;
+                /** @description the first message of a thread */
+                thread?: number | null;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatPage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    send_message_v1_chats__chat_id__messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatMessageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    react_v1_chats__chat_id__messages__message_id__reactions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                message_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatReactionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    unreact_v1_chats__chat_id__messages__message_id__reactions_delete: {
+        parameters: {
+            query: {
+                /** @description the emoji to take off */
+                emoji: string;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+                message_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    read_chat_v1_chats__chat_id__read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatRead"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_person_v1_chats__chat_id__people__login__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                /** @description a person's login */
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_person_v1_chats__chat_id__people__login__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                /** @description a person's login */
+                login: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    add_agent_v1_chats__chat_id__agents__handle__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                /** @description an agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    remove_agent_v1_chats__chat_id__agents__handle__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+                /** @description an agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_events_v1_chats__chat_id__events_get: {
+        parameters: {
+            query?: {
+                /** @description the seq the events start after */
+                after?: number;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatEvents"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    stream_v1_chats__chat_id__stream_get: {
+        parameters: {
+            query?: {
+                /** @description where a first connection starts */
+                after?: number;
+            };
+            header?: {
+                /** @description sent by a reconnecting client */
+                "Last-Event-ID"?: number | null;
+            };
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/event-stream": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    post_message_v1_worker_runs__run_id__chat_messages_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentMessageIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    react_v1_worker_runs__run_id__chat_reactions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentReactionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["GroupMessage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    mention_v1_worker_runs__run_id__chat_mentions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentMentionIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentHanded"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    create_chat_v1_worker_runs__run_id__chats_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentChatIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pushed_v1_worker_runs__run_id__chat_pulls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatPushed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatPull"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

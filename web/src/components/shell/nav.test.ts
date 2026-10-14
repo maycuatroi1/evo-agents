@@ -18,17 +18,18 @@ describe("nav", () => {
     expect(isActive("/p/demo", "/p/demo", true)).toBe(true);
   });
 
-  it("lists the groups in the kit's order, counting the inbox's decisions, the runs at work and the project's active runs", () => {
+  it("lists the groups in the kit's order, counting the inbox's decisions, the runs at work, the project's active runs and unread chats", () => {
     expect(HOME_NAV.map((item) => [item.label, item.href, item.count ?? null])).toEqual([
       ["home", "/", null],
       ["inbox", "/inbox", "openDecisions"],
       ["monitor", "/monitor", "runningRuns"],
     ]);
-    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "insights", "curator", "memories", "skills", "kg"]);
+    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "insights", "curator", "agents", "memories", "skills", "kg"]);
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
-    expect(HUB_NAV.map((item) => item.label)).toEqual(["workers", "secrets", "accounts", "myMemories", "globalSkills", "admin"]);
+    expect(HUB_NAV.map((item) => item.label)).toEqual(["chats", "workers", "secrets", "accounts", "myMemories", "globalSkills", "admin"]);
+    expect(HUB_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([["chats", "unreadChats"]]);
     expect(HUB_NAV.filter((item) => item.adminOnly).map((item) => item.label)).toEqual(["admin"]);
   });
 

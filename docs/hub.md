@@ -91,6 +91,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (`docs/notifications.md`) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
@@ -233,6 +234,221 @@ Memories add one rule on top: `project` and `reference` memories go to every mem
 `user` and `feedback` memories go only to the person who wrote them. Memories outside any project are personal and
 only their owner sees them.
 
+## Agent profiles
+
+An agent profile says who an agent of a project is and what its runs may use (`evo_agents.hub.profiles`). It belongs
+to a project: the project's admins create, edit and delete its profiles, and every member reads them, deleted ones
+included, so an old message keeps its author's name and avatar. A writer or a reader who changes one gets 403; someone
+without a grant gets the project's 404.
+
+A profile has a handle, unique on the hub (deleted profiles' included) and never a project's name, written
+`[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
+prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
+none; and seven axes of permissions. The handle never changes. Every edit that changes something, the avatar
+included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
+lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
+`description`, and `icon_url` for the avatar.
+
+Every project has a default profile, `@<project>`, whose handle is the project's name: the registration of a project
+creates it, and migration 0030 created one for every project before it. It allows everything and has no instructions,
+always (422 otherwise), so a run whose dispatch names no profile, which goes under it, runs as runs ran before
+profiles; its name, description, colour and avatar may change, and it is never deleted. A project cannot be registered
+under the handle of another project's agent (409), since `@<name>` would name both.
+
+Each axis is `{"mode": "all"}` (the default) or `{"mode": "allowlist", "allow": [...]}`. An allowlist never grows by
+itself when a secret, a skill or a worker is added, and an empty one allows nothing. A profile only narrows what the
+member who dispatches a run has (their workers, their secrets, the projects they write to); it never widens it.
+
+| Axis | An allowlist names | Enforced |
+| --- | --- | --- |
+| `credential` | secret names, and `github-app` for a token of the hub's GitHub App | the leases of the run ([credentials.md](credentials.md)) |
+| `tool` | the tool words below, and `mcp:<server>` | the worker's adapter, in the agent session |
+| `skill` | skill names, global or of the project (ignoring case) | the dispatch of an author run (`create-exec-plan`), and the worker's adapter |
+| `worker` | worker names, or `label:<label>` (ignoring case) | the dispatch (a pinned worker, or one of the dispatcher's at least) and the claim |
+| `project` | the other projects whose runs the profile may take; its own always | the dispatch |
+| `model` | model names, as a runtime names them | the dispatch (none named: the first allowed), and the worker's adapter |
+| `runtime` | `claude-code`, `opencode`, `codex` | the dispatch, and the claim of a run asking for `any` |
+
+The tool axis speaks runtime-neutral words, which each runtime's adapter turns into its own tools: `read` (read files
+and search them), `edit` (create and change files), `bash` (run shell commands), `web` (fetch web pages and search the
+web), `agent` (start subagents), and `mcp:<server>` (the tools of one MCP server). Tools that only keep the agent's own
+notes, such as a to-do list, are always there. A runtime that cannot turn off a word a profile leaves out fails the run
+before its agent starts.
+
+### Runs under a profile
+
+`POST /v1/projects/{p}/runs`, `.../plan-runs` and `.../author-runs` take `profile`, a handle (`--agent` on `hub run
+dispatch`, `plan` and `author`); without it the run goes under the project's default. The dispatch is refused, saying
+which allowlist leaves what out and that nothing was dispatched, when:
+
+- the handle names no profile the caller sees (404), or one of another project where the caller is not a writer (403);
+- the profile was deleted, or belongs to another project whose `project` axis leaves this one out (422);
+- the runtime asked for is not allowed, or none is, or a pinned worker reports none that is (422);
+- the model asked for is not allowed, or the axis allows none (422); without a model, the run takes the first allowed;
+- the pinned worker is not allowed by name or label, or, unpinned, no worker of the caller's that serves the project
+  is (422);
+- the account picked by hand is not in the credential allowlist (422), or an author run's profile leaves out the skill
+  `create-exec-plan` (422);
+- the pinned worker's daemon does not say it applies profiles (feature `agent_profiles`) and the profile limits
+  tools, skills or models or has instructions (409, as for any worker that could never claim the run).
+
+The run records `profile_id` and `profile_version`, and `Run` shows `profile` (the handle), `profile_id` and
+`profile_version`. The hub applies that version's rules to the run: a worker claims it only when the worker axis names
+it or one of its labels, the runtime axis one of its runtimes, and, for a profile that needs it, its daemon lists
+`agent_profiles` in its heartbeat's `features`; a run asking for `any` runtime takes the first of the worker's the
+profile allows. The claim carries the profile at that version (`RunSpec.profile`: handle, version, name, instructions,
+permissions) for the worker to apply. A rerun goes under the profile of the run it reruns, at its version now, checked
+again; the next attempt of a lost run and a run that resumes a parked one keep the profile and version. A run of the
+night shift goes under the project's default. A run from before 0030 has no profile and runs as before.
+
+The audit row of a dispatch, a plan run, an author run or a rerun ends with `profile=@<handle>:v<version>`, and so does
+each `credential.lease` row, unless the profile is the project's default: a row that names none went under it. Each
+lease row records the profile and version it was handed out under.
+
+### Routes and commands
+
+| Route | Command | Who |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/agents` (`?deleted=true` adds the deleted) | `hub agent list [--deleted]` | a member |
+| `GET .../agents/{handle}` | `hub agent show HANDLE` | a member |
+| `GET .../agents/{handle}/versions`, every version whole, the latest first | | a member |
+| `POST .../agents` | `hub agent create HANDLE --name NAME [...]` | an admin of the project |
+| `PATCH .../agents/{handle}` (`if_version`: 409 when it moved on) | `hub agent edit HANDLE [...]` | an admin of the project |
+| `DELETE .../agents/{handle}` | `hub agent delete HANDLE` | an admin of the project |
+| `PUT` and `DELETE .../agents/{handle}/avatar` | `--avatar PATH`, `--no-avatar` | an admin of the project |
+| `GET .../agents/{handle}/avatar` | | a member |
+
+`--allow AXIS:ITEM` (repeatable) makes an axis an allowlist of the items given for it, `--none AXIS` an allowlist of
+nothing, and on `edit` `--all AXIS` allows everything again; `edit` sends the other axes as it read them, with
+`if_version`. For example:
+
+```sh
+evo-agents hub agent create reviewer --name Reviewer --project evo-agents --allow tool:read --allow tool:mcp:github \
+  --allow credential:github-app --allow model:claude-sonnet-4-5 --instructions-file reviewer.md
+evo-agents hub run dispatch rollout 3 --agent reviewer --project evo-agents
+```
+
+The avatar is a PNG, JPEG or WebP image of at most 512 KiB, sent as base64 in JSON (`{"data": ...}`) and checked by
+its first bytes; the hub stores it in the blob store as a blob of kind `agent-avatar` the project holds, and serves it
+from `GET .../avatar`, whose URL (`icon_url`) carries a part of its SHA-256. Without one, `icon_url` is null and the
+web draws the profile's initial on its colour. The audit rows `agent.create`, `agent.update` (with the fields changed)
+and `agent.delete` name `<project>/@<handle> v<version>`, never a description, instructions or an image.
+
+Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_profiles`, each profile as it is now, and
+`agent_profile_versions`, each version of it whole; the default profile of every project, made by the member who made
+the project, at version 1; and `profile_id` with `profile_version` on `runs` and on `credential_leases`, both null or
+both set, naming a version. Going back to 0029 drops the two tables and the columns: the profiles, and which profile
+each run and lease went under, are lost.
+
+## Group chats
+
+A group chat holds people and the agents of projects (`evo_agents/hub/chats.py`). A signed-in member creates one with a
+title and the people and agents it starts with, and is its first member. Only its members read it and write to it;
+anyone else gets the 404 of a chat that does not exist. Any member adds a person or an agent: adding an agent of project
+P needs the writer role on P, and a deleted agent is refused. A person leaves, or the chat's creator takes them out;
+any member takes an agent out. A chat holds at most 50 people and 10 agents, and never a person and an agent of the same
+name, so that `@name` names one member.
+
+**Label.** A chat's label is the labels of the projects of its agents: for each project, its default label, the one
+its runs on no plan read as. Every person in the chat holds a grant on each of those projects whose max level reaches
+that project's label, on the project's own ladder: adding an agent that would take the label past someone in the chat
+is refused (409, naming who and why), and so is adding someone who does not clear it. The hub checks it again on every
+read and write, so someone whose grant was lowered or revoked gets 403. Each message keeps the label the chat had when
+it was sent, as a run's events read as its project's: once an agent left and the label went down, a person who joined
+since does not read what was written before. A chat is restricted when a project of its agents is (its hub sink cleared
+at or above `customer` or `domestic-only`, as Telegram reads it: `docs/notifications.md`).
+
+**Messages and mentions.** A message has at most 16 KiB of UTF-8; `reply_to` puts it in the thread of the message it
+answers, and a thread has one level: `thread_root_id` always names its first message. The hub reads a message's
+mentions once, when it is sent, and keeps them with it (at most 20 names): `@` then `[a-z0-9-]`, not right after a
+letter, digit, `@`, `.`, `/` or `-` (an e-mail address is no mention), not in a code span or a fenced block, ignoring
+case. A name resolves among the chat's members only: a person by login (`via` login), an agent by handle (handle), a
+project's name to its default agent (project). An agent the sender can see that is not in the chat, or one deleted
+since, reaches no one: the mention keeps why, and the hub answers in the message's thread with the reason. A person
+mentioned gets the notice `chat_mention`, and one added the notice `chat_added`, never for what they did themselves; in
+a restricted chat the notice names the chat and links to it, without sender or text. A message that mentions no agent
+makes no run and asks no model anything.
+
+**Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`,
+Chat runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile
+on its project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile
+allows, online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs,
+the one with a checkout of more of the project's repos first; the person must be a writer on the profile's project. No
+such worker, and the hub answers in the thread why, worker by worker, with no run. The mention keeps the run it made
+(`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the agent in its thread goes
+to the run of the session that is queued or held, in its inbox, and once that run ended done it wakes the session as a
+new run that goes on in it (`resume_of_run_id`), on the same worker and branch. Another person's mention starts a
+session of their own, on their own worker. In a chat of one person, a message in a thread without a mention goes to the
+one agent whose session that person has there (`via` thread); with two people or more, they mention it. The run's
+reactions follow it as above, a run that failed says why in the thread, and the agent's reply at the end of each turn
+is its message in the thread, with the run that wrote it.
+
+**Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
+rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
+and counts 0, under a time cap instead). A mention once that is spent is refused, saying so in the thread; each run gets
+what is left as its cost cap and 30 minutes of agent time. Only the creator changes it (`PATCH /v1/chats/{id}`, audited
+as `chat.budget`).
+
+**Agents in chats.** The agent of a run (a chat run, or a step, plan or author run) talks in chats with
+`evo-agents worker chat post|react|create|mention` (`docs/workers.md`): a message in its thread or in a chat it is in,
+an emoji, a new chat with the person at the origin of the chain (who gets `chat_added`, as does each person it adds,
+each with a grant that clears the agent's project), and a mention that hands work to another agent of the chat. That
+run is for the same person, at one hop more than the run that asked (a person's mention is hop 1), at most hop 3, never
+to the agent's own profile, and within the budget; a refusal is said in the thread. An `@` of an agent in an agent's
+reply or post hands no work.
+
+**Reactions.** A reaction is one emoji of one person or agent on a message, once each; a message carries at most 20
+different ones, and the hub counts them by emoji (`count`, who put each, and whether the reader did). The reactions of
+an agent are set by rule, never by a model: `chat_store.status_reaction` puts the eyes when a worker claims a run of the
+agent, a check mark when it is done and a cross when it failed or was cancelled, on the message that started the run,
+and the check mark or the cross takes the eyes off. A lost run tried again keeps its eyes. The web shows emoji in
+reaction chips only (`web/DESIGN.md`).
+
+**Events.** Each change is an event of the chat, numbered by it: a message, a reaction put or taken off, a member added
+or removed. A message is numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read,
+which the unread count of the list starts from (their own message reads up to it). `GET .../events?after=SEQ` pages
+them, and `GET .../stream` sends them as server-sent events, as a run's stream does: the seq as id, Last-Event-ID or
+`after` to go on, a ping after 15 idle seconds, woken by `pg_notify` on channel `evo_chat_events` on the api process's
+one LISTEN connection. A stream ends with an `end` event once its reader is no longer in the chat or no longer clears
+its label. A member reads the events of the messages whose label they clear. Chat messages do not expire with
+`EVO_HUB_RUN_LOG_DAYS`.
+
+| Route | Command | Who |
+| --- | --- | --- |
+| `GET /v1/chats` | `hub chat list` | anyone: their chats |
+| `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
+| `GET /v1/chats/{id}` | | a member |
+| `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
+| `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
+| `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
+| `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
+| `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
+| `POST .../read`, `GET .../events`, `GET .../stream` | | a member |
+| `PATCH /v1/chats/{id}` (`budget_usd`) | | its creator |
+
+Creating a chat, adding and removing a member, sending a message and changing the budget are audited (`chat.create`,
+`chat.add`, `chat.remove`, `chat.message`, `chat.budget`; an agent's in its project; an agent's message and chat as the
+run's dispatcher, naming the run), naming `chat:<id>` and the person, agent or message, never a title or a text. For
+example:
+
+```sh
+evo-agents hub chat create "Release talk" --member someone-else --agent reviewer
+evo-agents hub chat send 3 "@reviewer can you check the diff of run 120?"
+evo-agents hub chat react 3 41 👍
+```
+
+Schema 0031 adds the chats (`evo_agents/hub/tables_chats.py`): `chats`; `chat_members`, a person or an agent, who
+added them (a person, or the run of an agent), when they left, and how far a person read; `chat_messages`, each with
+the event that brought it, the first message of its thread, its author (a person, an agent or the hub), the run of the
+agent that wrote it, its body and its label; `chat_mentions`, what a message mentions as the hub read it when it was
+sent, with the member it reached and the run it made, or why it reached none; `chat_reactions`; and `chat_events`, what
+happened in a chat in order. It adds the notices `chat_mention` and `chat_added` too. Going back to 0030 deletes those
+notices and drops the six tables: every chat is lost. Schema 0032 adds the chat run: the run kind `chat`, on no plan,
+that may go on from an earlier run of its session (`resume_of_run_id`), with `runs.chat_id`, `runs.chat_message_id`
+(the message that started it) and `runs.hop` (1 to 3), set for a chat run and null for any other, and
+`chats.budget_usd` (more than 0, at most 1000, 5 unless changed). Going back to 0031 deletes the chat runs and drops the
+columns.
+
 ## Plans and their copies in git
 
 A harness hands its plans to the hub by naming the project in `harness.yaml`:
@@ -352,7 +568,8 @@ going back to 0023 drops it, and the Curator's figures read every cause from the
 worker hold up to 16 runs at once: the CHECKs of `workers.slots`, `workers.free_slots` and `worker_pairings.slots` go
 from 8 to 16, and the owner changes a worker's slots, labels and name with `PATCH /v1/workers/{id}` (`docs/workers.md`,
 Routes); going back to 0025 narrows them to 8 again and refuses, naming them, while a worker not revoked or a pairing
-neither used nor expired holds more than 8 slots.
+neither used nor expired holds more than 8 slots. Schema 0030 (agent profiles), and 0031 and 0032 (group chats and
+the chat run), are described under Agent profiles and Group chats above.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

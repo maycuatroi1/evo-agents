@@ -98,6 +98,9 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "author":  # a plan written from a member's request, on no plan when it writes a new one (0020)
         row |= {"kind": "author", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "request": "Plan the chat of an author run."}
+    elif kind == "chat":  # one turn of an agent mentioned in a group chat, on no plan (0032): its columns name the chat
+        row |= {"kind": "chat", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": "chat/1", "repos": REPOS, "hop": 1}
     elif kind != "step":
         row["kind"] = kind
     row |= columns
@@ -289,6 +292,10 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, kind="judge", schedule_id=schedule)
     for state in runs.RUN_STATES:  # author runs, as many as their owners dispatch (0020)
         add_run(conn, ids, state, kind="author")
+    chat_id = new_id(conn, tables.chats, title="Release talk", created_by=ids["user"])
+    message = new_id(conn, tables.chat_messages, chat_id=chat_id, seq=1, body="@reviewer look", label=[])
+    for state in runs.RUN_STATES:  # chat runs, one a mention (0032)
+        add_run(conn, ids, state, kind="chat", chat_id=chat_id, chat_message_id=message)
     assert query_kinds(conn) == set(runs.RUN_KINDS)
     for runtime in ("any", *runs.RUNTIMES):
         for mode in runs.MODES:

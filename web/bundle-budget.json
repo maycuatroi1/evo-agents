@@ -2,158 +2,176 @@
   "$comment": "First Load JS budget of each route in kB (gzip, 1 kB = 1000 bytes), checked by scripts/bundle-budget.mjs. Raising a budget or adding a route needs a reason in that route's entry; lowering one needs none.",
   "routes": {
     "/": {
-      "kB": 304.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 306.3,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/_not-found": {
-      "kB": 209.2
+      "kB": 209.5,
+      "reason": "The Agents routes and the agent picker loaded later add chunks that the runtime of every page lists (agent-profiles-group-chat step 4)."
     },
     "/[...missing]": {
-      "kB": 285,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 285.3,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/accounts": {
-      "kB": 310.8,
-      "reason": "The Accounts page: the member's accounts with their state, usage, runs and cost, and the rotation policy of each project (claude-account-rotation step 4). It gains Add Claude account and Renew token, and a reminder for each token that ends within 30 days (claude-account-login step 2); the dialog itself loads on demand (next/dynamic), so the page carries only its buttons, the reminder and their icons. Each account's usage limits show as a bar per window under its row (account-usage-bars): the UsageLimits detail, its model, the kit's Meter and the browser clock (hooks/use-now) are the page's main content, so they load with it."
+      "kB": 311.3,
+      "reason": "The Accounts page: the member's accounts with their state, usage, runs and cost, and the rotation policy of each project (claude-account-rotation step 4). It gains Add Claude account and Renew token, and a reminder for each token that ends within 30 days (claude-account-login step 2); the dialog itself loads on demand (next/dynamic), so the page carries only its buttons, the reminder and their icons. Each account's usage limits show as a bar per window under its row (account-usage-bars): the UsageLimits detail, its model, the kit's Meter and the browser clock (hooks/use-now) are the page's main content, so they load with it. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/admin": {
-      "kB": 297.3,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 297.5,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/admin/audit": {
-      "kB": 309.1,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 309.5,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/admin/diagnostics": {
-      "kB": 304.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 305.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/admin/members": {
-      "kB": 314.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 315.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/admin/members/[login]": {
-      "kB": 316.6,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 318.6,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/admin/tokens": {
-      "kB": 312.5,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 312.9,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+    },
+    "/chats": {
+      "kB": 290.3,
+      "reason": "The Chats list (agent-profiles-group-chat step 7): the visitor's chats with their unread counts, beside the pane that says to open one; the New chat form loads on demand (next/dynamic)."
+    },
+    "/chats/[id]": {
+      "kB": 358.6,
+      "reason": "A group chat (agent-profiles-group-chat step 7): its messages as Markdown, live over the chat's stream, reactions, threads, the composer with its @ suggestions and the members sheet, beside the list of chats."
     },
     "/inbox": {
-      "kB": 392.5,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 392.9,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Notices of a chat lead to the Chats pages, whose shared chunks regroup with the Inbox's (agent-profiles-group-chat step 7)."
     },
     "/login": {
-      "kB": 209.2
+      "kB": 209.5,
+      "reason": "The Agents routes and the agent picker loaded later add chunks that the runtime of every page lists (agent-profiles-group-chat step 4)."
     },
     "/memories": {
-      "kB": 308.8,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 309.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/memories/[id]": {
-      "kB": 357.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 358.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/monitor": {
-      "kB": 311.5,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 312.7,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The runs list's Chat run tag and its line regroup the chunks the Monitor shares with the runs pages (agent-profiles-group-chat step 7)."
     },
     "/p/[project]": {
-      "kB": 288.8,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 289,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+    },
+    "/p/[project]/agents": {
+      "kB": 316.8,
+      "reason": "The project's Agents page (agent-profiles-group-chat step 4): the list of its agents and the New agent form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+    },
+    "/p/[project]/agents/[handle]": {
+      "kB": 326.6,
+      "reason": "An agent's page (agent-profiles-group-chat step 4): its permissions, versions, avatar upload, the edit form and its recent runs. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/curator": {
-      "kB": 322.1,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 322.5,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/curator/charter": {
-      "kB": 330.6,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 331,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/curator/proposals": {
-      "kB": 327.8,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 328.3,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/curator/proposals/[id]": {
       "kB": 358.2,
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
     },
     "/p/[project]/insights": {
-      "kB": 290.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 290.9,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/kg": {
-      "kB": 311.6,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 312,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/kg/node": {
-      "kB": 324.8,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 325.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/memories": {
-      "kB": 308.8,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 309.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/memories/[id]": {
-      "kB": 357.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 358.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/plans": {
-      "kB": 323.2,
-      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
+      "kB": 325.1,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/plans/[planId]": {
-      "kB": 326.3,
-      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
+      "kB": 328.3,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/plans/[planId]/revisions": {
-      "kB": 298,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 298.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/plans/[planId]/steps/[stepKey]": {
-      "kB": 323.8,
-      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
+      "kB": 325.9,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/runs": {
-      "kB": 323.3,
-      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4)."
+      "kB": 326.3,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/runs/[id]": {
-      "kB": 427.7,
-      "reason": "A step's report shows as a card in the Trace (6033862), its parser and card loaded on demand (trace-report-lazy.tsx, main 391aa3e). The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry. An author run's Chat shows its decisions as DecisionCards after the agent's message that asked them, with the count of those that wait (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each."
+      "kB": 428.4,
+      "reason": "A step's report shows as a card in the Trace (6033862), its parser and card loaded on demand (trace-report-lazy.tsx, main 391aa3e). The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry. An author run's Chat shows its decisions as DecisionCards after the agent's message that asked them, with the count of those that wait (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). A chat run's page carries the Chat run tag and links back to the message it answers (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/runs/[id]/diff": {
-      "kB": 293,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 293.3,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/skills": {
-      "kB": 305.5,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 305.9,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/skills/[name]": {
-      "kB": 305.6,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 306,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/secrets": {
-      "kB": 317.5,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 317.9,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/skills": {
-      "kB": 305.5,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 305.9,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/skills/[name]": {
-      "kB": 305.6,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 306,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/workers": {
-      "kB": 316.9,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 317.3,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/workers/[id]": {
-      "kB": 319.2,
-      "reason": "The owner's Settings card (name, slots and labels, saved with PATCH /v1/workers/{id}) shows on the worker page as it loads. Loading it with next/dynamic took 0.5 kB off this route but made Turbopack repack shared chunks and put /admin/members/[login] 1.4 kB over, so it stays a static import. The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. Its runs list shares the run model and messages that now place an author run's decisions in its Chat (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each."
+      "kB": 319.8,
+      "reason": "The owner's Settings card (name, slots and labels, saved with PATCH /v1/workers/{id}) shows on the worker page as it loads. Loading it with next/dynamic took 0.5 kB off this route but made Turbopack repack shared chunks and put /admin/members/[login] 1.4 kB over, so it stays a static import. The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. Its runs list shares the run model and messages that now place an author run's decisions in its Chat (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     }
   }
 }

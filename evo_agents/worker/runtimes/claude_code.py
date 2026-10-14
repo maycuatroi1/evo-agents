@@ -62,9 +62,11 @@ here.
   process against it, while its ``total_cost_usd`` goes on from the total the session's transcript saved), and
   ``max_turns`` its ``max_turns``. A ``result`` of ``error_max_budget_usd`` or ``error_max_turns`` ends the run with
   an outcome that names the cap, ``cost`` or ``turns``.
-- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) has the tools that ask the person at
-  the terminal a question turned off (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``):
-  nobody at the worker's machine answers it, and the agent asks its owner in its last message instead.
+- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) and a chat run (``chat``,
+  ``evo_agents.hub.chat_runs``) have the tools that ask the person at the terminal a question turned off
+  (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``): nobody at the worker's machine answers
+  it, and the agent asks in its last message instead. A chat run's prompt is delivered verbatim
+  (``verbatim_prompts``): an ``@name`` or ``@path`` the chat's people wrote never makes Claude Code read a file.
 - The agent compacts its context as it nears its auto-compact window: the run's environment
   (``evo_agents.worker.runner.agent``, so ``options.env`` and the terminal UI's) gets CLAUDE_CODE_AUTO_COMPACT_WINDOW
   from ``compact_window``, which keeps the daemon's own, else takes EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW
@@ -78,6 +80,11 @@ here.
 - A turn that ends with an error that reads as the account's usage limit (``limit_of_text``) gives an outcome with
   ``limit`` set, and its ``rate_limit_event`` messages reach the run's log raw: ``evo_agents.worker.runner.limits``
   reports them and moves the run to another account.
+- A run under an agent profile that limits tool, skill or model, or has instructions, gets them in the session as
+  ``evo_agents.worker.runtimes.profiles`` says: ``tools``, ``skills`` and ``setting_sources``, ``allowedMcpServers``
+  and ``availableModels`` in ``settings``, a PreToolUse hook, the model, and the instructions after SYSTEM_NOTE. With a
+  tool allowlist, the adapter asks the CLI for its MCP servers once it is connected, before the prompt, and raises
+  ``ProfileRefused`` on one the profile leaves out (the owner's own settings may allow more).
 
 Checked with Claude Code 2.1.289 and claude-agent-sdk 0.2.163 (``evo-agents worker selftest --runtime claude-code``);
 the background commands with Claude Code 2.1.291 and the same SDK (``evo-agents worker selftest --runtime claude-code
@@ -103,7 +110,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub import author, curator, digest, runs
-from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
+from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, ProfileRefused, RunContext, command_output
+from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -571,7 +579,11 @@ class ClaudeCodeAdapter(QueueAdapter):
 
     @classmethod
     def environment_notes(cls, context: RunContext) -> list[str]:
-        return auth_notes(context)
+        return auth_notes(context) + profiles.claude_notes(profiles.profile_of(context))
+
+    @classmethod
+    def profile_refusal(cls, run) -> str | None:
+        return profiles.model_refusal(profiles.Profile.of(run), run)
 
     @classmethod
     def login_refusal(cls, context: RunContext) -> str | None:
@@ -609,11 +621,13 @@ class ClaudeCodeAdapter(QueueAdapter):
         from claude_agent_sdk import ClaudeAgentOptions
 
         dropped = dropped_env(self.context)
+        profile = profiles.profile_of(self.context)
+        append = profiles.with_instructions(SYSTEM_NOTE, profile)
         settings = {
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
             "permission_mode": "bypassPermissions",
-            "system_prompt": {"type": "preset", "preset": "claude_code", "append": SYSTEM_NOTE},
+            "system_prompt": {"type": "preset", "preset": "claude_code", "append": append},
             "env": {key: value for key, value in self.context.env.items() if key not in dropped},
             "stderr": self._stderr.append,
         }
@@ -621,12 +635,25 @@ class ClaudeCodeAdapter(QueueAdapter):
             settings["resume"] = self._session
         else:
             settings["session_id"] = self._session
-        for key in ("model", "effort"):
-            value = run_setting(self.context, self.runtime, key)
+        for key, value in (
+            ("model", profiles.session_model(self.context, self.runtime)),
+            ("effort", run_setting(self.context, self.runtime, "effort")),
+        ):
             if value:
                 settings[key] = value
-        if self.context.run.get("kind") == "author":  # nobody at this machine answers a question tool
-            settings["disallowed_tools"] = list(author.QUESTION_TOOLS)
+        limits = profiles.claude_settings(profile)
+        disallowed = limits.pop("disallowed_tools", [])
+        kind = self.context.run.get("kind")
+        if kind in ("author", "chat"):  # nobody at this machine answers a question tool
+            disallowed = [*author.QUESTION_TOOLS, *disallowed]
+        if disallowed:
+            settings["disallowed_tools"] = disallowed
+        if kind == "chat":  # an @handle or @path in the chat's words never makes Claude Code read a file
+            settings["verbatim_prompts"] = True
+        settings.update(limits)
+        hooks = profiles.claude_hooks(profile)
+        if hooks is not None:
+            settings["hooks"] = hooks
         if self.budget is not None:
             usd = curator.usd_left(self.budget, self.context.spent_usd)
             if usd is not None:
@@ -651,8 +678,30 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._client = self.make_client(self.options)
         self._input_open = True
         await self._client.connect(prompt=self._input())
+        await self._check_servers()
         self._turn_open = True
         await self._client.query(self.context.prompt)
+
+    async def _check_servers(self) -> None:
+        """ProfileRefused when the CLI has an MCP server the run's profile leaves out, which the session's
+        ``allowedMcpServers`` does not keep out when the owner's own settings name more; nothing for a profile that
+        allows every tool."""
+        profile = profiles.profile_of(self.context)
+        if profile is None or profile.servers() is None:
+            return
+        try:
+            status = await self._client.get_mcp_status()
+        except Exception as exc:  # unchecked, the session might offer a server the profile leaves out
+            why = f"claude-code did not list its MCP servers for agent profile {profile.label}: {exc}"
+            raise ProfileRefused(why) from None
+        extra = profiles.claude_extra_servers(profile, status)
+        if extra:
+            raise ProfileRefused(
+                f"claude-code would offer the tools of MCP server(s) {', '.join(extra)}, which agent profile "
+                f"{profile.label} leaves out (the worker's own Claude Code settings may allow more servers in "
+                "allowedMcpServers): take them out of the worker's Claude Code configuration, or allow them in the "
+                "profile"
+            )
 
     async def _drive(self) -> None:
         from claude_agent_sdk import types as sdk

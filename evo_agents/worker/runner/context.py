@@ -1,11 +1,11 @@
 """A run on this worker: what every kind of run shares (``Run``), and what a kind brings to it (``RunKind``).
 
-The daemon holds a ``Run`` for each run it claimed. The run's kind (``kinds.KINDS``: step, plan, review, judge, author)
-is a ``RunKind`` the Run composes, never a subclass: it gets the Run in its constructor and works through the parts
-the Run holds, which every kind shares: its log (``event``, ``note``) and the events on their way to the hub
+The daemon holds a ``Run`` for each run it claimed. The run's kind (``kinds.KINDS``: step, plan, review, judge, author,
+chat) is a ``RunKind`` the Run composes, never a subclass: it gets the Run in its constructor and works through the
+parts the Run holds, which every kind shares: its log (``event``, ``note``) and the events on their way to the hub
 (``sender``), its leases (``credentials``), its agent (``agent``), the owner's messages (``inbox``), its reports
-(``reports``) and its budget (``watchdog``). The git, the preflight, the verify commands and the commit are functions
-of the modules ``origin``, ``access``, ``verify`` and ``push``, which take the Run.
+(``reports``) and its budget (``watchdog``). The git, the preflight, the verify commands and the commit are functions of
+the modules ``origin``, ``access``, ``verify`` and ``push``, which take the Run.
 
 A hub that does not answer holds nothing up: events wait in the spool and each report is sent again with the backoff
 until the hub answers, or says the run is no longer this worker's. A cancel, the run's timeout (counted from the

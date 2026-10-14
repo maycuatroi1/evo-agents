@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/breadcrumb";
 import { SidebarTrigger } from "@/components/ui/sidebar";
 import { useWorkerName } from "@/components/workers/hooks";
+import { useChatTitle } from "@/lib/use-chat-title";
 import { cn } from "@/lib/utils";
 
 import { HOME_NAV, HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
@@ -42,6 +43,7 @@ function useCrumbs(): Crumb[] {
   const pathname = usePathname();
   const parts = pathname.split("/").filter(Boolean);
   const workerName = useWorkerName(parts[0] === "workers" ? parts[1] : undefined);
+  const chatTitle = useChatTitle(parts[0] === "chats" ? parts[1] : undefined);
   if (parts[0] === "p" && parts[1]) {
     const project = decodeURIComponent(parts[1]);
     const section = PROJECT_NAV.find((item) => item.segment !== "" && item.segment === parts[2]);
@@ -58,6 +60,8 @@ function useCrumbs(): Crumb[] {
           label: itemLabel(parts[3]),
           href: parts[4] ? projectHref(project, `${section.segment}/${parts[3]}`) : undefined,
         });
+        // An agent goes by its handle, as everywhere else: @handle.
+        if (section.segment === "agents") crumbs[2].label = `@${itemLabel(parts[3])}`;
         // A run's diff is the one page below an item that names itself in the trail.
         if (section.segment === "runs" && parts[4] === "diff" && !parts[5]) crumbs.push({ label: t("runDiff") });
         // The Curator's pages name themselves (Proposals, Charter), and a proposal is #id below Proposals.
@@ -72,7 +76,7 @@ function useCrumbs(): Crumb[] {
   if (parts[0] === "admin") return adminCrumbs(parts.slice(1), t("admin"), tAdmin);
   const hub = [...HOME_NAV, ...HUB_NAV].find((item) => item.href !== "/" && parts[0] === item.href.slice(1));
   if (hub && parts.length > 1) {
-    return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? itemLabel(parts[1]) }];
+    return [{ label: t(hub.label), href: hub.href }, { label: workerName ?? chatTitle ?? itemLabel(parts[1]) }];
   }
   if (hub) return [{ label: t(hub.label) }];
   return [{ label: t("home") }];

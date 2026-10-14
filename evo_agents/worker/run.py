@@ -12,6 +12,8 @@ it, and the parts every kind of run shares. The run's kind is composed into it, 
 - ``runner.review``, ``ReviewRun``: the Curator's Reviewer of one night of a project, reading only.
 - ``runner.judge``, ``JudgeRun``: the Curator's Judge of one change, whose code runs as code the worker does not trust.
 - ``runner.author``, ``AuthorRun``: an execution plan written from its owner's request, in the run's chat.
+- ``runner.chat``, ``ChatRun``: one turn of an agent mentioned in a group chat, its reply in the thread and the branch
+  of each repo it changed pushed.
 
 The parts they share, each a module of ``runner``: ``sender`` (the events on their way to the hub), ``reports`` (the
 moves of the run and the blobs of its log and diff), ``agent`` and ``terminal`` (the agent, headless or in its
@@ -26,6 +28,7 @@ from __future__ import annotations
 
 from evo_agents.worker.runner.agent import HANDBACK_PROMPT
 from evo_agents.worker.runner.author import AuthorRun
+from evo_agents.worker.runner.chat import ChatRun
 from evo_agents.worker.runner.common import Parked, ReportRefused, RunFailed, RunGone, Stopped
 from evo_agents.worker.runner.context import Run, RunKind
 from evo_agents.worker.runner.conversation import ANSWER_PROMPT, RESUME_PROMPT, read_asked
@@ -43,6 +46,7 @@ __all__ = [
     "RESUME_PROMPT",
     "WORKTREE_FIGURES",
     "AuthorRun",
+    "ChatRun",
     "JudgeRun",
     "Parked",
     "PlanRun",

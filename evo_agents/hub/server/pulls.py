@@ -121,11 +121,22 @@ async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: s
 
 
 async def open_pull(
-    app: GitHubApp, token: str, owner: str, repo: str, *, branch: str, base: str, title: str, body: str
+    app: GitHubApp,
+    token: str,
+    owner: str,
+    repo: str,
+    *,
+    branch: str,
+    base: str,
+    title: str,
+    body: str,
+    draft: bool = False,
 ) -> dict:
-    """The pull request of ``branch`` into ``base``: opened now, or the one open already."""
+    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already."""
     doing = f"opening a pull request of {branch} on {owner}/{repo}"
     payload = {"title": title, "head": branch, "base": base, "body": body, "maintainer_can_modify": False}
+    if draft:
+        payload["draft"] = True
     response = await _api(app, token, "POST", _path("repos", owner, repo, "pulls"), doing, json=payload)
     if response.status_code == 201:
         return app._json(response, doing)

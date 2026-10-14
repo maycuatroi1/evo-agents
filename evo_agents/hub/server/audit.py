@@ -79,6 +79,18 @@ ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the de
 # A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
 # run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
 ACCOUNT_FAILOVER = "account.failover"
+# A project's agent profiles (evo_agents.hub.server.agent_profiles), in the project; the target is
+# "<project>/@<handle> v<version>", with " fields=<names>" for an edit, never a description, instructions or an image.
+AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
+AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
+AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
+# Group chats (evo_agents.hub.server.chats); the target is "chat:<id>", then "person:<login>", "agent:@<handle>" or
+# "message:<id>", never a title or a message's text. Adding or removing an agent is in the agent's project.
+CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with
+CHAT_ADD = "chat.add"  # a member added a person or an agent
+CHAT_REMOVE = "chat.remove"  # a member removed one, or left
+CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
+CHAT_BUDGET = "chat.budget"  # the creator of a chat changed what its agents' runs may cost a day
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

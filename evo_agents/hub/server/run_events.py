@@ -269,12 +269,13 @@ class Wakeup:
 
 
 class RunStreams:
-    """The streams open in this api process, by run, woken by EVENTS_CHANNEL on the process's one LISTEN."""
+    """The streams open in this api process, by run, woken by EVENTS_CHANNEL on the process's one LISTEN; on another
+    ``channel``, the streams of what that channel's notifications name by id (``chat_events.ChatStreams``)."""
 
-    def __init__(self, listener: Listener):
+    def __init__(self, listener: Listener, channel: str = EVENTS_CHANNEL):
         self._listener = listener
         self._waiting: dict[int, set[Wakeup]] = {}
-        listener.on(EVENTS_CHANNEL, self._notified)
+        listener.on(channel, self._notified)
 
     def start(self) -> None:
         self._listener.start()

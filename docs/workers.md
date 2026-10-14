@@ -21,7 +21,7 @@ the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays 
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
 `evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in
 `evo_agents/worker/runtimes` and its end of the web terminal. `evo_agents/worker/runner` holds a run on the machine:
-each kind of run (step, plan, review, judge, author) in a module of its own, which composes the parts the kinds share
+each kind of run (step, plan, review, judge, author, chat) in a module of its own, which composes the parts the kinds share
 rather than inheriting them, and the decisions that need no I/O as pure functions in `runner/transitions.py`;
 `evo_agents/worker/run.py` keeps the names the daemon imports. The daemon has its own command group because
 `evo-agents hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes
@@ -34,7 +34,7 @@ how decisions and notices reach a member.
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots and labels after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md` | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -49,6 +49,8 @@ runtime the claiming worker picked), the mode (`headless` or `interactive`), the
 of at most 3, the run it retries (`parent_run_id`), its state and lease, the agent's session id, the repo and branch,
 and at the end the commit, diffstat, verify results, evidence, usage and error. A run the night shift queued also
 names its schedule and night and carries its caps (`budget`, see [Runs of the night shift](#runs-of-the-night-shift)).
+A run records the agent profile and the version it went under (`profile_id`, `profile_version`; `docs/hub.md`, Agent
+profiles), and a chat run its chat, the message that started it and its hop (`chat_id`, `chat_message_id`, `hop`).
 
 ## Who may do what
 
@@ -473,6 +475,34 @@ with its state, whose turn it is (`status`: `working`, `waiting` for a reply, wa
 plan it wrote or revises. A run of another kind has no chat (404). The chat lives as long as the run's log
 (`EVO_HUB_RUN_LOG_DAYS` after the run ends).
 
+## Chat runs
+
+A chat run (kind `chat`, `evo_agents.hub.chat_runs`) is one turn of an agent mentioned in a group chat (`docs/hub.md`,
+Group chats): the hub queues it, pinned to the worker of the person who mentioned the agent that it picked, with no
+plan (`plan_id` empty), its chat, the message that started it (`chat_message_id`), its hop, the branch `chat/<id>` of
+the first run of its session and the repos of its project the worker has a checkout of (none when it has none of
+them). Only that worker claims it, with `chat` in its heartbeat's `run_kinds`, and the claim hands the prompt the hub
+builds then (`chat_runs.build_chat_prompt`): the rules, the chat and its members, the repos, a snapshot of the chat of
+at most 12 KiB (the first message of the thread, the 30 latest of the thread, the 10 of the chat before it, the oldest
+left out first, as the reader clears their labels) and the message that started the run, whole. Its budget is what is
+left of the chat's for 24 hours, and 30 minutes of agent time. It ends `done` with its agent's turn, without verify
+results, never waits and is never rerun (409); a lost one is tried again with its chat. The worker posts the agent's
+last message of each turn with `POST /v1/worker/runs/{id}/chat`, which the hub keeps as the agent's message in the
+thread (and in the run's log). A message to the agent in the thread while the run is queued or held goes to its inbox;
+one that comes once it ended done, or that it ended without taking, queues the run that goes on in its session
+(`resume_of_run_id`, the session, the branch and repos, pinned to its worker), with the message in its inbox.
+
+The agent of a chat run, and of a step, plan or author run, talks in chats with the worker's token
+(`evo_agents.hub.server.chat_agents`), its profile being of the run's project (409 otherwise):
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker chat post TEXT [--chat ID] [--reply-to MESSAGE]` | `POST /v1/worker/runs/{id}/chat/messages` | a message of the agent: the run's thread for a chat run, else a chat it is in (`chat_id`) |
+| `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
+| `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
+| `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
+| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App, or finds the one open, and the agent's message in the thread links it |
+
 ## Decisions and notices
 
 A plan run's agent stops for its owner only on a decision of one of the categories `docs/notifications.md` lists
@@ -579,7 +609,12 @@ dispatched from has it (a list of one command, or empty), whose programs the dae
 hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, or a
 plan run of a plan the Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
 Builder or a Judge the change, its branch, its forge (`github` or `gitlab`), the default branch, the pull request, and
-for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A worker has at most one
+for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A run under an agent profile
+([hub.md](hub.md), Agent profiles) is claimed only by a worker the profile's worker axis names by name or label, with
+a runtime its runtime axis allows (a run asking for `any` takes the first of the worker's it allows), and, when the
+profile limits tools, skills or models or has instructions, only by a daemon whose last heartbeat listed
+`agent_profiles` in `features`; the answer has `profile`, the profile at the version the run went under (handle,
+version, name, instructions, permissions), null for a run from before schema 0030. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
@@ -618,10 +653,11 @@ shows them in that shape. `free_slots` is what the daemon counts free, at most t
 and counts the runs a worker holds against its slots itself. `agent_version` is optional and replaces the version
 the worker registered with. `run_kinds`, optional, lists the kinds of run the daemon runs; the hub keeps those it
 knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run). `features`,
-optional, lists what the daemon does besides its kinds of run (`runs.WORKER_FEATURES`): `session_per_step`, a plan run
-with a new agent session for each step, and `author_decisions`, an author run whose agent asks decisions with
+optional, lists what the daemon does besides its kinds of run (`runs.HUB_FEATURES`): `session_per_step`, a plan run
+with a new agent session for each step, `author_decisions`, an author run whose agent asks decisions with
 `evo-agents worker ask` and waits for every answer of its turn (the hub then builds the author prompt with the rules of
-decisions; without it, the rules of a chat alone). The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
+decisions; without it, the rules of a chat alone), and `agent_profiles`, a daemon whose adapters apply a run's agent
+profile (tools, skills and model in the session, the instructions in its system prompt). The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
@@ -794,7 +830,9 @@ worker of the caller's), `approval` (`review` by default, or `auto`), `timeout_m
 `model` (optional, one line of at most 200 characters, as the runtime names it; null, the default, leaves the choice
 to the runtime as before), and `account` (optional: one of the caller's env secrets bound to the project, by name,
 which the runs take and keep with no failover; null, the default, lets the rules of the caller's policy pick, see
-[credentials.md](credentials.md), Accounts; `plan-runs` and `author-runs` take it too). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
+[credentials.md](credentials.md), Accounts; `plan-runs` and `author-runs` take it too), and `profile` (optional: the
+handle of the agent profile the runs go under, the project's default when null; `plan-runs` and `author-runs` take it
+too, and [hub.md](hub.md), Agent profiles, says what it refuses). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
 403, and a revoked worker or one that does not serve the project is 409. A worker whose owner set `dispatch_from` to
 `web` takes a pinned dispatch only from a web session: with a token the answer is 403, saying so. Each run records
@@ -1169,6 +1207,59 @@ claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 
 used), opencode 1.18.34 with aiohttp. Otherwise the heartbeat reports it unavailable with the reason, and the hub
 hands it no run.
 
+### Agent profiles in the session
+
+The claim of a run carries its agent profile ([hub.md](hub.md), Agent profiles) as `profile`. The hub has applied the
+credential, worker, project and runtime axes and the model of the dispatch; the adapter applies the tool, skill and
+model axes and the instructions in the agent session (`evo_agents.worker.runtimes.profiles`). A profile that allows
+everything and has no instructions, a project's default, changes nothing: the agent starts with the same settings as
+a run without a profile. The daemon lists `agent_profiles` in its heartbeat's `features`, so the hub hands it runs
+whose profile limits the session.
+
+| | claude-code | opencode | codex |
+| --- | --- | --- | --- |
+| `read` | Read, Glob, Grep, LSP | read, glob, grep, list, lsp | `features.view_image` |
+| `edit` | Edit, Write, NotebookEdit | edit (write and apply_patch too) | cannot be turned off: the run fails |
+| `bash` | Bash, TaskStop, Monitor, EnterWorktree, ExitWorktree | bash | `features.shell_tool`, `features.unified_exec` |
+| `web` | WebFetch, WebSearch | webfetch, websearch, codesearch | `web_search = "disabled"` |
+| `agent` | Agent, SendMessage, ListAgents, Workflow | task | `features.multi_agent`, `features.multi_agent_v2` |
+| `mcp:<server>` | `allowedMcpServers` in `--settings` | `deny` for `<server>_*` | `mcp_servers.<server>.enabled` |
+| skills | `skills`, `setting_sources` all three | `permission.skill` in the server's config | cannot be hidden: the run fails |
+| model | the run's model, `availableModels` | the run's `providerID` and `modelID` | the thread's `model` |
+| instructions | after the adapter's note in `--append-system-prompt` | after the headless note in `system` | after the adapter's note in `developer_instructions` |
+
+- Claude Code, a tool allowlist: `tools` names the built-in tools of the allowed words, and the agent's to-do list,
+  so no other built-in is in the session; `allowedMcpServers` names the allowed servers, so no other is configured. A
+  plugin's MCP server (`plugin:<plugin>:<server>`) matches there only by its command or URL, so a profile with a tool
+  allowlist runs without plugin servers. The owner's own settings can widen `allowedMcpServers` and `availableModels`
+  (Claude Code merges arrays across settings files), so before the prompt the adapter asks the CLI for its MCP
+  servers and fails the run on one the profile leaves out. The adapter never toggles an MCP server off: Claude Code
+  records that in the owner's `~/.claude.json`, and before the servers connect it does not take.
+- Claude Code, a skill allowlist: the `skills` filter hides other skills from the main session only, not from a
+  subagent, so such a profile runs without the `agent` tools, and the run's log says so.
+- Claude Code: a PreToolUse hook, which runs for subagents too and under bypassPermissions, refuses a call of a tool
+  of an MCP server, of a skill, or of a subagent on a model, that the profile leaves out.
+- opencode: the run's `opencode serve` starts with the profile's `permission` in `OPENCODE_CONFIG_CONTENT`, merged
+  over what the variable held; rules of the config take tools out of what the model is offered and skills out of its
+  listing, a subagent's included. The session gets the same rules, and `deny` for the MCP servers `GET /mcp` names
+  that the profile leaves out; a resumed session gets them again (`PATCH /session/:id`). With a model allowlist the
+  model is never the config's own.
+- Codex: with a tool allowlist the thread's `config` also turns off `apps`, `plugins`, `browser_use`, `computer_use`
+  and `image_generation`, which bring tools of their own, and the MCP servers of the owner's and the worktree's
+  `config.toml` that the profile leaves out.
+- Tools that only keep the agent's own notes stay: Claude Code's TodoWrite, opencode's todowrite, Codex's goals.
+  Each table was checked on 2026-10-14 against fakes of the runtimes' model APIs, which recorded what the runtime
+  offered the model in the main session and in a subagent: Claude Code 2.1.296 with claude-agent-sdk 0.2.165,
+  opencode 1.18.34, codex-cli 0.153.4.
+
+Before any of the run's work, as it picks the adapter, the daemon asks it whether it can apply the profile
+(`Adapter.profile_refusal`): Codex cannot when the profile leaves out `edit` or limits skills, an adapter of another
+package that does not say it can never can, and no adapter can when the run's model is not one the profile allows.
+The run then fails with cause `runtime` and the reason in its error and its log, its leases not taken and nothing
+fetched. Claude Code's check of its MCP servers fails the run the same way as the agent starts, before the prompt
+goes in. Otherwise the log says what the profile limits. A run whose profile limits the session is never handed to a
+person in a terminal UI, which applies no profile: an interactive run fails, and a takeover is refused.
+
 ### A run on the machine
 
 1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
@@ -1449,6 +1540,23 @@ agent's turn is over, with the summary of `.evo-run/result.json` or the agent's 
 and pushes nothing. `evo-agents worker put`, `evo-agents worker plan` and `evo-agents worker ask` work inside an author run; `step`,
 `notify`, `finding` and `propose` refuse.
 
+### A chat run on the machine
+
+A chat run (kind `chat`, Chat runs above) runs headless; the daemon fails it in a terminal UI. It works without each
+repo of its claim it has no checkout of (the prompt names them), takes the run's leases for the others, checks it can
+read each, and makes the run's directory with a writable worktree of each on the branch `chat/<id>`, from origin's
+branch when the session pushed it already, else from origin's default branch (`evo-run/<run>/<repo>` when the branch is
+checked out elsewhere; the push still goes to it). A run that goes on in the session of an earlier one adopts that
+run's directory, worktrees and session. The agent starts there with `EVO_RUN_KIND=chat`; on Claude Code its prompt is
+delivered verbatim (`verbatim_prompts`, so an `@path` in the chat's words never makes it read a file) and
+AskUserQuestion is in `--disallowedTools`. After each turn the daemon posts the agent's last message, and the messages
+of the thread that came while it worked and that it did not take start another turn in the same session
+(`chat_runs.REPLY_PROMPT`). Then it reports `verifying`, commits what the agent left in each worktree as `run #N:
+<title>`, pushes the branch of each repo whose HEAD moved from where the worktree started (`gitops.check_push`, kind
+`chat`: the branch `chat/<n>` alone, never a default branch, never forced), tells the hub of each push that moved the
+branch (`POST .../chat/pulls`), and reports `done`. The worktrees stay on the branch for the next run of the session,
+until the cleanup of runs older than 7 days removes them.
+
 ### The Curator's runs on the machine
 
 A run whose claim names `curator` (a review run, a judge run, or a Builder: a plan run of a plan the Curator made) is
@@ -1589,7 +1697,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `timeout` | it ran past its timeout |
 | `cost_cap`, `turn_cap`, `time_cap` | the agent stopped at that cap of the run's budget |
 | `checkout` | the fetch, or the worktree, went wrong for another reason |
-| `runtime` | the worker has no adapter for the runtime, cannot run it interactive, or has no login the run may use |
+| `runtime` | the worker has no adapter for the runtime, cannot run it interactive, has no login the run may use, or cannot apply the run's agent profile |
 | `worker_stopped` | the daemon was stopped, or failed, while it held the run |
 | `rate_limit` | the agent's account hit its usage limit and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 

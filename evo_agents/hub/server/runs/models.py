@@ -12,7 +12,7 @@ from typing import Annotated, Any, Literal
 from fastapi import Path
 from pydantic import BaseModel, ConfigDict, Field, create_model, model_validator
 
-from evo_agents.hub import author, runs
+from evo_agents.hub import author, profiles, runs
 from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SECRET_NAME
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -39,6 +39,11 @@ ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, 
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
 StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
 AccountName = Annotated[str, Field(max_length=MAX_SECRET_NAME_CHARS, pattern=f"^{SECRET_NAME.pattern}$")]
+ProfileHandle = Annotated[str, Field(pattern=profiles.HANDLE_PATTERN)]
+PROFILE_HELP = (
+    "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub "
+    "refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
+)
 ACCOUNT_HELP = (
     "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its "
     "variable and keeps it, with no failover to another account; null: the account is picked by the rules of the "
@@ -93,6 +98,7 @@ class Dispatch(BaseModel):
         "runtime's own choice",
     )
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
+    profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
 
 
 class AuthorRunDispatch(BaseModel):
@@ -117,6 +123,7 @@ class AuthorRunDispatch(BaseModel):
         author.DEFAULT_TIMEOUT_H, description="hours of agent time the run may take"
     )
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
+    profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
 
 
 class PlanRunDispatch(BaseModel):
@@ -137,6 +144,7 @@ class PlanRunDispatch(BaseModel):
         "false: one session does every step",
     )
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
+    profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
 
 
 class Rerun(BaseModel):
@@ -199,7 +207,8 @@ class Run(BaseModel):
     kind: Literal[runs.RUN_KINDS] = Field(
         description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
         "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan "
-        "written from a member's request, on no plan when it writes a new one"
+        "written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in "
+        "a group chat, on no plan"
     )
     project: str
     plan_id: str = Field(
@@ -278,6 +287,20 @@ class Run(BaseModel):
         description="a plan run whose worker starts a new agent session for each step; its usage lists the sessions "
         "(usage.sessions). False for any other run",
     )
+    profile: str | None = Field(
+        None, description="the handle of the agent profile the run went under; null for a run from before schema 0030"
+    )
+    profile_id: int | None = Field(None, description="that profile's id, which its handle names for good")
+    profile_version: int | None = Field(None, description="the version of the profile whose rules apply to the run")
+    chat_id: int | None = Field(None, description="a chat run's group chat; null for any other run")
+    chat_message_id: int | None = Field(
+        None, description="the message of the chat that started a chat run: the mention, or the reply that woke it"
+    )
+    hop: int | None = Field(
+        None,
+        description="a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most "
+        "3); null for any other run",
+    )
 
 
 class ClaimRequest(BaseModel):
@@ -324,6 +347,17 @@ class RunSkill(BaseModel):
     size: int
     url: str = Field(description="presigned GET of the bundle; a bearer credential until it expires")
     expires_at: datetime
+
+
+class RunProfile(BaseModel):
+    """The agent profile of a claimed run, at the version the run went under, for its worker to apply what the hub
+    cannot (``evo_agents.hub.profiles``): tool, skill and model in the agent session, and the instructions."""
+
+    handle: str
+    version: int
+    name: str
+    instructions: str = Field(description="to add to the agent's system prompt; empty for none")
+    permissions: dict = Field(description="the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}")
 
 
 class RunSpec(BaseModel):
@@ -377,6 +411,9 @@ class RunSpec(BaseModel):
         False,
         description="a plan run to run with a new agent session for each step not done yet, each with its prompt "
         "and the handoff of the plan; false: one session does every step, with the prompt above",
+    )
+    profile: RunProfile | None = Field(
+        None, description="the agent profile the run went under; null for a run from before schema 0030"
     )
 
 
@@ -433,9 +470,10 @@ class HeartbeatRequest(BaseModel):
         None,
         max_length=MAX_RUN_KINDS,
         description="what the daemon does besides its kinds of run: session_per_step, a plan run with a session for "
-        "each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn. "
-        "One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub "
-        "does not know is left out",
+        "each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; "
+        "agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the "
+        "agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A "
+        "feature this hub does not know is left out",
     )
 
     def stored(self) -> tuple[dict, dict]:

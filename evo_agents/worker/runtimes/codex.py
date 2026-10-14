@@ -26,6 +26,12 @@ the CLI prints is parsed here.
   there (``models_cache.json``: each entry's ``slug`` whose ``visibility`` is ``list``). A file that is missing or not
   in that shape adds nothing.
 
+A run under an agent profile that limits tool or model, or has instructions, gets them as
+``evo_agents.worker.runtimes.profiles`` says: the thread's ``config`` turns off the features and the MCP servers of what
+the profile leaves out (``profiles.codex_config``), the model is one of its allowlist, and the instructions follow
+DEVELOPER_NOTE; a profile that leaves out ``edit`` or limits skills, which Codex cannot turn off, fails the run before
+its agent starts (``profile_refusal``).
+
 Checked with openai-codex 0.160.0 and codex-cli 0.153.4 as the app-server (``evo-agents worker selftest --runtime
 codex``); the SDK bundles a codex binary of its own version, which the adapter does not use.
 """
@@ -45,6 +51,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
+from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -255,6 +262,11 @@ class CodexAdapter(QueueAdapter):
 
         return CodexTui(context, session_id)
 
+    @classmethod
+    def profile_refusal(cls, run) -> str | None:
+        profile = profiles.Profile.of(run)
+        return profiles.model_refusal(profile, run) or profiles.codex_refusal(profile)
+
     def __init__(self, context: RunContext):
         super().__init__(context)
         self._session = context.resume_session
@@ -278,6 +290,10 @@ class CodexAdapter(QueueAdapter):
     @property
     def session_id(self) -> str | None:
         return self._session
+
+    def mcp_servers(self) -> list[str]:
+        """The MCP servers of the owner's codex config and of the worktree's (``profiles.codex_servers``)."""
+        return profiles.codex_servers(codex_home(self.context.env), Path(self.context.worktree))
 
     def make_codex(self, config):
         """The SDK's client; a test hands it one of its own."""
@@ -303,13 +319,17 @@ class CodexAdapter(QueueAdapter):
         with contextlib.suppress(Exception):  # "0.153.4 (Mac OS 26.5.2; arm64) ..."
             self.server_version = self._codex.metadata.serverInfo.version.split()[0]
         effort = run_setting(self.context, self.runtime, "effort")
+        profile = profiles.profile_of(self.context)
+        config = profiles.codex_config(profile, self.mcp_servers() if profile is not None else ())
+        if effort:
+            config["model_reasoning_effort"] = effort
         self.thread_options = {
             "approval_mode": ApprovalMode.deny_all,
             "sandbox": Sandbox.full_access,
             "cwd": worktree,
-            "developer_instructions": DEVELOPER_NOTE,
-            "model": run_setting(self.context, self.runtime, "model"),
-            "config": {"model_reasoning_effort": effort} if effort else None,
+            "developer_instructions": profiles.with_instructions(DEVELOPER_NOTE, profile),
+            "model": profiles.session_model(self.context, self.runtime),
+            "config": config or None,
         }
         if self.context.resume_session:
             self._thread = await self._codex.thread_resume(self.context.resume_session, **self.thread_options)
