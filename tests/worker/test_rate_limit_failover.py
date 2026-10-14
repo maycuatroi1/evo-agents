@@ -8,7 +8,12 @@ the hub answers failover, the run takes its leases again and a new agent goes on
 account's value and FAILOVER_PROMPT, and a note names the move by secret id; when it answers stop, when the hub is
 older than the route, or when the run holds no account of the hub, the run fails with cause rate_limit and the
 earliest reset. No value reaches the run's log. Around them, the parsing of the event (the shapes seen from Claude
-Code 2.1) and of a turn's error text."""
+Code 2.1) and of a turn's error text.
+
+A turn that ends because the account failed to authenticate (a 401, run #58 of 2026-10-14) is reported as
+``unauthorized`` with the run's lease: on failover a new agent goes on in the same session with AUTH_FAILOVER_PROMPT;
+with no other account, or no account of the hub, the run fails with cause account_auth and an error that says to log
+in again, never "success"."""
 
 from __future__ import annotations
 
@@ -22,8 +27,8 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 
 from evo_agents.hub.credentials import Lease
 from evo_agents.worker.adapter import AgentEvent
-from evo_agents.worker.runner.limits import FAILOVER_PROMPT, rate_limit_of
-from evo_agents.worker.runtimes.claude_code import OAUTH_TOKEN, limit_of_text
+from evo_agents.worker.runner.limits import AUTH_FAILOVER_PROMPT, FAILOVER_PROMPT, rate_limit_of
+from evo_agents.worker.runtimes.claude_code import OAUTH_TOKEN, auth_failure_of, limit_of_text
 from tests.worker.fake_hub import FakeHub
 from tests.worker.test_plan_runs import PLAN, machine, with_daemon  # noqa: F401 (machine, a fixture)
 
@@ -108,6 +113,19 @@ def test_a_turns_error_that_reads_as_the_usage_limit_gives_a_rejected_limit():
     assert limit_of_text("You've hit your limit · resets 9pm") == {"status": "rejected"}
     assert limit_of_text("API Error: 500 Internal server error") is None
     assert limit_of_text(None) is None
+
+
+def test_a_turns_error_that_reads_as_a_refused_token_is_an_authentication_failure():
+    refused = "Failed to authenticate. API Error: 401 OAuth access token is invalid."
+    assert auth_failure_of(refused) == refused
+    assert auth_failure_of('API Error: 401 {"type":"error","error":{"type":"authentication_error"}}')
+    assert (
+        auth_failure_of("OAuth token has expired.\n  Please run /login") == "OAuth token has expired. Please run /login"
+    )
+    assert auth_failure_of("Invalid API key · Please run /login")
+    for other in ("API Error: 500 Internal server error", "Claude AI usage limit reached|1935316800", "", None):
+        assert auth_failure_of(other) is None
+    assert limit_of_text(refused) is None
 
 
 # The daemon
@@ -239,3 +257,69 @@ def test_a_usage_report_alone_leaves_the_run_going(machine):  # noqa: F811
     hub = found["hub"]
     assert [(item["status"], item["utilization"]) for item in hub.rate_limits] == [("allowed_warning", 0.85)]
     assert len(machine.starts()) == 1 and hub.runs[found["run"]].get("failure_cause") is None
+
+
+REFUSED = "Failed to authenticate. API Error: 401 OAuth access token is invalid."
+
+
+def test_an_account_that_fails_to_authenticate_moves_the_run_to_another_in_the_same_session(machine, tmp_path):  # noqa: F811
+    first, second = token(), token()
+    after = tmp_path / "env-2.json"
+    machine.scenarios(
+        {
+            "1": [{"fail": f"claude-code ended its turn with an error: {REFUSED}", "auth": REFUSED}],
+            "1/2": [
+                {"env": str(after)},
+                {"write": {"a.txt": "a\n"}},
+                {"result": {"verify_commands": ["test -f a.txt"]}},
+            ],
+        }
+    )
+    found = {}
+
+    async def body(hub: FakeHub, daemon):
+        run_id = hub.queue_step_run(PLAN, "1", "alpha", "feat/alpha")
+        hub.leases[run_id] = {"leases": [oauth(1, first, "claude-a")], "missing": []}
+        move = {"action": "failover", "secret_id": 12, "failovers": 1, "cooldown_until": RESET_ISO}
+        hub.rate_limit_answers[run_id] = [{**move, "leases": {"leases": [oauth(2, second, "claude-b")], "missing": []}}]
+        assert await until_ended(hub, run_id) == "done", hub.texts(run_id)
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, body)
+    run_id, hub = found["run"], found["hub"]
+    assert [(item["status"], item["lease_id"]) for item in hub.rate_limits] == [("unauthorized", 1)]
+    one, two = machine.starts()
+    assert two["resume"] == one["session"] and two["prompt"] == AUTH_FAILOVER_PROMPT
+    assert AUTH_FAILOVER_PROMPT.startswith("The account this session ran on failed to authenticate")
+    assert json.loads(after.read_text())[OAUTH_TOKEN] == second
+    texts = hub.texts(run_id)
+    moved = "The agent's account failed to authenticate: the run goes on with account secret 12 (failover 1)"
+    assert any(moved in text for text in texts), texts
+    assert hub.runs[run_id].get("failure_cause") is None
+    logged = json.dumps(hub.runs[run_id]["events"])
+    for secret in (first, second, "claude-a", "claude-b"):
+        assert secret not in logged
+
+
+@pytest.mark.parametrize("lease", [True, False], ids=["no-other-account", "no-account-of-the-hub"])
+def test_an_account_that_fails_to_authenticate_with_no_other_fails_the_run_with_account_auth(machine, lease):  # noqa: F811
+    machine.scenarios({"1": [{"fail": f"claude-code ended its turn with an error: {REFUSED}", "auth": REFUSED}]})
+    found = {}
+
+    async def body(hub: FakeHub, daemon):
+        run_id = hub.queue_step_run(PLAN, "1", "alpha", "feat/alpha")
+        if lease:
+            hub.leases[run_id] = {"leases": [oauth(1, token(), "claude-a")], "missing": []}
+        assert await until_ended(hub, run_id) == "failed", hub.texts(run_id)
+        found.update(run=run_id, hub=hub)
+
+    with_daemon(machine, body)
+    hub, run_id = found["hub"], found["run"]
+    run = hub.runs[run_id]
+    assert run["failure_cause"] == "account_auth", run
+    assert run["error"].startswith(f"the agent's account failed to authenticate ({REFUSED}); "), run["error"]
+    assert "log in again" in run["error"] and "success" not in run["error"]
+    why = "no other account is ready" if lease else "the run holds no account of the hub to move"
+    assert why in run["error"]
+    assert [item["status"] for item in hub.rate_limits] == (["unauthorized"] if lease else [])
+    assert len(machine.starts()) == 1

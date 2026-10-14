@@ -7,7 +7,9 @@ policy's cooldown_seconds, revokes the run's old lease and moves the run to the 
 next ask for leases carries, and an event and an audit row record the switch by secret id; an account picked by hand,
 failover off, max_failovers reached or no account ready answers stop with the earliest time one is ready. Around them:
 a retry answers the same move, a lease that is not the run's is 404, a daemon without the protocol header 426, and no
-answer, event or audit row holds a value or an account's name."""
+answer, event or audit row holds a value or an account's name. An account that failed to authenticate (``unauthorized``,
+a refused token) keeps no usage, cools down for the policy's cooldown_seconds with a reason that says to log in again,
+and the run fails over, or stops when no other account is ready."""
 
 import json
 from datetime import UTC, datetime, timedelta
@@ -251,6 +253,53 @@ def test_no_account_ready_stops_the_run_with_the_earliest_reset(client, hub, hub
     assert answer["reason"] == f"no other account for {VAR} is ready"
     soonest = account_row(hub_db, "claude-b")[0]
     assert datetime.fromisoformat(answer["ready_at"]) == soonest < RESET
+
+
+def test_an_account_that_failed_to_authenticate_cools_down_and_the_run_fails_over(client, hub, hub_db):
+    values = three(client, hub["owner"])
+    set_policy(client, hub["owner"], cooldown_seconds=600)
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id = run_on(client, hub["owner"], worker, "evo-agents")
+    lease_id = lease_of(client, worker, run_id)
+    before = datetime.now(UTC)
+    response = client.post(
+        f"/v1/worker/runs/{run_id}/rate-limit",
+        json={"lease_id": lease_id, "status": "unauthorized"},
+        headers=worker["headers"],
+    )
+    assert response.status_code == 200, response.text
+    answer = response.json()
+    b_id = int(secret_ids(hub_db, "claude-b"))
+    assert (answer["action"], answer["secret_id"], answer["failovers"]) == ("failover", b_id, 1)
+    until, reason, usage, _ = account_row(hub_db, "claude-a")
+    assert before + timedelta(seconds=590) < until < datetime.now(UTC) + timedelta(seconds=610)
+    assert reason == f"authentication failed, reported by run {run_id}: log in again with evo-agents hub account login"
+    assert usage is None  # a refused token says nothing of the account's usage
+    assert revoked(hub_db, lease_id) and run_account(hub_db, run_id) == ("claude-b", "pool", 1)
+    a_id = int(secret_ids(hub_db, "claude-a"))
+    (event,) = events(hub_db, run_id)
+    assert event["account_event"] == "failover" and event["secret_id"] == a_id
+    assert event["text"].startswith(f"account secret {a_id} for {VAR} failed to authenticate; it cools down until")
+    no_names_or_values([json.dumps(answer), json.dumps(event)], values)
+    # the account is cooling, not ready, with its reason
+    state = client.get("/v1/accounts/claude-a", headers=hub["owner"]).json()
+    assert (state["state"], state["cooldown_reason"]) == ("cooling", reason)
+
+
+def test_an_account_that_failed_to_authenticate_with_none_ready_stops_the_run(client, hub, hub_db):
+    three(client, hub["owner"])
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id = run_on(client, hub["owner"], worker, "evo-agents")
+    cool(hub_db, "claude-b", 30)
+    cool(hub_db, "claude-c", 90)
+    lease_id = lease_of(client, worker, run_id)
+    answer = answer_of(client, worker, run_id, lease_id, "unauthorized", rate_limit_type=None)
+    assert answer["action"] == "stop" and answer["secret_id"] == int(secret_ids(hub_db, "claude-a"))
+    assert answer["reason"] == f"no other account for {VAR} is ready"
+    assert datetime.fromisoformat(answer["ready_at"]) == account_row(hub_db, "claude-b")[0]
+    assert not revoked(hub_db, lease_id) and account_row(hub_db, "claude-a")[1].startswith("authentication failed")
+    assert events(hub_db, run_id)[-1]["account_event"] == "stop"
+    assert "failed to authenticate" in events(hub_db, run_id)[-1]["text"]
 
 
 def test_a_lease_that_is_not_the_runs_is_404_and_a_daemon_without_the_protocol_426(client, hub, hub_db):

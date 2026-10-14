@@ -374,6 +374,8 @@ def show_offline(monkeypatch, capsys, tmp_path, run: dict) -> list[str]:
     """``hub run show`` of ``run``, the hub's answer given rather than asked for: its output lines."""
 
     class Answering:
+        url = HUB_URL
+
         def call(self, method, path, body=None):
             assert (method, path) == ("GET", f"/v1/projects/demo/runs/{run['id']}")
             return run
@@ -405,6 +407,37 @@ def test_show_names_the_worker_the_next_attempt_of_a_lost_run_waits_for_until_it
 
     for run in (queued_attempt(steady_wait=None), queued_attempt(state="leased")):
         assert not any("waits for" in line for line in show_offline(monkeypatch, capsys, tmp_path, run))
+
+
+def test_show_of_a_chat_run_names_its_chat_and_the_message_that_started_it(monkeypatch, capsys, tmp_path):
+    repos = [{"repo": "curator-sandbox", "branch": "chat/57"}, {"repo": "evo-agents", "branch": "chat/57"}]
+    run = queued_attempt(
+        id=57,
+        kind="chat",
+        plan_id="",
+        step_key=None,
+        plan_revision=None,
+        title="@evo-sandbox in Step 11: fix one line",
+        repo=None,
+        branch="chat/57",
+        repos=repos,
+        chat_id=3,
+        chat_message_id=8,
+        hop=1,
+        state="done",
+        parent_run_id=None,
+        steady_wait=None,
+    )
+    said = {
+        line.split(None, 1)[0]: line.split(None, 1)[1]
+        for line in show_offline(monkeypatch, capsys, tmp_path, run)[1:-1]
+    }
+    assert said["kind"].startswith("chat run: one turn of an agent mentioned in a group chat")
+    assert said["title"] == "@evo-sandbox in Step 11: fix one line"
+    assert said["chat"] == "#3, message #8, hop 1"
+    assert said["message"] == f"{HUB_URL}/chats/3?message=8"
+    assert said["repos"] == "curator-sandbox (chat/57), evo-agents (chat/57)"
+    assert "plan" not in said and "step" not in said and "repo" not in said
 
 
 # Against a hub
