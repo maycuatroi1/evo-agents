@@ -1,6 +1,6 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
-migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (with the profile columns of runs and
-credential_leases) and ``tables_chats`` describe the tables of accounts, agent profiles and group chats.
+migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (profile columns of runs and leases)
+and ``tables_chats`` (chat columns of runs) describe the tables of accounts, agent profiles and group chats.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -1282,4 +1282,4 @@ Index(  # a merged change has one outcome
 )
 accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0027)
 agent_profiles, agent_profile_versions = profile_tables(metadata, runs, credential_leases)  # agent profiles (0030)
-chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata)  # chats (0031)
+chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031

@@ -1046,7 +1046,8 @@
           "label",
           "restricted",
           "last_seq",
-          "last_read_seq"
+          "last_read_seq",
+          "budget_usd"
         ],
         "schema": "Chat"
       }
@@ -3746,7 +3747,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -3904,7 +3908,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -3995,7 +4002,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -4263,7 +4273,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -4354,7 +4367,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -4445,7 +4461,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -4805,7 +4824,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -4912,7 +4934,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -5052,7 +5077,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -5143,7 +5171,10 @@
           "session_per_step",
           "profile",
           "profile_id",
-          "profile_version"
+          "profile_version",
+          "chat_id",
+          "chat_message_id",
+          "hop"
         ],
         "schema": "Run"
       }
@@ -5617,6 +5648,124 @@
             "--step"
           ],
           "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker chat create": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--person"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker chat mention": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--chat"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reply-to"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker chat post": {
+      "positionals": [
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--chat"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reply-to"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker chat react": {
+      "positionals": [
+        {
+          "name": "message",
+          "metavar": "MESSAGE",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "emoji",
+          "metavar": "EMOJI",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--remove"
+          ],
+          "value": null,
           "required": false,
           "repeatable": false
         }
@@ -22038,6 +22187,99 @@
               }
             }
           }
+        },
+        "patch": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Update Chat",
+          "description": "Change the chat's budget: what its agents' runs may cost in 24 hours. Only its creator does.",
+          "operationId": "update_chat_v1_chats__chat_id__patch",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatUpdate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
         }
       },
       "/v1/chats/{chat_id}/messages": {
@@ -23182,6 +23424,431 @@
             }
           }
         }
+      },
+      "/v1/worker/runs/{run_id}/chat/messages": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Post Message",
+          "description": "A message of the run's agent in a chat it is in: the run's thread for a chat run.",
+          "operationId": "post_message_v1_worker_runs__run_id__chat_messages_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMessageIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GroupMessage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat/reactions": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "React",
+          "description": "Put an emoji of the run's agent on a message of a chat it is in, or take it off.",
+          "operationId": "react_v1_worker_runs__run_id__chat_reactions_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentReactionIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GroupMessage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat/mentions": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Mention",
+          "description": "A message of the run's agent that hands the work to agent ``handle`` of the chat (see the module's docstring).",
+          "operationId": "mention_v1_worker_runs__run_id__chat_mentions_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentMentionIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentHanded"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chats": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Create Chat",
+          "description": "A new chat of the run's agent and the person at the origin of the chain, with the people named.",
+          "operationId": "create_chat_v1_worker_runs__run_id__chats_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentChatIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat/pulls": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Pushed",
+          "description": "The worker pushed the chat run's branch of a repo: its draft pull request, linked in the thread.",
+          "operationId": "pushed_v1_worker_runs__run_id__chat_pulls_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatPushed"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatPull"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -23936,6 +24603,32 @@
           "title": "AgentAxis",
           "description": "One axis of a profile's permissions: every value (all), or those of ``allow`` alone (allowlist)."
         },
+        "AgentChatIn": {
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 120,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Title"
+            },
+            "people": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+              },
+              "type": "array",
+              "maxItems": 49,
+              "title": "People",
+              "description": "logins besides the person who dispatched the run, who is in it anyway"
+            }
+          },
+          "type": "object",
+          "required": [
+            "title"
+          ],
+          "title": "AgentChatIn"
+        },
         "AgentCreate": {
           "properties": {
             "handle": {
@@ -24073,6 +24766,137 @@
           "title": "AgentEdit",
           "description": "What to change; a field left out stays as it is."
         },
+        "AgentHanded": {
+          "properties": {
+            "message": {
+              "$ref": "#/components/schemas/GroupMessage"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the agent mentioned: new, or the one of its session it woke"
+            },
+            "refusal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refusal",
+              "description": "why the mention handed no work, as the thread says too"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message",
+            "run_id",
+            "refusal"
+          ],
+          "title": "AgentHanded"
+        },
+        "AgentMentionIn": {
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Body",
+              "description": "at most 16384 bytes of UTF-8"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "a chat the run's agent is in; null: the chat of a chat run"
+            },
+            "reply_to": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reply To",
+              "description": "a message whose thread it goes in; null: the run's thread"
+            },
+            "handle": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Handle",
+              "description": "the agent of the chat the message hands work to, @ left out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "body",
+            "handle"
+          ],
+          "title": "AgentMentionIn"
+        },
+        "AgentMessageIn": {
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Body",
+              "description": "at most 16384 bytes of UTF-8"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "a chat the run's agent is in; null: the chat of a chat run"
+            },
+            "reply_to": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reply To",
+              "description": "a message whose thread it goes in; null: the run's thread"
+            }
+          },
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "title": "AgentMessageIn"
+        },
         "AgentPermissions": {
           "properties": {
             "credential": {
@@ -24108,6 +24932,34 @@
           "type": "object",
           "title": "AgentPermissions",
           "description": "What the runs of a profile may use, on seven axes; an axis left out allows all."
+        },
+        "AgentReactionIn": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 1.0,
+              "title": "Message Id"
+            },
+            "emoji": {
+              "type": "string",
+              "maxLength": 16,
+              "minLength": 1,
+              "title": "Emoji"
+            },
+            "remove": {
+              "type": "boolean",
+              "title": "Remove",
+              "description": "take the emoji off instead",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "emoji"
+          ],
+          "title": "AgentReactionIn"
         },
         "AgentVersion": {
           "properties": {
@@ -25594,6 +26446,11 @@
               "type": "integer",
               "title": "Last Read Seq",
               "description": "how far the reader read"
+            },
+            "budget_usd": {
+              "type": "number",
+              "title": "Budget Usd",
+              "description": "what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
             }
           },
           "type": "object",
@@ -25607,7 +26464,8 @@
             "label",
             "restricted",
             "last_seq",
-            "last_read_seq"
+            "last_read_seq",
+            "budget_usd"
           ],
           "title": "Chat"
         },
@@ -25981,7 +26839,19 @@
                 }
               ],
               "title": "Refusal",
-              "description": "why it reached no member: not in the chat, or deleted"
+              "description": "why it reached no member (not in the chat, deleted), or why the agent it reached took no work"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the agent the mention handed work to, or woke"
             }
           },
           "type": "object",
@@ -26170,6 +27040,93 @@
           ],
           "title": "ChatPosted"
         },
+        "ChatPull": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the draft pull request, or the branch; null when the hub knows neither"
+            },
+            "number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number",
+              "description": "the pull request's number on GitHub"
+            },
+            "opened": {
+              "type": "boolean",
+              "title": "Opened",
+              "description": "the hub opened it now; false for one open already, or none"
+            },
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the agent's message in the thread that says so"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "url",
+            "number",
+            "opened",
+            "message_id"
+          ],
+          "title": "ChatPull"
+        },
+        "ChatPushed": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Branch",
+              "description": "the run's branch, chat/<id>"
+            },
+            "head": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Head",
+              "description": "the commit the branch has now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "head"
+          ],
+          "title": "ChatPushed"
+        },
         "ChatReaction": {
           "properties": {
             "emoji": {
@@ -26357,6 +27314,22 @@
             "agents"
           ],
           "title": "ChatSummary"
+        },
+        "ChatUpdate": {
+          "properties": {
+            "budget_usd": {
+              "type": "number",
+              "maximum": 1000.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Budget Usd",
+              "description": "what the runs of the chat's agents may cost in 24 hours, in USD"
+            }
+          },
+          "type": "object",
+          "required": [
+            "budget_usd"
+          ],
+          "title": "ChatUpdate"
         },
         "CheckoutReport": {
           "properties": {
@@ -31659,7 +32632,8 @@
                 "plan",
                 "review",
                 "judge",
-                "author"
+                "author",
+                "chat"
               ],
               "title": "Kind"
             },
@@ -34899,10 +35873,11 @@
                 "plan",
                 "review",
                 "judge",
-                "author"
+                "author",
+                "chat"
               ],
               "title": "Kind",
-              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one"
+              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan"
             },
             "project": {
               "type": "string",
@@ -35478,6 +36453,42 @@
               ],
               "title": "Profile Version",
               "description": "the version of the profile whose rules apply to the run"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id",
+              "description": "a chat run's group chat; null for any other run"
+            },
+            "chat_message_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Message Id",
+              "description": "the message of the chat that started a chat run: the mention, or the reply that woke it"
+            },
+            "hop": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Hop",
+              "description": "a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most 3); null for any other run"
             }
           },
           "type": "object",
@@ -36632,7 +37643,8 @@
                 "plan",
                 "review",
                 "judge",
-                "author"
+                "author",
+                "chat"
               ],
               "title": "Kind"
             },

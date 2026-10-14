@@ -210,6 +210,8 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Re
             raise HTTPException(
                 409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
             )
+        if kind == "chat":
+            raise HTTPException(409, f"run {run_id} is a chat run: mention its agent in the chat again")
         if state not in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
         held = await plan_routes._visible(conn, access, plan_id, None)

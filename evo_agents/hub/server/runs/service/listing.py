@@ -32,11 +32,12 @@ def _like(text: str) -> str:
 
 def _list_conditions(*, plan_id: bool, step: bool, worker_id: bool, login: bool, text: bool, number: bool) -> list:
     """The filters of GET .../runs but the state's, which the counts by state leave out: the runs of project
-    :project_id and of the plans in :plans, and its author runs of a new plan when :unplanned, then each filter given,
+    :project_id and of the plans in :plans, and its author runs of a new plan and chat runs when :unplanned, then each
+    filter given,
     by its bind parameter (one not given leaves every run): :plan_id, :step, :worker_id, :login, and the text as the
     ILIKE :pattern, or as the run :number."""
     r, u, w = tables.runs, tables.users, tables.workers
-    unplanned = and_(r.c.kind == "author", r.c.plan_id.is_(None), bindparam("unplanned", type_=Boolean))
+    unplanned = and_(r.c.kind.in_(("author", "chat")), r.c.plan_id.is_(None), bindparam("unplanned", type_=Boolean))
     found = [r.c.project_id == bindparam("project_id"), or_(one_of(r.c.plan_id, name="plans"), unplanned)]
     if plan_id:
         found.append(r.c.plan_id == bindparam("plan_id"))

@@ -33,6 +33,7 @@ from sqlalchemy import (
     insert,
     literal,
     not_,
+    null,
     select,
     table,
     union_all,
@@ -505,6 +506,64 @@ def test_0029_lets_an_author_decision_have_no_plan_and_going_back_deletes_those_
     with live.connect(hub_db) as conn, pytest.raises(errors.NotNullViolation):
         conn.execute(_decision_row(ids, run_id, None))
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0029") :]
+
+
+def _chat_run(ids, chat_id: int, message_id: int | None, **extra):
+    """The INSERT of a queued chat run of the seeded user in demo, started by ``message_id`` of ``chat_id``."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "chat", "branch": "chat/1"}
+    row |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless", "approval": "auto"}
+    row |= {"timeout_s": 3600, "state": "queued", "chat_id": chat_id, "chat_message_id": message_id, "hop": 1}
+    return insert(runs).values(row | extra).returning(runs.c.id)
+
+
+def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0031")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        chat_id = one(
+            conn, insert(t.chats).values(title="Release talk", created_by=ids["user"]).returning(t.chats.c.id)
+        )
+        message = insert(t.chat_messages).values(chat_id=chat_id, seq=1, body="@reviewer look", label=[])
+        message_id = one(conn, message.returning(t.chat_messages.c.id))
+        runs = t.runs
+        no_chat_kind = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "chat", "timeout_s": 3600}
+        no_chat_kind |= {"requested_runtime": "any", "runtime": "any", "mode": "headless", "approval": "auto"}
+        with pytest.raises(errors.CheckViolation):  # no chat run before 0032
+            conn.execute(insert(runs).values(no_chat_kind))
+    move_to(hub_db, "0032")
+    with live.connect(hub_db) as conn:
+        first = one(conn, _chat_run(ids, chat_id, message_id))
+        resumed = one(conn, _chat_run(ids, chat_id, message_id, resume_of_run_id=first, hop=2))
+        one(conn, _chat_run(ids, chat_id, message_id, attempt=2, parent_run_id=resumed, repos=null()))
+        author = one(conn, _author_run(ids))
+        for bad in (
+            _chat_run(ids, chat_id, None),
+            _chat_run(ids, chat_id, message_id, hop=4),
+            _chat_run(ids, chat_id, message_id, hop=None),
+            insert(runs).values(
+                project_id=ids["project"],
+                dispatched_by=ids["user"],
+                kind="chat",
+                timeout_s=3600,
+                requested_runtime="any",
+                runtime="any",
+                mode="headless",
+                approval="auto",
+            ),
+            update(runs).values(chat_id=chat_id, chat_message_id=message_id, hop=1).where(runs.c.id == author),
+            update(t.chats).values(budget_usd=0).where(t.chats.c.id == chat_id),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    assert query(hub_db, select(t.chats.c.budget_usd)) == [(5.0,)]
+
+    # Going back deletes the chat runs, the one going on in another's session and the retry included; the rest stays.
+    move_to(hub_db, "0031", down=True)
+    assert query(hub_db, select(t.runs.c.id, t.runs.c.kind).order_by(t.runs.c.id)) == [(author, "author")]
+    assert query(hub_db, select(t.chat_messages.c.id)) == [(message_id,)]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0032") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

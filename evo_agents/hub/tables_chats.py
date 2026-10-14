@@ -11,6 +11,11 @@ chat_mentions holds the names a message mentions as the hub read them when it wa
 and how, or why it reached none. chat_reactions holds one row per emoji of a person or an agent on a message.
 chat_events holds what happened in a chat in order, which its stream sends: a message, a reaction put or taken off, a
 member added or removed.
+
+Revision 0032 gives chats ``budget_usd``, what its chat runs may cost in 24 hours, and runs the columns of a chat
+run (``evo_agents.hub.chat_runs``): ``chat_id``, ``chat_message_id`` (the message that started it) and ``hop``;
+``chat_tables`` adds them, their foreign keys and the index of a chat's runs to the runs table it is given, so that
+``evo_agents.hub.tables`` describes runs whole.
 """
 
 from __future__ import annotations
@@ -19,6 +24,7 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
+    Double,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -41,8 +47,10 @@ def _id() -> Column:
     return Column("id", BigInteger, Identity(always=True), nullable=False)
 
 
-def _fk(table: str, column: str, target: str, *, ondelete: str) -> ForeignKeyConstraint:
-    return ForeignKeyConstraint([column], [target], ondelete=ondelete, name=f"{table}_{column}_fkey")
+def _fk(table: str, column: str, target: str, *, ondelete: str, use_alter: bool = False) -> ForeignKeyConstraint:
+    return ForeignKeyConstraint(
+        [column], [target], ondelete=ondelete, name=f"{table}_{column}_fkey", use_alter=use_alter
+    )
 
 
 def _chats(metadata: MetaData) -> tuple[Table, Table]:
@@ -54,6 +62,7 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
         Column("created_by", BigInteger, nullable=False),
         _stamp("created_at"),
         Column("event_seq", BigInteger, nullable=False, server_default="0"),
+        Column("budget_usd", Double, nullable=False, server_default="5"),  # 0032
         _fk("chats", "created_by", "users.id", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="chats_pkey"),
     )
@@ -161,6 +170,20 @@ def _reactions(metadata: MetaData) -> tuple[Table, Table]:
     return reactions, events
 
 
-def chat_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table, Table, Table]:
-    """(chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events), added to ``metadata``."""
-    return (*_chats(metadata), *_messages(metadata), *_reactions(metadata))
+def _chat_runs(runs: Table) -> None:
+    """The columns of a chat run (0032) added to ``runs``: its chat, the message that started it and its hop."""
+    runs.append_column(Column("chat_id", BigInteger))
+    runs.append_column(Column("chat_message_id", BigInteger))
+    runs.append_column(Column("hop", SmallInteger))
+    runs.append_constraint(_fk("runs", "chat_id", "chats.id", ondelete="RESTRICT"))
+    # chat_messages.run_id points back at runs: this key is made apart from the tables, so that they sort
+    runs.append_constraint(_fk("runs", "chat_message_id", "chat_messages.id", ondelete="RESTRICT", use_alter=True))
+    Index("runs_chat_idx", runs.c.chat_id, runs.c.queued_at, postgresql_where=runs.c.chat_id.is_not(None))
+
+
+def chat_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table, Table, Table]:
+    """(chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events), added to ``metadata``; the
+    columns of a chat run added to ``runs``."""
+    found = (*_chats(metadata), *_messages(metadata), *_reactions(metadata))
+    _chat_runs(runs)
+    return found

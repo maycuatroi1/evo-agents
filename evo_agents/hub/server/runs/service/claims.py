@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import BigInteger, Text, case, column, exists, func, literal, or_, select
+from sqlalchemy import BigInteger, Text, case, column, exists, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -139,6 +139,7 @@ def _claimable(
     review_runs: bool = False,
     judge_runs: bool = False,
     author_runs: bool = False,
+    chat_runs: bool = False,
     step_sessions: bool = False,
     steady: bool = True,
     profile_gate=None,
@@ -146,15 +147,16 @@ def _claimable(
     """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
     owner, in ``projects``, pinned to no other worker, asking for any runtime or one of ``runtimes``, of a repo it
     has a checkout of (``pairs`` of project id and repo), and, while the worker is not ``steady``, not the next
-    attempt of a run it lost (``lost_here``). A run of one step needs a checkout of its repo, and a plan
-    run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``); a review run one
-    of every repo in its repos and a daemon that says it runs review runs (``review_runs``), and a judge run likewise
+    attempt of a run it lost (``lost_here``). A run of one step needs a checkout of its repo, and a plan run one of
+    every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``); a review run one of every
+    repo in its repos and a daemon that says it runs review runs (``review_runs``), and a judge run likewise
     (``judge_runs``); an author run one of its first repo, the project's harness, and a daemon that says it runs
-    author runs (``author_runs``): the worker leaves out the other repos it has no checkout of. A plan run with a
-    session per step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs dispatched
-    from the web only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes
-    only the runs whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``). Each row is the run's id,
-    the runtime it asked for, its kind and its profile's runtime axis."""
+    author runs (``author_runs``): the worker leaves out the other repos it has no checkout of. A chat run is pinned
+    to the worker the hub picked for it and needs a daemon that says it runs chat runs (``chat_runs``). A plan run
+    with a session per step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs
+    dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011 included;
+    and it takes only the runs whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``). Each row is
+    the run's id, the runtime it asked for, its kind and its profile's runtime axis."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -176,7 +178,12 @@ def _claimable(
         r.c.dispatched_by == owner_id,
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
         or_(r.c.runtime == "any", r.c.runtime.in_(runtimes)),
-        case((r.c.kind.in_(("plan", "review", "judge")), every_repo), (r.c.kind == "author", harness), else_=own_repo),
+        case(
+            (r.c.kind.in_(("plan", "review", "judge")), every_repo),
+            (r.c.kind == "author", harness),
+            (r.c.kind == "chat", true()),  # pinned to the worker the hub picked, which works without a repo it lacks
+            else_=own_repo,
+        ),
     )
     if web_only:
         query = query.where(r.c.dispatched_via == "web")
@@ -190,6 +197,8 @@ def _claimable(
         query = query.where(r.c.kind != "judge")
     if not author_runs:
         query = query.where(r.c.kind != "author")
+    if not chat_runs:
+        query = query.where(r.c.kind != "chat")
     if not steady:
         query = query.where(~lost_here(worker_id))
     if profile_gate is not None:
@@ -309,6 +318,7 @@ async def _try_claim(
             review_runs="review" in (kinds or ()),
             judge_runs="judge" in (kinds or ()),
             author_runs="author" in (kinds or ()),
+            chat_runs="chat" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             steady=is_steady,
             profile_gate=claim_clause(name, labels, runtimes, features),
@@ -379,6 +389,11 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
             plan=target,
             decisions=runs.AUTHOR_DECISIONS in features,
         )
+        title = view.title
+    elif view.kind == "chat":
+        from evo_agents.hub.server.chat_runs import chat_prompt  # it queues runs through this package
+
+        prompt = await chat_prompt(conn, run_id, view.branch, [repo.model_dump() for repo in view.repos or []])
         title = view.title
     elif view.kind == "judge":
         from evo_agents.hub.server.changes import judge_prompt  # it queues runs through this package

@@ -89,7 +89,8 @@ AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
 CHAT_CREATE = "chat.create"  # a member created a chat, with the people and agents it started with
 CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
-CHAT_MESSAGE = "chat.message"  # a member sent a message
+CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
+CHAT_BUDGET = "chat.budget"  # the creator of a chat changed what its agents' runs may cost a day
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

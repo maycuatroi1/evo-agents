@@ -19,6 +19,7 @@
   and a proposal with their evidence (``evo_agents.hub.review.parse_evidence``); the hub computes a proposal's tier.
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
+- ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -55,6 +56,8 @@ from urllib.parse import quote
 from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
+from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.worker.chat_cli import register_chat
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 
 EXIT_FAILED = 1
@@ -1250,7 +1253,6 @@ def register(sub) -> None:
     plan = wsub.add_parser(
         "plan", help="inside a plan run or an author run: print the run's plan as the hub holds it now"
     )
-    from evo_agents.hub.contract import json_option, returns_object
     from evo_agents.hub.plan_cli import PLAN_KEYS, WRITTEN
 
     json_option(plan, returns_object(*PLAN_KEYS, schema="Plan"), help="the hub's answer as JSON")  # seam hub-cli-v1
@@ -1272,3 +1274,4 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
+    register_chat(wsub)  # the commands of a run's agent in group chats (chat_cli)

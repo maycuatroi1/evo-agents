@@ -138,9 +138,10 @@ async def insert_message(
 
 
 async def insert_mentions(conn: AsyncConnection, message_id: int, mentions: list[dict]) -> None:
-    """Keep what message ``message_id`` mentions: dicts of name, via, user_id, profile_id and refusal, in order."""
+    """Keep what message ``message_id`` mentions: dicts of name, via, user_id, profile_id, refusal and the run it made
+    (run_id, none when left out), in order."""
     if mentions:
-        rows = [{"message_id": message_id, "ordinal": n, **mention} for n, mention in enumerate(mentions)]
+        rows = [{"message_id": message_id, "ordinal": n, "run_id": None, **m} for n, m in enumerate(mentions)]
         await conn.execute(insert(tables.chat_mentions), rows)
 
 
