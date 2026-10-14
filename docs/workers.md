@@ -34,7 +34,7 @@ how decisions and notices reach a member.
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots and labels after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md` | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -49,6 +49,8 @@ runtime the claiming worker picked), the mode (`headless` or `interactive`), the
 of at most 3, the run it retries (`parent_run_id`), its state and lease, the agent's session id, the repo and branch,
 and at the end the commit, diffstat, verify results, evidence, usage and error. A run the night shift queued also
 names its schedule and night and carries its caps (`budget`, see [Runs of the night shift](#runs-of-the-night-shift)).
+A run records the agent profile and the version it went under (`profile_id`, `profile_version`; `docs/hub.md`, Agent
+profiles), and a chat run its chat, the message that started it and its hop (`chat_id`, `chat_message_id`, `hop`).
 
 ## Who may do what
 

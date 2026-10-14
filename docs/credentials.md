@@ -141,8 +141,9 @@ protocol header, for a run the worker holds: one of the held states, `waiting` o
 another worker's or one that ended, is 404, as for a state report; a machine token or a web session gets 403, as on
 every worker route. The run's owner, the member who dispatched it, must still hold writer on the run's project: once
 an admin deletes that grant or lowers it to reader, the ask is 403 ("LOGIN, who dispatched run N, no longer holds the
-writer role on project P: the run gets no credentials"), even for a run the worker still holds. The hub takes the run's repos (the run's repo for a step run, the repos of the plan run, those of
-the plan's steps not done when it was dispatched) and their origins from `project_repos`, compared in the form of
+writer role on project P: the run gets no credentials"), even for a run the worker still holds. The hub takes the
+run's repos (the run's repo for a step run, the repos of the plan run, those of the plan's steps not done when it was
+dispatched, the repos a chat run works in) and their origins from `project_repos`, compared in the form of
 `normalize_origin` (`git@host:path` and `ssh://git@host[:port]/path` included). It then leases what the run's owner
 bound to the run's project, bound to no worker or to this one, and not past its `expires_at`:
 
@@ -182,10 +183,19 @@ profile as the reason. The intersection is taken on every ask, so a secret the o
 profile that does not name it, and an account picked by hand, or picked by the rules, is one the profile allows. A
 profile with every permission, such as a project's default, changes nothing.
 
+A **chat run** ([hub.md](hub.md), Group chats) is leased as any run: its repos are those of its project that its
+worker has a checkout of, and its GitHub token has `GITHUB_PERMISSIONS`, as a step run's. The worker pushes only the
+branch `chat/<run>`, never a default branch and never forced, and no run merges. Its owner is the person at the
+origin of the chain: the person whose message in the chat mentioned the agent, and, for a run that another agent's
+mention made (`evo-agents worker chat mention`, hop 2 or 3), the owner of the run that asked, carried down the chain.
+So the run is leased that person's secrets, on that person's worker, narrowed by the profile of the agent it runs as;
+never those of another member of the chat, or of whoever added the agent to it. That person must hold writer on the
+profile's project when the hub makes the run and on every ask after, as for any run.
+
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
 secrets by id (`secrets=12,15`), the App's accounts, the repos and, unless it is the project's default, the run's
-profile (`profile=@<handle>:v<version>`), never a value; each lease row records the profile and version too; `credential.revoke` names the
-secrets by id too. A secret is leased once per run and worker: asked again,
+profile (`profile=@<handle>:v<version>`), never a value; each lease row records the profile and version too.
+`credential.revoke` names the secrets by id too. A secret is leased once per run and worker: asked again,
 the same lease comes back with the secret's value as it is now. A GitHub token stays sealed in its lease, bound to the
 lease's id, until it expires, so the hub can revoke it. Asked again, a run gets the same tokens while each has
 `GITHUB_TOKEN_REFRESH_SECONDS` or more left, and new ones in new leases after that; the tokens they replace go on
