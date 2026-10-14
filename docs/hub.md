@@ -91,6 +91,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
+| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (`docs/notifications.md`) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
@@ -332,6 +333,73 @@ its first bytes; the hub stores it in the blob store as a blob of kind `agent-av
 from `GET .../avatar`, whose URL (`icon_url`) carries a part of its SHA-256. Without one, `icon_url` is null and the
 web draws the profile's initial on its colour. The audit rows `agent.create`, `agent.update` (with the fields changed)
 and `agent.delete` name `<project>/@<handle> v<version>`, never a description, instructions or an image.
+
+## Group chats
+
+A group chat holds people and the agents of projects (`evo_agents/hub/chats.py`). A signed-in member creates one with a
+title and the people and agents it starts with, and is its first member. Only its members read it and write to it;
+anyone else gets the 404 of a chat that does not exist. Any member adds a person or an agent: adding an agent of project
+P needs the writer role on P, and a deleted agent is refused. A person leaves, or the chat's creator takes them out;
+any member takes an agent out. A chat holds at most 50 people and 10 agents, and never a person and an agent of the same
+name, so that `@name` names one member.
+
+**Label.** A chat's label is the labels of the projects of its agents: for each project, its default label, the one
+its runs on no plan read as. Every person in the chat holds a grant on each of those projects whose max level reaches
+that project's label, on the project's own ladder: adding an agent that would take the label past someone in the chat
+is refused (409, naming who and why), and so is adding someone who does not clear it. The hub checks it again on every
+read and write, so someone whose grant was lowered or revoked gets 403. Each message keeps the label the chat had when
+it was sent, as a run's events read as its project's: once an agent left and the label went down, a person who joined
+since does not read what was written before. A chat is restricted when a project of its agents is (its hub sink cleared
+at or above `customer` or `domestic-only`, as Telegram reads it: `docs/notifications.md`).
+
+**Messages and mentions.** A message has at most 16 KiB of UTF-8; `reply_to` puts it in the thread of the message it
+answers, and a thread has one level: `thread_root_id` always names its first message. The hub reads a message's
+mentions once, when it is sent, and keeps them with it (at most 20 names): `@` then `[a-z0-9-]`, not right after a
+letter, digit, `@`, `.`, `/` or `-` (an e-mail address is no mention), not in a code span or a fenced block, ignoring
+case. A name resolves among the chat's members only: a person by login (`via` login), an agent by handle (handle), a
+project's name to its default agent (project). An agent the sender can see that is not in the chat, or one deleted
+since, reaches no one: the mention keeps why, and the hub answers in the message's thread with the reason. A person
+mentioned gets the notice `chat_mention`, and one added the notice `chat_added`, never for what they did themselves; in
+a restricted chat the notice names the chat and links to it, without sender or text. No message makes a run or asks a
+model anything, whatever it mentions.
+
+**Reactions.** A reaction is one emoji of one person or agent on a message, once each; a message carries at most 20
+different ones, and the hub counts them by emoji (`count`, who put each, and whether the reader did). The reactions of
+an agent are set by rule, never by a model: `chat_store.status_reaction` puts the eyes when a worker claims a run of the
+agent, a check mark when it is done and a cross when it failed or was cancelled, on the message that started the run,
+and the check mark or the cross takes the eyes off. A lost run tried again keeps its eyes. The web shows emoji in
+reaction chips only (`web/DESIGN.md`).
+
+**Events.** Each change is an event of the chat, numbered by it: a message, a reaction put or taken off, a member added
+or removed. A message is numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read,
+which the unread count of the list starts from (their own message reads up to it). `GET .../events?after=SEQ` pages
+them, and `GET .../stream` sends them as server-sent events, as a run's stream does: the seq as id, Last-Event-ID or
+`after` to go on, a ping after 15 idle seconds, woken by `pg_notify` on channel `evo_chat_events` on the api process's
+one LISTEN connection. A stream ends with an `end` event once its reader is no longer in the chat or no longer clears
+its label. A member reads the events of the messages whose label they clear. Chat messages do not expire with
+`EVO_HUB_RUN_LOG_DAYS`.
+
+| Route | Command | Who |
+| --- | --- | --- |
+| `GET /v1/chats` | `hub chat list` | anyone: their chats |
+| `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
+| `GET /v1/chats/{id}` | | a member |
+| `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
+| `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
+| `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
+| `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
+| `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
+| `POST .../read`, `GET .../events`, `GET .../stream` | | a member |
+
+Creating a chat, adding and removing a member and sending a message are audited (`chat.create`, `chat.add`,
+`chat.remove`, `chat.message`; an agent's in its project), naming `chat:<id>` and the person, agent or message, never a
+title or a text. For example:
+
+```sh
+evo-agents hub chat create "Release talk" --member someone-else --agent reviewer
+evo-agents hub chat send 3 "@reviewer can you check the diff of run 120?"
+evo-agents hub chat react 3 41 👍
+```
 
 ## Plans and their copies in git
 
