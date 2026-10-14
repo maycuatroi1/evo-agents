@@ -70,7 +70,7 @@
       "reason": "The project's Agents page (agent-profiles-group-chat step 4): the list of its agents and the New agent form."
     },
     "/p/[project]/agents/[handle]": {
-      "kB": 326.1,
+      "kB": 326.2,
       "reason": "An agent's page (agent-profiles-group-chat step 4): its permissions, versions, avatar upload, the edit form and its recent runs."
     },
     "/p/[project]/curator": {
@@ -110,11 +110,11 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4)."
     },
     "/p/[project]/plans": {
-      "kB": 324.7,
+      "kB": 324.8,
       "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form."
     },
     "/p/[project]/plans/[planId]": {
-      "kB": 327.9,
+      "kB": 328,
       "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form."
     },
     "/p/[project]/plans/[planId]/revisions": {
@@ -126,7 +126,7 @@
       "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form."
     },
     "/p/[project]/runs": {
-      "kB": 325.8,
+      "kB": 325.9,
       "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form."
     },
     "/p/[project]/runs/[id]": {

@@ -3378,6 +3378,7 @@
         "modelNone": "@{handle} không cho phép model nào.",
         "workers": "@{handle} không cho worker nào của bạn ở đây nhận run: nó chỉ cho {allow}.",
         "workersNone": "@{handle} không cho phép worker nào.",
+        "daemon": "@{handle} giới hạn tool, skill hoặc model, hoặc có chỉ dẫn, mà chỉ worker có daemon áp dụng agent profile mới thực hiện được; chưa worker nào của bạn ở đây báo là có. Hãy nâng cấp daemon của một worker.",
         "skill": "@{handle} không cho phép skill {skill}, skill mà author run dùng để viết plan."
       }
     }

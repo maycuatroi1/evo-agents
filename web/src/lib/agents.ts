@@ -68,22 +68,43 @@ export type AgentProblem =
   | { kind: "runtime"; runtime: string; allow: string[] }
   | { kind: "model"; model: string; allow: string[] }
   | { kind: "workers"; allow: string[] }
+  | { kind: "daemon" }
   | { kind: "skill"; skill: string };
 
-/** The workers of the visitor's that the agent lets claim its runs, in their order. */
-export function agentWorkers<W extends { name: string; labels: string[] }>(workers: readonly W[], agent: Agent | null): W[] {
+/** `runs.AGENT_PROFILES`: the heartbeat feature of a daemon whose adapters apply an agent's tools, skills and model. */
+export const AGENT_PROFILES_FEATURE = "agent_profiles";
+
+/**
+ * `profiles.needs_worker`: whether only a worker whose daemon says it applies agent profiles may claim the agent's runs,
+ * since it limits tools, skills or models, or adds instructions, which the hub cannot apply itself.
+ */
+export function needsProfileDaemon(agent: Agent): boolean {
+  return (["tool", "skill", "model"] as const).some((axis) => allowed(agent.permissions, axis) !== null) || agent.instructions !== "";
+}
+
+type WorkerLike = { name: string; labels: string[]; features?: string[] };
+
+/**
+ * The workers of the visitor's that may claim the agent's runs, in their order: those its worker axis names, and when
+ * it needs one, only those whose daemon applies agent profiles; the hub's claim keeps to the same.
+ */
+export function agentWorkers<W extends WorkerLike>(workers: readonly W[], agent: Agent | null): W[] {
   if (!agent) return [...workers];
-  return workers.filter((worker) => allowsWorker(agent.permissions, worker.name, worker.labels));
+  const daemon = needsProfileDaemon(agent);
+  return workers.filter(
+    (worker) => allowsWorker(agent.permissions, worker.name, worker.labels) && (!daemon || (worker.features ?? []).includes(AGENT_PROFILES_FEATURE)),
+  );
 }
 
 /**
  * What the agent refuses of a dispatch: a runtime it leaves out (or any runtime, when it allows none), a model it leaves
- * out, a list of the visitor's workers none of which it lets claim the run (only when they were read, `workers` not
- * null), and for an author run the skill it writes its plan with.
+ * out, a list of the visitor's workers none of which it names, or none of which runs a daemon that applies agent
+ * profiles when it needs one (only when they were read, `workers` not null and not empty), and for an author run the
+ * skill it writes its plan with.
  */
 export function agentProblems(
   agent: Agent | null,
-  asked: { runtime: string; model?: string | null; workers?: readonly { name: string; labels: string[] }[] | null; skill?: string | null },
+  asked: { runtime: string; model?: string | null; workers?: readonly WorkerLike[] | null; skill?: string | null },
 ): AgentProblem[] {
   if (!agent) return [];
   const problems: AgentProblem[] = [];
@@ -95,8 +116,9 @@ export function agentProblems(
   const models = allowed(agent.permissions, "model");
   if (models !== null && asked.model && !models.includes(asked.model)) problems.push({ kind: "model", model: asked.model, allow: models });
   const workers = allowed(agent.permissions, "worker");
-  if (workers !== null && asked.workers && asked.workers.length > 0 && agentWorkers(asked.workers, agent).length === 0) {
-    problems.push({ kind: "workers", allow: workers });
+  if (asked.workers && asked.workers.length > 0 && agentWorkers(asked.workers, agent).length === 0) {
+    const named = asked.workers.some((worker) => allowsWorker(agent.permissions, worker.name, worker.labels));
+    problems.push(named || workers === null ? { kind: "daemon" } : { kind: "workers", allow: workers });
   }
   if (asked.skill && !allows(agent.permissions, "skill", asked.skill)) problems.push({ kind: "skill", skill: asked.skill });
   return problems;

@@ -726,10 +726,12 @@ Shared pieces built on them:
 - The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
   the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
   picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are
-  those the agent allows, the model suggestions its models when it limits them, and what it refuses (a runtime or model
-  it leaves out, none of the visitor's workers, for an author run the skill create-exec-plan, a deleted agent) is said
-  under the field in `danger` while the footer says the agent refuses the dispatch and the submit button stays off. A
-  body names `profile` only for an agent other than the default, so a dispatch that picks none reads as before.
+  those the agent allows (and, for an agent that limits tools, skills or models or has instructions, only those whose
+  daemon says it applies agent profiles, as the hub's claim does), the model suggestions its models when it limits them,
+  and what it refuses (a runtime or model it leaves out, none of the visitor's workers left, for an author run the skill
+  create-exec-plan, a deleted agent) is said under the field in `danger` while the footer says the agent refuses the
+  dispatch and the submit button stays off. A body names `profile` only for an agent other than the default, so a
+  dispatch that picks none reads as before.
 - `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
   parked (nobody answered for 24 hours) included; both show in the running phase of a run's timeline, under their own
   name, on an `attention` node. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an

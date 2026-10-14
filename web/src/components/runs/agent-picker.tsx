@@ -70,6 +70,8 @@ export function useAgentProblemText() {
         return problem.allow.length ? t("model", { handle, model: problem.model, allow: items("model", problem.allow) }) : t("modelNone", { handle });
       case "workers":
         return problem.allow.length ? t("workers", { handle, allow: items("worker", problem.allow) }) : t("workersNone", { handle });
+      case "daemon":
+        return t("daemon", { handle });
       case "skill":
         return t("skill", { handle, skill: problem.skill });
     }
