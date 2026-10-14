@@ -1,14 +1,12 @@
-"""The hub's 48 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
-the next migration from (``evo_agents/hub/migrations/env.py``).
+"""The hub's tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates the
+next migration from (``evo_agents/hub/migrations/env.py``). The tables of accounts and of agent profiles are described
+in ``tables_accounts`` and ``tables_profiles``, which also adds the profile columns of runs and credential_leases.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
-equal (Alembic's ``compare_metadata`` on a database migrated to head finds no difference). Columns, types,
-nullability, server defaults, identities, the generated column, keys, foreign keys and indexes are here, with the
-names the migrations gave them. CHECK constraints and triggers live in the migrations only: Alembic does not compare
-them, and a query has no use for them. procrastinate's tables belong to procrastinate and are not here.
-
-Each table is a module attribute named as the table. Import the module (``from evo_agents.hub import tables``) rather
-than the names, which would shadow modules such as ``secrets`` or ``evo_agents.hub.runs``.
+equal (Alembic's ``compare_metadata`` on a database at head finds no difference): columns, types, nullability, server
+defaults, identities, the generated column, keys, foreign keys and indexes, named as the migrations name them. CHECK
+constraints and triggers live in the migrations only; procrastinate's tables are not here. Each table is an attribute
+named as the table: import the module (``from evo_agents.hub import tables``), as a name would shadow ``secrets``.
 """
 
 from __future__ import annotations
@@ -41,6 +39,7 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 from evo_agents.hub.tables_accounts import account_tables
+from evo_agents.hub.tables_profiles import profile_tables
 
 metadata = MetaData()
 
@@ -1283,3 +1282,4 @@ Index(  # a merged change has one outcome
     postgresql_where=curator_ledger.c.action == "outcome",
 )
 accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0027)
+agent_profiles, agent_profile_versions = profile_tables(metadata, runs, credential_leases)  # agent profiles (0030)

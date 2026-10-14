@@ -187,7 +187,10 @@ def test_the_commands_of_secrets_and_leases_are_in_the_contract():
     assert "value" not in printed["hub secret list"]["json"]["keys"]
     assert printed["hub run credentials"]["json"] == {
         "kind": "array",
-        "keys": ["id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at"],
+        "keys": [
+            *("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at"),
+            *("profile", "profile_id", "profile_version"),
+        ],
         "schema": "RunLease",
     }
 

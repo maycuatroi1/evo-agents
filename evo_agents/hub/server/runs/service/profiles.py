@@ -1,0 +1,265 @@
+"""The agent profile of a run (``evo_agents.hub.profiles``) where runs are dispatched, rerun, claimed and handed out.
+
+A dispatch names a profile by handle or none, which means the project's default (``profile_store.ensure_default``).
+``choose`` resolves it and checks what the dispatch asks against the profile's allowlists, each refusal a 422 that
+says which allowlist leaves what out: the run's project (a profile of another project needs the dispatcher to be a
+writer there too, and its project axis to name this one), the runtime, the model (none named on a profile that limits
+models takes the first it allows), the worker it is pinned to or, unpinned, at least one worker of the dispatcher's
+the profile allows, the account picked by hand, and for an author run the skill create-exec-plan. A deleted profile
+takes no new run (422). A worker pinned to the run whose daemon does not apply profiles, for a profile that needs one
+(``profiles.needs_worker``), is 409, as for any worker that could never claim the run.
+
+A run records the profile and the version it was dispatched under; the claim applies that version's rules
+(``claim_clause``): a worker takes the run only when the worker axis names it or one of its labels, the runtime axis
+one of its runtimes, and, for a profile that needs it, when its daemon says it applies profiles. A run asking for any
+runtime gets the first of the worker's that the profile allows (``pick_runtime``). The claimed run carries the
+profile at its version (``run_profile``) for its worker. A run without a profile, one from before schema 0030, is
+claimed as before.
+"""
+
+from __future__ import annotations
+
+from dataclasses import dataclass
+
+from fastapi import HTTPException
+from sqlalchemy import Text, exists, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents.hub import author, profiles, runs, tables
+from evo_agents.hub.access import has_role
+from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
+from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.runs.models import RunProfile, available
+from evo_agents.hub.server.security import Principal
+
+NOTHING = "nothing was dispatched"
+
+
+@dataclass(frozen=True)
+class Chosen:
+    """The profile a run goes under, and the model it takes."""
+
+    profile: Profile
+    model: str | None
+
+    def columns(self) -> dict:
+        return {"profile_id": self.profile.id, "profile_version": self.profile.version}
+
+    def audit_text(self) -> str:
+        """How the audit row of the dispatch names the profile: not at all for the project's default, so the row of a
+        dispatch that names none reads as before profiles; `` profile=@<handle>:v<version>`` for any other."""
+        return "" if self.profile.is_default else f" profile={self.profile.tag}"
+
+
+@dataclass(frozen=True)
+class Asked:
+    """What a dispatch asks of the profile it names: the kind of run, the runtime and model, the worker it is pinned
+    to (``dispatch.Pinned``), when it is, and the accounts picked by hand (``accounts.Picked``)."""
+
+    kind: str
+    runtime: str
+    model: str | None
+    pinned: object | None = None
+    picked: tuple = ()
+
+
+def _refuse(profile: Profile, why: str) -> HTTPException:
+    return HTTPException(422, f"agent @{profile.handle} {why}; {NOTHING}")
+
+
+async def _named(conn: AsyncConnection, user: Principal, access: ProjectAccess, handle: str) -> Profile:
+    """The profile ``handle`` for a run of ``access``'s project: 404 when the caller sees none of that handle, 403
+    when it belongs to another project the caller does not write to, 422 when it was deleted or its project axis
+    leaves this project out."""
+    profile = await by_handle(conn, handle)
+    missing = HTTPException(
+        404, f"no agent @{handle} that you can see: see `evo-agents hub agent list --project {access.name}`"
+    )
+    if profile is None:
+        raise missing
+    if profile.project_id != access.project_id:
+        try:
+            other = await project_access(conn, user, profile.project)
+        except HTTPException:
+            raise missing from None
+        if not has_role(other.role, "writer"):
+            raise HTTPException(
+                403,
+                f"agent @{handle} belongs to project {profile.project}, and a run under it needs the writer role "
+                f"there too; you hold {other.role or 'no grant'}",
+            )
+        if not profiles.allows(profile.permissions, "project", access.name):
+            raise _refuse(profile, f"of project {profile.project} does not take runs of project {access.name}")
+    if profile.deleted_at is not None:
+        raise _refuse(profile, f"was deleted at {profile.deleted_at.isoformat()} and takes no new run")
+    return profile
+
+
+def _model(profile: Profile, model: str | None) -> str | None:
+    allow = profiles.allowed(profile.permissions, "model")
+    if allow is None:
+        return model
+    if model is None:
+        if not allow:
+            raise _refuse(profile, "allows no model")
+        return allow[0]
+    if model not in allow:
+        raise _refuse(profile, f"does not allow model {model}: it allows {', '.join(allow) or 'none'}")
+    return model
+
+
+def _runtime(profile: Profile, asked: Asked) -> None:
+    allow = profiles.allowed(profile.permissions, "runtime")
+    if allow is None:
+        return
+    if asked.runtime != "any" and asked.runtime not in allow:
+        raise _refuse(profile, f"does not allow runtime {asked.runtime}: it allows {', '.join(allow) or 'none'}")
+    if not allow:
+        raise _refuse(profile, "allows no runtime")
+    pinned = asked.pinned
+    if pinned is not None and asked.runtime == "any":
+        usable = [name for name in allow if available(pinned.runtimes.get(name))]
+        if not usable:
+            raise _refuse(profile, f"allows {', '.join(allow)}, none of which worker {pinned.name} reports available")
+
+
+async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess, profile: Profile, asked: Asked):
+    if not profiles.limited(profile.permissions, "worker"):
+        return
+    pinned = asked.pinned
+    if pinned is not None:
+        if not profiles.allows_worker(profile.permissions, pinned.name, pinned.labels):
+            raise _refuse(profile, f"does not allow worker {pinned.name}: {_workers_text(profile)}")
+        return
+    w, wp = tables.workers, tables.worker_projects
+    serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
+    rows = await conn.execute(
+        select(w.c.name, w.c.labels).where(w.c.owner_id == user.user_id, w.c.revoked_at.is_(None), serves)
+    )
+    if not any(profiles.allows_worker(profile.permissions, row.name, row.labels) for row in rows):
+        raise _refuse(
+            profile, f"allows none of your workers of project {access.name} to take the run: {_workers_text(profile)}"
+        )
+
+
+def _workers_text(profile: Profile) -> str:
+    return f"it allows {', '.join(profiles.allowed(profile.permissions, 'worker')) or 'no worker'}"
+
+
+def _rest(profile: Profile, asked: Asked) -> None:
+    """The account picked by hand, the skill of an author run, and a pinned worker that does not apply profiles."""
+    for picked in asked.picked:
+        if not profiles.allows(profile.permissions, "credential", picked.name):
+            raise _refuse(profile, f"does not allow the credential {picked.name} picked as the run's account")
+    if asked.kind == "author" and not profiles.allows(profile.permissions, "skill", author.AUTHOR_SKILL):
+        raise _refuse(profile, f"does not allow skill {author.AUTHOR_SKILL}, which an author run writes its plan with")
+    pinned = asked.pinned
+    needs = profiles.needs_worker(profile.permissions, profile.instructions)
+    if pinned is not None and needs and runs.AGENT_PROFILES not in pinned.features:
+        version = pinned.agent_version or "of an unknown version"
+        raise HTTPException(
+            409,
+            f"worker {pinned.name} cannot take this run: its daemon (evo-agents {version}) does not say it applies "
+            f"agent profiles, and agent @{profile.handle} limits tools, skills or models or has instructions: upgrade "
+            f"it and restart its daemon; {NOTHING}",
+        )
+
+
+async def choose(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, handle: str | None, asked: Asked
+) -> Chosen:
+    """The profile a run of ``access``'s project goes under: the one ``handle`` names, or the project's default; with
+    the model it takes. HTTPException when the profile refuses what the dispatch asks."""
+    profile = await ensure_default(conn, access.project_id) if handle is None else None
+    if profile is None:
+        profile = await _named(conn, user, access, handle)
+    _runtime(profile, asked)
+    model = _model(profile, asked.model)
+    await _worker(conn, user, access, profile, asked)
+    _rest(profile, asked)
+    return Chosen(profile, model)
+
+
+async def rerun_choice(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, run_id: int, asked: Asked
+) -> Chosen:
+    """The profile a rerun of run ``run_id`` goes under: that run's profile at its version now, checked again; the
+    project's default for a run from before schema 0030."""
+    r = tables.runs
+    profile_id = (await conn.execute(select(r.c.profile_id).where(r.c.id == run_id))).scalar_one_or_none()
+    profile = None if profile_id is None else await by_id(conn, profile_id)
+    return await choose(conn, user, access, None if profile is None else profile.handle, asked)
+
+
+# Claiming
+
+
+def _rules():
+    """The permissions of the profile version of the run being claimed, and the version's row (correlated)."""
+    v = tables.agent_profile_versions
+    return v, v.c.body["permissions"]
+
+
+def _all(permissions, axis: str):
+    return permissions[axis]["mode"].astext == profiles.ALL
+
+
+def claim_clause(name: str, labels, runtimes: list[str], features) -> object:
+    """Whether the profile of a queued run (``runs``, correlated) lets this worker take it: named by name or label on
+    the worker axis, one of ``runtimes`` on the runtime axis, and a daemon that applies profiles (``features``) when
+    the profile needs one. Always for a run without a profile."""
+    r = tables.runs
+    v, permissions = _rules()
+    names = [name.lower(), *(profiles.LABEL_PREFIX + label.lower() for label in labels or ())]
+    conditions = [
+        v.c.profile_id == r.c.profile_id,
+        v.c.version == r.c.profile_version,
+        or_(_all(permissions, "worker"), permissions["worker"]["allow"].has_any(literal(names, ARRAY(Text)))),
+        or_(_all(permissions, "runtime"), permissions["runtime"]["allow"].has_any(literal(runtimes, ARRAY(Text)))),
+    ]
+    if runs.AGENT_PROFILES not in (features or ()):
+        conditions += [_all(permissions, axis) for axis in ("tool", "skill", "model")]
+        conditions.append(func.coalesce(v.c.body["instructions"].astext, "") == "")
+    return or_(r.c.profile_id.is_(None), exists().where(*conditions))
+
+
+def runtime_rule():
+    """The runtime axis of the profile version of the run being claimed (correlated); NULL without a profile."""
+    r = tables.runs
+    v, permissions = _rules()
+    return (
+        select(permissions["runtime"])
+        .where(v.c.profile_id == r.c.profile_id, v.c.version == r.c.profile_version)
+        .scalar_subquery()
+    )
+
+
+def pick_runtime(asked: str, runtimes: list[str], rule: dict | None) -> str:
+    """The runtime of a claimed run: the one it asked for, or for ``any`` the first of ``runtimes`` the profile's
+    runtime axis ``rule`` allows (``claim_clause`` made sure there is one)."""
+    if asked != "any":
+        return asked
+    allow = profiles.allowed({"runtime": rule}, "runtime") if rule else None
+    return next(name for name in runtimes if allow is None or name in allow)
+
+
+async def run_profile(conn: AsyncConnection, run_id: int) -> RunProfile | None:
+    """The profile of run ``run_id`` at the version the run went under; None for a run without one."""
+    r, v = tables.runs, tables.agent_profile_versions
+    query = (
+        select(v.c.version, v.c.body)
+        .join_from(r, v, (v.c.profile_id == r.c.profile_id) & (v.c.version == r.c.profile_version))
+        .where(r.c.id == run_id)
+    )
+    row = (await conn.execute(query)).one_or_none()
+    if row is None:
+        return None
+    body = row.body
+    return RunProfile(
+        handle=body["handle"],
+        version=row.version,
+        name=body["name"],
+        instructions=body.get("instructions") or "",
+        permissions=body["permissions"],
+    )
