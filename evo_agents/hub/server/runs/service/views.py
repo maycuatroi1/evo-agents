@@ -42,9 +42,10 @@ def lost_here(worker_id):
 
 def run_select():
     """The fields of Run, each column labelled as its field: a run with the name of its project, the login of its
-    owner and the name of the worker that claimed it; and for a queued attempt after a run lost on a worker that is
-    not steady, that worker, as ``steady_wait_*`` (``runs_of`` makes the field of them)."""
-    r, p, u, w = tables.runs, tables.projects, tables.users, tables.workers
+    owner, the name of the worker that claimed it and the handle of its agent profile; and for a queued attempt after
+    a run lost on a worker that is not steady, that worker, as ``steady_wait_*`` (``runs_of`` makes the field of
+    them)."""
+    r, p, u, w, ap = tables.runs, tables.projects, tables.users, tables.workers, tables.agent_profiles
     parent, lost_on = tables.runs.alias("lost_parent"), tables.workers.alias("lost_on")
     return (
         select(
@@ -100,6 +101,9 @@ def run_select():
             r.c.finish_requested_at,
             r.c.failure_cause,
             r.c.session_per_step,
+            ap.c.handle.label("profile"),
+            r.c.profile_id,
+            r.c.profile_version,
             lost_on.c.id.label("steady_wait_worker_id"),
             lost_on.c.name.label("steady_wait_worker"),
             case((beating(lost_on), lost_on.c.steady_since + STEADY), else_=None).label("steady_wait_at"),
@@ -107,6 +111,7 @@ def run_select():
         .join_from(r, p, p.c.id == r.c.project_id)
         .join(u, u.c.id == r.c.dispatched_by)
         .outerjoin(w, w.c.id == r.c.worker_id)
+        .outerjoin(ap, ap.c.id == r.c.profile_id)
         .outerjoin(parent, and_(r.c.state == "queued", parent.c.id == r.c.parent_run_id, parent.c.state == "lost"))
         .outerjoin(lost_on, and_(lost_on.c.id == parent.c.worker_id, ~func.coalesce(steady(lost_on), False)))
     )

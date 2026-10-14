@@ -79,6 +79,11 @@ ACCOUNT_POLICY_DELETE = "account.policy-delete"  # the member dropped it: the de
 # A run's account hit its usage limit and the run moved to another one, as its worker (the actor) reported it, in the
 # run's project: "<run target> env=<variable> from=secret:<id> to=secret:<id>".
 ACCOUNT_FAILOVER = "account.failover"
+# A project's agent profiles (evo_agents.hub.server.agent_profiles), in the project; the target is
+# "<project>/@<handle> v<version>", with " fields=<names>" for an edit, never a description, instructions or an image.
+AGENT_CREATE = "agent.create"  # an admin of the project created an agent profile, at version 1
+AGENT_UPDATE = "agent.update"  # an admin changed it, its avatar included: the version it made and the fields changed
+AGENT_DELETE = "agent.delete"  # an admin soft-deleted it: it takes no new run
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

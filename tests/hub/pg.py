@@ -71,6 +71,8 @@ CHANGE_TABLES = frozenset({"curator_changes", "curator_repo_checks"})
 LEDGER_TABLES = frozenset({"curator_ledger"})
 # migration 0027: accounts, their owners' policies, and the account each run took
 ACCOUNT_TABLES = frozenset({"accounts", "account_policies", "run_accounts"})
+# migration 0030: agent profiles and their versions
+PROFILE_TABLES = frozenset({"agent_profiles", "agent_profile_versions"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

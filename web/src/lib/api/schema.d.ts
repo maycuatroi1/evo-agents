@@ -2899,6 +2899,106 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agents
+         * @description The agent profiles of the project, the default first, then by handle.
+         */
+        get: operations["list_agents_v1_projects__project__agents_get"];
+        put?: never;
+        /**
+         * Create Agent
+         * @description Create an agent profile of the project, at version 1.
+         */
+        post: operations["create_agent_v1_projects__project__agents_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Agent
+         * @description One agent profile of the project, deleted or not.
+         */
+        get: operations["show_agent_v1_projects__project__agents__handle__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Agent
+         * @description Soft-delete an agent profile: it takes no new run; its handle stays taken and it reads as before.
+         */
+        delete: operations["delete_agent_v1_projects__project__agents__handle__delete"];
+        options?: never;
+        head?: never;
+        /**
+         * Edit Agent
+         * @description Change an agent profile: the fields given, as its next version; nothing changes for values it has already.
+         */
+        patch: operations["edit_agent_v1_projects__project__agents__handle__patch"];
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Agent Versions
+         * @description Every version of the profile, the latest first: the rules a run of that version had.
+         */
+        get: operations["agent_versions_v1_projects__project__agents__handle__versions_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agents/{handle}/avatar": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Avatar
+         * @description The profile's avatar image; 404 when it has none.
+         */
+        get: operations["get_avatar_v1_projects__project__agents__handle__avatar_get"];
+        /**
+         * Put Avatar
+         * @description Set the profile's avatar, a PNG, JPEG or WebP image, as its next version.
+         */
+        put: operations["put_avatar_v1_projects__project__agents__handle__avatar_put"];
+        post?: never;
+        /**
+         * Delete Avatar
+         * @description Drop the profile's avatar, as its next version: the web draws its initial on its colour again.
+         */
+        delete: operations["delete_avatar_v1_projects__project__agents__handle__avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -3175,6 +3275,165 @@ export interface components {
              */
             current: boolean;
         };
+        /**
+         * Agent
+         * @description An agent profile, with field names close to an A2A Agent Card's (name, description, iconUrl).
+         */
+        Agent: {
+            /** Handle */
+            handle: string;
+            /** Project */
+            project: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string;
+            /** Instructions */
+            instructions: string;
+            /** Color */
+            color: string;
+            /**
+             * Icon Url
+             * @description GET of the avatar on this hub; null: draw the initial on the colour
+             */
+            icon_url: string | null;
+            /** Avatar Sha256 */
+            avatar_sha256: string | null;
+            /**
+             * Is Default
+             * @description the project's default profile, @<project>: every permission
+             */
+            is_default: boolean;
+            permissions: components["schemas"]["AgentPermissions"];
+            /**
+             * Restricted
+             * @description the axes that are allowlists, in the order of the seven
+             */
+            restricted: string[];
+            /** Version */
+            version: number;
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+            /**
+             * Deleted At
+             * @description when it was deleted: it takes no new run, and reads as before
+             */
+            deleted_at: string | null;
+        };
+        /**
+         * AgentAxis
+         * @description One axis of a profile's permissions: every value (all), or those of ``allow`` alone (allowlist).
+         */
+        AgentAxis: {
+            /**
+             * Mode
+             * @default all
+             * @enum {string}
+             */
+            mode: "all" | "allowlist";
+            /**
+             * Allow
+             * @description empty for mode all
+             */
+            allow?: string[];
+        };
+        /** AgentCreate */
+        AgentCreate: {
+            /**
+             * Handle
+             * @description unique on the hub, no project's name; it stays
+             */
+            handle: string;
+            /** Name */
+            name: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+            /**
+             * Instructions
+             * @description added to the system prompt of the profile's runs
+             * @default
+             */
+            instructions: string;
+            /**
+             * Color
+             * @description default: one picked by the handle
+             */
+            color?: string | null;
+            permissions?: components["schemas"]["AgentPermissions"];
+        };
+        /**
+         * AgentEdit
+         * @description What to change; a field left out stays as it is.
+         */
+        AgentEdit: {
+            /** Name */
+            name?: string | null;
+            /** Description */
+            description?: string | null;
+            /** Instructions */
+            instructions?: string | null;
+            /** Color */
+            color?: string | null;
+            /** @description the seven axes whole; an axis left out allows all */
+            permissions?: components["schemas"]["AgentPermissions"] | null;
+            /**
+             * If Version
+             * @description 409 unless the profile is at this version now
+             */
+            if_version?: number | null;
+        };
+        /**
+         * AgentPermissions
+         * @description What the runs of a profile may use, on seven axes; an axis left out allows all.
+         */
+        AgentPermissions: {
+            /** @description secret names, and github-app for the App's token */
+            credential?: components["schemas"]["AgentAxis"];
+            /** @description read, edit, bash, web, agent, mcp:<server> */
+            tool?: components["schemas"]["AgentAxis"];
+            /** @description skill names, global or the project's */
+            skill?: components["schemas"]["AgentAxis"];
+            /** @description worker names, or label:<label> */
+            worker?: components["schemas"]["AgentAxis"];
+            /** @description the other projects whose runs it may take */
+            project?: components["schemas"]["AgentAxis"];
+            /** @description model names, as a runtime names them */
+            model?: components["schemas"]["AgentAxis"];
+            /** @description claude-code, opencode, codex */
+            runtime?: components["schemas"]["AgentAxis"];
+        };
+        /** AgentVersion */
+        AgentVersion: {
+            /** Version */
+            version: number;
+            /**
+             * Body
+             * @description the profile as this version had it: handle, name, permissions and the rest
+             */
+            body: {
+                [key: string]: unknown;
+            };
+            /** Changed By */
+            changed_by: string;
+            /**
+             * Changed At
+             * Format: date-time
+             */
+            changed_at: string;
+        };
         /** AnswerIn */
         AnswerIn: {
             /**
@@ -3291,6 +3550,11 @@ export interface components {
              * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
+            /**
+             * Profile
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            profile?: string | null;
         };
         /** AuthoredPlan */
         AuthoredPlan: {
@@ -3313,6 +3577,14 @@ export interface components {
             label?: {
                 [key: string]: unknown;
             } | null;
+        };
+        /** AvatarUpload */
+        AvatarUpload: {
+            /**
+             * Data
+             * @description the image, base64: PNG, JPEG or WebP, at most 524288 bytes
+             */
+            data: string;
         };
         /** Blob */
         Blob: {
@@ -4418,6 +4690,11 @@ export interface components {
              * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
+            /**
+             * Profile
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            profile?: string | null;
         };
         /** DispatchFrom */
         DispatchFrom: {
@@ -4950,7 +5227,7 @@ export interface components {
             run_kinds?: string[] | null;
             /**
              * Features
-             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
         };
@@ -6511,6 +6788,11 @@ export interface components {
              * @description one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project
              */
             account?: string | null;
+            /**
+             * Profile
+             * @description the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything
+             */
+            profile?: string | null;
         };
         /** PlanSummary */
         PlanSummary: {
@@ -7665,6 +7947,21 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /**
+             * Profile
+             * @description the handle of the agent profile the run went under; null for a run from before schema 0030
+             */
+            profile?: string | null;
+            /**
+             * Profile Id
+             * @description that profile's id, which its handle names for good
+             */
+            profile_id?: number | null;
+            /**
+             * Profile Version
+             * @description the version of the profile whose rules apply to the run
+             */
+            profile_version?: number | null;
         };
         /** RunAccount */
         RunAccount: {
@@ -8130,6 +8427,21 @@ export interface components {
              * @description when the run gave it back or the hub took it; null while out
              */
             revoked_at: string | null;
+            /**
+             * Profile
+             * @description the handle of the agent profile it was handed out under; null for a lease before schema 0030
+             */
+            profile?: string | null;
+            /**
+             * Profile Id
+             * @description that profile's id
+             */
+            profile_id?: number | null;
+            /**
+             * Profile Version
+             * @description the version of that profile
+             */
+            profile_version?: number | null;
         };
         /** RunList */
         RunList: {
@@ -8149,6 +8461,31 @@ export interface components {
             limit: number;
             /** Offset */
             offset: number;
+        };
+        /**
+         * RunProfile
+         * @description The agent profile of a claimed run, at the version the run went under, for its worker to apply what the hub
+         *     cannot (``evo_agents.hub.profiles``): tool, skill and model in the agent session, and the instructions.
+         */
+        RunProfile: {
+            /** Handle */
+            handle: string;
+            /** Version */
+            version: number;
+            /** Name */
+            name: string;
+            /**
+             * Instructions
+             * @description to add to the agent's system prompt; empty for none
+             */
+            instructions: string;
+            /**
+             * Permissions
+             * @description the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}
+             */
+            permissions: {
+                [key: string]: unknown;
+            };
         };
         /** RunPush */
         RunPush: {
@@ -8322,6 +8659,8 @@ export interface components {
              * @default false
              */
             session_per_step: boolean;
+            /** @description the agent profile the run went under; null for a run from before schema 0030 */
+            profile?: components["schemas"]["RunProfile"] | null;
         };
         /** RunState */
         RunState: {
@@ -19872,6 +20211,631 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agents_v1_projects__project__agents_get: {
+        parameters: {
+            query?: {
+                /** @description include the deleted ones */
+                deleted?: boolean;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    create_agent_v1_projects__project__agents_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentCreate"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_agent_v1_projects__project__agents__handle__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_agent_v1_projects__project__agents__handle__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    edit_agent_v1_projects__project__agents__handle__patch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentEdit"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    agent_versions_v1_projects__project__agents__handle__versions_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentVersion"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_avatar_v1_projects__project__agents__handle__avatar_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/webp": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_avatar_v1_projects__project__agents__handle__avatar_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvatarUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_avatar_v1_projects__project__agents__handle__avatar_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Agent"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

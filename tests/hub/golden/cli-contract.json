@@ -564,6 +564,440 @@
         "schema": "UserRow"
       }
     },
+    "hub agent create": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--name"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--instructions"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--instructions-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--color"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--allow"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--none"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "credential",
+            "tool",
+            "skill",
+            "worker",
+            "project",
+            "model",
+            "runtime"
+          ]
+        },
+        {
+          "flags": [
+            "--avatar"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
+    "hub agent delete": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
+    "hub agent edit": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--name"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--instructions"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--instructions-file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--color"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--allow"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--none"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "credential",
+            "tool",
+            "skill",
+            "worker",
+            "project",
+            "model",
+            "runtime"
+          ]
+        },
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "credential",
+            "tool",
+            "skill",
+            "worker",
+            "project",
+            "model",
+            "runtime"
+          ]
+        },
+        {
+          "flags": [
+            "--avatar"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-avatar"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
+    "hub agent list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--deleted"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
+    "hub agent show": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "handle",
+          "project",
+          "name",
+          "description",
+          "instructions",
+          "color",
+          "icon_url",
+          "avatar_sha256",
+          "is_default",
+          "permissions",
+          "restricted",
+          "version",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "deleted_at"
+        ],
+        "schema": "Agent"
+      }
+    },
     "hub contract check": {
       "positionals": [
         {
@@ -3058,7 +3492,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -3143,6 +3580,14 @@
         },
         {
           "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -3205,7 +3650,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -3293,7 +3741,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -3380,7 +3831,10 @@
           "worker",
           "issued_at",
           "expires_at",
-          "revoked_at"
+          "revoked_at",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "RunLease"
       }
@@ -3485,6 +3939,14 @@
         },
         {
           "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -3547,7 +4009,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -3635,7 +4100,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -3723,7 +4191,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -4010,6 +4481,14 @@
         },
         {
           "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -4072,7 +4551,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -4176,7 +4658,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -4313,7 +4798,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -4401,7 +4889,10 @@
           "finish_requested_at",
           "steady_wait",
           "failure_cause",
-          "session_per_step"
+          "session_per_step",
+          "profile",
+          "profile_id",
+          "profile_version"
         ],
         "schema": "Run"
       }
@@ -20228,6 +20719,874 @@
             }
           }
         }
+      },
+      "/v1/projects/{project}/agents": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "List Agents",
+          "description": "The agent profiles of the project, the default first, then by handle.",
+          "operationId": "list_agents_v1_projects__project__agents_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "deleted",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "include the deleted ones",
+                "default": false,
+                "title": "Deleted"
+              },
+              "description": "include the deleted ones"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/Agent"
+                    },
+                    "title": "Response List Agents V1 Projects  Project  Agents Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Create Agent",
+          "description": "Create an agent profile of the project, at version 1.",
+          "operationId": "create_agent_v1_projects__project__agents_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentCreate"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agents/{handle}": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Show Agent",
+          "description": "One agent profile of the project, deleted or not.",
+          "operationId": "show_agent_v1_projects__project__agents__handle__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Edit Agent",
+          "description": "Change an agent profile: the fields given, as its next version; nothing changes for values it has already.",
+          "operationId": "edit_agent_v1_projects__project__agents__handle__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Delete Agent",
+          "description": "Soft-delete an agent profile: it takes no new run; its handle stays taken and it reads as before.",
+          "operationId": "delete_agent_v1_projects__project__agents__handle__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agents/{handle}/versions": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Agent Versions",
+          "description": "Every version of the profile, the latest first: the rules a run of that version had.",
+          "operationId": "agent_versions_v1_projects__project__agents__handle__versions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AgentVersion"
+                    },
+                    "title": "Response Agent Versions V1 Projects  Project  Agents  Handle  Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agents/{handle}/avatar": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Put Avatar",
+          "description": "Set the profile's avatar, a PNG, JPEG or WebP image, as its next version.",
+          "operationId": "put_avatar_v1_projects__project__agents__handle__avatar_put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarUpload"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Delete Avatar",
+          "description": "Drop the profile's avatar, as its next version: the web draws its initial on its colour again.",
+          "operationId": "delete_avatar_v1_projects__project__agents__handle__avatar_delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Agent"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Get Avatar",
+          "description": "The profile's avatar image; 404 when it has none.",
+          "operationId": "get_avatar_v1_projects__project__agents__handle__avatar_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "the agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "the agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "image/png": {},
+                "image/jpeg": {},
+                "image/webp": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -20835,6 +22194,357 @@
           ],
           "title": "AdminToken"
         },
+        "Agent": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "title": "Handle"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "instructions": {
+              "type": "string",
+              "title": "Instructions"
+            },
+            "color": {
+              "type": "string",
+              "title": "Color"
+            },
+            "icon_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Icon Url",
+              "description": "GET of the avatar on this hub; null: draw the initial on the colour"
+            },
+            "avatar_sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avatar Sha256"
+            },
+            "is_default": {
+              "type": "boolean",
+              "title": "Is Default",
+              "description": "the project's default profile, @<project>: every permission"
+            },
+            "permissions": {
+              "$ref": "#/components/schemas/AgentPermissions"
+            },
+            "restricted": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Restricted",
+              "description": "the axes that are allowlists, in the order of the seven"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "deleted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deleted At",
+              "description": "when it was deleted: it takes no new run, and reads as before"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "project",
+            "name",
+            "description",
+            "instructions",
+            "color",
+            "icon_url",
+            "avatar_sha256",
+            "is_default",
+            "permissions",
+            "restricted",
+            "version",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "deleted_at"
+          ],
+          "title": "Agent",
+          "description": "An agent profile, with field names close to an A2A Agent Card's (name, description, iconUrl)."
+        },
+        "AgentAxis": {
+          "properties": {
+            "mode": {
+              "type": "string",
+              "enum": [
+                "all",
+                "allowlist"
+              ],
+              "title": "Mode",
+              "default": "all"
+            },
+            "allow": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Allow",
+              "description": "empty for mode all"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "AgentAxis",
+          "description": "One axis of a profile's permissions: every value (all), or those of ``allow`` alone (allowlist)."
+        },
+        "AgentCreate": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Handle",
+              "description": "unique on the hub, no project's name; it stays"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Name"
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 1000,
+              "title": "Description",
+              "default": ""
+            },
+            "instructions": {
+              "type": "string",
+              "maxLength": 8000,
+              "title": "Instructions",
+              "description": "added to the system prompt of the profile's runs",
+              "default": ""
+            },
+            "color": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$",
+                  "description": "#rrggbb, lowercase"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Color",
+              "description": "default: one picked by the handle"
+            },
+            "permissions": {
+              "$ref": "#/components/schemas/AgentPermissions"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "handle",
+            "name"
+          ],
+          "title": "AgentCreate"
+        },
+        "AgentEdit": {
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 80,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "instructions": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 8000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Instructions"
+            },
+            "color": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^#[0-9a-f]{6}$",
+                  "description": "#rrggbb, lowercase"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Color"
+            },
+            "permissions": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/AgentPermissions"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the seven axes whole; an axis left out allows all"
+            },
+            "if_version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Version",
+              "description": "409 unless the profile is at this version now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "AgentEdit",
+          "description": "What to change; a field left out stays as it is."
+        },
+        "AgentPermissions": {
+          "properties": {
+            "credential": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "secret names, and github-app for the App's token"
+            },
+            "tool": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "read, edit, bash, web, agent, mcp:<server>"
+            },
+            "skill": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "skill names, global or the project's"
+            },
+            "worker": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "worker names, or label:<label>"
+            },
+            "project": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "the other projects whose runs it may take"
+            },
+            "model": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "model names, as a runtime names them"
+            },
+            "runtime": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "claude-code, opencode, codex"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "AgentPermissions",
+          "description": "What the runs of a profile may use, on seven axes; an axis left out allows all."
+        },
+        "AgentVersion": {
+          "properties": {
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "body": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Body",
+              "description": "the profile as this version had it: handle, name, permissions and the rest"
+            },
+            "changed_by": {
+              "type": "string",
+              "title": "Changed By"
+            },
+            "changed_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Changed At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "version",
+            "body",
+            "changed_by",
+            "changed_at"
+          ],
+          "title": "AgentVersion"
+        },
         "AnswerIn": {
           "properties": {
             "option": {
@@ -21085,6 +22795,19 @@
               ],
               "title": "Account",
               "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
             }
           },
           "type": "object",
@@ -21134,6 +22857,23 @@
             "body"
           ],
           "title": "AuthoredPlan"
+        },
+        "AvatarUpload": {
+          "properties": {
+            "data": {
+              "type": "string",
+              "maxLength": 699052,
+              "minLength": 1,
+              "title": "Data",
+              "description": "the image, base64: PNG, JPEG or WebP, at most 524288 bytes"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "data"
+          ],
+          "title": "AvatarUpload"
         },
         "Blob": {
           "properties": {
@@ -23721,6 +25461,19 @@
               ],
               "title": "Account",
               "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
             }
           },
           "type": "object",
@@ -24974,7 +26727,7 @@
                 }
               ],
               "title": "Features",
-              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
+              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
             }
           },
           "type": "object",
@@ -28454,6 +30207,19 @@
               ],
               "title": "Account",
               "description": "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its variable and keeps it, with no failover to another account; null: the account is picked by the rules of the caller's policy for the project"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
             }
           },
           "type": "object",
@@ -31250,6 +33016,42 @@
               "title": "Session Per Step",
               "description": "a plan run whose worker starts a new agent session for each step; its usage lists the sessions (usage.sessions). False for any other run",
               "default": false
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the handle of the agent profile the run went under; null for a run from before schema 0030"
+            },
+            "profile_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Id",
+              "description": "that profile's id, which its handle names for good"
+            },
+            "profile_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Version",
+              "description": "the version of the profile whose rules apply to the run"
             }
           },
           "type": "object",
@@ -32148,6 +33950,42 @@
               ],
               "title": "Revoked At",
               "description": "when the run gave it back or the hub took it; null while out"
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile",
+              "description": "the handle of the agent profile it was handed out under; null for a lease before schema 0030"
+            },
+            "profile_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Id",
+              "description": "that profile's id"
+            },
+            "profile_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Profile Version",
+              "description": "the version of that profile"
             }
           },
           "type": "object",
@@ -32202,6 +34040,43 @@
             "offset"
           ],
           "title": "RunList"
+        },
+        "RunProfile": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "title": "Handle"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "instructions": {
+              "type": "string",
+              "title": "Instructions",
+              "description": "to add to the agent's system prompt; empty for none"
+            },
+            "permissions": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Permissions",
+              "description": "the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "version",
+            "name",
+            "instructions",
+            "permissions"
+          ],
+          "title": "RunProfile",
+          "description": "The agent profile of a claimed run, at the version the run went under, for its worker to apply what the hub\ncannot (``evo_agents.hub.profiles``): tool, skill and model in the agent session, and the instructions."
         },
         "RunPush": {
           "properties": {
@@ -32571,6 +34446,17 @@
               "title": "Session Per Step",
               "description": "a plan run to run with a new agent session for each step not done yet, each with its prompt and the handoff of the plan; false: one session does every step, with the prompt above",
               "default": false
+            },
+            "profile": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunProfile"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the agent profile the run went under; null for a run from before schema 0030"
             }
           },
           "type": "object",

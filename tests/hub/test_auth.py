@@ -59,6 +59,7 @@ HUB_TABLES |= pg.BRIEF_TABLES  # migration 0015
 HUB_TABLES |= pg.CHANGE_TABLES  # migration 0017
 HUB_TABLES |= pg.LEDGER_TABLES  # migration 0018
 HUB_TABLES |= pg.ACCOUNT_TABLES  # migration 0027
+HUB_TABLES |= pg.PROFILE_TABLES  # migration 0030
 
 
 @pytest.fixture

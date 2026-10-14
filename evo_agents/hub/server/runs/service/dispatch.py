@@ -1,7 +1,9 @@
 """Dispatching: the runs of a plan's steps (POST /v1/projects/{p}/runs), a plan run (POST .../plan-runs) and an author
 run (POST .../author-runs), and what each refuses: a caller without writer, a worker not the caller's or one that could
-never claim the run, a repo without an origin, a step not ready, and a plan the Curator made. The night shift queues
-its runs through ``insert_run`` and ``unfit`` too (``evo_agents.hub.server.curator``, ``collect``, ``changes``)."""
+never claim the run, a repo without an origin, a step not ready, a plan the Curator made, and what the agent profile
+the dispatch names (the project's default without one) does not allow (``service.profiles``). The night shift queues
+its runs through ``insert_run`` and ``unfit`` too (``evo_agents.hub.server.curator``, ``collect``, ``changes``):
+``insert_run`` gives a run whose values name no profile the project's default."""
 
 from __future__ import annotations
 
@@ -20,11 +22,13 @@ from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import ActiveRun, AuthorRunDispatch, Dispatch, PlanRunDispatch, Run, available
 from evo_agents.hub.server.runs.service.accounts import Picked, pick_account, record_pick
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
+from evo_agents.hub.server.runs.service.profiles import Asked, Chosen, choose
 from evo_agents.hub.server.runs.service.views import (
     Activity,
     busy,
@@ -57,7 +61,8 @@ class Pinned:
     checkouts: dict
     agent_version: str | None
     run_kinds: tuple[str, ...] = ()  # the kinds of run its daemon said it runs
-    features: tuple[str, ...] = ()  # what its daemon said it does besides them (runs.WORKER_FEATURES)
+    features: tuple[str, ...] = ()  # what its daemon said it does besides them (runs.HUB_FEATURES)
+    labels: tuple[str, ...] = ()  # its owner's labels, which an agent profile's worker axis may name
 
 
 async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
@@ -76,6 +81,7 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
         w.c.dispatch_from,
         w.c.run_kinds,
         w.c.features,
+        w.c.labels,
     ).where(w.c.id == worker_id)
     row = (await conn.execute(query)).one_or_none()
     if row is None or row.owner_id != user.user_id:  # the same answer for another member's worker and for no worker
@@ -94,7 +100,8 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
             "hand it work: dispatch on the web, or to another worker; nothing was dispatched",
         )
     kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
-    return Pinned(worker_id, name, row.runtimes or {}, row.checkouts or {}, row.agent_version, kinds, features)
+    found = (row.runtimes or {}, row.checkouts or {}, row.agent_version, kinds, features, tuple(row.labels or ()))
+    return Pinned(worker_id, name, *found)
 
 
 def unfit(
@@ -174,10 +181,13 @@ async def _refuse_without_origin(conn: AsyncConnection, access: ProjectAccess, r
 
 
 async def insert_run(conn: AsyncConnection, values: dict) -> int:
-    """Insert a run with the column ``values`` in a savepoint and return its id. When the database refuses the row,
-    the savepoint is rolled back and the IntegrityError, with the psycopg error that says why in ``orig``, goes on to
-    the caller, whose transaction stays usable."""
+    """Insert a run with the column ``values`` in a savepoint and return its id; values that name no agent profile
+    take the project's default. When the database refuses the row, the savepoint is rolled back and the IntegrityError,
+    with the psycopg error that says why in ``orig``, goes on to the caller, whose transaction stays usable."""
     r = tables.runs
+    if "profile_id" not in values:
+        default = await ensure_default(conn, values["project_id"])
+        values = {**values, "profile_id": default.id, "profile_version": default.version}
     async with conn.begin_nested():
         return (await conn.execute(insert(r).values(**values).returning(r.c.id))).scalar_one()
 
@@ -198,9 +208,11 @@ async def queue_run(
     pinned: Pinned | None,
     parent: int | None = None,
     picked: tuple[Picked, ...] = (),
+    chosen: Chosen | None = None,
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
-    by hand; HTTPException when the step may not run now."""
+    by hand, under the agent profile ``chosen`` (the project's default without one); HTTPException when the step may
+    not run now."""
     body = held.body
     try:
         step = body["steps"][step_index(body, key)]
@@ -237,6 +249,7 @@ async def queue_run(
         "parent_run_id": parent,
         "repo": name,
         "branch": _short(repo.get("branch")),
+        **({} if chosen is None else chosen.columns()),
     }
     try:
         run_id = await insert_run(conn, values)
@@ -278,6 +291,10 @@ def _account_text(picked: Picked | None) -> str:
     return "" if picked is None else picked.audit_text()
 
 
+def _picks(picked: Picked | None) -> tuple[Picked, ...]:
+    return () if picked is None else (picked,)
+
+
 async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) -> list[Run]:
     """Queue a run of each step named, all of them or none; each one goes to a worker of the caller, and takes the
     account named by hand, if one is."""
@@ -289,6 +306,8 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         await refuse_curator_plan(conn, access, body.plan_id)
         pinned = None if body.worker_id is None else await pinnable(conn, user, access, body.worker_id)
         picked = await _picked(conn, user, access, body.account, pinned)
+        asked = Asked("step", body.runtime, body.model, pinned, _picks(picked))
+        chosen = await choose(conn, user, access, body.profile, asked)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
         no_plan_run(activity, body.plan_id)
@@ -302,14 +321,15 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 key,
                 activity.steps,
                 runtime=body.runtime,
-                model=body.model,
+                model=chosen.model,
                 mode=body.mode,
                 approval=body.approval,
                 timeout_s=body.timeout_min * 60,
                 pinned=pinned,
-                picked=() if picked is None else (picked,),
+                picked=_picks(picked),
+                chosen=chosen,
             )
-            target = run_target(project, body.plan_id, key, run_id) + _account_text(picked)
+            target = run_target(project, body.plan_id, key, run_id) + _account_text(picked) + chosen.audit_text()
             await audit.record(
                 conn,
                 actor_id=user.user_id,
@@ -388,6 +408,9 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
         names = [entry["repo"] for entry in repos]
         _fits(pinned, access, "plan", names, body.runtime, session_per_step=body.session_per_step)
         await _refuse_without_origin(conn, access, names, f"plan {held.plan_id}")
+        chosen = await choose(
+            conn, user, access, body.profile, Asked("plan", body.runtime, body.model, pinned, _picks(picked))
+        )
         values = {
             "kind": "plan",
             "project_id": access.project_id,
@@ -399,12 +422,13 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             "pinned_worker_id": body.worker_id,
             "requested_runtime": body.runtime,
             "runtime": body.runtime,
-            "model": body.model,
+            "model": chosen.model,
             "mode": body.mode,
             "approval": "auto",
             "timeout_s": body.timeout_h * 3600,
             "repos": repos,
             "session_per_step": body.session_per_step,
+            **chosen.columns(),
         }
         try:
             run_id = await insert_run(conn, values)
@@ -420,7 +444,7 @@ async def dispatch_plan_run(engine, user: Principal, project: str, body: PlanRun
             raise
         await record_pick(conn, run_id, picked)
         await notify_queued(conn, run_id)
-        target = run_target(project, held.plan_id, None, run_id) + _account_text(picked)
+        target = run_target(project, held.plan_id, None, run_id) + _account_text(picked) + chosen.audit_text()
         await audit_run(conn, user, access, audit.RUN_DISPATCH_PLAN, target)
         view = await run_view(conn, run_id)
     log.info(
@@ -472,6 +496,9 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
         picked = await _picked(conn, user, access, body.account, pinned)
         repos = await _author_repos(conn, access, pinned)
         _fits(pinned, access, "author", [repos[0]["repo"]], runtime)
+        chosen = await choose(
+            conn, user, access, body.profile, Asked("author", runtime, body.model, pinned, _picks(picked))
+        )
         revision = None
         if body.plan_id is not None:
             held = await plan_routes._visible(conn, access, body.plan_id, None)
@@ -490,12 +517,13 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
             "pinned_worker_id": pinned.id,
             "requested_runtime": runtime,
             "runtime": runtime,
-            "model": body.model,
+            "model": chosen.model,
             "mode": "headless",
             "approval": "auto",
             "timeout_s": body.timeout_h * 3600,
             "repos": repos,
             "request": body.request,
+            **chosen.columns(),
         }
         try:
             run_id = await insert_run(conn, values)
@@ -507,7 +535,7 @@ async def dispatch_author_run(engine, user: Principal, project: str, body: Autho
             raise
         await record_pick(conn, run_id, picked)
         await notify_queued(conn, run_id)
-        target = f"{project}/author run:{run_id}{_account_text(picked)}"
+        target = f"{project}/author run:{run_id}{_account_text(picked)}{chosen.audit_text()}"
         await audit_run(conn, user, access, audit.RUN_DISPATCH_AUTHOR, target)
         view = await run_view(conn, run_id)
     log.info(

@@ -13,9 +13,9 @@ agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are
 .../runs/{id}/credentials, the owner only), never their values. Every command after ``dispatch``, ``plan``,
 ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's message on stderr, such
 as why a worker whose owner set it to take runs dispatched from the web only refuses a run dispatched with a token.
-``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, one of your accounts picked by hand
-(``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes the protocol behind them; ``--json`` prints what
-the hub answered, with the keys declared next to the flag.
+``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, an account picked by hand, and all but ``rerun``
+``--agent``, an agent profile (``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes the protocol behind
+them; ``--json`` prints what the hub answered, with the keys declared next to the flag.
 
 ``--model`` names a model as one runtime names it (opencode: provider/model), so ``dispatch`` and ``plan`` take it
 only with ``--runtime`` naming that runtime: with ``any`` the claiming worker picks the runtime, and the model might
@@ -56,6 +56,7 @@ from evo_agents.hub.run_cli_options import (
     plan_options,
     rerun_body,
     rerun_options,
+    usage_error,
 )
 from evo_agents.hub.runs import (
     APPROVALS,
@@ -134,12 +135,16 @@ RUN_KEYS = (
     "steady_wait",
     "failure_cause",
     "session_per_step",
+    "profile",
+    "profile_id",
+    "profile_version",
 )
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")
 CHAT_KEYS = ("run_id", "state", "status", "owner", "plan_id", "plan_revision", "messages", "more")
 LEASE_KEYS = ("id", "name", "provider", "kind", "target", "worker", "issued_at", "expires_at", "revoked_at")
+LEASE_KEYS += ("profile", "profile_id", "profile_version")
 RUN = returns_object(*RUN_KEYS, schema="Run")
 
 KIND_LABELS = {
@@ -216,11 +221,6 @@ def _model_check(args) -> str | None:
     if not args.model.strip() or len(args.model) > MAX_MODEL_CHARS or not args.model.isprintable():
         return f"--model takes one line of 1 to {MAX_MODEL_CHARS} characters"
     return None
-
-
-def _usage_error(text: str) -> int:
-    print(f"error: {text}", file=sys.stderr)
-    return EXIT_USAGE
 
 
 def _with_project(args, project: str) -> str:
@@ -405,7 +405,7 @@ def _runtime(run: dict) -> str:
 def cmd_dispatch(args) -> int:
     refused = _model_check(args)
     if refused:
-        return _usage_error(refused)
+        return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"plan_id": _plan_id(args.plan), "steps": args.steps}
@@ -417,7 +417,7 @@ def cmd_dispatch(args) -> int:
         "timeout_min": args.timeout,
         "account": args.account,
     }
-    body.update({key: value for key, value in chosen.items() if value is not None})
+    body.update({key: value for key, value in {**chosen, "profile": args.agent}.items() if value is not None})
     if args.worker is not None:
         body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
     queued = hub.call("POST", _runs_path(project), body)
@@ -438,13 +438,13 @@ def cmd_dispatch(args) -> int:
 def cmd_plan(args) -> int:
     refused = _model_check(args)
     if refused:
-        return _usage_error(refused)
+        return usage_error(refused)
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"plan_id": _plan_id(args.plan)}
     each = True if args.session_per_step else None  # sent only when asked: an older hub would ignore the field
     chosen = {"runtime": args.runtime, "model": args.model, "mode": args.mode, "timeout_h": args.timeout_h}
-    chosen["account"] = args.account
+    chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in {**chosen, "session_per_step": each}.items() if value is not None})
     if args.worker is not None:
         body["worker_id"] = _worker_id(hub, credentials.login, args.worker)
@@ -470,16 +470,16 @@ def cmd_plan(args) -> int:
 def cmd_author(args) -> int:
     text = sys.stdin.read() if args.request == "-" else args.request
     if not text.strip():
-        return _usage_error("the request is empty: say what the plan should achieve")
+        return usage_error("the request is empty: say what the plan should achieve")
     if len(text.encode()) > MAX_REQUEST_BYTES:
-        return _usage_error(
-            f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes"
+        return usage_error(
+            f"the request is {len(text.encode())} bytes of UTF-8, over the {MAX_REQUEST_BYTES} it takes",
         )
     hub, credentials = _signed_in()
     project = _project(args)
     body = {"request": text, "worker_id": _worker_id(hub, credentials.login, args.worker)}
     chosen = {"plan_id": args.plan, "runtime": args.runtime, "model": args.model, "timeout_h": args.timeout_h}
-    chosen["account"] = args.account
+    chosen.update(account=args.account, profile=args.agent)
     body.update({key: value for key, value in chosen.items() if value is not None})
     run = hub.call("POST", f"{_project_path(project)}/author-runs", body)
     if args.json:
