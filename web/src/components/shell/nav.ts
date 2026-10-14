@@ -1,6 +1,7 @@
 import {
   Activity,
   BookOpen,
+  Bot,
   Brain,
   ChartColumn,
   FolderKanban,
@@ -34,6 +35,7 @@ export type NavLabel =
   | "runs"
   | "insights"
   | "curator"
+  | "agents"
   | "memories"
   | "skills"
   | "kg"
@@ -80,6 +82,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
   { label: "insights", icon: ChartColumn, segment: "insights" },
   { label: "curator", icon: MoonStar, segment: "curator" },
+  { label: "agents", icon: Bot, segment: "agents" },
   { label: "memories", icon: BookOpen, segment: "memories" },
   { label: "skills", icon: Sparkles, segment: "skills" },
   { label: "kg", icon: Network, segment: "kg" },
