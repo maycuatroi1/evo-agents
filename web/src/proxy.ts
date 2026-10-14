@@ -3,8 +3,10 @@ import { NextResponse, type NextRequest } from "next/server";
 import { hasSession, LOGIN_PATH, PUBLIC_PATHS, SESSION_COOKIE } from "@/lib/config";
 import { contentSecurityPolicy, createNonce, STATIC_SECURITY_HEADERS } from "@/lib/security";
 
-/** A run's event stream (server-sent events), the one API route this proxy sees. */
+/** A run's event stream (server-sent events), one of the two API routes this proxy sees. */
 export const RUN_STREAM = /^\/v1\/projects\/[^/]+\/runs\/[0-9]+\/stream$/;
+/** A group chat's event stream (server-sent events), the other. */
+export const CHAT_STREAM = /^\/v1\/chats\/[0-9]+\/stream$/;
 
 /**
  * Runs before every page: sends a visitor without a session cookie to the sign-in page, and gives each response
@@ -13,12 +15,12 @@ export const RUN_STREAM = /^\/v1\/projects\/[^/]+\/runs\/[0-9]+\/stream$/;
  *
  * Where no reverse proxy sends /v1 to the API itself (locally, Playwright, deploy/hub/docker-compose.dev.yml), the web
  * forwards it, and Next.js gzips what it forwards: a gzip stream holds a run's server-sent events back until its
- * buffer fills. For the run stream the proxy asks for the answer as it is, so each event reaches the browser when the
- * API sends it, and leaves everything else of the request alone.
+ * buffer fills. For a run's stream and a chat's the proxy asks for the answer as it is, so each event reaches the
+ * browser when the API sends it, and leaves everything else of the request alone.
  */
 export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
-  if (RUN_STREAM.test(pathname)) {
+  if (RUN_STREAM.test(pathname) || CHAT_STREAM.test(pathname)) {
     const headers = new Headers(request.headers);
     headers.set("accept-encoding", "identity");
     return NextResponse.next({ request: { headers } });
@@ -52,7 +54,8 @@ export const config = {
         { type: "header", key: "purpose", value: "prefetch" },
       ],
     },
-    // The run stream, for its encoding only (see above).
+    // The run and chat streams, for their encoding only (see above).
     "/v1/projects/:project/runs/:id/stream",
+    "/v1/chats/:id/stream",
   ],
 };

@@ -1,6 +1,8 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
+import { agentPath, agentsPath, createAgentByApi, putAvatarByApi } from "./support/agents";
+import { agentAnswers, chatPath, chatWorker, claimChatRun, createChatByApi, reactByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { seedCurator } from "./support/curator";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -125,6 +127,61 @@ async function seedSecrets(me: Member) {
     expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     value: secretValue("a11y"),
   });
+}
+
+/**
+ * Agents of the first project of `me`, made its admin: one that limits five axes (credentials to none), with an
+ * avatar, instructions and a run under it, which a worker of `me` carrying the label it allows makes possible, and one
+ * deleted; returns the first's handle.
+ */
+async function seedAgents(me: Member) {
+  const project = me.projects[0];
+  await new HubAdmin().grant(project, me.login, "admin", "customer");
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, {
+    handle,
+    name: "Code reviewer",
+    description: "Reads diffs and leaves notes.",
+    instructions: "Review only; never push.",
+    color: "#d97706",
+    permissions: {
+      credential: { mode: "allowlist", allow: [] },
+      tool: { mode: "allowlist", allow: ["read", "bash"] },
+      worker: { mode: "allowlist", allow: ["label:gpu"] },
+      model: { mode: "allowlist", allow: ["claude-opus-4-1"] },
+      runtime: { mode: "allowlist", allow: ["claude-code"] },
+    },
+  });
+  await putAvatarByApi(me, project, handle);
+  const gone = uniqueName("gone");
+  await createAgentByApi(me, project, { handle: gone, name: "Old helper", color: "#0891b2" });
+  const api = await apiOf(me);
+  await api.DELETE("/v1/projects/{project}/agents/{handle}", { params: { path: { project, handle: gone } } });
+  await registerWorker(me, { name: uniqueName("gpu"), projects: [project], labels: ["gpu"] });
+  await seedRunPlan(me, project);
+  await dispatch(me, project, ["2"], { profile: handle, runtime: "claude-code" });
+  return handle;
+}
+
+/**
+ * A chat of `me` with another person and the default agent of their first project: a message that mentions the agent
+ * before `me` has a worker (so the hub answers in its thread why it took no work), a reply and a reaction on it; then,
+ * with a worker, a mention the agent takes, its run claimed and its reply in the thread, linking a draft pull request.
+ */
+async function seedChat(me: Member) {
+  const project = me.projects[0];
+  const mai = await signedInPerson("a11y-mai", [project]);
+  const chat = await createChatByApi(me, { title: "Release talk", people: [mai.login], agents: [project] });
+  const root = await sendByApi(me, chat.id, `@${project} please look at **the flaky wait test**`);
+  await sendByApi(mai, chat.id, "I can review it after lunch.", root.id);
+  await reactByApi(mai, chat.id, root.id, "\u{1F440}");
+  const live = await chatWorker(me, project, uniqueName("a11y-chat"));
+  const asked = await sendByApi(me, chat.id, `@${project} fix it, please`);
+  const runId = asked.mentions[0]?.run_id;
+  if (!runId) throw new Error(`the mention made no run: ${JSON.stringify(asked.mentions)}`);
+  await claimChatRun(live, runId);
+  await agentAnswers(live, runId, "Fixed the wait. Draft PR: https://github.com/example-org/api/pull/7");
+  return { chat, root, asked };
 }
 
 async function seedSkill(me: Member) {
@@ -612,6 +669,146 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "dispatch, automatic match");
       await dialog.getByTestId("dispatch-target-pin").click();
       await expect(dialog.getByTestId("dispatch-pinned-worker")).toBeVisible();
+    },
+  },
+  {
+    name: "agents list with the default and a limited agent, then the deleted facet",
+    open: async ({ page, me }) => {
+      await seedAgents(me);
+      const project = me.projects[0];
+      await open(page, agentsPath(project));
+      await expect(page.locator("#main").getByTestId("agents-table").locator("tbody tr")).toHaveCount(2);
+      await expectNoSeriousViolations(page, "agents list");
+      await page.locator("#main").getByTestId("agents-facet").getByRole("button", { name: /^Deleted/ }).click();
+      await expect(page.locator("#main").getByTestId("agents-table").getByTestId("agent-deleted")).toBeVisible();
+    },
+  },
+  {
+    name: "agent page with its avatar, permissions, versions and runs, read by a writer",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      await new HubAdmin().grant(me.projects[0], me.login, "writer", "customer");
+      await open(page, agentPath(me.projects[0], handle));
+      await expect(page.locator("#main").getByTestId("agent-avatar-card").locator("img")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("agent-version-row")).toHaveCount(2);
+      await expect(page.locator("#main").getByTestId("agent-runs-table")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("agents-read-only")).toBeVisible();
+    },
+  },
+  {
+    name: "new agent form with its errors and every allowlist open, the edit form and the delete confirmation",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      const project = me.projects[0];
+      await open(page, agentsPath(project));
+      await page.locator("#main").getByTestId("agents-new").click();
+      const dialog = page.getByTestId("agent-dialog");
+      await dialog.getByTestId("agent-handle-input").fill(project);
+      await dialog.getByTestId("agent-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("agent-form-problems")).toBeVisible();
+      for (const axis of ["credential", "tool", "skill", "worker", "project", "model", "runtime"]) {
+        await dialog.getByTestId(`agent-axis-${axis}-allowlist`).click();
+      }
+      await dialog.getByTestId("agent-axis-tool-typed").fill("shell");
+      await dialog.getByTestId("agent-axis-tool-add").click();
+      await expect(dialog.getByTestId("agent-axis-tool").getByTestId("agent-field-error")).toBeVisible();
+      await expectNoSeriousViolations(page, "new agent form");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await open(page, agentPath(project, handle));
+      await page.locator("#main").getByTestId("agent-edit").click();
+      await expect(page.getByTestId("agent-dialog")).toHaveAttribute("data-mode", "edit");
+      await expectNoSeriousViolations(page, "edit agent form");
+      await page.keyboard.press("Escape");
+      await page.locator("#main").getByTestId("agent-delete").click();
+      await expect(page.getByTestId("agent-delete-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "dispatch dialog with an agent that refuses the runtime picked",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      const project = me.projects[0];
+      await liveWorker(me, project, uniqueName("a11y"));
+      await open(page, `/p/${project}/runs`);
+      await page.locator("#main").getByTestId("runs-dispatch").click();
+      const dialog = page.getByTestId("dispatch-dialog");
+      await dialog.getByTestId("dispatch-step-4").click();
+      await dialog.getByTestId("dispatch-agent-select").selectOption(handle);
+      await dialog.getByRole("radio", { name: /^Codex CLI/ }).check();
+      await expect(dialog.getByTestId("dispatch-agent-problem").first()).toBeVisible();
+      await expect(dialog.getByTestId("dispatch-agent-blocked")).toBeVisible();
+    },
+  },
+  {
+    name: "agents on a small screen",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, agentsPath(me.projects[0]));
+      await expect(page.locator("#main").getByTestId("agents-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "agents at 375 px");
+      await open(page, agentPath(me.projects[0], handle));
+      await expect(page.locator("#main").getByTestId("agent-permissions")).toBeVisible();
+    },
+  },
+  {
+    name: "chats list with an unread chat beside the empty pane, then the new chat form with its errors",
+    open: async ({ page, me }) => {
+      const { chat } = await seedChat(me);
+      await open(page, "/chats");
+      // The agent's reply; Mai's came before the member's own message, which marks the chat read up to it.
+      await expect(page.locator("#main").locator(`[data-testid="chat-row"][data-chat-id="${chat.id}"]`)).toHaveAttribute("data-unread", "1");
+      await expect(page.locator("#main").getByTestId("chats-none-open")).toBeVisible();
+      await expectNoSeriousViolations(page, "chats list");
+      await page.locator("#main").getByTestId("chats-new").click();
+      const dialog = page.getByTestId("new-chat-dialog");
+      await dialog.getByTestId("new-chat-login").fill("not a login");
+      await dialog.getByTestId("new-chat-submit").click();
+      await expect(dialog.getByTestId("new-chat-title-hint")).toHaveText("Give the chat a title.");
+    },
+  },
+  {
+    name: "a chat with a mention the hub answered, reactions, an agent's reply with its run and pull request in a thread, and the @ suggestions",
+    open: async ({ page, me }) => {
+      const { chat, asked } = await seedChat(me);
+      await open(page, `${chatPath(chat.id)}?thread=${asked.id}`);
+      const thread = page.getByTestId("chat-thread");
+      await expect(thread).toHaveAttribute("data-state", "ready");
+      await expect(thread.getByTestId("message-pull-link")).toBeVisible();
+      await expect(thread.getByTestId("message-run-link")).toBeVisible();
+      await expectNoSeriousViolations(page, "a chat with its thread open");
+      await thread.getByTestId("chat-thread-close").click();
+      await expect(page.locator("#main").getByTestId("mention-refused")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("mention-run-link")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("reaction-chip").first()).toBeVisible();
+      await page.locator("#main").getByTestId("chat-composer-text").pressSequentially("@");
+      await expect(page.locator("#main").getByTestId("mention-menu")).toBeVisible();
+    },
+  },
+  {
+    name: "a chat's members, budget and the leave confirmation",
+    open: async ({ page, me }) => {
+      const { chat } = await seedChat(me);
+      await open(page, chatPath(chat.id));
+      await page.locator("#main").getByTestId("chat-members-open").click();
+      await expect(page.getByTestId("chat-members").getByTestId("chat-member-person")).toHaveCount(2);
+      await expectNoSeriousViolations(page, "members sheet");
+      await page.getByTestId("chat-members").getByTestId("chat-leave").click();
+      await expect(page.getByTestId("chat-leave-confirm")).toBeVisible();
+    },
+  },
+  {
+    name: "chats on a small screen",
+    open: async ({ page, me }) => {
+      const { chat } = await seedChat(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/chats");
+      await expect(page.locator("#main").getByTestId("chat-row")).toHaveCount(1);
+      await expectNoSeriousViolations(page, "chats at 375 px");
+      await open(page, chatPath(chat.id));
+      await expect(page.locator("#main").getByTestId("chat-back")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("chats-list")).toBeHidden();
     },
   },
   {

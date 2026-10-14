@@ -95,7 +95,7 @@ async def record_heartbeat(
                 free_slots=func.least(body.free_slots, w.c.slots),
                 agent_version=func.coalesce(body.agent_version, w.c.agent_version),
                 run_kinds=None if body.run_kinds is None else [k for k in body.run_kinds if k in runs.RUN_KINDS],
-                features=None if body.features is None else [k for k in body.features if k in runs.WORKER_FEATURES],
+                features=None if body.features is None else [k for k in body.features if k in runs.HUB_FEATURES],
             )
             .where(w.c.id == worker_id)
             .returning(w.c.slots, w.c.name, w.c.labels)
@@ -293,7 +293,7 @@ def _move_reason(body: StateReport, name: str, error: str | None, cancel_request
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind in ("plan", "review", "judge", "author"):
+    if kind in ("plan", "review", "judge", "author", "chat"):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"
             raise HTTPException(409, f"run {run_id} is {article} {kind} run: report done or failed, not review")

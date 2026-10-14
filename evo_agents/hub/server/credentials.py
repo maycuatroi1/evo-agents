@@ -27,6 +27,12 @@ that the ruleset of each of its repos on GitHub still keeps that App off the def
 (``pulls.check_ruleset``, kept as the repo's last check): a repo whose check does not pass, or cannot be made now, gets
 no token, and its reason says why.
 
+A run's agent profile (``evo_agents.hub.profiles``), at the version the run went under, narrows that further: of the
+secrets above, only those its credential allowlist names are leased, and a token of the hub's GitHub App only when it
+names ``github-app`` (a repo it would cover is missing, with the profile as the reason). Each lease records the profile
+and version it was handed out under; the credential.lease audit row names them (``profile=@<handle>:v<n>``) unless
+the profile is the project's default.
+
 The answer is {leases, missing}: each lease as ``evo_agents.hub.credentials.Lease.to_json`` writes it, value included,
 and for each of the run's repos whose origin nothing covers, the repo, its origin and why: no origin registered, no
 secret covering it, the App not installed on it or not configured, the owner not allowed to push to it on GitHub,
@@ -45,11 +51,7 @@ leases are marked revoked, each GitHub token is revoked with itself (DELETE /ins
 dropped, and one audit row credential.revoke names the run and what it gave back, the secrets by id. A run of another
 worker is 404.
 
-GET /v1/projects/{p}/runs/{id}/credentials lists every lease the run got, given back or not, for the member who
-dispatched it: the secret's name or ``github-app:<account>``, provider, kind, target (the variable, or the origins it
-answered for), the worker, and when it was issued, ends and was revoked; never a value, sealed or not. The run must be
-one the caller may read (``runs.readable_run``: 404 otherwise); another member, a hub admin included, gets 403, since
-the leases name the owner's secrets as GET /v1/secrets does to the owner alone.
+GET /v1/projects/{p}/runs/{id}/credentials, the owner's view of a run's leases, is in ``run_leases``.
 
 The owner must still hold writer on the run's project when the worker asks: once the grant is gone or lowered to
 reader, the ask is 403, and the admin route that took it gave back the leases still out of every run the member
@@ -70,15 +72,15 @@ import logging
 from collections import Counter
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta
-from typing import TYPE_CHECKING, Annotated, Literal
+from typing import TYPE_CHECKING, Literal
 
-from fastapi import APIRouter, Header, HTTPException, Request, Response
+from fastapi import APIRouter, HTTPException, Request, Response
 from pydantic import BaseModel, Field
 from sqlalchemy import BigInteger, distinct, exists, func, insert, or_, select, update
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import profiles, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     GITHUB_HOST,
@@ -92,9 +94,7 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit
-from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.account_choice import choose_accounts
-from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubUnavailable
@@ -102,7 +102,6 @@ from evo_agents.hub.server.github_app import GitHubApp, InstallationToken, Pushe
 from evo_agents.hub.server.runs.models import NOT_HELD, RunId
 from evo_agents.hub.server.runs.service.audits import run_target
 from evo_agents.hub.server.runs.service.claims import worker_of
-from evo_agents.hub.server.runs.service.views import readable_run
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, lease_aad, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -122,7 +121,6 @@ NO_CURATOR_APP = (
 )
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
-router = APIRouter(prefix="/v1/projects", tags=["runs"], responses={401: {"model": ErrorBody}})
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 
@@ -160,23 +158,6 @@ class GivenBack(BaseModel):
     revoked: int = Field(description="leases of the run this worker gave back now; 0 when none was out any more")
 
 
-class RunLease(BaseModel):
-    """A lease a run got, as its owner sees it: everything but the value."""
-
-    id: int
-    name: str = Field(description="the secret's name, or github-app:<account>")
-    provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
-    kind: Literal[SECRET_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answered")
-    target: str = Field(
-        description="kind env: the variable it set; kind git: the origins of the run's repos it answered for, "
-        "space-separated, in the form of normalize_origin"
-    )
-    worker: str = Field(description="the worker it was leased to")
-    issued_at: datetime
-    expires_at: datetime | None = Field(description="when it stops working: a GitHub token's hour, a secret's end")
-    revoked_at: datetime | None = Field(description="when the run gave it back or the hub took it; null while out")
-
-
 # What a run may get
 
 
@@ -195,10 +176,27 @@ class _Run:
     repos: tuple[str, ...]
     owner_github_id: int | None
     curator: CuratorPolicy | None = None  # a run of the Curator: what its charter lets it have
+    profile_id: int | None = None  # the agent profile it went under, at profile_version; None before schema 0030
+    profile_version: int | None = None
+    profile: str | None = None  # its handle
+    profile_default: bool = False  # the project's default profile, which the audit leaves unnamed
+    credentials: dict | None = None  # its credential axis at that version
 
     @property
     def target(self) -> str:
         return run_target(self.project, self.plan_id, self.step_key, self.id)
+
+    def allows(self, name: str) -> bool:
+        """Whether the run's profile lets it be leased the credential ``name`` (a secret's, or github-app)."""
+        return profiles.allows({"credential": self.credentials} if self.credentials else None, "credential", name)
+
+    def profile_columns(self) -> dict:
+        return {"profile_id": self.profile_id, "profile_version": self.profile_version}
+
+    def profile_text(self) -> str:
+        if self.profile is None or self.profile_default:
+            return ""
+        return f" profile=@{self.profile}:v{self.profile_version}"
 
 
 @dataclass(frozen=True)
@@ -244,7 +242,18 @@ class _Survey:
 def _run_row(run_id: int, *, lock: bool):
     """The run ``run_id`` with its project's name and its owner, the member who dispatched it; with ``lock`` the
     run's row is locked."""
-    r, projects, users = tables.runs, tables.projects, tables.users
+    r, projects, users, ap, v = (
+        tables.runs,
+        tables.projects,
+        tables.users,
+        tables.agent_profiles,
+        tables.agent_profile_versions,
+    )
+    credentials = (
+        select(v.c.body["permissions"]["credential"])
+        .where(v.c.profile_id == r.c.profile_id, v.c.version == r.c.profile_version)
+        .scalar_subquery()
+    )
     statement = (
         select(
             r.c.state,
@@ -259,9 +268,15 @@ def _run_row(run_id: int, *, lock: bool):
             r.c.repo,
             r.c.repos,
             users.c.github_id,
+            r.c.profile_id,
+            r.c.profile_version,
+            ap.c.handle.label("profile"),
+            func.coalesce(ap.c.is_default, False).label("profile_default"),
+            credentials.label("credentials"),
         )
         .join_from(r, projects, projects.c.id == r.c.project_id)
         .join(users, users.c.id == r.c.dispatched_by)
+        .outerjoin(ap, ap.c.id == r.c.profile_id)
         .where(r.c.id == run_id)
     )
     return statement.with_for_update(of=r) if lock else statement
@@ -368,6 +383,11 @@ async def _held_run(conn: AsyncConnection, worker_id: int, run_id: int, *, lock:
         owner=row.owner,
         repos=_run_repos(row.kind, row.repo, row.repos),
         owner_github_id=row.github_id,
+        profile_id=row.profile_id,
+        profile_version=row.profile_version,
+        profile=row.profile,
+        profile_default=row.profile_default,
+        credentials=row.credentials,
     )
 
 
@@ -407,7 +427,7 @@ async def survey_run(conn: AsyncConnection, user: Principal, run_id: int, *, loc
             on_worker=row.on_worker,
         )
         for row in rows
-        if allowed is None or (row.kind, row.name) in allowed
+        if (allowed is None or (row.kind, row.name) in allowed) and run.allows(row.name)
     ]
     tokens = [
         _HeldToken(
@@ -451,8 +471,13 @@ def _choose(survey: _Survey) -> None:
         if covering:
             # the longest prefix first; a stable sort keeps this worker's before any worker's, then the name
             survey.git[repo] = sorted(covering, key=lambda secret: -len(normalize_origin(secret.url_prefix)))[0]
-        elif on_github is not None:
+        elif on_github is not None and survey.run.allows(profiles.GITHUB_APP):
             survey.github[repo] = on_github
+        elif on_github is not None:
+            survey.missing[repo] = (
+                f"agent @{survey.run.profile} allows no token of the hub's GitHub App ({profiles.GITHUB_APP}), and no "
+                f"git secret it allows covers {origin}"
+            )
         else:
             survey.missing[repo] = (
                 f"no git secret of {survey.run.owner} bound to project {survey.run.project} covers {origin}"
@@ -528,6 +553,7 @@ async def _lease_secrets(conn: AsyncConnection, survey: _Survey, worker_id: int,
                 target=target,
                 external_id=None,
                 expires_at=secret.expires_at,
+                **survey.run.profile_columns(),
             )
         leases.append(_secret_lease(lease_id, secret, value))
     return leases
@@ -571,6 +597,7 @@ async def _lease_tokens(
             target=_origins_text(normalize_origin(survey.origins[repo]) for repo in repos),
             external_id=str(token.installation.id),
             expires_at=token.expires_at,
+            **survey.run.profile_columns(),
         )
         sealed = sealer.seal(token.token, lease_aad(lease_id))  # bound to the lease's id, so inserted first
         cl = tables.credential_leases
@@ -723,7 +750,7 @@ def _lease_target(run: _Run, leases: list[Lease], secret_ids: dict[str, int]) ->
     the audit is read by hub admins), the App's accounts and the repos."""
     secrets = _ids(secret_ids[lease.name] for lease in leases if lease.provider == "secret")
     accounts = _names(lease.name.partition(":")[2] for lease in leases if lease.provider == "github-app")
-    return f"{run.target} secrets={secrets} github-app={accounts} repos={_names(run.repos)}"
+    return f"{run.target} secrets={secrets} github-app={accounts} repos={_names(run.repos)}{run.profile_text()}"
 
 
 # Giving back
@@ -745,79 +772,6 @@ async def give_back_credentials(request: Request, run_id: RunId, user: CurrentUs
     await revoke_tokens(state.engine, state.sealer, revoker(state), run_id=run_id)
     log.info("credentials given back", extra={"run_id": run_id, "worker_id": worker_id, "revoked": revoked})
     return GivenBack(revoked=revoked)
-
-
-# The owner's view
-
-
-def _run_owner(run_id: int):
-    r, users = tables.runs, tables.users
-    return (
-        select(r.c.dispatched_by, users.c.login)
-        .join_from(r, users, users.c.id == r.c.dispatched_by)
-        .where(r.c.id == run_id)
-    )
-
-
-def _run_leases(run_id: int):
-    """Every lease of run ``run_id``, with the worker's name and the secret's name and kind (none for a GitHub token),
-    in the order they were made."""
-    cl, w, s = tables.credential_leases, tables.workers, tables.secrets
-    return (
-        select(
-            cl.c.id,
-            s.c.name.label("secret"),
-            cl.c.provider,
-            s.c.kind.label("secret_kind"),
-            cl.c.target,
-            w.c.name.label("worker"),
-            cl.c.issued_at,
-            cl.c.expires_at,
-            cl.c.revoked_at,
-        )
-        .join_from(cl, w, w.c.id == cl.c.worker_id)
-        .outerjoin(s, s.c.id == cl.c.secret_id)
-        .where(cl.c.run_id == run_id)
-        .order_by(cl.c.id)
-    )
-
-
-def _token_name(target: str) -> str:
-    """The name a GitHub token's lease was handed out with, github-app:<owner>, from the origins it answered for."""
-    origins = target.split()
-    found = github_repo(origins[0]) if origins else None
-    return f"github-app:{found[0]}" if found else "github-app"
-
-
-@router.get("/{project}/runs/{run_id}/credentials", response_model=list[RunLease], responses=REFUSALS)
-async def run_credentials(
-    request: Request,
-    project: ProjectName,
-    run_id: RunId,
-    user: CurrentUser,
-    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
-) -> list[RunLease]:
-    """Every lease the run got, given back or not, without a value; for the member who dispatched it."""
-    async with request.app.state.engine.begin() as conn:
-        await readable_run(conn, user, project, run_id, sink)
-        owner_id, owner = (await conn.execute(_run_owner(run_id))).one()
-        if owner_id != user.user_id:
-            raise HTTPException(403, f"only {owner}, who dispatched run {run_id}, sees the credentials it got")
-        rows = (await conn.execute(_run_leases(run_id))).all()
-    return [
-        RunLease(
-            id=row.id,
-            name=row.secret if row.provider == "secret" else _token_name(row.target),
-            provider=row.provider,
-            kind=row.secret_kind if row.provider == "secret" else "git",
-            target=row.target,
-            worker=row.worker,
-            issued_at=row.issued_at,
-            expires_at=row.expires_at,
-            revoked_at=row.revoked_at,
-        )
-        for row in rows
-    ]
 
 
 def _end_leases(run_id: int | None, worker_id: int | None):

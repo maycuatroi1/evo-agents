@@ -13,7 +13,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
-import { DispatchDialog, useNotReadyReason } from "./dispatch-dialog";
+import { DispatchDialog } from "./dispatch-dialog";
+import { useNotReadyReason } from "./dispatch-step-picker";
 import { PlanRunHoldNote } from "./plan-run-hold";
 import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
 import { hasActiveRuns, LIVE_REFRESH_MS, readyStepsQuery, runsHref, runsQuery, stepRunsQuery } from "./queries";

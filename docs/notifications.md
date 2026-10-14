@@ -98,9 +98,13 @@ A notice needs no answer (`NOTICE_KINDS`):
 | `curator_brief` | the charter's `brief_at` came, in its time zone: the Curator's morning brief to the owner of the night shift's schedule (`docs/hub.md`, "The Curator's review") | the night's runs and cost, its review run, merges, runs waiting for approval, open decisions and proposals, the worker on duty's last heartbeat |
 | `curator_paused` | the circuit breaker paused a project's night shift: the charter's `max_failed_in_a_row` jobs of a night in a row failed or were reverted (`docs/hub.md`, "The Curator's ledger, outcomes and circuit breaker") | the night, the jobs in a row, the runs and the reverted proposals among them, the runs it cancelled |
 | `author_waiting` | an author run's agent ended its turn and the run waits for its owner's reply in its chat (`docs/workers.md`, "The chat of an author run"), with no decision of the run open; the next one reads the run's earlier ones | the agent's last message, the plan it wrote or revises |
+| `chat_mention` | someone mentioned the member in a group chat (`docs/hub.md`, "Group chats"), a person or the agent of a run (`@handle`) | the chat, the sender and the message; in a restricted chat only the chat's name and the link |
+| `chat_added` | someone added the member to a group chat; the agent of a run that creates a chat (`evo-agents worker chat create`) tells the person who dispatched the run, and each person it adds | the chat and who added them; in a restricted chat only the chat's name and the link |
 
 A worker sends only the first four (`runs.WORKER_NOTICE_KINDS`); the hub alone sends `curator_brief`,
-`curator_paused` and `author_waiting`. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
+`curator_paused`, `author_waiting`, `chat_mention` and `chat_added`. A chat's notice is kept in the project of one of
+its agents, a restricted one first, so a member who loses the grant on it stops getting it; a chat without agents keeps
+it in no project. The daemon sends `push_default_branch` itself for the pushes of `evo-agents
 worker step`; for a push or merge the agent makes itself, the prompt tells it to run `evo-agents worker notify`. A run of one step never pushes a default
 branch and sends no notice.
 
@@ -201,8 +205,9 @@ question`, then `Chosen option: KEY, LABEL.` and the owner's text.
 
 A notification links to a page of the hub's web: a decision to `/inbox?decision=ID`, a proposal to
 `/inbox?proposal=ID`, a notice of a run to the run's page (`/p/{p}/runs/{id}`; `author_waiting` to its chat,
-`/p/{p}/runs/{id}?tab=chat`), and `curator_brief` and
-`curator_paused` to the project's Curator page (`/p/{p}/curator`). A member sees only the notifications of projects
+`/p/{p}/runs/{id}?tab=chat`), `curator_brief` and
+`curator_paused` to the project's Curator page (`/p/{p}/curator`), and a chat's notice to the chat (`/chats/{id}`,
+with `?message=ID` for a mention). A member sees only the notifications of projects
 they hold a grant on.
 
 ## Telegram

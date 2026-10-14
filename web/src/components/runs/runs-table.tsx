@@ -13,7 +13,7 @@ import { StatusBadge } from "@/components/status/status-badge";
 import { workerHref } from "@/components/workers/queries";
 import { cn } from "@/lib/utils";
 
-import { AuthorRunKindBadge, PlanRunKindBadge } from "./badges";
+import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge } from "./badges";
 import { durationParts, runTiming } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
@@ -101,7 +101,12 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
   const plan = run.kind === "plan" || run.step_key === null;
   const repos = run.repos?.length ?? 0;
   const authorNew = run.kind === "author" && !run.plan_id; // an author run of a new plan: no plan to link to yet
-  const where = authorNew
+  const chat = run.kind === "chat"; // a turn of an agent in a group chat: no plan, the run's page is where it leads
+  const where = chat
+    ? showProject
+      ? t("chatRun.lineProject", { project: run.project, agent: run.profile ?? run.project })
+      : t("chatRun.line", { agent: run.profile ?? run.project })
+    : authorNew
     ? showProject
       ? t("author.newPlanLineProject", { project: run.project })
       : t("author.newPlanLine")
@@ -122,14 +127,14 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       subTestId={failure ? "run-error" : "run-where"}
     >
       <Link
-        href={authorNew ? runHref(run.project, run.id) : plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
+        href={authorNew || chat ? runHref(run.project, run.id) : plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
         className={cn(NAME_LINK, "truncate")}
         title={title}
         data-testid={plan ? "run-plan-link" : "run-step-link"}
       >
         {title}
       </Link>
-      {run.kind === "author" ? <AuthorRunKindBadge /> : plan ? <PlanRunKindBadge /> : null}
+      {run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : plan ? <PlanRunKindBadge /> : null}
     </CellMain>
   );
 }
@@ -158,10 +163,13 @@ function useMobileRun(variant: RunsTableVariant) {
     const failure = ended && run.error ? run.error : null;
     const worker = run.worker_id !== null && run.worker ? run.worker : run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet");
     const authorNew = run.kind === "author" && !run.plan_id;
+    const chat = run.kind === "chat";
     const where =
       variant === "step"
         ? worker
-        : authorNew
+        : chat
+          ? t(variant === "worker" ? "chatRun.lineProject" : "chatRun.line", { project: run.project, agent: run.profile ?? run.project })
+          : authorNew
           ? t(variant === "worker" ? "author.newPlanLineProject" : "author.newPlanLine", { project: run.project })
           : plan
           ? t(variant === "worker" ? "planLineProject" : "planLine", { project: run.project, plan: run.plan_id, repos: run.repos?.length ?? 0 })
@@ -170,7 +178,7 @@ function useMobileRun(variant: RunsTableVariant) {
     return {
       title: variant === "step" ? t("mobile.runTitle", { id: run.id }) : plan ? (run.title ?? run.plan_id) : (run.title ?? t("untitled")),
       href: runHref(run.project, run.id),
-      tags: run.kind === "author" ? <AuthorRunKindBadge /> : plan ? <PlanRunKindBadge /> : null,
+      tags: run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : plan ? <PlanRunKindBadge /> : null,
       status: <StatusBadge kind="run" status={run.state} />,
       meta: t.rich("mobile.meta", { id: run.id, detail, ref: (chunks: ReactNode) => <span className="font-mono tabular-nums">{chunks}</span> }),
       metaText: t("mobile.metaText", { id: run.id, detail }),

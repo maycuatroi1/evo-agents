@@ -19,6 +19,7 @@
   and a proposal with their evidence (``evo_agents.hub.review.parse_evidence``); the hub computes a proposal's tier.
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
+- ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -55,6 +56,9 @@ from urllib.parse import quote
 from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
+from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.worker.agent_input import evidence_items, read_text
+from evo_agents.worker.chat_cli import register_chat
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 
 EXIT_FAILED = 1
@@ -900,29 +904,6 @@ def cmd_plan(args) -> int:
 # The commands of a review run's agent
 
 
-def _read_text(source: str, what: str, limit: int) -> str | None:
-    """The text of file ``source`` (``-``: stdin), at most ``limit`` bytes of UTF-8; None when it holds only blanks."""
-    try:
-        text = sys.stdin.read() if source == "-" else Path(source).read_text(encoding="utf-8")
-    except (OSError, UnicodeDecodeError) as exc:
-        raise WorkerStateError(f"cannot read {source}: {exc}") from None
-    if len(text.encode()) > limit:
-        raise WorkerStateError(f"the {what} is at most {limit} bytes of UTF-8")
-    return text if text.strip() else None
-
-
-def _evidence(texts: list[str]) -> list[dict]:
-    from evo_agents.hub.review import EvidenceProblem, parse_evidence
-
-    found = []
-    for text in texts:
-        try:
-            found.append(parse_evidence(text))
-        except EvidenceProblem as exc:
-            raise WorkerStateError(str(exc)) from None
-    return found
-
-
 async def _attest(evidence: list[dict], workspaces: dict) -> None:
     """Check each piece of code evidence against the run's worktree of its repo: the file is there, with the line;
     and add the commit the worktree is at. The hub checks the rest."""
@@ -959,10 +940,10 @@ def cmd_finding(args) -> int:
     agent = _agent_run("finding", ("review",))
     body: dict = {"lens": args.lens, "severity": args.severity, "title": " ".join(args.title.split())}
     if args.body_file:
-        text = _read_text(args.body_file, "body", MAX_BODY_BYTES)
+        text = read_text(args.body_file, "body", MAX_BODY_BYTES)
         if text is not None:
             body["body"] = text
-    body["evidence"] = _evidence(args.evidence)
+    body["evidence"] = evidence_items(args.evidence)
     workspaces = _workspaces(agent)
 
     async def work(hub) -> dict:
@@ -979,7 +960,7 @@ def _plan_file(source: str) -> dict:
 
     from evo_agents.hub.review import MAX_DRAFT_BYTES
 
-    text = _read_text(source, "draft plan", MAX_DRAFT_BYTES) or ""
+    text = read_text(source, "draft plan", MAX_DRAFT_BYTES) or ""
     try:
         plan = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -1001,7 +982,7 @@ def cmd_propose(args) -> int:
         if found is None:
             raise WorkerStateError(f"--path takes REPO:PATH, a path within a repo, not {text!r}")
         paths.append({"repo": found[0], "path": found[1]})
-    evidence = _evidence(args.evidence or [])
+    evidence = evidence_items(args.evidence or [])
     if not evidence and not args.finding:
         raise WorkerStateError("a proposal rests on --finding ID, --evidence SPEC, or both: give at least one")
     body: dict = {
@@ -1014,7 +995,7 @@ def cmd_propose(args) -> int:
         "plan": _plan_file(args.plan_file),
     }
     if args.summary_file:
-        text = _read_text(args.summary_file, "summary", MAX_BODY_BYTES)
+        text = read_text(args.summary_file, "summary", MAX_BODY_BYTES)
         if text is not None:
             body["summary"] = text
     workspaces = _workspaces(agent)
@@ -1046,7 +1027,7 @@ def cmd_put(args) -> int:
     from evo_agents.hub.plans import MAX_PLAN_BYTES
 
     agent = _agent_run("put", ("author",))
-    text = _read_text(args.file, "plan", 4 * MAX_PLAN_BYTES) or ""
+    text = read_text(args.file, "plan", 4 * MAX_PLAN_BYTES) or ""
     try:
         plan = yaml.safe_load(text)
     except yaml.YAMLError as exc:
@@ -1250,7 +1231,6 @@ def register(sub) -> None:
     plan = wsub.add_parser(
         "plan", help="inside a plan run or an author run: print the run's plan as the hub holds it now"
     )
-    from evo_agents.hub.contract import json_option, returns_object
     from evo_agents.hub.plan_cli import PLAN_KEYS, WRITTEN
 
     json_option(plan, returns_object(*PLAN_KEYS, schema="Plan"), help="the hub's answer as JSON")  # seam hub-cli-v1
@@ -1272,3 +1252,4 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
+    register_chat(wsub)  # the commands of a run's agent in group chats (chat_cli)

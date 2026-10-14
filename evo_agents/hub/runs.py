@@ -14,7 +14,10 @@ proposals, and changes no code (``evo_agents.hub.review``). A ``judge`` run is t
 Builder made: it reads the change at the head of its pull request, runs the plan's verify and the project's hidden
 checks, and says whether the change passes, without reading the Builder's transcript and without changing anything
 (``evo_agents.hub.judge``). An ``author`` run writes an execution plan from a member's request with the create-exec-plan
-skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A worker takes a kind of run
+skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A ``chat`` run is one turn
+of an agent someone mentioned in a group chat, which answers in the thread, may change code on a branch ``chat/<run>``
+and ends done with its turn; a reply in the thread starts the next turn as a new run in the same session
+(``evo_agents.hub.chat_runs``). A worker takes a kind of run
 only once its heartbeat says its daemon runs that kind (``run_kinds``): a daemon older than the review run reads every
 run as a step or plan run. Likewise it takes a plan run with a session per step only once its heartbeat lists
 SESSION_PER_STEP among its ``features``, since an older daemon would run it in one session.
@@ -106,16 +109,19 @@ MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
-# plan written from a member's request
-RUN_KINDS = ("step", "plan", "review", "judge", "author")
+# plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat")
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
 CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
 AUTHOR_DECISIONS = "author_decisions"
-# what a heartbeat may say a daemon does besides its kinds of run (features)
-WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS)
+# a daemon whose adapters apply a run's agent profile (evo_agents.hub.profiles): tool, skill and model, instructions
+AGENT_PROFILES = "agent_profiles"
+# what this package's daemon says it does besides its kinds of run (features of its heartbeat)
+WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES)
+HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
@@ -129,6 +135,9 @@ CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish",
 DECISION_WAIT_SECONDS = 24 * 3600  # a run waiting this long for its owner's answer is parked
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
 RESUME_KINDS = ("plan", "author")  # the kinds of run that wait for their owner, are parked and resumed
+# the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id): a chat run never
+# waits, its next turn is a new run (``evo_agents.hub.chat_runs``)
+SESSION_KINDS = (*RESUME_KINDS, "chat")
 PLAN_TIMEOUT_CHOICES = (2, 4, 8, 24)  # hours of agent time a plan run may take; waiting and parked do not count
 
 HELD_STATES = ("leased", "running", "interactive", "verifying", "waiting")  # a worker holds the run, extends its lease
@@ -194,8 +203,9 @@ MAX_NOTICE_COMMITS = 100  # the commits a notice of a push or merge names
 WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
 # curator_brief: the morning brief of a project's Curator, which the hub alone sends at the charter's brief_at;
 # curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too;
-# author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits
-NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused", "author_waiting")
+# author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits;
+# chat_mention and chat_added: someone mentioned the member in a group chat, or added them to one (``chats``)
+NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused", "author_waiting", "chat_mention", "chat_added")
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5

@@ -1,0 +1,179 @@
+"""Agent profiles: who an agent of a project is (handle, name, avatar, colour, description, instructions) and what its
+runs may use, on seven axes (``docs/hub.md``, section "Agent profiles").
+
+A profile belongs to a project, whose admins manage it; every member of the project reads it. Its handle is unique on
+the hub and never equal to the name of a project, except for the project's default profile, whose handle is the
+project's name (``@<project>``): every project has one, with every permission and no instructions, and a run whose
+dispatch names no profile runs under it, as runs ran before profiles existed. A profile only narrows what the member
+who dispatches a run has (their workers, their secrets, the projects they write to); it never widens it.
+
+Each axis is ``{"mode": "all"}`` or ``{"mode": "allowlist", "allow": [...]}``; ``all`` is the default, and an
+allowlist never grows by itself when a secret, a skill or a worker is added. What an allowlist names, by axis:
+
+- ``credential``: secret names, and ``github-app`` for the token of the hub's GitHub App;
+- ``tool``: the words of TOOLS (``read``, ``edit``, ``bash``, ``web``, ``agent``) and ``mcp:<server>``;
+- ``skill``: skill names, global or of the project, compared ignoring case;
+- ``worker``: worker names, or ``label:<label>`` for every worker carrying that label, compared ignoring case;
+- ``project``: project names, the other projects whose runs the profile may take (its own always);
+- ``model``: model names, as a runtime names them;
+- ``runtime``: ``claude-code``, ``opencode``, ``codex``.
+
+The hub enforces credential, skill, worker, project, model and runtime when it dispatches, hands out and leases a
+run; the worker's adapter enforces tool, skill and model in the agent session, from the profile the claim carries
+(``RunSpec.profile``). A worker whose daemon does not say it does (``runs.AGENT_PROFILES``) never claims a run whose
+profile limits tool, skill or model, or adds instructions. Every edit of a profile raises its version; a run records
+the profile and version it was dispatched under, and the hub applies that version's rules to it.
+
+Standard library only: the command line and the worker import this module on a core install.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import re
+
+from evo_agents.hub.runs import MAX_MODEL_CHARS, RUNTIMES
+
+AXES = ("credential", "tool", "skill", "worker", "project", "model", "runtime")
+MODES = ("all", "allowlist")
+ALL, ALLOWLIST = MODES
+
+HANDLE_PATTERN = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project name's, since a default profile's handle is one
+HANDLE = re.compile(HANDLE_PATTERN[1:-1])
+MAX_NAME_CHARS = 80
+MAX_DESCRIPTION_CHARS = 1000
+MAX_INSTRUCTIONS_CHARS = 8000
+MAX_ALLOW = 200  # items in one allowlist
+COLOR_PATTERN = r"^#[0-9a-f]{6}$"
+DEFAULT_COLOR = "#475569"  # the default profile of every project
+PALETTE = ("#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#16a34a", "#0891b2", "#4f46e5")
+
+GITHUB_APP = "github-app"  # the credential allowlist's name for a token of the hub's GitHub App
+MCP_PREFIX = "mcp:"
+LABEL_PREFIX = "label:"
+
+# The runtime-neutral words of the tool axis, and what each covers. ``mcp:<server>`` covers the tools of one MCP
+# server. Tools that only keep the agent's own notes (a to-do list) are always there. Each runtime's adapter turns the
+# words into its own tool names; a word it cannot turn off fails a run whose profile leaves the word out.
+TOOLS = {
+    "read": "read files and search them",
+    "edit": "create and change files",
+    "bash": "run shell commands",
+    "web": "fetch web pages and search the web",
+    "agent": "start subagents",
+}
+_SECRET = re.compile(r"[a-z0-9][a-z0-9._-]{0,63}")  # evo_agents.hub.credentials.SECRET_NAME
+_SKILL = re.compile(r"[A-Za-z0-9][A-Za-z0-9._-]{0,99}")  # evo_agents.hub.skills.NAME
+_WORKER = re.compile(r"[a-z0-9][a-z0-9._-]{0,99}")  # a worker's name, lowered
+_LABEL = re.compile(r"[a-z0-9][a-z0-9._-]{0,39}")  # a worker's label, lowered
+_MCP_SERVER = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,63}")
+_LINE = re.compile(r"[^\x00-\x1f\x7f]+")
+
+
+def all_access() -> dict:
+    """The permissions of a default profile, and of a profile no axis of which was set: every axis ``all``."""
+    return {axis: {"mode": ALL} for axis in AXES}
+
+
+def default_color(handle: str) -> str:
+    """The colour of a profile created without one: a colour of PALETTE picked by its handle."""
+    return PALETTE[hashlib.sha256(handle.encode()).digest()[0] % len(PALETTE)]
+
+
+def _tool_problem(item: str) -> str | None:
+    if item in TOOLS:
+        return None
+    if item.startswith(MCP_PREFIX) and _MCP_SERVER.fullmatch(item[len(MCP_PREFIX) :]):
+        return None
+    return f"tool {item!r} is none of {', '.join(TOOLS)} or mcp:<server>"
+
+
+def _worker_problem(item: str) -> str | None:
+    if item.startswith(LABEL_PREFIX):
+        return None if _LABEL.fullmatch(item[len(LABEL_PREFIX) :]) else f"{item!r} is not label:<a worker label>"
+    return None if _WORKER.fullmatch(item) else f"{item!r} is not a worker's name"
+
+
+def item_problem(axis: str, item: str) -> str | None:
+    """Why ``item`` cannot be in the allowlist of ``axis``, as normalized (``normalized``); None when it can."""
+    if axis == "credential":
+        return None if _SECRET.fullmatch(item) else f"{item!r} is not a secret's name (or {GITHUB_APP})"
+    if axis == "tool":
+        return _tool_problem(item)
+    if axis == "skill":
+        return None if _SKILL.fullmatch(item) else f"{item!r} is not a skill's name"
+    if axis == "worker":
+        return _worker_problem(item)
+    if axis == "project":
+        return None if HANDLE.fullmatch(item) else f"{item!r} is not a project's name"
+    if axis == "model":
+        fits = len(item) <= MAX_MODEL_CHARS and _LINE.fullmatch(item)
+        return None if fits else f"{item!r} is not a model's name (one line, at most {MAX_MODEL_CHARS} characters)"
+    if axis == "runtime":
+        return None if item in RUNTIMES else f"runtime {item!r} is none of {', '.join(RUNTIMES)}"
+    return f"{axis!r} is no axis: {', '.join(AXES)}"
+
+
+def normalized(axis: str, item: str) -> str:
+    """``item`` as an allowlist of ``axis`` keeps it: worker names and labels lowered, as the hub compares them."""
+    item = item.strip()
+    return item.lower() if axis == "worker" else item
+
+
+def problems(permissions: dict) -> list[str]:
+    """Every reason ``permissions`` (``{axis: {"mode", "allow"}}``, each axis present) is not a profile's; empty when
+    it is one."""
+    found = [f"{axis!r} is no axis: {', '.join(AXES)}" for axis in permissions if axis not in AXES]
+    for axis in AXES:
+        rule = permissions.get(axis)
+        if not isinstance(rule, dict) or rule.get("mode") not in MODES:
+            found.append(f"{axis}: mode is all or allowlist")
+            continue
+        allow = rule.get("allow", [])
+        if rule["mode"] == ALL and allow:
+            found.append(f"{axis}: an axis of mode all takes no allow list")
+        elif len(allow) > MAX_ALLOW:
+            found.append(f"{axis}: at most {MAX_ALLOW} items")
+        found += [f"{axis}: {why}" for why in filter(None, (item_problem(axis, item) for item in allow))]
+    return found
+
+
+def limited(permissions: dict | None, axis: str) -> bool:
+    """Whether ``axis`` of ``permissions`` is an allowlist; never for a run without a profile."""
+    return bool(permissions) and (permissions.get(axis) or {}).get("mode") == ALLOWLIST
+
+
+def allowed(permissions: dict | None, axis: str) -> list[str] | None:
+    """The allowlist of ``axis``; None when the axis allows all (or there is no profile)."""
+    return list(permissions[axis].get("allow", [])) if limited(permissions, axis) else None
+
+
+def allows(permissions: dict | None, axis: str, item: str) -> bool:
+    """Whether ``axis`` of ``permissions`` lets ``item`` through: always for an axis of mode all; for an allowlist,
+    when it names ``item`` (ignoring case for skills and workers)."""
+    allow = allowed(permissions, axis)
+    if allow is None:
+        return True
+    if axis in ("skill", "worker"):
+        return item.lower() in {entry.lower() for entry in allow}
+    return item in allow
+
+
+def allows_worker(permissions: dict | None, name: str, labels) -> bool:
+    """Whether the worker axis lets a worker named ``name`` with ``labels`` take a run."""
+    allow = allowed(permissions, "worker")
+    if allow is None:
+        return True
+    wanted = {name.lower(), *(LABEL_PREFIX + label.lower() for label in labels or ())}
+    return bool(wanted & {entry.lower() for entry in allow})
+
+
+def needs_worker(permissions: dict | None, instructions: str | None) -> bool:
+    """Whether a run of the profile needs a worker whose adapter applies profiles (``runs.AGENT_PROFILES``): its
+    profile limits tool, skill or model, or has instructions."""
+    return any(limited(permissions, axis) for axis in ("tool", "skill", "model")) or bool(instructions)
+
+
+def restricted_axes(permissions: dict | None) -> list[str]:
+    """The axes of ``permissions`` that are allowlists, in AXES order."""
+    return [axis for axis in AXES if limited(permissions, axis)]

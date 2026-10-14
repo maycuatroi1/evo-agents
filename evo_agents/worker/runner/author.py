@@ -34,10 +34,9 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import author, runs, skill_sync, skills
 from evo_agents.hub.client import HubError
-from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
 from evo_agents.worker.runner import access, transitions, verify
-from evo_agents.worker.runner.common import HARD_STOP_TRIES, Parked, ReportRefused, RunFailed, cut, wait_or
-from evo_agents.worker.runner.conversation import Conversation
+from evo_agents.worker.runner.common import Parked, ReportRefused, RunFailed, cut
+from evo_agents.worker.runner.conversation import Conversation, post_last_message
 from evo_agents.worker.runner.directory import RunDirectory
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
 
@@ -130,25 +129,10 @@ class AuthorRun:
     # The chat
 
     async def post_chat(self) -> None:
-        """Post the agent's last message of the turn to the run's chat, trying a few times; a message the hub does
-        not take is noted, and the run goes on."""
-        run = self.run
-        text = author.chat_text(run.outcome.summary if run.outcome else None)
-        if text is None:
-            run.note("The agent's turn ended without a message for the chat.")
-            return
-        self.last_said = text
-        backoff = Backoff()
-        for _ in range(HARD_STOP_TRIES + 1):
-            try:
-                await run.daemon.hub.chat(run.id, text)
-                return
-            except Unreachable:
-                await wait_or(run.daemon.hard_stop, backoff.next())
-            except HubProblem as exc:
-                run.note(f"The hub did not take the agent's message for the chat: {exc}")
-                return
-        run.note("The hub did not answer: the agent's message did not reach the chat.")
+        """Post the agent's last message of the turn to the run's chat (``conversation.post_last_message``)."""
+        said = await post_last_message(self.run)
+        if said is not None:
+            self.last_said = said
 
     async def after_turn(self) -> list[dict]:
         """After each turn of the agent: its last message to the chat, then what starts its next turn: the owner's

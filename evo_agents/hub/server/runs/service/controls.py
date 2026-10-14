@@ -25,6 +25,7 @@ from evo_agents.hub.server.runs.service.dispatch import (
     queue_run,
     refuse_curator_plan,
 )
+from evo_agents.hub.server.runs.service.profiles import Asked, rerun_choice
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity, run_view
 from evo_agents.hub.server.security import WEB, Principal
 
@@ -191,7 +192,8 @@ async def approve_run(engine, user: Principal, project: str, run_id: int) -> Run
 
 async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Rerun | None = None) -> Run:
     """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
-    the plan's current revision, and the account picked by hand for it unless ``body`` picks another one or none."""
+    the plan's current revision, and the account picked by hand for it unless ``body`` picks another one or none,
+    under the agent profile of the run at the profile's version now, checked again (``profiles.rerun_choice``)."""
     async with engine.begin() as conn:
         access, row = await owned_run(conn, user, project, run_id, "rerun")
         check_dispatcher(access)
@@ -208,12 +210,15 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Re
             raise HTTPException(
                 409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
             )
+        if kind == "chat":
+            raise HTTPException(409, f"run {run_id} is a chat run: mention its agent in the chat again")
         if state not in runs.TERMINAL_STATES:
             raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
         held = await plan_routes._visible(conn, access, plan_id, None)
         await refuse_curator_plan(conn, access, plan_id)
         worker = None if pinned is None else await pinnable(conn, user, access, pinned)
         picked = await rerun_picks(conn, user, access, run_id, body, worker)
+        chosen = await rerun_choice(conn, user, access, run_id, Asked(kind, runtime, model, worker, tuple(picked)))
         await lock_plan(conn, access.project_id, plan_id)
         activity = await plan_activity(conn, access.project_id, plan_id)
         no_plan_run(activity, plan_id)
@@ -225,15 +230,16 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Re
             key,
             activity.steps,
             runtime=runtime,
-            model=model,
+            model=chosen.model,
             mode=mode,
             approval=approval,
             timeout_s=timeout_s,
             pinned=worker,
             parent=run_id,
             picked=tuple(picked),
+            chosen=chosen,
         )
-        accounts = "".join(account.audit_text() for account in picked)
+        accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
         target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
         await audit_run(conn, user, access, audit.RUN_RERUN, target)
         view = await run_view(conn, new_id)

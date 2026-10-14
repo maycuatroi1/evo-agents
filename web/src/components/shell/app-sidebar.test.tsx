@@ -110,9 +110,11 @@ describe("AppSidebar", () => {
       "nav-runs",
       "nav-insights",
       "nav-curator",
+      "nav-agents",
       "nav-memories",
       "nav-skills",
       "nav-kg",
+      "nav-chats",
       "nav-workers",
       "nav-secrets",
       "nav-accounts",
@@ -136,6 +138,24 @@ describe("AppSidebar", () => {
     await waitFor(() => expect(screen.getByTestId("nav-runs-count")).toHaveTextContent("3"));
     expect(screen.getByTestId("nav-runs-count").className).toContain("bg-running-soft");
     expect(screen.getByTestId("nav-runs")).toHaveAccessibleName("Run, 3 run đang hoạt động");
+  });
+
+  it("counts the unread messages of the visitor's chats on Chats, in attention, and hides the count at zero", async () => {
+    api.answers["/v1/chats"] = [
+      { id: 1, title: "Release", unread: 2, people: ["octo"], agents: ["reviewer"] },
+      { id: 2, title: "Docs", unread: 3, people: ["octo"], agents: [] },
+    ];
+    const { unmount } = setup();
+    await waitFor(() => expect(screen.getByTestId("nav-chats-count")).toHaveTextContent("5"));
+    expect(screen.getByTestId("nav-chats-count").className).toContain("bg-attention-soft");
+    expect(screen.getByTestId("nav-chats")).toHaveAttribute("href", "/chats");
+    expect(screen.getByTestId("nav-chats")).toHaveAccessibleName("Chat, 5 tin chat chưa đọc");
+    unmount();
+    api.answers["/v1/chats"] = [{ id: 1, title: "Release", unread: 0, people: ["octo"], agents: [] }];
+    setup();
+    await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toBeInTheDocument());
+    expect(screen.queryByTestId("nav-chats-count")).toBeNull();
+    expect(screen.getByTestId("nav-chats")).toHaveAccessibleName("Chat");
   });
 
   it("counts the runs at work in every project on Monitor, in running, and hides the count at zero", async () => {

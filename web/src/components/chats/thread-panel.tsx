@@ -1,0 +1,180 @@
+"use client";
+
+import { ArrowDown, MessageSquareReply, RotateCcw, X } from "lucide-react";
+import { useTranslations } from "next-intl";
+import { useEffect, useState } from "react";
+
+import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
+import type { Chat, GroupMessage } from "@/lib/chats";
+import { cn } from "@/lib/utils";
+
+import { ChatComposer } from "./composer";
+import { type Feed, replyCount, threadMessages } from "./feed-model";
+import { type MessageActions, MessageItem } from "./message-item";
+import { useFollow } from "./use-follow";
+
+type Props = Omit<MessageActions, "onThread"> & {
+  chat: Chat;
+  me: string | null;
+  feed: Feed;
+  root: number;
+  /** The message to show in view and marked, from a link to it. */
+  highlight: number | null;
+  loadThread: (root: number) => Promise<void>;
+  onSent: (message: GroupMessage) => void;
+  onClose: () => void;
+  /** The ended chat takes no message: the composer is left out. */
+  readOnly: boolean;
+  className?: string;
+};
+
+/**
+ * A thread (web/DESIGN.md, Chats): the message that starts it, its replies, and a composer that answers in it. From
+ * xl a column beside the chat; below xl the same panel in a sheet. It reads the whole thread once it opens (the chat's
+ * page holds only its latest messages), and the chat's stream keeps it current after that.
+ */
+export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSent, onClose, readOnly, onReact, reacting, className }: Props) {
+  const t = useTranslations("chats.thread");
+  const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
+  const [attempt, setAttempt] = useState(0);
+  const messages = threadMessages(feed, root);
+  const first = messages[0]?.id === root ? messages[0] : null;
+  const replies = messages.filter((message) => message.id !== root);
+  const count = replyCount(feed, root);
+  const { region, behind, toEnd } = useFollow(messages.length, null, feed.lastSeq);
+
+  useEffect(() => {
+    let current = true;
+    loadThread(root).then(
+      () => current && setState("ready"),
+      () => current && setState("failed"),
+    );
+    return () => {
+      current = false;
+    };
+  }, [root, loadThread, attempt]);
+
+  useEffect(() => {
+    if (state !== "ready" || highlight === null) return;
+    document.getElementById(`thread-message-${highlight}`)?.scrollIntoView({ block: "center" });
+  }, [state, highlight]);
+
+  const solo = chat.people.length === 1;
+  return (
+    <section
+      aria-labelledby="chat-thread-title"
+      className={cn("flex min-h-0 flex-col", className)}
+      data-testid="chat-thread"
+      data-root={root}
+      data-state={state}
+    >
+      <header className="flex items-center gap-2 border-b px-4 py-3">
+        <MessageSquareReply className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <h2 id="chat-thread-title" className="min-w-0 flex-1 truncate text-[15px] leading-[22px] font-semibold">
+          {t("title")}
+        </h2>
+        <span className="text-xs text-fg-subtle tabular-nums" data-testid="chat-thread-count">
+          {t("count", { count })}
+        </span>
+        <Button type="button" variant="ghost" size="icon-sm" aria-label={t("close")} onClick={onClose} data-testid="chat-thread-close">
+          <X aria-hidden="true" />
+        </Button>
+      </header>
+      <div className="relative min-h-0 flex-1">
+        <div
+          ref={region}
+          role="log"
+          aria-live="polite"
+          aria-label={t("log")}
+          tabIndex={0}
+          className="h-full overflow-y-auto overscroll-contain px-2 py-3 outline-none [overflow-anchor:none] focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset sm:px-3"
+          data-testid="chat-thread-log"
+        >
+          {state === "failed" && !first ? (
+            <div role="alert" className="flex flex-col items-start gap-2 px-2 text-sm text-danger" data-testid="chat-thread-error">
+              {t("failed")}
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setState("loading");
+                  setAttempt(attempt + 1);
+                }}
+              >
+                <RotateCcw aria-hidden="true" />
+                {t("retry")}
+              </Button>
+            </div>
+          ) : !first && state === "loading" ? (
+            <div role="status" className="flex flex-col gap-3 px-2" data-testid="chat-thread-loading">
+              <span className="sr-only">{t("loading")}</span>
+              <Skeleton className="h-16 w-full" />
+              <Skeleton className="h-10 w-3/4" />
+            </div>
+          ) : (
+            <ol className="flex flex-col gap-1">
+              {first ? (
+                <ThreadItem message={first} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} />
+              ) : null}
+              <li className="flex items-center gap-3 px-3 py-1 text-xs text-fg-subtle" data-testid="chat-thread-divider">
+                <span>{t("replies", { count })}</span>
+                <span aria-hidden="true" className="h-px flex-1 bg-border" />
+              </li>
+              {replies.map((message) => (
+                <ThreadItem key={message.id} message={message} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} />
+              ))}
+              {state === "ready" && !replies.length ? (
+                <li className="px-3 py-2 text-sm text-muted-foreground" data-testid="chat-thread-empty">
+                  {t("empty")}
+                </li>
+              ) : null}
+            </ol>
+          )}
+        </div>
+        {behind ? (
+          <Button type="button" variant="outline" size="sm" className="absolute bottom-3 left-1/2 -translate-x-1/2 shadow-popover" onClick={toEnd}>
+            <ArrowDown aria-hidden="true" />
+            {t("latest")}
+          </Button>
+        ) : null}
+      </div>
+      {readOnly ? null : (
+        <div className="border-t p-3">
+          <ChatComposer
+            chat={chat}
+            me={me}
+            replyTo={root}
+            onSent={onSent}
+            label={t("composerLabel")}
+            placeholder={t("placeholder")}
+            hint={solo ? t("soloHint") : t("hint")}
+            testId="thread-composer"
+          />
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ThreadItem({
+  message,
+  chat,
+  me,
+  highlight,
+  onReact,
+  reacting,
+}: Pick<Props, "chat" | "me" | "highlight" | "onReact" | "reacting"> & { message: GroupMessage }) {
+  return (
+    <MessageItem
+      message={message}
+      chat={chat}
+      me={me}
+      highlighted={highlight === message.id}
+      onReact={onReact}
+      reacting={reacting}
+      domId={`thread-message-${message.id}`}
+    />
+  );
+}

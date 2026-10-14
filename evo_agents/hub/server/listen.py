@@ -1,6 +1,6 @@
 """The api process's one LISTEN connection to Postgres, shared by everything in the process that waits for a
-notification: the claims waiting for a queued run (``runs.RunWakeups`` on RUNS_CHANNEL) and the event streams of
-runs (``run_events.RunStreams`` on EVENTS_CHANNEL).
+notification: the claims waiting for a queued run (``runs.RunWakeups`` on RUNS_CHANNEL), the event streams of
+runs (``run_events.RunStreams`` on EVENTS_CHANNEL) and those of group chats (``chat_events.ChatStreams``).
 
 Each subscriber names its channel and a handler before the listener starts; the first claim or stream starts it.
 The connection is in autocommit, so a notification arrives as soon as the transaction that sent it commits. A

@@ -52,6 +52,11 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
 - stdin is the message channel or ``/dev/null``, never a pipe left open by accident: some runtimes wait for its EOF.
 - ``context.env`` is the environment of the agent; it has no hub token. ``context.leased`` names the variables of it
   that the run's leases set; ``environment_notes`` says what the runtime leaves out of it because of them.
+- A run under an agent profile (``context.run["profile"]``, ``evo_agents.hub.profiles``) that limits tool, skill or
+  model, or has instructions, gets them in the session (``evo_agents.worker.runtimes.profiles``). Before any of the
+  run's work the daemon asks ``profile_refusal`` whether the adapter can: one that cannot fails the run, with the
+  reason, and an adapter that finds out only once its runtime runs raises ``ProfileRefused`` from ``start``. A
+  profile that allows everything and has no instructions changes nothing.
 
 Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package supports), in the entry points of
 the group ``evo_agents.worker.adapters``, and in ``EVO_WORKER_ADAPTERS`` (``runtime=module:Class`` separated by
@@ -77,7 +82,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, ClassVar
 
 from evo_agents import __version__
-from evo_agents.hub import runs
+from evo_agents.hub import profiles, runs
 
 if TYPE_CHECKING:
     from evo_agents.worker.interactive import Tui
@@ -195,6 +200,11 @@ class AgentFinished(RuntimeError):
     """``send`` after the agent took its last input: nothing would read the message, so it stays in the inbox."""
 
 
+class ProfileRefused(RuntimeError):
+    """``start`` found that the runtime would give the agent what the run's agent profile leaves out; the agent did
+    not start, and the run fails with the message."""
+
+
 @dataclass
 class Outcome:
     """How the agent ended."""
@@ -237,6 +247,23 @@ class Adapter(abc.ABC):
         """What the runtime's agent, headless or in its terminal UI, does not get of ``context.env`` and why, as lines
         for the run's log; the daemon writes each once a run, as a ``system`` event, once the agent has started."""
         return []
+
+    @classmethod
+    def profile_refusal(cls, run: Mapping) -> str | None:
+        """Why the adapter cannot apply the agent profile of ``run`` (the run as the claim answered it) in the
+        session, in a sentence for the run's error; None when it can, or the profile changes nothing. An adapter that
+        does not override it applies no profile, so it refuses every one that limits tool, skill or model or has
+        instructions."""
+        profile = run.get("profile") if isinstance(run, Mapping) else None
+        if not isinstance(profile, Mapping):
+            return None
+        if not profiles.needs_worker(profile.get("permissions"), profile.get("instructions")):
+            return None
+        handle = profile.get("handle")
+        return (
+            f"the {cls.runtime} adapter of this worker does not apply agent profiles, and agent @{handle} limits "
+            "tools, skills or models or has instructions"
+        )
 
     @classmethod
     def login_refusal(cls, context: RunContext) -> str | None:

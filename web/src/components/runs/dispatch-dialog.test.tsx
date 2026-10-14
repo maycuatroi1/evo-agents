@@ -223,6 +223,64 @@ describe("DispatchDialog", () => {
     expect((await posts.at(-1)?.clone().json())?.account).toBe("claude-b");
   });
 
+  it("dispatches under the agent picked, narrowed to what it allows", async () => {
+    const user = userEvent.setup();
+    const agent = (handle: string, permissions: Record<string, unknown>, extra: Record<string, unknown> = {}) => ({
+      handle,
+      project: "demo",
+      name: handle === "demo" ? "demo" : `Agent ${handle}`,
+      description: "",
+      instructions: "",
+      color: "#2563eb",
+      icon_url: null,
+      avatar_sha256: null,
+      is_default: handle === "demo",
+      permissions,
+      restricted: Object.keys(permissions),
+      version: 2,
+      created_by: "octo",
+      created_at: "2026-10-14T03:00:00Z",
+      updated_at: "2026-10-14T03:00:00Z",
+      deleted_at: null,
+      ...extra,
+    });
+    const agents = [
+      agent("demo", {}),
+      agent("reviewer", { runtime: { mode: "allowlist", allow: ["claude-code"] }, worker: { mode: "allowlist", allow: ["lab-ws-01"] } }),
+      agent("gpu", { worker: { mode: "allowlist", allow: ["label:gpu"] } }),
+      agent("gone", {}, { deleted_at: "2026-10-14T04:00:00Z" }),
+    ];
+    const base = answer(() => json([queued(41, "4")], 201));
+    api.answer = (request) => (new URL(request.url).pathname === "/v1/projects/demo/agents" ? json(agents) : base(request));
+    renderVi(<Harness onDispatched={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Dispatch run" });
+    await waitFor(() => expect(within(dialog).getByRole("checkbox", { name: /Docs/ })).toBeChecked());
+
+    // The project's agents that take runs, the default first and picked.
+    const select = (await within(dialog).findByTestId("dispatch-agent-select")) as HTMLSelectElement;
+    expect((within(select).getAllByRole("option") as HTMLOptionElement[]).map((option) => option.value)).toEqual(["demo", "gpu", "reviewer"]);
+    expect(select.value).toBe("demo");
+    expect(within(dialog).getByTestId("dispatch-agent-hint")).toHaveTextContent("Agent mặc định của dự án");
+
+    // An agent that leaves out every worker of the visitor's: said, and nothing goes out.
+    await user.selectOptions(select, "gpu");
+    expect(within(dialog).getByTestId("dispatch-agent-problem")).toHaveTextContent("@gpu không cho worker nào của bạn ở đây nhận run: nó chỉ cho label:gpu.");
+    expect(within(dialog).getByTestId("dispatch-agent-blocked")).toHaveTextContent("@gpu từ chối lần giao này");
+    expect(within(dialog).getByRole("button", { name: "Dispatch 1 run" })).toBeDisabled();
+
+    // A runtime the agent leaves out, then one it allows.
+    await user.selectOptions(select, "reviewer");
+    expect(within(dialog).getByTestId("dispatch-agent-hint")).toHaveTextContent("Nó giới hạn worker ở lab-ws-01 và runtime ở Claude Code.");
+    await user.click(within(dialog).getByRole("radio", { name: /^Codex CLI/ }));
+    expect(within(dialog).getByTestId("dispatch-agent-problem")).toHaveTextContent("@reviewer không cho phép Codex CLI: nó chỉ cho Claude Code.");
+    await user.click(within(dialog).getByRole("radio", { name: /^Claude Code/ }));
+    expect(within(dialog).queryByTestId("dispatch-agent-problem")).toBeNull();
+    await user.click(within(dialog).getByRole("button", { name: "Dispatch 1 run" }));
+    await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
+    const post = api.seen.find((request) => request.method === "POST" && request.url.endsWith("/runs"));
+    expect(await post?.clone().json()).toMatchObject({ profile: "reviewer", runtime: "claude-code", steps: ["4"] });
+  });
+
   it("cannot dispatch before a ready step is picked", async () => {
     api.answer = answer(() => json([], 201));
     renderVi(<Harness onDispatched={vi.fn()} />);

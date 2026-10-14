@@ -2,7 +2,8 @@
 and its end. ``docs/workers.md`` (Author runs) is the protocol.
 
 POST /v1/worker/runs/{id}/chat takes the last message of a turn of the agent of an author run the worker holds (404
-for any other run), at most ``author.MAX_CHAT_BYTES`` of UTF-8, and keeps it as a ``system`` event of the hub's own
+for any other run but a chat run, whose message is its reply in the thread of its group chat, ``chat_runs``), at most
+``author.MAX_CHAT_BYTES`` of UTF-8, and keeps it as a ``system`` event of the hub's own
 whose body holds ``"chat": "agent"``, numbered in the run's log as every event is. The worker posts it before it
 reports ``waiting``. The owner's messages are the run's ``user_message`` events, which POST .../runs/{id}/messages
 writes (``run_events``): so the chat is in the order of the log, the agent's messages between the owner's. The
@@ -195,9 +196,14 @@ async def post_chat(request: Request, run_id: RunId, body: ChatPost, user: Curre
     """Keep the last message of a turn of the agent of an author run this worker holds as a message of its chat."""
     async with request.app.state.engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RUN_KINDS)
-        if row.kind != "author":
+        if row.kind == "chat":  # its reply in the thread of its group chat
+            from evo_agents.hub.server.chat_runs import agent_reply  # it reads runs through this module's package
+
+            seq = await agent_reply(conn, run_id, body.text)
+        elif row.kind != "author":
             raise HTTPException(404, f"run {run_id} is not an author run: only an author run has a chat")
-        seq = await write_event(conn, run_id, {"text": body.text, "chat": author.CHAT_AGENT})
+        else:
+            seq = await write_event(conn, run_id, {"text": body.text, "chat": author.CHAT_AGENT})
     log.info("chat message of the agent", extra={"run_id": run_id, "seq": seq})
     return ChatPosted(run_id=run_id, seq=seq)
 

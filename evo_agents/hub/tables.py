@@ -1,14 +1,10 @@
-"""The hub's 48 tables as SQLAlchemy Core metadata: what the queries are written on, and what Alembic autogenerates
-the next migration from (``evo_agents/hub/migrations/env.py``).
+"""The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
+migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (profile columns of runs and leases)
+and ``tables_chats`` (chat columns of runs) describe the tables of accounts, agent profiles and group chats.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
-equal (Alembic's ``compare_metadata`` on a database migrated to head finds no difference). Columns, types,
-nullability, server defaults, identities, the generated column, keys, foreign keys and indexes are here, with the
-names the migrations gave them. CHECK constraints and triggers live in the migrations only: Alembic does not compare
-them, and a query has no use for them. procrastinate's tables belong to procrastinate and are not here.
-
-Each table is a module attribute named as the table. Import the module (``from evo_agents.hub import tables``) rather
-than the names, which would shadow modules such as ``secrets`` or ``evo_agents.hub.runs``.
+equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
+(CHECK constraints and triggers live in the migrations only). Import the module: a table is an attribute of its name.
 """
 
 from __future__ import annotations
@@ -41,6 +37,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 from evo_agents.hub.tables_accounts import account_tables
+from evo_agents.hub.tables_chats import chat_tables
+from evo_agents.hub.tables_profiles import profile_tables
 
 metadata = MetaData()
 
@@ -1283,3 +1281,5 @@ Index(  # a merged change has one outcome
     postgresql_where=curator_ledger.c.action == "outcome",
 )
 accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0027)
+agent_profiles, agent_profile_versions = profile_tables(metadata, runs, credential_leases)  # agent profiles (0030)
+chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031

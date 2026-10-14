@@ -102,6 +102,7 @@ class FakePull:
     base_sha: str | None = None  # the base branch's commit when it opened
     merged_at: str | None = None
     merged_by: str | None = None
+    draft: bool = False  # opened as a draft (a chat run's)
 
 
 @dataclass
@@ -624,7 +625,14 @@ class FakeGitHub:
                 return 422, {"message": "A pull request already exists"}
             number = 1 + sum(1 for key in self.pulls if key[:2] == (owner.lower(), name.lower()))
             pull = FakePull(
-                number, repo.owner, repo.name, branch, repo.heads[branch], base, base_sha=repo.heads.get(base)
+                number,
+                repo.owner,
+                repo.name,
+                branch,
+                repo.heads[branch],
+                base,
+                base_sha=repo.heads.get(base),
+                draft=asked.get("draft") is True,
             )
             with self._lock:
                 self.pulls[(owner.lower(), name.lower(), number)] = pull
