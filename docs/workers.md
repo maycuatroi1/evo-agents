@@ -501,7 +501,7 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
-| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App, or finds the one open, and the agent's message in the thread links it |
+| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
 ## Decisions and notices
 

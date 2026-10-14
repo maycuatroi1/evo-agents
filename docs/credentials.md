@@ -173,8 +173,8 @@ in a run of the Curator; for other origins (GitLab) it gets only the `git` secre
 owner's, which should hold the Developer role and so cannot push to a protected default branch either), and of the
 `env` secrets only those the charter lists (`env_secrets`). The hub's own calls for the Curator's pull requests (open
 one, read its files and CI, write the Judge's check run, merge) use tokens of the workers' App made for that one call,
-with the permissions it needs (pull requests, checks, commit statuses), and revoked after it: the tokens a worker's run
-gets keep `GITHUB_PERMISSIONS`.
+with the permissions it needs (pull requests, contents read to open one, checks, commit statuses), and revoked after
+it: the tokens a worker's run gets keep `GITHUB_PERMISSIONS`.
 
 A run's agent profile ([hub.md](hub.md), Agent profiles), at the version the run went under, narrows all of this:
 of the secrets above, a run is leased only those whose names the profile's credential allowlist holds, and a token of

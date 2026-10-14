@@ -23,7 +23,9 @@ profiles``), not this prompt.
 The run works in a writable worktree of each repo of its project the worker has a checkout of, all on the branch
 ``chat/<id>``, the id of the first run of its session (``branch_of``): the worker commits what the agent left and pushes
 that branch of each repo the agent changed, never a default branch and never forced, and the hub opens a draft pull
-request of it with the workers' App and posts its link in the thread. No run merges.
+request of it with the workers' App and posts its link in the thread (on a repo that takes no draft, a pull request
+whose title starts with DRAFT_TITLE; when GitHub refuses it, the thread says why, and the next push of the session
+tries again). No run merges.
 
 The agent of a run (a chat run, or a step, plan or author run) talks in chats with the commands of COMMANDS, inside its
 run alone, with the worker's token: ``post`` writes in the thread (or in a chat its agent is in), ``react`` puts an
@@ -56,6 +58,7 @@ BEFORE_MESSAGES = 10  # and of the chat before the thread's first message
 SNAPSHOT_MESSAGE_BYTES = 4 * 1024  # one message in the snapshot
 BRANCH_PREFIX = "chat/"
 BRANCH = re.compile(r"^chat/[1-9][0-9]{0,18}$")
+DRAFT_TITLE = "[Draft]"  # what the title of a chat run's pull request starts with on a repo that takes no draft
 CUT_MARK = "[{left} older message(s) of the chat are left out of this prompt]"
 INBOX_TEXT = "{author} wrote in the thread (message #{id}):\n{body}"
 REPOS_BYTES = 3 * 1024
@@ -220,15 +223,33 @@ def build_chat_prompt(
     return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)
 
 
-def pull_text(repo: str, branch: str, url: str | None, *, pull: bool, opened: bool, problem: str | None = None) -> str:
-    """The message in the thread once the worker pushed ``branch`` of ``repo``: the draft pull request (``pull``) at
-    ``url``, opened now (``opened``) or pushed to; else the branch at ``url``, or why the hub opened none."""
-    if url and pull and opened:
+def pull_text(
+    repo: str,
+    branch: str,
+    url: str | None,
+    *,
+    pull: bool,
+    opened: bool,
+    problem: str | None = None,
+    draft: bool = True,
+) -> str:
+    """The message in the thread once the worker pushed ``branch`` of ``repo``: the pull request (``pull``) at ``url``,
+    a draft or not (``draft``: a repo that takes no draft gets one whose title starts with DRAFT_TITLE), opened now
+    (``opened``) or pushed to; else the branch at ``url``, or why the hub opened none."""
+    if url and pull and opened and draft:
         return f"Opened a draft pull request of {repo} from {branch}: {url}"
+    if url and pull and opened:
+        return (
+            f"Opened a pull request of {repo} from {branch}, its title starting with {DRAFT_TITLE}: GitHub takes no "
+            f"draft pull request on this repo. {url}"
+        )
     if url and pull:
-        return f"Pushed more commits of {repo} to {branch}, in its draft pull request: {url}"
+        return f"Pushed more commits of {repo} to {branch}, in its {'draft ' if draft else ''}pull request: {url}"
     if url:
         return f"Pushed {branch} of {repo}: {url}"
     if problem:
-        return f"Pushed {branch} of {repo}. The hub did not open its draft pull request: {problem}"
+        return (
+            f"Pushed {branch} of {repo}. The hub did not open its draft pull request: {problem.rstrip('.')}. The next "
+            "push of this session tries again."
+        )
     return f"Pushed {branch} of {repo}. Its origin is not on GitHub, or the hub has no GitHub App: no pull request."

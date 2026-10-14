@@ -494,7 +494,7 @@ def test_judge_the_pull_request_opens_and_the_judge_reads_the_change_and_its_hid
     sent = json.loads(opened.body)
     assert (sent["head"], sent["base"]) == (BRANCH, "main") and "proposal #1 (tier 0)" in sent["body"]
     app, permissions = token_permissions(world.github, opened.headers["authorization"].partition(" ")[2])
-    assert app == "workers" and permissions == {"pull_requests": "write", "metadata": "read"}
+    assert app == "workers" and permissions == {"pull_requests": "write", "contents": "read", "metadata": "read"}
 
     spec = judge_run(world)
     assert spec["plan_id"] == PLAN_ID and spec["curator"]["role"] == "judge" and spec["curator"]["head_sha"] == HEAD
