@@ -40,7 +40,8 @@
     "counts": {
       "openDecisions": "{count, plural, other {# quyết định hoặc đề xuất chờ bạn trả lời}}",
       "activeRuns": "{count, plural, other {# run đang hoạt động}}",
-      "runningRuns": "{count, plural, other {# run đang chạy}}"
+      "runningRuns": "{count, plural, other {# run đang chạy}}",
+      "unreadChats": "{count, plural, other {# tin chat chưa đọc}}"
     },
     "fleet": {
       "onlineBusy": "<b>{online, plural, other {# worker online}}</b>, {busy} đang chạy",
@@ -51,6 +52,7 @@
     },
     "curator": "Curator",
     "agents": "Agent",
+    "chats": "Chat",
     "curatorProposals": "Đề xuất",
     "curatorCharter": "Charter"
   },
@@ -2126,6 +2128,217 @@
       }
     }
   },
+  "chats": {
+    "metaTitle": "Chat",
+    "chatMetaTitle": "Chat #{id}",
+    "list": {
+      "title": "Chat",
+      "unreadTotal": "{count, plural, other {# chưa đọc}}",
+      "new": "Chat mới",
+      "filter": "Lọc chat",
+      "filterChip": "Lọc",
+      "noMatch": "Không có chat nào khớp",
+      "caption": "Chat của bạn",
+      "rowLabelUnread": "{title}, {count, plural, other {# tin chưa đọc}}",
+      "emptyTitle": "Chưa có chat nào",
+      "emptyBody": "Chat gom người và agent của các dự án vào một cuộc trò chuyện. Gõ @ tên agent để giao việc: agent trả lời trong thread dưới tin của bạn, và thay đổi code tới dưới dạng pull request nháp.",
+      "noneOpenTitle": "Mở một chat",
+      "noneOpenBody": "Chọn một chat trong danh sách, hoặc bấm Chat mới để bắt đầu."
+    },
+    "view": {
+      "reactFailed": "Không đổi được reaction",
+      "endedTitle": "Bạn không còn đọc được chat này",
+      "hubSays": "Hub báo: {message}",
+      "backToChats": "Về danh sách chat",
+      "composerLabel": "Tin gửi tới {title}",
+      "placeholder": "Viết tin nhắn. Gõ @ để nhắc một agent, một dự án hoặc một người.",
+      "hint": "Gõ @ tên agent để giao việc: agent trả lời trong thread dưới tin của bạn.",
+      "threadSheet": "Thread",
+      "threadSheetBody": "Một thread của {title}",
+      "notFoundTitle": "Không có chat này",
+      "notFoundBody": "Địa chỉ của một chat là /chats rồi tới số của chat. Hãy mở chat từ danh sách chat của bạn."
+    },
+    "header": {
+      "back": "Về danh sách chat",
+      "andMore": "{names} và {count} người khác",
+      "members": "{count, plural, other {# thành viên}}"
+    },
+    "messages": {
+      "log": "Tin nhắn của {title}",
+      "older": "Hiện tin cũ hơn",
+      "loadingOlder": "Đang tải tin cũ hơn",
+      "olderFailed": "Không tải được tin cũ hơn. Hãy thử lại.",
+      "emptyTitle": "Chưa có tin nào",
+      "emptyBody": "Hãy nói điều bạn cần. Gõ @ tên agent để giao việc; agent trả lời trong thread dưới tin của bạn.",
+      "latest": "Tới tin mới nhất"
+    },
+    "message": {
+      "hub": "Hub",
+      "hubTag": "Tự động",
+      "deleted": "Đã xoá",
+      "you": "(bạn)",
+      "reply": "Trả lời trong thread",
+      "replies": "{count, plural, other {# trả lời}}",
+      "lastReply": "lần cuối lúc {time}",
+      "run": "Run #{id}",
+      "ownRunLabel": "Run #{id} của @{handle}",
+      "handed": "@{handle}: run #{id}",
+      "handedLabel": "@{handle}: run #{id}, nơi agent nhận việc",
+      "refused": "@{handle} không nhận việc:",
+      "pull": "PR #{number} trong {repo}",
+      "newTab": "(mở trong tab mới)"
+    },
+    "reactions": {
+      "you": "bạn",
+      "andMore": "{names} và {count} người khác",
+      "label": "{name}: {count}, của {who}",
+      "add": "Thêm reaction",
+      "pick": "Chọn reaction",
+      "takeOff": "{name}, của bạn: gỡ đi"
+    },
+    "emoji": {
+      "eyes": "Đôi mắt",
+      "check": "Dấu tích",
+      "cross": "Dấu nhân",
+      "thumbsUp": "Thích",
+      "thumbsDown": "Không thích",
+      "heart": "Trái tim",
+      "party": "Pháo giấy",
+      "smile": "Cười",
+      "confused": "Bối rối",
+      "thinking": "Đang nghĩ",
+      "thanks": "Cảm ơn",
+      "rocket": "Tên lửa",
+      "fire": "Lửa",
+      "bug": "Con bọ",
+      "hourglass": "Đồng hồ cát",
+      "hundred": "Một trăm điểm"
+    },
+    "composer": {
+      "hands": "Giao việc cho {handles}.",
+      "over": "Một tin giao việc cho tối đa {max} agent: {handles} không nhận việc.",
+      "bytes": "{count} trên {max} byte",
+      "sending": "Đang gửi",
+      "send": "Gửi",
+      "blank": "Hãy viết gì đó trước.",
+      "long": "Một tin dài tối đa {max} byte UTF-8.",
+      "mention": {
+        "label": "Agent, dự án và người có thể nhắc",
+        "count": "{count, plural, other {# gợi ý}}: phím mũi tên để chọn, Enter để chèn.",
+        "project": "agent mặc định của {project}",
+        "groups": {
+          "agent": "Agent",
+          "project": "Dự án",
+          "person": "Người"
+        }
+      }
+    },
+    "thread": {
+      "title": "Thread",
+      "count": "{count, plural, other {# trả lời}}",
+      "close": "Đóng thread",
+      "log": "Tin nhắn của thread",
+      "failed": "Không đọc được thread này.",
+      "retry": "Thử lại",
+      "loading": "Đang tải thread",
+      "replies": "{count, plural, =0 {Chưa có trả lời} other {# trả lời}}",
+      "empty": "Chưa ai trả lời. Agent được nhắc ở trên sẽ trả lời tại đây.",
+      "latest": "Tới tin mới nhất",
+      "composerLabel": "Trả lời trong thread",
+      "placeholder": "Trả lời trong thread",
+      "soloHint": "Chat này chỉ có mình bạn: tin trả lời không có @ sẽ tới agent đang làm trong thread này.",
+      "hint": "Gõ @ tên agent để giao cho agent tin trả lời này."
+    },
+    "members": {
+      "title": "Thành viên",
+      "description": "Những ai trong {title}. Mỗi người ở đây đọc được các tin mà grant của họ cho phép.",
+      "close": "Đóng danh sách thành viên",
+      "agents": "Agent",
+      "people": "Người",
+      "countOf": "{count} trên {max}",
+      "default": "Mặc định",
+      "deleted": "Đã xoá",
+      "removeAgent": "Đưa @{handle} ra khỏi chat",
+      "noAgentsYet": "Chưa có agent nào. Thêm một agent để giao việc bằng @.",
+      "you": "(bạn)",
+      "creator": "Người tạo chat",
+      "leave": "Rời chat",
+      "leaving": "Đang rời",
+      "removePerson": "Đưa {login} ra khỏi chat",
+      "budget": "Ngân sách",
+      "restricted": "Một dự án có agent trong chat này bị hạn chế, nên thông báo của chat chỉ ghi tên chat và đường dẫn tới chat.",
+      "left": "Bạn đã rời {title}",
+      "done": {
+        "addAgent": "Đã thêm {name} vào chat",
+        "removeAgent": "Đã đưa {name} ra khỏi chat",
+        "addPerson": "Đã thêm {name} vào chat",
+        "removePerson": "Đã đưa {name} ra khỏi chat",
+        "budget": "Đã đổi ngân sách"
+      },
+      "leaveTitle": "Rời {title}?",
+      "leaveBody": "Bạn sẽ không còn đọc hay viết trong chat này, và không nhận thông báo của chat nữa. Một thành viên có thể thêm bạn lại.",
+      "cancel": "Huỷ",
+      "addAgent": "Thêm agent",
+      "loadingAgents": "Đang tải agent",
+      "pickAgent": "Chọn một agent",
+      "defaultAgent": "{name} (@{handle}, agent mặc định của dự án)",
+      "agentOption": "{name} (@{handle})",
+      "adding": "Đang thêm",
+      "add": "Thêm",
+      "agentsFull": "Một chat có tối đa {max} agent.",
+      "agentsFailed": "Không đọc được agent của {projects}.",
+      "noAgents": "Mọi agent của các dự án bạn có quyền ghi đã ở trong chat, hoặc bạn không có quyền ghi ở dự án nào.",
+      "agentHint": "Agent của các dự án bạn có quyền ghi. Mỗi agent trả lời khi có người nhắc tới nó.",
+      "addPerson": "Thêm người",
+      "loginPlaceholder": "Login GitHub",
+      "badLogin": "Login GitHub gồm chữ cái, chữ số và dấu gạch ngang, tối đa 39 ký tự, bắt đầu bằng chữ cái hoặc chữ số.",
+      "peopleFull": "Một chat có tối đa {max} người.",
+      "personHint": "Người đã đăng nhập hub ít nhất một lần, có grant đủ cho các dự án của agent trong chat này.",
+      "budgetRead": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ. {creator}, người tạo chat, đổi được mức này.",
+      "budgetLabel": "Hạn mức chi trong 24 giờ, tính bằng USD",
+      "saving": "Đang lưu",
+      "save": "Lưu",
+      "badBudget": "Một số lớn hơn 0, tối đa {max}.",
+      "budgetHint": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ, theo usage của run; vượt mức thì hub không giao việc nữa."
+    },
+    "create": {
+      "title": "Chat mới",
+      "description": "Người và agent của các dự án, trong một cuộc trò chuyện. Bạn luôn có trong chat.",
+      "titleLabel": "Tiêu đề",
+      "titlePlaceholder": "Lên kế hoạch phát hành",
+      "titleHint": "Một dòng, tối đa 120 ký tự.",
+      "titleProblems": {
+        "blank": "Hãy đặt tiêu đề cho chat.",
+        "long": "Tiêu đề dài tối đa {max} ký tự.",
+        "line": "Tiêu đề là một dòng, không có ký tự điều khiển."
+      },
+      "agentsLabel": "Agent",
+      "picked": "Đã chọn {count}, tối đa {max}",
+      "filterAgents": "Lọc agent",
+      "noAgents": "Bạn không có quyền ghi ở dự án nào có agent, nên chat bắt đầu chỉ với người. Người có quyền ghi của một dự án có thể thêm agent sau.",
+      "agentsFailed": "Không đọc được agent của {projects}.",
+      "agentsHint": "Agent của các dự án bạn có quyền ghi. Có thể thêm sau.",
+      "peopleLabel": "Người",
+      "loginPlaceholder": "Login GitHub",
+      "addPerson": "Thêm",
+      "badLogin": "Login GitHub gồm chữ cái, chữ số và dấu gạch ngang, tối đa 39 ký tự, bắt đầu bằng chữ cái hoặc chữ số.",
+      "peopleFull": "Một chat có tối đa {max} người.",
+      "peopleHint": "Login của người đã đăng nhập hub ít nhất một lần. Mỗi người cần grant đủ cho các dự án của agent trong chat.",
+      "peopleList": "Người sẽ thêm",
+      "removePerson": "Bỏ {login}",
+      "cancel": "Huỷ",
+      "creating": "Đang tạo",
+      "submit": "Tạo chat",
+      "created": "Đã tạo chat {title}"
+    },
+    "errors": {
+      "forbidden": "Hub từ chối: bạn không được làm việc này trong chat này.",
+      "notFound": "Hub không có chat, tin hay thành viên này mà bạn xem được. Hãy tải lại trang.",
+      "conflict": "Hub từ chối thay đổi.",
+      "invalid": "Hub không nhận dữ liệu này.",
+      "hubSays": "Hub báo: {message}"
+    }
+  },
   "accounts": {
     "title": "Tài khoản",
     "count": "{count, plural, other {# tài khoản}}",
@@ -3184,7 +3397,8 @@
         "pending": "Đang chạy lại…",
         "cancel": "Thôi",
         "hubSays": "Hub báo: {message}"
-      }
+      },
+      "chatSub": "Một lượt của @{agent} trong group chat, bước chuyền {hop}. <chatLink>Mở tin mà run trả lời</chatLink>."
     },
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
@@ -3334,6 +3548,11 @@
           "toastAfterTurn": "Run kết thúc ở trạng thái done sau lượt của agent."
         }
       }
+    },
+    "chatRun": {
+      "kind": "Chat run",
+      "line": "Một lượt của @{agent} trong group chat",
+      "lineProject": "{project}: một lượt của @{agent} trong group chat"
     },
     "account": {
       "label": "Tài khoản",

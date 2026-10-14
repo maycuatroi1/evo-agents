@@ -40,7 +40,8 @@
     "counts": {
       "openDecisions": "{count, plural, one {# decision or proposal waits for your answer} other {# decisions and proposals wait for your answer}}",
       "activeRuns": "{count, plural, one {# active run} other {# active runs}}",
-      "runningRuns": "{count, plural, one {# run at work} other {# runs at work}}"
+      "runningRuns": "{count, plural, one {# run at work} other {# runs at work}}",
+      "unreadChats": "{count, plural, one {# unread chat message} other {# unread chat messages}}"
     },
     "fleet": {
       "onlineBusy": "<b>{online, plural, one {# worker online} other {# workers online}}</b>, {busy} busy",
@@ -51,6 +52,7 @@
     },
     "curator": "Curator",
     "agents": "Agents",
+    "chats": "Chats",
     "curatorProposals": "Proposals",
     "curatorCharter": "Charter"
   },
@@ -2126,6 +2128,217 @@
       }
     }
   },
+  "chats": {
+    "metaTitle": "Chats",
+    "chatMetaTitle": "Chat #{id}",
+    "list": {
+      "title": "Chats",
+      "unreadTotal": "{count, plural, one {# unread} other {# unread}}",
+      "new": "New chat",
+      "filter": "Filter chats",
+      "filterChip": "Filter",
+      "noMatch": "No chat matches",
+      "caption": "Your chats",
+      "rowLabelUnread": "{title}, {count, plural, one {# unread message} other {# unread messages}}",
+      "emptyTitle": "No chats yet",
+      "emptyBody": "A chat brings people and the agents of your projects together. Mention an agent with @ to hand it work: it answers in a thread under your message, and its code changes come as a draft pull request.",
+      "noneOpenTitle": "Open a chat",
+      "noneOpenBody": "Pick a chat from the list, or start one with New chat."
+    },
+    "view": {
+      "reactFailed": "Couldn't change the reaction",
+      "endedTitle": "You can no longer read this chat",
+      "hubSays": "The hub says: {message}",
+      "backToChats": "Back to chats",
+      "composerLabel": "Message to {title}",
+      "placeholder": "Write a message. Type @ to mention an agent, a project or a person.",
+      "hint": "Mention an agent with @ to hand it work: it answers in a thread under your message.",
+      "threadSheet": "Thread",
+      "threadSheetBody": "A thread of {title}",
+      "notFoundTitle": "No such chat",
+      "notFoundBody": "A chat's address is /chats followed by its number. Open it from the list of your chats."
+    },
+    "header": {
+      "back": "Back to chats",
+      "andMore": "{names} and {count} more",
+      "members": "{count, plural, one {# member} other {# members}}"
+    },
+    "messages": {
+      "log": "Messages of {title}",
+      "older": "Show earlier messages",
+      "loadingOlder": "Loading earlier messages",
+      "olderFailed": "Couldn't load earlier messages. Try again.",
+      "emptyTitle": "No messages yet",
+      "emptyBody": "Say what you need. Mention an agent with @ to hand it work; it answers in a thread under your message.",
+      "latest": "Jump to the latest"
+    },
+    "message": {
+      "hub": "Hub",
+      "hubTag": "Automatic",
+      "deleted": "Deleted",
+      "you": "(you)",
+      "reply": "Reply in thread",
+      "replies": "{count, plural, one {# reply} other {# replies}}",
+      "lastReply": "last at {time}",
+      "run": "Run #{id}",
+      "ownRunLabel": "Run #{id} of @{handle}",
+      "handed": "@{handle}: run #{id}",
+      "handedLabel": "@{handle}: run #{id}, where it took the work",
+      "refused": "@{handle} took no work:",
+      "pull": "PR #{number} in {repo}",
+      "newTab": "(opens in a new tab)"
+    },
+    "reactions": {
+      "you": "you",
+      "andMore": "{names} and {count} more",
+      "label": "{name}: {count}, by {who}",
+      "add": "Add a reaction",
+      "pick": "Pick a reaction",
+      "takeOff": "{name}, yours: take it off"
+    },
+    "emoji": {
+      "eyes": "Eyes",
+      "check": "Check mark",
+      "cross": "Cross mark",
+      "thumbsUp": "Thumbs up",
+      "thumbsDown": "Thumbs down",
+      "heart": "Heart",
+      "party": "Party popper",
+      "smile": "Smile",
+      "confused": "Confused",
+      "thinking": "Thinking",
+      "thanks": "Thanks",
+      "rocket": "Rocket",
+      "fire": "Fire",
+      "bug": "Bug",
+      "hourglass": "Hourglass",
+      "hundred": "Hundred points"
+    },
+    "composer": {
+      "hands": "Hands work to {handles}.",
+      "over": "A message hands work to at most {max} agents: {handles} get none.",
+      "bytes": "{count} of {max} bytes",
+      "sending": "Sending",
+      "send": "Send",
+      "blank": "Write something first.",
+      "long": "A message is at most {max} bytes of UTF-8.",
+      "mention": {
+        "label": "Agents, projects and people to mention",
+        "count": "{count, plural, one {# suggestion} other {# suggestions}}: the arrow keys move, Enter puts it in.",
+        "project": "default agent of {project}",
+        "groups": {
+          "agent": "Agents",
+          "project": "Projects",
+          "person": "People"
+        }
+      }
+    },
+    "thread": {
+      "title": "Thread",
+      "count": "{count, plural, one {# reply} other {# replies}}",
+      "close": "Close the thread",
+      "log": "Messages of the thread",
+      "failed": "Couldn't read this thread.",
+      "retry": "Try again",
+      "loading": "Loading the thread",
+      "replies": "{count, plural, =0 {No replies yet} one {# reply} other {# replies}}",
+      "empty": "Nobody answered yet. An agent mentioned above answers here.",
+      "latest": "Jump to the latest",
+      "composerLabel": "Reply in the thread",
+      "placeholder": "Reply in the thread",
+      "soloHint": "You are the only person in this chat: a reply without @ goes to the agent already working in this thread.",
+      "hint": "Mention an agent with @ to hand it this reply."
+    },
+    "members": {
+      "title": "Members",
+      "description": "Who is in {title}. Everyone here reads the messages their grants clear.",
+      "close": "Close the members",
+      "agents": "Agents",
+      "people": "People",
+      "countOf": "{count} of {max}",
+      "default": "Default",
+      "deleted": "Deleted",
+      "removeAgent": "Take @{handle} out of the chat",
+      "noAgentsYet": "No agents yet. Add one to hand it work with @.",
+      "you": "(you)",
+      "creator": "Created the chat",
+      "leave": "Leave",
+      "leaving": "Leaving",
+      "removePerson": "Take {login} out of the chat",
+      "budget": "Budget",
+      "restricted": "A project of this chat's agents is restricted, so its notices name the chat and link to it, nothing more.",
+      "left": "You left {title}",
+      "done": {
+        "addAgent": "{name} added to the chat",
+        "removeAgent": "{name} taken out of the chat",
+        "addPerson": "{name} added to the chat",
+        "removePerson": "{name} taken out of the chat",
+        "budget": "Budget changed"
+      },
+      "leaveTitle": "Leave {title}?",
+      "leaveBody": "You will no longer read or write in this chat, and its notices stop. A member can add you again.",
+      "cancel": "Cancel",
+      "addAgent": "Add an agent",
+      "loadingAgents": "Loading agents",
+      "pickAgent": "Pick an agent",
+      "defaultAgent": "{name} (@{handle}, the project's default)",
+      "agentOption": "{name} (@{handle})",
+      "adding": "Adding",
+      "add": "Add",
+      "agentsFull": "A chat holds at most {max} agents.",
+      "agentsFailed": "Couldn't read the agents of {projects}.",
+      "noAgents": "Every agent of the projects you write to is in this chat already, or you write to none.",
+      "agentHint": "Agents of the projects you write to. Each answers when someone mentions it.",
+      "addPerson": "Add a person",
+      "loginPlaceholder": "GitHub login",
+      "badLogin": "A GitHub login is letters, digits and dashes, at most 39, starting with a letter or digit.",
+      "peopleFull": "A chat holds at most {max} people.",
+      "personHint": "Someone who signed in to the hub once, with a grant that clears the projects of this chat's agents.",
+      "budgetRead": "The runs of its agents may cost up to {amount} in any 24 hours. {creator}, who created the chat, changes it.",
+      "budgetLabel": "Spend limit for 24 hours, in USD",
+      "saving": "Saving",
+      "save": "Save",
+      "badBudget": "A number above 0, at most {max}.",
+      "budgetHint": "The runs of its agents may cost up to {amount} in any 24 hours, as their usage says; past it the hub hands them no work."
+    },
+    "create": {
+      "title": "New chat",
+      "description": "People and the agents of your projects, in one conversation. You are in it anyway.",
+      "titleLabel": "Title",
+      "titlePlaceholder": "Release planning",
+      "titleHint": "One line, at most 120 characters.",
+      "titleProblems": {
+        "blank": "Give the chat a title.",
+        "long": "A title is at most {max} characters.",
+        "line": "A title is one line, without control characters."
+      },
+      "agentsLabel": "Agents",
+      "picked": "{count} picked, of at most {max}",
+      "filterAgents": "Filter agents",
+      "noAgents": "You write to no project with agents, so the chat starts with people only. A writer of a project adds its agents later.",
+      "agentsFailed": "Couldn't read the agents of {projects}.",
+      "agentsHint": "Agents of the projects you write to. You can add more later.",
+      "peopleLabel": "People",
+      "loginPlaceholder": "GitHub login",
+      "addPerson": "Add",
+      "badLogin": "A GitHub login is letters, digits and dashes, at most 39, starting with a letter or digit.",
+      "peopleFull": "A chat holds at most {max} people.",
+      "peopleHint": "Logins of people who signed in to the hub once. Each needs a grant that clears the projects of the chat's agents.",
+      "peopleList": "People to add",
+      "removePerson": "Remove {login}",
+      "cancel": "Cancel",
+      "creating": "Creating",
+      "submit": "Create chat",
+      "created": "Chat {title} created"
+    },
+    "errors": {
+      "forbidden": "The hub refused: you may not do this in this chat.",
+      "notFound": "The hub has no such chat, message or member that you can see. Reload the page.",
+      "conflict": "The hub refused the change.",
+      "invalid": "The hub did not take this.",
+      "hubSays": "The hub says: {message}"
+    }
+  },
   "accounts": {
     "title": "Accounts",
     "count": "{count, plural, one {# account} other {# accounts}}",
@@ -3184,7 +3397,8 @@
         "pending": "Rerunning…",
         "cancel": "Keep it",
         "hubSays": "The hub says: {message}"
-      }
+      },
+      "chatSub": "A turn of @{agent} in a group chat, hop {hop}. <chatLink>Open the message it answers</chatLink>."
     },
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
@@ -3334,6 +3548,11 @@
           "toastAfterTurn": "The run ends done after the agent's turn."
         }
       }
+    },
+    "chatRun": {
+      "kind": "Chat run",
+      "line": "A turn of @{agent} in a group chat",
+      "lineProject": "{project}: a turn of @{agent} in a group chat"
     },
     "account": {
       "label": "Account",

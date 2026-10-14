@@ -10,6 +10,7 @@ import {
   ListChecks,
   LockKeyhole,
   type LucideIcon,
+  MessagesSquare,
   MonitorPlay,
   MoonStar,
   Network,
@@ -22,7 +23,7 @@ import type { Route } from "next";
 
 /**
  * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas; the hub-wide areas
- * (workers, secrets, accounts, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
+ * (chats, workers, secrets, accounts, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
  * a hub-wide area one entry to HUB_NAV, and one label under `nav` in messages/vi.json and messages/en.json. Icons follow
  * the Iconography table of web/DESIGN.md.
  */
@@ -36,6 +37,7 @@ export type NavLabel =
   | "insights"
   | "curator"
   | "agents"
+  | "chats"
   | "memories"
   | "skills"
   | "kg"
@@ -48,10 +50,10 @@ export type NavLabel =
 
 /**
  * A number at the end of a nav item, in its tone: the decisions waiting for the visitor's answer (attention), the
- * project's active runs (running), the runs at work in every project of the visitor's grants (running). Hidden while
- * it is zero or unknown.
+ * project's active runs (running), the runs at work in every project of the visitor's grants (running), the messages
+ * of others in the visitor's chats that they have not read (attention). Hidden while it is zero or unknown.
  */
-export type NavCount = "openDecisions" | "activeRuns" | "runningRuns";
+export type NavCount = "openDecisions" | "activeRuns" | "runningRuns" | "unreadChats";
 
 export type ProjectNavItem = {
   label: NavLabel;
@@ -89,6 +91,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
 ];
 
 export const HUB_NAV: readonly HubNavItem[] = [
+  { label: "chats", icon: MessagesSquare, href: "/chats", count: "unreadChats" },
   { label: "workers", icon: Server, href: "/workers" },
   { label: "secrets", icon: LockKeyhole, href: "/secrets" },
   { label: "accounts", icon: UserRoundCog, href: "/accounts" },

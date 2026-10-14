@@ -2,6 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { agentPath, agentsPath, createAgentByApi, putAvatarByApi } from "./support/agents";
+import { agentAnswers, chatPath, chatWorker, claimChatRun, createChatByApi, reactByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { seedCurator } from "./support/curator";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -160,6 +161,27 @@ async function seedAgents(me: Member) {
   await seedRunPlan(me, project);
   await dispatch(me, project, ["2"], { profile: handle, runtime: "claude-code" });
   return handle;
+}
+
+/**
+ * A chat of `me` with another person and the default agent of their first project: a message that mentions the agent
+ * before `me` has a worker (so the hub answers in its thread why it took no work), a reply and a reaction on it; then,
+ * with a worker, a mention the agent takes, its run claimed and its reply in the thread, linking a draft pull request.
+ */
+async function seedChat(me: Member) {
+  const project = me.projects[0];
+  const mai = await signedInPerson("a11y-mai", [project]);
+  const chat = await createChatByApi(me, { title: "Release talk", people: [mai.login], agents: [project] });
+  const root = await sendByApi(me, chat.id, `@${project} please look at **the flaky wait test**`);
+  await sendByApi(mai, chat.id, "I can review it after lunch.", root.id);
+  await reactByApi(mai, chat.id, root.id, "\u{1F440}");
+  const live = await chatWorker(me, project, uniqueName("a11y-chat"));
+  const asked = await sendByApi(me, chat.id, `@${project} fix it, please`);
+  const runId = asked.mentions[0]?.run_id;
+  if (!runId) throw new Error(`the mention made no run: ${JSON.stringify(asked.mentions)}`);
+  await claimChatRun(live, runId);
+  await agentAnswers(live, runId, "Fixed the wait. Draft PR: https://github.com/example-org/api/pull/7");
+  return { chat, root, asked };
 }
 
 async function seedSkill(me: Member) {
@@ -728,6 +750,65 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "agents at 375 px");
       await open(page, agentPath(me.projects[0], handle));
       await expect(page.locator("#main").getByTestId("agent-permissions")).toBeVisible();
+    },
+  },
+  {
+    name: "chats list with an unread chat beside the empty pane, then the new chat form with its errors",
+    open: async ({ page, me }) => {
+      const { chat } = await seedChat(me);
+      await open(page, "/chats");
+      // The agent's reply; Mai's came before the member's own message, which marks the chat read up to it.
+      await expect(page.locator("#main").locator(`[data-testid="chat-row"][data-chat-id="${chat.id}"]`)).toHaveAttribute("data-unread", "1");
+      await expect(page.locator("#main").getByTestId("chats-none-open")).toBeVisible();
+      await expectNoSeriousViolations(page, "chats list");
+      await page.locator("#main").getByTestId("chats-new").click();
+      const dialog = page.getByTestId("new-chat-dialog");
+      await dialog.getByTestId("new-chat-login").fill("not a login");
+      await dialog.getByTestId("new-chat-submit").click();
+      await expect(dialog.getByTestId("new-chat-title-hint")).toHaveText("Give the chat a title.");
+    },
+  },
+  {
+    name: "a chat with a mention the hub answered, reactions, an agent's reply with its run and pull request in a thread, and the @ suggestions",
+    open: async ({ page, me }) => {
+      const { chat, asked } = await seedChat(me);
+      await open(page, `${chatPath(chat.id)}?thread=${asked.id}`);
+      const thread = page.getByTestId("chat-thread");
+      await expect(thread).toHaveAttribute("data-state", "ready");
+      await expect(thread.getByTestId("message-pull-link")).toBeVisible();
+      await expect(thread.getByTestId("message-run-link")).toBeVisible();
+      await expectNoSeriousViolations(page, "a chat with its thread open");
+      await thread.getByTestId("chat-thread-close").click();
+      await expect(page.locator("#main").getByTestId("mention-refused")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("mention-run-link")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("reaction-chip").first()).toBeVisible();
+      await page.locator("#main").getByTestId("chat-composer-text").pressSequentially("@");
+      await expect(page.locator("#main").getByTestId("mention-menu")).toBeVisible();
+    },
+  },
+  {
+    name: "a chat's members, budget and the leave confirmation",
+    open: async ({ page, me }) => {
+      const { chat } = await seedChat(me);
+      await open(page, chatPath(chat.id));
+      await page.locator("#main").getByTestId("chat-members-open").click();
+      await expect(page.getByTestId("chat-members").getByTestId("chat-member-person")).toHaveCount(2);
+      await expectNoSeriousViolations(page, "members sheet");
+      await page.getByTestId("chat-members").getByTestId("chat-leave").click();
+      await expect(page.getByTestId("chat-leave-confirm")).toBeVisible();
+    },
+  },
+  {
+    name: "chats on a small screen",
+    open: async ({ page, me }) => {
+      const { chat } = await seedChat(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, "/chats");
+      await expect(page.locator("#main").getByTestId("chat-row")).toHaveCount(1);
+      await expectNoSeriousViolations(page, "chats at 375 px");
+      await open(page, chatPath(chat.id));
+      await expect(page.locator("#main").getByTestId("chat-back")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("chats-list")).toBeHidden();
     },
   },
   {

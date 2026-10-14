@@ -8,6 +8,7 @@ import { ACTIVE_STATES, type RunList, runsSummaryQuery } from "@/components/runs
 import { workerView } from "@/components/workers/model";
 import { type Worker, workersQuery } from "@/components/workers/queries";
 import { browserApi } from "@/lib/api/browser";
+import { chatsQuery, LIST_IDLE_MS } from "@/lib/chat-keys";
 import { overviewQuery } from "@/lib/queries";
 
 import type { NavCount } from "./nav";
@@ -16,7 +17,8 @@ import type { NavCount } from "./nav";
  * What the shell counts, read through the same queries as the pages that show the full picture, so a page and the
  * sidebar share one cache entry and one poll: the bell's count (every 10 seconds), the runs summary of the project
  * (every 5 seconds while a run is active, 30 otherwise), the overview of Home and the Monitor (every 15 seconds while
- * a run is at work, 30 otherwise; those pages ask it more often) and the workers list (every 10 seconds).
+ * a run is at work, 30 otherwise; those pages ask it more often), the workers list (every 10 seconds) and the visitor's
+ * chats (every 30 seconds; the Chats pages ask every 10).
  */
 
 /** How often the sidebar asks the overview for its Monitor count: Home and the Monitor ask every 5 seconds. */
@@ -65,9 +67,15 @@ export function useRunningRuns(): number | null {
   return data ? data.counts.running : null;
 }
 
+/** The messages of others in the visitor's chats that they have not read; null until the hub has said. */
+export function useUnreadChats(): number | null {
+  const { data } = useQuery({ ...chatsQuery(browserApi), refetchInterval: LIST_IDLE_MS });
+  return data ? data.reduce((sum, chat) => sum + chat.unread, 0) : null;
+}
+
 /** The value of each kind of count in the sidebar. */
 export function useNavCounts(project: string | null): Record<NavCount, number | null> {
-  return { openDecisions: useOpenDecisions(), activeRuns: useActiveRuns(project), runningRuns: useRunningRuns() };
+  return { openDecisions: useOpenDecisions(), activeRuns: useActiveRuns(project), runningRuns: useRunningRuns(), unreadChats: useUnreadChats() };
 }
 
 export type FleetState = { status: "loading" } | { status: "error" } | { status: "ready"; fleet: Fleet };

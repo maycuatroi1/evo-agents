@@ -1,6 +1,6 @@
 "use client";
 
-import { FilePen, Workflow } from "lucide-react";
+import { FilePen, MessagesSquare, Workflow } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
@@ -22,6 +22,17 @@ export function AuthorRunKindBadge({ className }: { className?: string }) {
   return (
     <Tag className={className} data-testid="run-kind" data-kind="author">
       <FilePen aria-hidden="true" />
+      {t("kind")}
+    </Tag>
+  );
+}
+
+/** "Chat run": one turn of an agent mentioned in a group chat, in tables and on the run page. A kind, so a tag. */
+export function ChatRunKindBadge({ className }: { className?: string }) {
+  const t = useTranslations("runs.chatRun");
+  return (
+    <Tag className={className} data-testid="run-kind" data-kind="chat">
+      <MessagesSquare aria-hidden="true" />
       {t("kind")}
     </Tag>
   );

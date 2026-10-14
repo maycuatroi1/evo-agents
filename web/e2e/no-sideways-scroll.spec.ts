@@ -1,5 +1,6 @@
 import type { Page } from "@playwright/test";
 
+import { createChatByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
 import { seedInsights } from "./support/insights";
@@ -235,5 +236,20 @@ test("insights never scroll sideways at 375, 768, 1024 and 1440 px, charts or ta
         await shown("insights-tokens-table-region")(page);
       },
     },
+  ]);
+});
+
+test("chats never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const mai = await signedInPerson("wide", [project]);
+  const chat = await createChatByApi(me, { title: `${LONG}${LONG}`.slice(0, 120), people: [mai.login], agents: [project] });
+  const root = await sendByApi(me, chat.id, `${LONG}${LONG} https://github.com/example-org/${LONG}/pull/7\n\n\`\`\`\n${LONG}${LONG}${LONG}\n\`\`\``);
+  await sendByApi(mai, chat.id, `${LONG}${LONG}`, root.id);
+  await noSidewaysScroll(page, [
+    { path: "/chats", ready: shown("chats-rows") },
+    { path: `/chats/${chat.id}`, ready: shown("chat-messages") },
+    // Below 1536 px the thread is a sheet, outside the page's main.
+    { path: `/chats/${chat.id}?thread=${root.id}`, ready: (page) => expect(page.getByTestId("chat-thread")).toHaveAttribute("data-state", "ready") },
   ]);
 });

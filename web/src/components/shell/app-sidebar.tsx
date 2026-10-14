@@ -37,12 +37,14 @@ const COUNT_TONE: Record<NavCount, string> = {
   openDecisions: "bg-attention-soft text-attention",
   activeRuns: "bg-running-soft text-running",
   runningRuns: "bg-running-soft text-running",
+  unreadChats: "bg-attention-soft text-attention",
 };
 /** The same tone as a dot on the icon when the sidebar is folded and the number has no room. */
 const COUNT_DOT: Record<NavCount, string> = {
   openDecisions: "bg-attention-solid",
   activeRuns: "bg-running",
   runningRuns: "bg-running",
+  unreadChats: "bg-attention-solid",
 };
 
 type ItemProps = {
