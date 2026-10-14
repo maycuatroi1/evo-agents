@@ -21,6 +21,11 @@ run`` prints is parsed here.
 - The turn is over when the session goes idle (``session.status`` ``idle``) and every prompt sent has reached the
   session; ``session.error`` (``MessageAbortedError`` after an abort, a provider error) fails it. The exit code of
   nothing is read.
+- A run under an agent profile that limits tool, skill or model, or has instructions, gets them as
+  ``evo_agents.worker.runtimes.profiles`` says: ``permission`` rules in the server's OPENCODE_CONFIG_CONTENT
+  (``server_env``) and in the session's rules, with ``deny`` for the MCP servers ``GET /mcp`` names that the profile
+  leaves out (a resumed session gets them again with ``PATCH /session/:id``), a model of its allowlist, never the
+  config's, and the instructions after the headless note in each prompt's ``system``.
 - The run's usage adds up the tokens of each step (``step-finish``) with their cost, and holds
   ``peak_context_tokens``, the largest context of a step: its ``input`` plus ``cache.read`` plus ``cache.write``,
   which opencode counts apart (in the research's samples, a step that read 89,984 tokens from the cache had an input
@@ -42,6 +47,7 @@ import socket
 from collections.abc import AsyncIterator, Mapping
 
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
+from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
     INTERRUPT_TIMEOUT,
@@ -253,8 +259,13 @@ class OpencodeAdapter(QueueAdapter):
 
         return OpencodeTui(context, session_id)
 
+    @classmethod
+    def profile_refusal(cls, run) -> str | None:
+        return profiles.model_refusal(profiles.Profile.of(run), run)
+
     def __init__(self, context: RunContext):
         super().__init__(context)
+        self.profile = profiles.profile_of(context)
         self._session = context.resume_session
         self._server: Server | None = None
         self._http = None
@@ -284,7 +295,12 @@ class OpencodeAdapter(QueueAdapter):
 
     async def start_server(self) -> Server:
         """``opencode serve`` for this run; a test hands it a server of its own."""
-        return await start_server(which(self.binary, self.context.env), str(self.context.worktree), self.context.env)
+        return await start_server(which(self.binary, self.context.env), str(self.context.worktree), self.server_env())
+
+    def server_env(self) -> dict[str, str]:
+        """The environment of the run's server: the agent's, with the permissions of its profile
+        (``profiles.opencode_env``)."""
+        return profiles.opencode_env(self.context.env, self.profile)
 
     # HTTP
 
@@ -304,10 +320,12 @@ class OpencodeAdapter(QueueAdapter):
             return json.loads(text) if text.strip() else None
 
     async def _resolve_model(self) -> tuple[str, str]:
-        name = run_setting(self.context, self.runtime, "model")
+        name = profiles.session_model(self.context, self.runtime)
         hint = "set EVO_WORKER_OPENCODE_MODEL to provider/model (the selftest takes --model)"
         if self._run_model():
             hint = "dispatch it with a model as `opencode models` lists it, provider/model"
+        if not name and self.profile is not None and self.profile.allowed("model") is not None:
+            raise RuntimeError(f"opencode has no model agent profile {self.profile.label} allows")
         if not name:
             config = await self._request("GET", "/config") or {}
             name = config.get("model") if isinstance(config.get("model"), str) else None
@@ -324,6 +342,19 @@ class OpencodeAdapter(QueueAdapter):
             raise RuntimeError(f"opencode lists no model {name}: {hint}")
         return provider, model
 
+    async def _profile_rules(self) -> list[dict]:
+        """The session's rules for the run's profile (``profiles.opencode_rules``), with the MCP servers the server
+        names; none without a profile."""
+        if self.profile is None:
+            return []
+        servers: list[str] = []
+        if self.profile.servers() is not None:
+            listing = await self._request("GET", "/mcp")
+            if not isinstance(listing, dict):  # unlisted, a server the profile leaves out would stay
+                raise RuntimeError(f"opencode answered GET /mcp with no servers by name: {cut(str(listing), 200)}")
+            servers = [name for name in listing if isinstance(name, str)]
+        return profiles.opencode_rules(self.profile, servers)
+
     def _run_model(self) -> bool:
         """Whether the model is the run's own, which the dispatch named."""
         value = self.context.run.get("model") if isinstance(self.context.run, Mapping) else None
@@ -334,7 +365,7 @@ class OpencodeAdapter(QueueAdapter):
         body = {
             "parts": [{"type": "text", "text": text}],
             "model": {"providerID": provider, "modelID": model},
-            "system": HEADLESS_NOTE,
+            "system": profiles.with_instructions(HEADLESS_NOTE, self.profile),
         }
         if self.variant:
             body["variant"] = self.variant
@@ -350,11 +381,14 @@ class OpencodeAdapter(QueueAdapter):
         self.server_url = self._server.url
         self._http = aiohttp.ClientSession(auth=aiohttp.BasicAuth(self._server.username, self._server.password))
         self.model = await self._resolve_model()
+        rules = RUN_RULES + await self._profile_rules()
         if self.context.resume_session:
             await self._request("GET", f"/session/{self.context.resume_session}")
+            if self.profile is not None:  # the rules of the profile hold in the session it goes on with
+                await self._request("PATCH", f"/session/{self.context.resume_session}", {"permission": rules})
         else:
             title = cut(f"evo-agents run {self.context.run.get('id')}: {self.context.run.get('title') or ''}", 100)
-            created = await self._request("POST", "/session", {"title": title, "permission": RUN_RULES})
+            created = await self._request("POST", "/session", {"title": title, "permission": rules})
             self._session = str(created["id"])
         self._tree.add(self._session)
         self._stream = await self._http.get(

@@ -9,6 +9,10 @@ CLAUDE_CODE_OAUTH_TOKEN) is noted once a run (``note_environment``). On Claude C
 subscription login alone (plan decision 14): ANTHROPIC_API_KEY is left out of its agent's environment, and a machine
 that has no subscription login for it fails the run before the agent starts, saying so (``Adapter.login_refusal``).
 The agent of a run on Claude Code gets the auto-compact window of ``claude_code.compact_window`` in its environment.
+A run under an agent profile that limits tool, skill or model, or has instructions, fails before any of its work when
+the runtime's adapter cannot apply the profile (``Adapter.profile_refusal``), or when the adapter finds so as it starts
+the agent (``ProfileRefused``), with cause ``runtime``; such a run is never handed to a person in a terminal UI, which
+applies no profile.
 A headless agent whose account hits its usage limit is stopped, and goes on in the same session with another account
 when the hub moves the run to one (``limits``); else the run fails with cause rate_limit.
 """
@@ -21,11 +25,12 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
 from evo_agents.worker import interactive, orphans
-from evo_agents.worker.adapter import AgentEvent, Outcome, RunContext
+from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import FAILOVER_PROMPT, Limits
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
+from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.claude_code import compact_window
 
 if TYPE_CHECKING:
@@ -62,11 +67,26 @@ class Agent:
     # The runtime
 
     def runtime_class(self):
-        """The adapter class of the run's runtime; RunFailed when this worker has none."""
+        """The adapter class of the run's runtime; RunFailed when this worker has none, or when it cannot apply the
+        run's agent profile (``check_profile``)."""
         cls = self.run.daemon.adapters.get(self.run.runtime)
         if cls is None:
             raise RunFailed(f"this worker has no adapter for {self.run.runtime}", cause="runtime")
+        self.check_profile(cls)
         return cls
+
+    def check_profile(self, cls) -> None:
+        """Say in the run's log what its agent profile limits in the session; RunFailed when the adapter cannot apply
+        it (``Adapter.profile_refusal``). Nothing for a run whose profile changes nothing."""
+        run = self.run
+        profile = profiles.Profile.of(run.spec)
+        if profile is None or not profile.applies:
+            return
+        why = cls.profile_refusal(run.spec)
+        if why:
+            run.note(f"Agent profile: {why}; the agent did not start.", cause="runtime")
+            raise RunFailed(f"agent profile: {why}", cause="runtime")
+        run.note(profiles.summary(profile))
 
     def check_interactive(self, cls) -> None:
         """RunFailed when the run is interactive and its agent cannot be handed to a person here."""
@@ -84,6 +104,9 @@ class Agent:
         cls = cls or run.daemon.adapters.get(run.runtime)
         if cls is None or not getattr(cls, "interactive", False):
             return f"its {run.runtime} adapter cannot hand the session to a terminal"
+        profile = profiles.Profile.of(run.spec)
+        if profile is not None and profile.applies:
+            return f"agent profile {profile.label} limits the session, and the terminal UI does not apply it"
         if not run.daemon.tmux.available:
             return "tmux is not on PATH"
         if self.terminal.failed:
@@ -247,6 +270,9 @@ class Agent:
         run.inbox.waits = False
         try:
             await adapter.start()
+        except ProfileRefused as exc:
+            run.note(f"Agent profile: {exc}; the agent did not start.", cause="runtime")
+            raise RunFailed(f"agent profile: {exc}", cause="runtime") from None
         except Exception as exc:
             log.warning("agent did not start", extra={"run_id": run.id}, exc_info=True)
             raise RunFailed(f"{run.runtime} did not start: {type(exc).__name__}: {exc}") from None
