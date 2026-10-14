@@ -1,21 +1,20 @@
 """``evo-agents hub run``: dispatch plan steps to your own workers, and follow, steer and end their runs.
 
-``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a
-plan run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent
-session or with ``--session-per-step`` in a new session for each step, and ``author``
-queues an author run, a plan written from your request with the create-exec-plan skill on a worker of yours (POST
-/v1/projects/{p}/author-runs, ``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the
-project. ``list`` and ``show`` read runs of every kind. ``logs``
-prints a run's events page by page (GET .../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's
-server-sent events (GET .../runs/{id}/stream) until the hub sends ``end``. ``send`` leaves a message for the run's
-agent, and ``cancel``, ``approve``, ``takeover``, ``handback`` and ``rerun`` are the owner's controls.
-``credentials`` lists the leases the run got of its owner's secrets and of the hub's GitHub App (GET
-.../runs/{id}/credentials, the owner only), never their values. Every command after ``dispatch``, ``plan``,
-``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's message on stderr, such
-as why a worker whose owner set it to take runs dispatched from the web only refuses a run dispatched with a token.
-``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, an account picked by hand, and all but ``rerun``
-``--agent``, an agent profile (``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes the protocol behind
-them; ``--json`` prints what the hub answered, with the keys declared next to the flag.
+``dispatch`` queues one run per step named (POST /v1/projects/{p}/runs), all of them or none, ``plan`` queues a plan
+run, one run that does every step of the plan not done yet (POST /v1/projects/{p}/plan-runs), in one agent session or
+with ``--session-per-step`` in a new session for each step, and ``author`` queues an author run, a plan written from
+your request with the create-exec-plan skill on a worker of yours (POST /v1/projects/{p}/author-runs,
+``evo_agents.hub.author``), or with ``--plan`` a new revision of a plan of the project. ``list`` and ``show`` read runs
+of every kind, the chat runs of group chats among them. ``logs`` prints a run's events page by page (GET
+.../runs/{id}/events?after=SEQ), or with ``--follow`` reads the run's server-sent events (GET .../runs/{id}/stream)
+until the hub sends ``end``. ``send`` leaves a message for the run's agent, and ``cancel``, ``approve``, ``takeover``,
+``handback`` and ``rerun`` are the owner's controls. ``credentials`` lists the leases the run got of its owner's secrets
+and of the hub's GitHub App (GET .../runs/{id}/credentials, the owner only), never their values. Every command after
+``dispatch``, ``plan``, ``author`` and ``list`` takes the id of a run, as ``list`` shows it. A refusal is the hub's
+message on stderr, such as why a worker whose owner set it to take runs dispatched from the web only refuses a run
+dispatched with a token. ``dispatch``, ``plan``, ``author`` and ``rerun`` take ``--account``, an account picked by hand,
+and all but ``rerun`` ``--agent``, an agent profile (``evo_agents.hub.run_cli_options``). ``docs/workers.md`` describes
+the protocol behind them; ``--json`` prints what the hub answered, with the keys declared next to the flag.
 
 ``--model`` names a model as one runtime names it (opencode: provider/model), so ``dispatch`` and ``plan`` take it
 only with ``--runtime`` naming that runtime: with ``any`` the claiming worker picks the runtime, and the model might
@@ -139,6 +138,7 @@ RUN_KEYS = (
     "profile_id",
     "profile_version",
 )
+RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
 MESSAGE_KEYS = ("id", "run_id", "seq", "text", "sent_by", "created_at", "delivered_at")

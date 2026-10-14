@@ -32,6 +32,7 @@ CHAT_KEYS = (
     "restricted",
     "last_seq",
     "last_read_seq",
+    "budget_usd",
 )
 SUMMARY_KEYS = ("id", "title", "created_by", "created_at", "last_message_at", "last_seq", "unread", "people", "agents")
 MESSAGE_KEYS = (

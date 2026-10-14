@@ -207,7 +207,8 @@ class Run(BaseModel):
     kind: Literal[runs.RUN_KINDS] = Field(
         description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
         "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan "
-        "written from a member's request, on no plan when it writes a new one"
+        "written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in "
+        "a group chat, on no plan"
     )
     project: str
     plan_id: str = Field(
@@ -291,6 +292,15 @@ class Run(BaseModel):
     )
     profile_id: int | None = Field(None, description="that profile's id, which its handle names for good")
     profile_version: int | None = Field(None, description="the version of the profile whose rules apply to the run")
+    chat_id: int | None = Field(None, description="a chat run's group chat; null for any other run")
+    chat_message_id: int | None = Field(
+        None, description="the message of the chat that started a chat run: the mention, or the reply that woke it"
+    )
+    hop: int | None = Field(
+        None,
+        description="a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most "
+        "3); null for any other run",
+    )
 
 
 class ClaimRequest(BaseModel):

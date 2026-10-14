@@ -5,8 +5,8 @@ clears the label of every project with an agent in the chat; messages have threa
 with the message (a person by login, an agent by handle, a project's name naming its default agent); a person
 mentioned or added gets a notice, which names the chat and links to it only in a restricted chat; reactions are one
 row per message, person or agent and emoji, counted by emoji; the reactions of a run's agent follow the run by rule;
-and a message, mentions or not, makes no run and asks no model. The stream and the command line are in
-``tests.hub.test_chat_stream``."""
+and a message without a mention of an agent makes no run and asks no model. The stream and the command line are in
+``tests.hub.test_chat_stream``; the runs mentions make in ``tests.hub.test_chat_runs``."""
 
 from functools import partial
 
@@ -278,10 +278,17 @@ def test_chat_mentions_are_read_once_and_kept_with_the_message(client, hub, hub_
     chat = created(client, hub["owner"], people=[OTHER], agents=["reviewer", PROJECT])
     text = "@Someone-Else and @reviewer, then @evo-agents. Mail me at owner@example.org; `@reviewer` and @nobody"
     message = sent(client, hub["owner"], chat["id"], text)
-    assert [(m["name"], m["via"], m["login"], m["handle"], m["refusal"]) for m in message["mentions"]] == [
+    assert [(m["name"], m["via"], m["login"], m["handle"], m["run_id"]) for m in message["mentions"]] == [
         (OTHER, "login", OTHER, None, None),
         ("reviewer", "handle", None, "reviewer", None),
         (PROJECT, "project", None, PROJECT, None),
+    ]
+    # the agents get the work, which owner has no worker to run: the mention and the hub's answer say so
+    no_worker = f"{OWNER} has no worker that takes runs of project {PROJECT}"
+    assert [m["refusal"] for m in message["mentions"]] == [
+        None,
+        f"@reviewer: {no_worker}, which @reviewer works in: join one, or add the project to one",
+        f"@{PROJECT}: {no_worker}, which @{PROJECT} works in: join one, or add the project to one",
     ]
     cm = tables.chat_mentions
     kept = sql(hub_db, select(cm.c.ordinal, cm.c.name).where(cm.c.message_id == message["id"]).order_by(cm.c.ordinal))
@@ -465,9 +472,10 @@ def test_chat_no_mention_message_makes_no_run_and_asks_no_model(client, hub, hub
     for who, text in (("owner", "Morning all"), ("other", "The build is green"), ("reader", "`@reviewer` in code")):
         message = sent(client, hub[who], chat["id"], text)
         assert message["mentions"] == []
-    # a mention reaches its agent's member row, still with no run and no model: runs come with a later step
-    mentioned = sent(client, hub["owner"], chat["id"], "@reviewer what do you think?")
-    assert [m["via"] for m in mentioned["mentions"]] == ["handle"]
     assert counted(hub_db, tables.runs) == runs_before == 0
     assert counted(hub_db, tables.run_events) == events_before == 0
-    assert counted(hub_db, tables.chat_messages) == 4
+    assert counted(hub_db, tables.chat_messages) == 3
+    # a mention hands its agent the work: owner has no worker for it, so the hub says why in the thread, and no run
+    mentioned = sent(client, hub["owner"], chat["id"], "@reviewer what do you think?")
+    assert [(m["via"], m["run_id"]) for m in mentioned["mentions"]] == [("handle", None)]
+    assert counted(hub_db, tables.runs) == 0 and counted(hub_db, tables.chat_messages) == 5

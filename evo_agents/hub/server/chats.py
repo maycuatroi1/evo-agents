@@ -12,8 +12,14 @@ POST .../messages sends a message of at most ``chats.MAX_MESSAGE_BYTES``; ``repl
 message it answers. The hub reads its mentions once (``chats.mention_names``) and keeps them with it: a name resolves
 among the chat's members only, a person by login, an agent by handle, a project's name to its default agent. A person
 mentioned gets the notice chat_mention. An agent mentioned that is not in the chat, or was deleted, reaches no one:
-the mention keeps why, and the hub answers in the message's thread, naming it. No model is asked anything and no run
-is made, whatever the message mentions; the agents' runs come with a later step.
+the mention keeps why, and the hub answers in the message's thread, naming it. An agent mentioned gets the work: a
+chat run for the sender (``chat_runs.hand_mentions``, at most ``chat_runs.MAX_RUNS_PER_MESSAGE`` agents a message),
+and the mention keeps the run it made or woke, or why it made none, which the hub's answer names too. In a chat of one
+person, a message in a thread without a mention goes to the one agent whose session the sender has in that thread
+(the mention ``via`` thread). A message that mentions no agent makes no run and asks no model anything.
+
+PATCH /v1/chats/{id} changes the chat's budget: what its agents' runs may cost in 24 hours (``chat_runs``); only its
+creator does (403), audited as chat.budget.
 
 A member puts an emoji on a message and takes it off; a message carries at most ``chats.MAX_EMOJI_KINDS`` different
 ones. POST .../read says how far the member read, which the list's unread count starts from. Creating a chat and
@@ -27,10 +33,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import func, insert, or_, select
+from sqlalchemy import func, insert, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, profiles, tables
+from evo_agents.hub import chat_runs, chats, profiles, tables
+from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.chat_access import (
@@ -53,6 +60,7 @@ from evo_agents.hub.server.chat_members import (
     refuse_uncleared,
 )
 from evo_agents.hub.server.chat_notices import notice_mention
+from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply, thread_session
 from evo_agents.hub.server.chat_store import (
     add_member,
     emoji_kinds,
@@ -136,6 +144,14 @@ class ChatReadIn(BaseModel):
 class ChatRead(BaseModel):
     last_read_seq: int
     unread: int
+
+
+class ChatUpdate(BaseModel):
+    budget_usd: float = Field(
+        gt=0,
+        le=chat_runs.MAX_BUDGET_USD,
+        description=f"what the runs of the chat's agents may cost in {chat_runs.BUDGET_HOURS} hours, in USD",
+    )
 
 
 # The chats
@@ -291,18 +307,44 @@ async def resolve_mentions(conn: AsyncConnection, chat: ChatAccess, user: Princi
     return kept, people, refusals
 
 
+async def _thread_agent(conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int | None) -> list[dict]:
+    """The mention, ``via`` thread, of the one agent whose session ``user`` has in the thread of ``root``, when the
+    chat has no other person; none otherwise."""
+    m = tables.chat_members
+    people = select(func.count()).where(m.c.chat_id == chat.chat_id, m.c.user_id.is_not(None), m.c.removed_at.is_(None))
+    if root is None or (await conn.execute(people)).scalar_one() != 1:
+        return []
+    profile_id = await thread_session(conn, chat.chat_id, root, user.user_id)
+    if profile_id is None:
+        return []
+    handle = (
+        await conn.execute(select(tables.agent_profiles.c.handle).where(tables.agent_profiles.c.id == profile_id))
+    ).scalar_one()
+    return [{"name": handle, "via": "thread", "user_id": None, "profile_id": profile_id, "refusal": None}]
+
+
 async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, body: ChatMessageIn) -> int:
-    """Store the message with its mentions, the hub's answer to what they refuse and the notices; its id."""
+    """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
+    the notices; its id."""
     root = None
     if body.reply_to is not None:
         answered = await _visible_message(conn, chat, body.reply_to)
         root = answered.thread_root_id or answered.id
     names = chats.mention_names(body.body)
-    kept, people, refusals = await resolve_mentions(conn, chat, user, names)
+    kept, people, _ = await resolve_mentions(conn, chat, user, names)
     message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
+    if not any(mention["profile_id"] is not None for mention in kept):
+        kept += await _thread_agent(conn, chat, user, root)
+    via = dispatch_credential(user.kind)
+    hand = Hand(chat, message_id, root or message_id, None, user.user_id, user.login, via, 1, user.login, body.body)
+    await hand_mentions(conn, hand, kept)
     await insert_mentions(conn, message_id, kept)
+    refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
     if refusals:  # the hub's answer, which the sender has read as they read their own
-        _, seq = await insert_message(conn, chat, "\n".join(refusals), thread_root_id=root or message_id)
+        await hub_reply(conn, chat.chat_id, root or message_id, "\n".join(refusals))
+        seq = (
+            await conn.execute(select(tables.chats.c.event_seq).where(tables.chats.c.id == chat.chat_id))
+        ).scalar_one()
     await mark_read(conn, chat.member_id, seq)
     for user_id in dict.fromkeys(people):
         if user_id != user.user_id:
@@ -325,6 +367,22 @@ async def send_message(request: Request, chat_id: ChatId, body: ChatMessageIn, u
         message_id = await _deliver(conn, chat, user, body)
         view = await _message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0])
     log.info("chat message sent", extra={"chat_id": chat_id, "message_id": message_id, "mentions": len(view.mentions)})
+    return view
+
+
+@router.patch("/{chat_id}", response_model=Chat, responses=REFUSALS)
+async def update_chat(request: Request, chat_id: ChatId, body: ChatUpdate, user: CurrentUser) -> Chat:
+    """Change the chat's budget: what its agents' runs may cost in 24 hours. Only its creator does."""
+    async with request.app.state.engine.begin() as conn:
+        chat = await chat_access(conn, user, chat_id, lock=True)
+        if user.user_id != chat.created_by:
+            raise HTTPException(403, f"only {chat.creator}, who created chat {chat_id}, changes its budget")
+        c = tables.chats
+        await conn.execute(update(c).values(budget_usd=body.budget_usd).where(c.c.id == chat_id))
+        target = f"chat:{chat_id} budget_usd={body.budget_usd:g}"
+        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.CHAT_BUDGET, target=target)
+        view = await chat_view(conn, chat)
+    log.info("chat budget changed", extra={"chat_id": chat_id, "budget_usd": body.budget_usd})
     return view
 
 

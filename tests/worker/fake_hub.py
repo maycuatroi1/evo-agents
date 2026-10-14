@@ -49,6 +49,9 @@ class FakeHub:
         self.proposals: list[dict] = []
         self.plan_puts: list[dict] = []  # what the agent of an author run put, with the run's id and the status
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
+        # what the agent of a run did in group chats and what the daemon of a chat run told of its pushes: each with
+        # the run's id and the route (chat/messages, chat/reactions, chat/mentions, chats, chat/pulls)
+        self.chat_calls: list[dict] = []
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
         self.judge_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon, which its routes take
@@ -94,6 +97,8 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/events", self._events),
                 post("/v1/worker/runs/{id}/inbox", self._inbox),
                 post("/v1/worker/runs/{id}/chat", self._chat),
+                post("/v1/worker/runs/{id}/chat/{route}", self._in_chats),
+                post("/v1/worker/runs/{id}/chats", self._in_chats),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
                 web.put("/v1/worker/runs/{id}/plan", self._put_plan),
@@ -325,6 +330,51 @@ class FakeHub:
             plan=None,
             skills=skills,
         )
+
+    def queue_chat_run(
+        self,
+        repos: list[str],
+        prompt: str = "You are @reviewer. Answer the message.",
+        *,
+        resume_of: int | None = None,
+        session_id: str | None = None,
+        branch: str | None = None,
+        runtime: str = "claude-code",
+    ) -> int:
+        """A chat run over ``repos`` on the branch ``branch`` (chat/<its id> by default), as the hub hands it; going on
+        in the session of chat run ``resume_of``."""
+        run_id = self.queue_run(
+            kind="chat",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title="@reviewer in Release talk: fix the wait",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=3,
+            parent_run_id=None,
+            resume_of_run_id=resume_of,
+            session_id=session_id,
+            runtime=runtime,
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+        )
+        spec = self.runs[run_id]["spec"]
+        spec["branch"] = branch or f"chat/{run_id}"  # before the claim: nothing awaits in between
+        spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
+        return run_id
+
+    def thread_reply(self, run_id: int, text: str) -> None:
+        """A message to the agent of chat run ``run_id`` in its thread, as the hub leaves it in the run's inbox."""
+        self.inbox[run_id].append({"id": next(self._messages), "text": text, "decision_id": None, "delivered": False})
 
     def answer(self, decision_id: int, option: str) -> int:
         """Answer a decision as its run's owner; the run whose inbox took the answer."""
@@ -562,11 +612,37 @@ class FakeHub:
 
     async def _chat(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)
-        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "author":
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in ("author", "chat"):
             raise _refusal(404, f"run {run_id} is not held by this worker, or not an author run")
         body = await request.json()
         run.setdefault("chat", []).append(body["text"])
         return web.json_response({"run_id": run_id, "seq": len(run["events"]) + 1}, status=201)
+
+    async def _in_chats(self, request: web.Request) -> web.Response:
+        """What the agent of a run does in chats, and the push a chat run's daemon tells of: recorded, and answered
+        as the hub would, with ids of its own; a mention of @itself is refused."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in ("step", "plan", "author", "chat"):
+            raise _refusal(404, f"run {run_id} is not held by this worker, or its agent does not talk in chats")
+        route = request.match_info.get("route")
+        route = f"chat/{route}" if route else "chats"
+        body = await request.json()
+        self.chat_calls.append({"run_id": run_id, "route": route, **body})
+        number = len(self.chat_calls)
+        message = {"id": 1000 + number, "chat_id": body.get("chat_id") or 7, "thread_root_id": body.get("reply_to")}
+        if route == "chat/mentions":
+            refused = body["handle"] == "reviewer"
+            refusal = "an agent does not mention itself: it goes on in its own session" if refused else None
+            answer = {"message": message, "run_id": None if refused else 500 + number, "refusal": refusal}
+        elif route == "chats":
+            people = [{"login": "owner"}, *({"login": login} for login in body.get("people") or [])]
+            answer = {"id": 70 + number, "title": body["title"], "people": people, "agents": [{"handle": "reviewer"}]}
+        elif route == "chat/pulls":
+            url = f"https://github.example/demo/{body['repo']}/pull/{number}"
+            answer = {**body, "url": url, "number": number, "opened": True, "message_id": 1000 + number}
+        else:
+            answer = message
+        return web.json_response(answer, status=200 if route == "chat/reactions" else 201)
 
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)

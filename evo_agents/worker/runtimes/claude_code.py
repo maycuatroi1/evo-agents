@@ -62,9 +62,11 @@ here.
   process against it, while its ``total_cost_usd`` goes on from the total the session's transcript saved), and
   ``max_turns`` its ``max_turns``. A ``result`` of ``error_max_budget_usd`` or ``error_max_turns`` ends the run with
   an outcome that names the cap, ``cost`` or ``turns``.
-- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) has the tools that ask the person at
-  the terminal a question turned off (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``):
-  nobody at the worker's machine answers it, and the agent asks its owner in its last message instead.
+- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) and a chat run (``chat``,
+  ``evo_agents.hub.chat_runs``) have the tools that ask the person at the terminal a question turned off
+  (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``): nobody at the worker's machine answers
+  it, and the agent asks in its last message instead. A chat run's prompt is delivered verbatim
+  (``verbatim_prompts``): an ``@name`` or ``@path`` the chat's people wrote never makes Claude Code read a file.
 - The agent compacts its context as it nears its auto-compact window: the run's environment
   (``evo_agents.worker.runner.agent``, so ``options.env`` and the terminal UI's) gets CLAUDE_CODE_AUTO_COMPACT_WINDOW
   from ``compact_window``, which keeps the daemon's own, else takes EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW
@@ -641,10 +643,13 @@ class ClaudeCodeAdapter(QueueAdapter):
                 settings[key] = value
         limits = profiles.claude_settings(profile)
         disallowed = limits.pop("disallowed_tools", [])
-        if self.context.run.get("kind") == "author":  # nobody at this machine answers a question tool
+        kind = self.context.run.get("kind")
+        if kind in ("author", "chat"):  # nobody at this machine answers a question tool
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
         if disallowed:
             settings["disallowed_tools"] = disallowed
+        if kind == "chat":  # an @handle or @path in the chat's words never makes Claude Code read a file
+            settings["verbatim_prompts"] = True
         settings.update(limits)
         hooks = profiles.claude_hooks(profile)
         if hooks is not None:

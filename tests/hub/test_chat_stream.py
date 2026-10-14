@@ -254,12 +254,17 @@ def test_hub_chat_creates_lists_shows_sends_and_reacts(hub, monkeypatch, capsys)
 
     shown = as_json(chat_cli(monkeypatch, capsys, other, "show", chat_id, "--json"))
     assert_json_keys("hub chat show", shown)
-    assert [m["body"] for m in shown["messages"]] == ["@reviewer and @someone-else: ready?", "Yes.\n"]
+    # the hub's answer to @reviewer, whose work owner has no worker to run, sits between them
+    assert [(m["author"]["kind"], m["body"][:10]) for m in shown["messages"]] == [
+        ("person", "@reviewer "),
+        ("hub", "@reviewer:"),
+        ("person", "Yes.\n"),
+    ]
     text = ok(chat_cli(monkeypatch, capsys, other, "show", chat_id)).out
     assert text.startswith(f"Chat {chat_id}: Release talk, created by {OWNER}")
     assert "  agents: @reviewer (Reviewer, evo-agents)" in text and f"#{first['id']} {OWNER} at" in text
     thread = as_json(chat_cli(monkeypatch, capsys, owner, "show", chat_id, "--thread", str(first["id"]), "--json"))
-    assert len(thread["messages"]) == 2
+    assert len(thread["messages"]) == 3
     outsider = write_credentials(
         hub.homes["owner"].parent / "reader",
         str(hub.client.base_url),

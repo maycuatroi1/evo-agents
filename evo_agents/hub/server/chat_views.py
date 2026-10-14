@@ -67,7 +67,10 @@ class ChatMention(BaseModel):
     via: Literal[chats.VIA] | None = Field(description="how it reached a member; null: it reached none")
     login: str | None = Field(description="the person it reached")
     handle: str | None = Field(description="the agent it reached, or would have")
-    refusal: str | None = Field(description="why it reached no member: not in the chat, or deleted")
+    refusal: str | None = Field(
+        description="why it reached no member (not in the chat, deleted), or why the agent it reached took no work"
+    )
+    run_id: int | None = Field(None, description="the run of the agent the mention handed work to, or woke")
 
 
 class ChatReaction(BaseModel):
@@ -104,6 +107,9 @@ class Chat(BaseModel):
     restricted: bool = Field(description="a project of its agents is restricted: its notices name it and link only")
     last_seq: int = Field(description="the number of its last event")
     last_read_seq: int = Field(description="how far the reader read")
+    budget_usd: float = Field(
+        description="what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
+    )
 
 
 class ChatSummary(BaseModel):
@@ -212,7 +218,7 @@ async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
     people = [ChatPerson(login=r.login, added_by=r.added_by, added_at=r.added_at) for r in rows if r.user_id]
     agents = [agent_member(found[r.profile_id], r.added_by, r.added_at) for r in rows if r.profile_id]
     c = tables.chats
-    seq = (await conn.execute(select(c.c.event_seq).where(c.c.id == chat.chat_id))).scalar_one()
+    seq, budget = (await conn.execute(select(c.c.event_seq, c.c.budget_usd).where(c.c.id == chat.chat_id))).one()
     m = tables.chat_members
     read = (await conn.execute(select(m.c.last_read_seq).where(m.c.id == chat.member_id))).scalar_one()
     return Chat(
@@ -226,6 +232,7 @@ async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
         restricted=chat.restricted,
         last_seq=seq,
         last_read_seq=read,
+        budget_usd=budget,
     )
 
 
@@ -252,7 +259,7 @@ def message_select():
 async def _mentions(conn: AsyncConnection, ids: list[int]) -> dict[int, list[ChatMention]]:
     cn, u, ap = tables.chat_mentions, tables.users, tables.agent_profiles
     query = (
-        select(cn.c.message_id, cn.c.name, cn.c.via, cn.c.refusal, u.c.login, ap.c.handle)
+        select(cn.c.message_id, cn.c.name, cn.c.via, cn.c.refusal, cn.c.run_id, u.c.login, ap.c.handle)
         .select_from(cn.outerjoin(u, u.c.id == cn.c.user_id).outerjoin(ap, ap.c.id == cn.c.profile_id))
         .where(one_of(cn.c.message_id, ids))
         .order_by(cn.c.message_id, cn.c.ordinal)
@@ -260,7 +267,12 @@ async def _mentions(conn: AsyncConnection, ids: list[int]) -> dict[int, list[Cha
     found: dict[int, list[ChatMention]] = defaultdict(list)
     for row in await conn.execute(query):
         mention = ChatMention(
-            name=row.name, via=row.via, login=row.login, handle=row.handle or None, refusal=row.refusal
+            name=row.name,
+            via=row.via,
+            login=row.login,
+            handle=row.handle or None,
+            refusal=row.refusal,
+            run_id=row.run_id,
         )
         found[row.message_id].append(mention)
     return found

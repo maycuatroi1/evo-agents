@@ -34,7 +34,7 @@ EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 # off when it puts CHECK or CROSS. A run that is lost and tried again keeps its EYES.
 STATUS_REACTIONS = {"leased": EYES, "done": CHECK, "failed": CROSS, "cancelled": CROSS}
 
-VIA = ("login", "handle", "project", "thread")  # how a mention reached its member; thread: no @ (a later step)
+VIA = ("login", "handle", "project", "thread")  # how a mention reached its member; thread: no @, a chat of one person
 EVENT_KINDS = ("message", "reaction_added", "reaction_removed", "member_added", "member_removed")
 NOTICE_MENTION, NOTICE_ADDED = "chat_mention", "chat_added"  # the kinds of notice a chat sends (``runs.NOTICE_KINDS``)
 

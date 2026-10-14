@@ -8,7 +8,8 @@ does not count toward its timeout. The owner's answer comes through the inbox an
 the same session (``running`` again): for a plan run the first answer, for an author run every answer to the decisions
 its agent asked that are open at the end of its turn, or a reply in its chat (``transitions.author_wakes``). A run the
 hub parks (no answer within a day) stops at the end of its turn, keeps its session and worktrees, and frees its slot;
-the run that resumes it, claimed with ``resume_of_run_id``, goes on in them (``Conversation.adopt``).
+the run that resumes it, claimed with ``resume_of_run_id``, goes on in them (``Conversation.adopt``). A chat run waits
+for nobody: the run that goes on in its session after it ended done adopts them the same way.
 """
 
 from __future__ import annotations
@@ -19,9 +20,20 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from evo_agents.hub import runs
+from evo_agents.hub import author, runs
 from evo_agents.worker import gitops
-from evo_agents.worker.runner.common import Parked, ReportRefused, RunFailed, Stopped, first_of, log, now
+from evo_agents.worker.hubapi import Backoff, HubProblem, Unreachable
+from evo_agents.worker.runner.common import (
+    HARD_STOP_TRIES,
+    Parked,
+    ReportRefused,
+    RunFailed,
+    Stopped,
+    first_of,
+    log,
+    now,
+    wait_or,
+)
 from evo_agents.worker.runner.transitions import answer_note, waits_for_owner
 
 if TYPE_CHECKING:
@@ -52,6 +64,28 @@ def read_asked(home, run_id: int) -> set[int]:
                 if isinstance(decision_id, int):
                     asked.add(decision_id)
     return asked
+
+
+async def post_last_message(run: Run) -> str | None:
+    """Post the agent's last message of its turn to the run's chat (an author run's, or a chat run's thread), trying a
+    few times; the text, or None when the turn ended without one. A message the hub does not take is noted, and the
+    run goes on."""
+    text = author.chat_text(run.outcome.summary if run.outcome else None)
+    if text is None:
+        run.note("The agent's turn ended without a message for the chat.")
+        return None
+    backoff = Backoff()
+    for _ in range(HARD_STOP_TRIES + 1):
+        try:
+            await run.daemon.hub.chat(run.id, text)
+            return text
+        except Unreachable:
+            await wait_or(run.daemon.hard_stop, backoff.next())
+        except HubProblem as exc:
+            run.note(f"The hub did not take the agent's message for the chat: {exc}")
+            return text
+    run.note("The hub did not answer: the agent's message did not reach the chat.")
+    return text
 
 
 class Conversation:
@@ -90,16 +124,17 @@ class Conversation:
         run, old_id = self.run, self.resume_of
         home = run.daemon.home
         record = home.load_run(old_id)
-        resumable = record is not None and record.get("kind") in runs.RESUME_KINDS
+        resumable = record is not None and record.get("kind") in runs.SESSION_KINDS
         if resumable and isinstance(record.get("step_sessions"), list):  # a plan run with a session for each step
             run.record["step_sessions"] = list(record["step_sessions"])
         if resumable:
             self._adopt_decisions(record, old_id)
         directory = Path(record["dir"]) if resumable and record.get("dir") else None
+        before = "parked run" if record is None or record.get("kind") in runs.RESUME_KINDS else "run"
         if directory is None or not directory.is_dir():
             run.note(
-                f"The worktrees of parked run #{old_id} are not on this worker any more: the run makes new ones from "
-                "the branches on origin, and goes on in the session of the parked run."
+                f"The worktrees of {before} #{old_id} are not on this worker any more: the run makes new ones from "
+                f"the branches on origin, and goes on in the session of the {before}."
             )
             return
         for item in record.get("repos") or []:
@@ -115,7 +150,7 @@ class Conversation:
         record.update({"resumed_by": run.id, "dir": None, "repos": [], "moved_to": str(directory)})
         home.save_run(record)
         names = ", ".join(self.directory.workspaces) or "no repo"
-        run.note(f"Goes on from parked run #{old_id} in {directory}, with its worktrees of {names}.")
+        run.note(f"Goes on from {before} #{old_id} in {directory}, with its worktrees of {names}.")
 
     def _adopt_decisions(self, record: dict, old_id: int) -> None:
         """The decisions the parked run's agent asked and has no answer to yet are this run's to wait for, worktrees

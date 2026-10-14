@@ -10,15 +10,16 @@ the hub numbers in the run's log, and then records in the plan what the move mea
 - a run that ends ``failed`` or ``cancelled`` sets the step back to ``pending`` with a note saying why. A ``lost``
   run is not the end of its dispatch: the next attempt is queued at once, and the step is left as it is.
 
-A plan run has no step of its own: its worker reports each step (POST /v1/worker/runs/{id}/steps/{key}, which writes
-it through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key.
-A review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has
-room for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). A judge run writes no step either:
-its end moves its change of the Curator on, and a failure sends the notice ``run_failed`` (``changes.judge_ended``);
-and a plan run of a plan the Curator made moves its change on as it ends (``changes.builder_ended``).
-Its moves write no step, except that a plan run that ends ``failed`` or ``cancelled`` sets back to ``pending``, with
-the same notes, the steps that it, or an earlier attempt or run it went on from, reported and that are still
-``in_progress``. A plan run that ends ``done`` writes nothing.
+A plan run has no step of its own: its worker reports each step (POST /v1/worker/runs/{id}/steps/{key}, which writes it
+through ``write_step``), and the hub keeps each report as a ``system`` event of the run with a ``step_report`` key. A
+review run has no plan: its moves write none, and its end hands the owner the tier 2 proposals the day's Inbox has room
+for, and the notice ``run_failed`` when it failed (``proposals.review_ended``). A chat run has none either: its moves
+put its agent's reaction on the message that started it (``chat_runs.chat_run_moved``). A judge run writes no step
+either: its end moves its change of the Curator on, and a failure sends the notice ``run_failed``
+(``changes.judge_ended``); and a plan run of a plan the Curator made moves its change on as it ends
+(``changes.builder_ended``). Its moves write no step, except that a plan run that ends ``failed`` or ``cancelled`` sets
+back to ``pending``, with the same notes, the steps that it, or an earlier attempt or run it went on from, reported and
+that are still ``in_progress``. A plan run that ends ``done`` writes nothing.
 
 The plan is written as the member who dispatched the run, through PATCH's own write (``plans.apply_patch``: the
 item update of ``evo harness step``, with ``if_revision``), and retried up to PLAN_TRIES times when another write
@@ -98,6 +99,7 @@ RECOVER_BATCH = 500  # expired runs one pass of the reaper takes
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 DECISION_WAIT = timedelta(seconds=runs.DECISION_WAIT_SECONDS)  # a run waiting this long for an answer is parked
 PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cancelled
+CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps them; NULL for any other kind
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset(
     {
@@ -507,6 +509,11 @@ async def record_move(
     if found.kind == "author":  # it writes no step: the plan it authors reaches the hub through the run's own command
         await notify_preflight_failure(conn, found, new)
         return None
+    if found.kind == "chat":  # it writes no step: its agent's reactions and replies are in its chat
+        from evo_agents.hub.server.chat_runs import chat_run_moved  # it queues runs through the routes that import this
+
+        await chat_run_moved(conn, run_id, new)
+        return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await notify_plan_run_end(conn, found, old, new, reason=reason)
@@ -702,6 +709,7 @@ def _next_attempt(run_id: int):
         "request",
         "profile_id",
         "profile_version",
+        *CHAT_COLUMNS,
     )
     source = select(
         *(r.c[name] for name in copied),
