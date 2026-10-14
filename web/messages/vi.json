@@ -3201,7 +3201,9 @@
       "run_failed": "Run thất bại",
       "curator_brief": "Bản tin sáng",
       "curator_paused": "Ca đêm tạm dừng",
-      "author_waiting": "Run soạn plan chờ bạn trả lời"
+      "author_waiting": "Run soạn plan chờ bạn trả lời",
+      "chat_mention": "Có người nhắc bạn trong một chat",
+      "chat_added": "Có người thêm bạn vào một chat"
     },
     "item": {
       "unread": "Chưa đọc",
