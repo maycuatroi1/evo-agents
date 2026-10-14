@@ -541,6 +541,94 @@ def test_a_chat_run_branch_gets_a_draft_pull_request_linked_in_the_thread(client
     assert wrong.status_code == 422
 
 
+def calls(github, method: str, suffix: str) -> list:
+    return [r for r in github.requests if r.method == method and r.path.endswith(suffix)]
+
+
+def token_permissions(github, token: str) -> tuple[str, dict]:
+    """(the App, the permissions) of an installation token the fake made."""
+    made = github.app_tokens[token]
+    return github.installations[made.installation].app, made.permissions
+
+
+def pushed_branch(client, hub, github) -> tuple:
+    """A chat run of @reviewer, running, whose branch is on GitHub: (worker, chat, mention, spec, body of its push)."""
+    credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
+    github.add_repo(MINE, "evo-agents")
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"])
+    mention, spec = started(client, hub, worker, chat)
+    branch = f"chat/{spec['id']}"
+    github.push(MINE, "evo-agents", branch, "1" * 40)
+    return worker, chat, mention, spec, {"repo": "evo-agents", "branch": branch, "head": "1" * 40}
+
+
+def test_a_refused_pull_request_says_githubs_errors_and_the_next_push_opens_it(client, hub, hub_db, github):
+    from evo_agents.hub.server import pulls
+
+    worker, chat, mention, spec, body = pushed_branch(client, hub, github)
+    refusal = {"resource": "PullRequest", "field": "base", "code": "invalid", "message": "base is not\n there"}
+    github.pull_refusals.append((422, {"message": "Validation Failed", "errors": [refusal, "and one more"]}))
+    refused = in_chats(client, worker, spec["id"], "chat/pulls", body).json()
+    assert (refused["url"], refused["number"], refused["opened"]) == (None, None, False)
+    assert len(calls(github, "POST", "/pulls")) == 1  # not the head: no second try
+    said = message(client, hub["owner"], chat["id"], refused["message_id"])
+    assert said["thread_root_id"] == mention["id"]
+    assert said["body"] == (
+        f"Pushed {body['branch']} of evo-agents. The hub did not open its draft pull request: GitHub answered 422 "
+        f"while opening a pull request of {body['branch']} on {MINE}/evo-agents: Validation Failed (field base, code "
+        "invalid: base is not there; and one more). The next push of this session tries again."
+    )
+    (opening,) = calls(github, "POST", "/pulls")
+    app, permissions = token_permissions(github, opening.headers["authorization"].partition(" ")[2])
+    assert app == "workers" and permissions == pulls.SERVER_PERMISSIONS["open"]
+    assert permissions["contents"] == "read"  # GitHub checks the head and base of a private repo with it
+    # the session's next push finds no pull request and opens it
+    again = in_chats(client, worker, spec["id"], "chat/pulls", {**body, "head": "2" * 40}).json()
+    assert (again["number"], again["opened"]) == (1, True)
+    made = github.pull_of(MINE, "evo-agents", body["branch"])
+    assert made.draft and message(client, hub["owner"], chat["id"], again["message_id"])["body"].startswith(
+        "Opened a draft pull request of evo-agents"
+    )
+
+
+def test_a_head_github_does_not_see_yet_is_tried_again(client, hub, hub_db, github, monkeypatch):
+    from evo_agents.hub.server import pulls
+
+    monkeypatch.setattr(pulls, "HEAD_WAITS", (0.0, 0.0))
+    worker, chat, _, spec, body = pushed_branch(client, hub, github)
+    missing = (422, {"message": "Validation Failed", "errors": [{"field": "head", "code": "invalid"}]})
+    github.pull_refusals += [missing, missing]
+    opened = in_chats(client, worker, spec["id"], "chat/pulls", body).json()
+    assert (opened["number"], opened["opened"]) == (1, True)
+    assert len(calls(github, "POST", "/pulls")) == 3
+    # three times not there: the last refusal is said, with GitHub's errors
+    github.close_by_hand(MINE, "evo-agents", body["branch"])
+    github.pull_refusals += [missing, missing, missing]
+    gone = in_chats(client, worker, spec["id"], "chat/pulls", body).json()
+    assert gone["number"] is None and len(calls(github, "POST", "/pulls")) == 6
+    said = message(client, hub["owner"], chat["id"], gone["message_id"])["body"]
+    assert said.endswith("Validation Failed (field head, code invalid). The next push of this session tries again.")
+
+
+def test_a_repo_without_drafts_gets_a_pull_request_titled_draft(client, hub, hub_db, github):
+    worker, chat, _, spec, body = pushed_branch(client, hub, github)
+    github.repos[(MINE.lower(), "evo-agents")].drafts = False
+    opened = in_chats(client, worker, spec["id"], "chat/pulls", body).json()
+    assert (opened["number"], opened["opened"]) == (1, True)
+    made = github.pull_of(MINE, "evo-agents", body["branch"])
+    assert not made.draft and made.title.startswith(f"{chat_runs.DRAFT_TITLE} @reviewer in Release talk")
+    assert message(client, hub["owner"], chat["id"], opened["message_id"])["body"] == (
+        f"Opened a pull request of evo-agents from {body['branch']}, its title starting with [Draft]: GitHub takes no "
+        f"draft pull request on this repo. {opened['url']}"
+    )
+    again = in_chats(client, worker, spec["id"], "chat/pulls", {**body, "head": "2" * 40}).json()
+    assert (again["number"], again["opened"]) == (1, False)
+    assert message(client, hub["owner"], chat["id"], again["message_id"])["body"] == (
+        f"Pushed more commits of evo-agents to {body['branch']}, in its pull request: {opened['url']}"
+    )
+
+
 def test_a_lost_chat_run_is_tried_again_with_its_chat_columns(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "studio")
     chat = created(client, hub["owner"])

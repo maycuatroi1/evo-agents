@@ -363,7 +363,8 @@ async def create_chat(request: Request, run_id: RunId, body: AgentChatIn, user: 
 
 
 async def _open_draft(app, target, branch: str, title: str, text: str) -> tuple[dict, bool]:
-    """(the draft pull request of ``branch`` on ``target`` (owner, name), whether the hub opened it now)."""
+    """(the draft pull request of ``branch`` on ``target`` (owner, name), whether the hub opened it now). On a repo
+    whose GitHub takes no draft, a pull request whose title starts with ``chat_runs.DRAFT_TITLE``."""
     owner, name = target
 
     async def opened(token: str) -> tuple[dict, bool]:
@@ -374,10 +375,15 @@ async def _open_draft(app, target, branch: str, title: str, text: str) -> tuple[
         base = held.get("default_branch")
         if not isinstance(base, str) or not base:
             raise GitHubRefused(f"GitHub names no default branch of {owner}/{name}")
-        made = await pulls.open_pull(
-            app, token, owner, name, branch=branch, base=base, title=title, body=text, draft=True
-        )
-        return made, True
+        pull = {"branch": branch, "base": base, "body": text}
+        try:
+            return await pulls.open_pull(app, token, owner, name, title=title, draft=True, **pull), True
+        except pulls.Refused as exc:
+            if not pulls.drafts_refused(exc.errors):
+                raise
+            log.info("no draft pull request on this repo", extra={"repo": f"{owner}/{name}", "why": str(exc)})
+        marked = f"{rules.DRAFT_TITLE} {title}"[:240]
+        return await pulls.open_pull(app, token, owner, name, title=marked, draft=False, **pull), True
 
     return await pulls.with_token(app, owner, name, "open", opened)
 
@@ -408,17 +414,19 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
         title = (await conn.execute(select(r.c.title).where(r.c.id == run_id))).scalar_one() or body.branch
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
-    url, number, opened, problem = None, None, False, None
+    url, number, opened, problem, draft = None, None, False, None, True
     if target is not None and app is not None:
         text = f"Opened by the hub for @{run.profile.handle}, from chat {found.chat_id} (run #{run_id}). Not merged."
         try:
             made, opened = await _open_draft(app, target, body.branch, title[:240], text)
-            url, number = made.get("html_url"), made.get("number")
+            url, number, draft = made.get("html_url"), made.get("number"), made.get("draft") is not False
         except (GitHubRefused, GitHubUnavailable) as exc:
             problem = str(exc)
+            log.warning("chat run pull request not opened", extra={"run_id": run_id, "repo": body.repo, "why": problem})
     elif target is not None:
         url = f"https://github.com/{target[0]}/{target[1]}/tree/{body.branch}"
-    said = rules.pull_text(body.repo, body.branch, url, pull=number is not None, opened=opened, problem=problem)
+    pull = number is not None
+    said = rules.pull_text(body.repo, body.branch, url, pull=pull, opened=opened, problem=problem, draft=draft)
     async with request.app.state.engine.begin() as conn:
         chat = await agent_access(conn, found.chat_id, run.profile, run.principal.user_id)
         message_id = 0

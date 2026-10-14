@@ -3,12 +3,16 @@ check run and the merge, with the workers' App (evo-agents-workers); and the che
 Curator's App (evo-agents-curator). ``evo_agents.hub.server.changes`` decides what to call when.
 
 Each call asks the App's installation on the repo for a token of that repo alone, with the permissions the call needs
-and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write; read one, its files and its CI with
-pull_requests, checks and statuses read; write the Judge's check run with checks write; merge with contents and
-pull_requests write), uses it, and revokes it. The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were.
-Calls go through ``GitHubClient`` (a timeout, no redirect, one log line without the token): GitHub failing raises
-``GitHubUnavailable``, which the job takes as "try again next pass"; GitHub refusing raises ``GitHubRefused`` with a
-message safe to show.
+and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
+head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
+write the Judge's check run with checks write; merge with contents and pull_requests write), uses it, and revokes it.
+The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were. Calls go through ``GitHubClient`` (a timeout,
+no redirect, one log line without the token): GitHub failing raises ``GitHubUnavailable``, which the job takes as "try
+again next pass"; GitHub refusing raises ``Refused`` (a ``GitHubRefused``) with a message safe to show, which repeats
+GitHub's ``message`` and the field, code and message of each item of its ``errors`` (``Refused.errors``).
+
+``open_pull`` tries again, after HEAD_WAITS, while GitHub's errors say the head branch is not there (field ``head``),
+as it may not be for a moment after the push; any other refusal is final.
 
 ``check_ruleset`` answers whether the Curator's App is kept off a repo's default branch: GET /repos/{o}/{r} names the
 default branch, GET /repos/{o}/{r}/rules/branches/{branch} the rules that apply to it, and for each ruleset with a rule
@@ -23,6 +27,7 @@ in part, so a pull request of more files than the hub reads, or of more check ru
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -38,7 +43,7 @@ log = logging.getLogger(__name__)
 T = TypeVar("T")
 
 SERVER_PERMISSIONS = {
-    "open": {"pull_requests": "write", "metadata": "read"},
+    "open": {"pull_requests": "write", "contents": "read", "metadata": "read"},
     "read": {"pull_requests": "read", "checks": "read", "statuses": "read", "metadata": "read"},
     "check": {"checks": "write", "metadata": "read"},
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
@@ -47,6 +52,19 @@ SERVER_PERMISSIONS = {
 PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
 MERGE_METHOD = "merge"  # a merge commit, which `git revert -m 1` undoes
+HEAD_WAITS = (1.0, 3.0)  # seconds before each new try of a pull request whose head GitHub does not see yet
+MAX_ERRORS = 5  # items of GitHub's errors a refusal repeats
+MAX_SHOWN = 200  # characters of each text of GitHub's a refusal repeats
+
+
+class Refused(GitHubRefused):
+    """GitHub answered a call with a refusal: its ``status`` and the items of its ``errors``, each {field, code,
+    message} as far as GitHub gave them."""
+
+    def __init__(self, text: str, status: int | None = None, errors: list[dict] | None = None):
+        super().__init__(text)
+        self.status = status
+        self.errors = errors or []
 
 
 class Truncated(GitHubRefused):
@@ -90,15 +108,55 @@ async def _api(app: GitHubApp, token: str, method: str, path: str, doing: str, *
     return await app._call(method, f"{app.config.github_api_url}/{path}", doing, headers=headers, **kwargs)
 
 
-def _refused(response, doing: str) -> GitHubRefused:
-    message = ""
+def _shown(value) -> str:
+    return " ".join(value.split())[:MAX_SHOWN] if isinstance(value, str) else ""
+
+
+def _errors(data) -> list[dict]:
+    """The items of GitHub's ``errors``, each {field, code, message} with what GitHub gave of them; an item that is
+    text alone is its message."""
+    found = data.get("errors") if isinstance(data, dict) else None
+    items = []
+    for item in found[:MAX_ERRORS] if isinstance(found, list) else ():
+        item = item if isinstance(item, dict) else {"message": item}
+        kept = {key: _shown(item.get(key)) for key in ("field", "code", "message")}
+        if any(kept.values()):
+            items.append({key: value for key, value in kept.items() if value})
+    return items
+
+
+def _said(errors: list[dict]) -> str:
+    """GitHub's errors as a refusal says them: "field head, code invalid; code custom: Draft pull requests are ..."."""
+    said = []
+    for item in errors:
+        where = ", ".join(f"{key} {item[key]}" for key in ("field", "code") if item.get(key))
+        message = item.get("message", "")
+        said.append(f"{where}: {message}" if where and message else where or message)
+    return "; ".join(said)
+
+
+def _refused(response, doing: str) -> Refused:
     try:
         data = response.json()
-        message = data.get("message") if isinstance(data, dict) and isinstance(data.get("message"), str) else ""
     except ValueError:
-        pass
-    shown = " ".join(message.split())[:200]
-    return GitHubRefused(f"GitHub answered {response.status_code} while {doing}" + (f": {shown}" if shown else ""))
+        data = None
+    message = _shown(data.get("message")) if isinstance(data, dict) else ""
+    errors = _errors(data)
+    detail = _said(errors)
+    text = f"GitHub answered {response.status_code} while {doing}" + (f": {message}" if message else "")
+    if detail:
+        text += f" ({detail})" if message else f": {detail}"
+    return Refused(text, response.status_code, errors)
+
+
+def head_missing(errors: list[dict]) -> bool:
+    """Whether GitHub's errors say the head branch of a pull request is not there (yet): field head."""
+    return any(item.get("field") == "head" for item in errors)
+
+
+def drafts_refused(errors: list[dict]) -> bool:
+    """Whether GitHub's errors say the repo takes no draft pull request: an item about drafts."""
+    return any("draft" in f"{item.get('field', '')} {item.get('message', '')}".lower() for item in errors)
 
 
 async def repository(app: GitHubApp, token: str, owner: str, repo: str) -> dict:
@@ -132,19 +190,27 @@ async def open_pull(
     body: str,
     draft: bool = False,
 ) -> dict:
-    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already."""
+    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already.
+    Tried again after each of HEAD_WAITS while GitHub says the head is not there; ``Refused`` otherwise."""
     doing = f"opening a pull request of {branch} on {owner}/{repo}"
     payload = {"title": title, "head": branch, "base": base, "body": body, "maintainer_can_modify": False}
     if draft:
         payload["draft"] = True
-    response = await _api(app, token, "POST", _path("repos", owner, repo, "pulls"), doing, json=payload)
-    if response.status_code == 201:
-        return app._json(response, doing)
-    if response.status_code == 422:
+    waits = list(HEAD_WAITS)
+    while True:
+        response = await _api(app, token, "POST", _path("repos", owner, repo, "pulls"), doing, json=payload)
+        if response.status_code == 201:
+            return app._json(response, doing)
+        refusal = _refused(response, doing)
+        if response.status_code != 422:
+            raise refusal
         found = await find_pull(app, token, owner, repo, branch)
         if found is not None:
             return found
-    raise _refused(response, doing)
+        if not (waits and head_missing(refusal.errors)):
+            raise refusal
+        log.info("github does not see the head yet", extra={"branch": branch, "wait_s": waits[0]})
+        await asyncio.sleep(waits.pop(0))
 
 
 async def pull(app: GitHubApp, token: str, owner: str, repo: str, number: int) -> dict:
