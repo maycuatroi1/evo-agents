@@ -3527,7 +3527,9 @@
       "run_failed": "Run failed",
       "curator_brief": "Morning brief",
       "curator_paused": "Night shift paused",
-      "author_waiting": "An author run waits for your reply"
+      "author_waiting": "An author run waits for your reply",
+      "chat_mention": "Someone mentioned you in a chat",
+      "chat_added": "Someone added you to a chat"
     },
     "item": {
       "unread": "Unread",

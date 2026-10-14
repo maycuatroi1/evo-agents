@@ -998,6 +998,257 @@
         "schema": "Agent"
       }
     },
+    "hub chat create": {
+      "positionals": [
+        {
+          "name": "title",
+          "metavar": "TITLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--member"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "title",
+          "created_by",
+          "created_at",
+          "people",
+          "agents",
+          "label",
+          "restricted",
+          "last_seq",
+          "last_read_seq"
+        ],
+        "schema": "Chat"
+      }
+    },
+    "hub chat list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "title",
+          "created_by",
+          "created_at",
+          "last_message_at",
+          "last_seq",
+          "unread",
+          "people",
+          "agents"
+        ],
+        "schema": "ChatSummary"
+      }
+    },
+    "hub chat react": {
+      "positionals": [
+        {
+          "name": "chat",
+          "metavar": "CHAT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "message",
+          "metavar": "MESSAGE",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "emoji",
+          "metavar": "EMOJI",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--remove"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "chat_id",
+          "seq",
+          "thread_root_id",
+          "reply_count",
+          "author",
+          "run_id",
+          "body",
+          "mentions",
+          "reactions",
+          "label",
+          "created_at"
+        ],
+        "schema": "GroupMessage"
+      }
+    },
+    "hub chat send": {
+      "positionals": [
+        {
+          "name": "chat",
+          "metavar": "CHAT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "text",
+          "metavar": "TEXT",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reply-to"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "chat_id",
+          "seq",
+          "thread_root_id",
+          "reply_count",
+          "author",
+          "run_id",
+          "body",
+          "mentions",
+          "reactions",
+          "label",
+          "created_at"
+        ],
+        "schema": "GroupMessage"
+      }
+    },
+    "hub chat show": {
+      "positionals": [
+        {
+          "name": "chat",
+          "metavar": "CHAT",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--thread"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "chat",
+          "messages",
+          "more"
+        ],
+        "schema": "ChatPage"
+      }
+    },
     "hub contract check": {
       "positionals": [
         {
@@ -5733,7 +5984,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "<version>"
+      "version": "0.15.1"
     },
     "paths": {
       "/v1/health": {
@@ -21587,6 +21838,1350 @@
             }
           }
         }
+      },
+      "/v1/chats": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "List Chats",
+          "description": "The chats the caller is in, the latest active first, with the unread messages of others.",
+          "operationId": "list_chats_v1_chats_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/ChatSummary"
+                    },
+                    "type": "array",
+                    "title": "Response List Chats V1 Chats Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Create Chat",
+          "description": "Create a chat with the caller in it, and the people and agents given.",
+          "operationId": "create_chat_v1_chats_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatCreate"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Show Chat",
+          "description": "The chat with its people and agents.",
+          "operationId": "show_chat_v1_chats__chat_id__get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/messages": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "List Messages",
+          "description": "The chat and the latest ``limit`` messages before ``before``, or of one thread, oldest first.",
+          "operationId": "list_messages_v1_chats__chat_id__messages_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "before",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "messages before this seq",
+                "title": "Before"
+              },
+              "description": "messages before this seq"
+            },
+            {
+              "name": "thread",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the first message of a thread",
+                "title": "Thread"
+              },
+              "description": "the first message of a thread"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatPage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Send Message",
+          "description": "Send a message to the chat, in the thread of ``reply_to`` when given.",
+          "operationId": "send_message_v1_chats__chat_id__messages_post",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatMessageIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GroupMessage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/messages/{message_id}/reactions": {
+        "post": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "React",
+          "description": "Put an emoji on a message; nothing changes when the caller put it already.",
+          "operationId": "react_v1_chats__chat_id__messages__message_id__reactions_post",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "message_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Message Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatReactionIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GroupMessage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Unreact",
+          "description": "Take the caller's emoji off a message; nothing changes when it is not there.",
+          "operationId": "unreact_v1_chats__chat_id__messages__message_id__reactions_delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "message_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Message Id"
+              }
+            },
+            {
+              "name": "emoji",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 16,
+                "description": "the emoji to take off",
+                "title": "Emoji"
+              },
+              "description": "the emoji to take off"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/GroupMessage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/read": {
+        "post": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Read Chat",
+          "description": "Say how far the caller read: the seq of the last event they saw, at most the chat's last.",
+          "operationId": "read_chat_v1_chats__chat_id__read_post",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatReadIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatRead"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/people/{login}": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Add Person",
+          "description": "Add a person to the chat; nothing changes when they are in it.",
+          "operationId": "add_person_v1_chats__chat_id__people__login__put",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+                "description": "a person's login",
+                "title": "Login"
+              },
+              "description": "a person's login"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Remove Person",
+          "description": "Leave the chat, or, for its creator, take a person out of it.",
+          "operationId": "remove_person_v1_chats__chat_id__people__login__delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "login",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+                "description": "a person's login",
+                "title": "Login"
+              },
+              "description": "a person's login"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/agents/{handle}": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Add Agent",
+          "description": "Add an agent to the chat (the writer role on its project); nothing changes when it is in it.",
+          "operationId": "add_agent_v1_chats__chat_id__agents__handle__put",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "an agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "an agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Remove Agent",
+          "description": "Take an agent out of the chat.",
+          "operationId": "remove_agent_v1_chats__chat_id__agents__handle__delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "an agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "an agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "204": {
+              "description": "Successful Response"
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/events": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "List Events",
+          "description": "The chat's events after ``after``, oldest first; ``more`` when there are later ones.",
+          "operationId": "list_events_v1_chats__chat_id__events_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "the seq the events start after",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "the seq the events start after"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "default": 500,
+                "title": "Limit"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatEvents"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/stream": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Stream",
+          "description": "The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no\nlonger read the chat. A ``: ping`` comment keeps an idle stream open.",
+          "operationId": "stream_v1_chats__chat_id__stream_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 0,
+                "description": "where a first connection starts",
+                "default": 0,
+                "title": "After"
+              },
+              "description": "where a first connection starts"
+            },
+            {
+              "name": "Last-Event-ID",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 0
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "sent by a reconnecting client",
+                "title": "Last-Event-Id"
+              },
+              "description": "sent by a reconnecting client"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "text/event-stream": {
+                  "itemSchema": {
+                    "type": "object",
+                    "properties": {
+                      "data": {
+                        "type": "string"
+                      },
+                      "event": {
+                        "type": "string"
+                      },
+                      "id": {
+                        "type": "string"
+                      },
+                      "retry": {
+                        "type": "integer",
+                        "minimum": 0
+                      }
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -23943,6 +25538,463 @@
           ],
           "title": "CharterWrite"
         },
+        "Chat": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "people": {
+              "items": {
+                "$ref": "#/components/schemas/ChatPerson"
+              },
+              "type": "array",
+              "title": "People"
+            },
+            "agents": {
+              "items": {
+                "$ref": "#/components/schemas/ChatAgent"
+              },
+              "type": "array",
+              "title": "Agents"
+            },
+            "label": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Label",
+              "description": "the labels of its agents' projects: every person in it clears them"
+            },
+            "restricted": {
+              "type": "boolean",
+              "title": "Restricted",
+              "description": "a project of its agents is restricted: its notices name it and link only"
+            },
+            "last_seq": {
+              "type": "integer",
+              "title": "Last Seq",
+              "description": "the number of its last event"
+            },
+            "last_read_seq": {
+              "type": "integer",
+              "title": "Last Read Seq",
+              "description": "how far the reader read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "title",
+            "created_by",
+            "created_at",
+            "people",
+            "agents",
+            "label",
+            "restricted",
+            "last_seq",
+            "last_read_seq"
+          ],
+          "title": "Chat"
+        },
+        "ChatAgent": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "title": "Handle"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "color": {
+              "type": "string",
+              "title": "Color"
+            },
+            "icon_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Icon Url"
+            },
+            "is_default": {
+              "type": "boolean",
+              "title": "Is Default",
+              "description": "the project's default agent, which @<project> names"
+            },
+            "deleted": {
+              "type": "boolean",
+              "title": "Deleted",
+              "description": "deleted since it was added: it takes no new work"
+            },
+            "added_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Added By"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "project",
+            "name",
+            "color",
+            "icon_url",
+            "is_default",
+            "deleted",
+            "added_by",
+            "added_at"
+          ],
+          "title": "ChatAgent"
+        },
+        "ChatAuthor": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "person",
+                "agent",
+                "hub"
+              ],
+              "title": "Kind"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "a person's"
+            },
+            "handle": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle",
+              "description": "an agent's, @ left out"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "an agent's project"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "what the web shows: a person's login, an agent's name, or hub"
+            },
+            "color": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Color",
+              "description": "an agent's colour, #rrggbb"
+            },
+            "icon_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Icon Url",
+              "description": "an agent's avatar on this hub; null: its initial on its colour"
+            },
+            "deleted": {
+              "type": "boolean",
+              "title": "Deleted",
+              "description": "an agent deleted since: it takes no new work, and keeps its name",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "name"
+          ],
+          "title": "ChatAuthor",
+          "description": "Who wrote a message or put a reaction: a person, an agent or the hub itself."
+        },
+        "ChatCreate": {
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 120,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Title"
+            },
+            "people": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$"
+              },
+              "type": "array",
+              "maxItems": 49,
+              "title": "People",
+              "description": "logins; the creator is in it anyway"
+            },
+            "agents": {
+              "items": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "Agents",
+              "description": "handles, @ left out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "title"
+          ],
+          "title": "ChatCreate"
+        },
+        "ChatEvent": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "title": "Seq"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "message",
+                "reaction_added",
+                "reaction_removed",
+                "member_added",
+                "member_removed"
+              ],
+              "title": "Kind"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "message": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/GroupMessage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a message event's message, as it reads now"
+            },
+            "reaction": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatReactionChange"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "member": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatMemberChange"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "kind",
+            "created_at"
+          ],
+          "title": "ChatEvent"
+        },
+        "ChatEvents": {
+          "properties": {
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/ChatEvent"
+              },
+              "type": "array",
+              "title": "Events"
+            },
+            "last_seq": {
+              "type": "integer",
+              "title": "Last Seq"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More"
+            }
+          },
+          "type": "object",
+          "required": [
+            "events",
+            "last_seq",
+            "more"
+          ],
+          "title": "ChatEvents"
+        },
+        "ChatMemberChange": {
+          "properties": {
+            "member": {
+              "$ref": "#/components/schemas/ChatAuthor",
+              "description": "the person or agent added or removed"
+            },
+            "by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "By",
+              "description": "the person who added or removed them"
+            }
+          },
+          "type": "object",
+          "required": [
+            "member",
+            "by"
+          ],
+          "title": "ChatMemberChange"
+        },
+        "ChatMention": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name",
+              "description": "as written, lowered, @ left out"
+            },
+            "via": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "login",
+                    "handle",
+                    "project",
+                    "thread"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Via",
+              "description": "how it reached a member; null: it reached none"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the person it reached"
+            },
+            "handle": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Handle",
+              "description": "the agent it reached, or would have"
+            },
+            "refusal": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refusal",
+              "description": "why it reached no member: not in the chat, or deleted"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "via",
+            "login",
+            "handle",
+            "refusal"
+          ],
+          "title": "ChatMention",
+          "description": "A name a message mentions, as the hub read it when the message was sent."
+        },
         "ChatMessage": {
           "properties": {
             "run_id": {
@@ -23996,6 +26048,93 @@
           ],
           "title": "ChatMessage"
         },
+        "ChatMessageIn": {
+          "properties": {
+            "body": {
+              "type": "string",
+              "minLength": 1,
+              "title": "Body",
+              "description": "at most 16384 bytes of UTF-8"
+            },
+            "reply_to": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reply To",
+              "description": "the message it answers: it goes in its thread"
+            }
+          },
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "title": "ChatMessageIn"
+        },
+        "ChatPage": {
+          "properties": {
+            "chat": {
+              "$ref": "#/components/schemas/Chat"
+            },
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/GroupMessage"
+              },
+              "type": "array",
+              "title": "Messages",
+              "description": "oldest first; those the reader's grants do not reach left out"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "there are older messages: ask again with before= the first seq"
+            }
+          },
+          "type": "object",
+          "required": [
+            "chat",
+            "messages",
+            "more"
+          ],
+          "title": "ChatPage"
+        },
+        "ChatPerson": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "added_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Added By"
+            },
+            "added_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Added At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "added_by",
+            "added_at"
+          ],
+          "title": "ChatPerson"
+        },
         "ChatPost": {
           "properties": {
             "text": {
@@ -24030,6 +26169,194 @@
             "seq"
           ],
           "title": "ChatPosted"
+        },
+        "ChatReaction": {
+          "properties": {
+            "emoji": {
+              "type": "string",
+              "title": "Emoji"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count"
+            },
+            "mine": {
+              "type": "boolean",
+              "title": "Mine",
+              "description": "whether the reader put it"
+            },
+            "people": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "People",
+              "description": "the logins of the people who put it, first first"
+            },
+            "agents": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Agents",
+              "description": "the handles of the agents that put it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "emoji",
+            "count",
+            "mine",
+            "people",
+            "agents"
+          ],
+          "title": "ChatReaction"
+        },
+        "ChatReactionChange": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id"
+            },
+            "emoji": {
+              "type": "string",
+              "title": "Emoji"
+            },
+            "by": {
+              "$ref": "#/components/schemas/ChatAuthor"
+            },
+            "count": {
+              "type": "integer",
+              "title": "Count",
+              "description": "how many put the emoji on the message after the change"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "emoji",
+            "by",
+            "count"
+          ],
+          "title": "ChatReactionChange"
+        },
+        "ChatReactionIn": {
+          "properties": {
+            "emoji": {
+              "type": "string",
+              "maxLength": 16,
+              "minLength": 1,
+              "title": "Emoji"
+            }
+          },
+          "type": "object",
+          "required": [
+            "emoji"
+          ],
+          "title": "ChatReactionIn"
+        },
+        "ChatRead": {
+          "properties": {
+            "last_read_seq": {
+              "type": "integer",
+              "title": "Last Read Seq"
+            },
+            "unread": {
+              "type": "integer",
+              "title": "Unread"
+            }
+          },
+          "type": "object",
+          "required": [
+            "last_read_seq",
+            "unread"
+          ],
+          "title": "ChatRead"
+        },
+        "ChatReadIn": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "maximum": 9.223372036854776e+18,
+              "minimum": 0.0,
+              "title": "Seq",
+              "description": "the seq of the last event the member read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq"
+          ],
+          "title": "ChatReadIn"
+        },
+        "ChatSummary": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "last_message_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Message At"
+            },
+            "last_seq": {
+              "type": "integer",
+              "title": "Last Seq"
+            },
+            "unread": {
+              "type": "integer",
+              "title": "Unread",
+              "description": "messages of others after the reader's last read"
+            },
+            "people": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "People"
+            },
+            "agents": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Agents"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "title",
+            "created_by",
+            "created_at",
+            "last_message_at",
+            "last_seq",
+            "unread",
+            "people",
+            "agents"
+          ],
+          "title": "ChatSummary"
         },
         "CheckoutReport": {
           "properties": {
@@ -26499,6 +28826,103 @@
           ],
           "title": "GraphSummary"
         },
+        "GroupMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq",
+              "description": "the chat event that brought it: events?after= and Last-Event-ID take it"
+            },
+            "thread_root_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Root Id",
+              "description": "the first message of its thread; null when it starts none"
+            },
+            "reply_count": {
+              "type": "integer",
+              "title": "Reply Count",
+              "description": "the messages of the thread it starts"
+            },
+            "author": {
+              "$ref": "#/components/schemas/ChatAuthor"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of the agent that wrote it"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "mentions": {
+              "items": {
+                "$ref": "#/components/schemas/ChatMention"
+              },
+              "type": "array",
+              "title": "Mentions"
+            },
+            "reactions": {
+              "items": {
+                "$ref": "#/components/schemas/ChatReaction"
+              },
+              "type": "array",
+              "title": "Reactions"
+            },
+            "label": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Label",
+              "description": "the labels of the projects of the chat's agents when it was sent"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "chat_id",
+            "seq",
+            "thread_root_id",
+            "reply_count",
+            "author",
+            "run_id",
+            "body",
+            "mentions",
+            "reactions",
+            "label",
+            "created_at"
+          ],
+          "title": "GroupMessage"
+        },
         "HTTPValidationError": {
           "properties": {
             "detail": {
@@ -28534,7 +30958,9 @@
                     "run_failed",
                     "curator_brief",
                     "curator_paused",
-                    "author_waiting"
+                    "author_waiting",
+                    "chat_mention",
+                    "chat_added"
                   ]
                 },
                 {

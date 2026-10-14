@@ -214,7 +214,7 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(workers.worker_router)
     app.state.join_refusals = workers.RefusalLimit()  # refused pairing codes per client address, this process only
 
-    from evo_agents.hub.server import author_chat, listen, run_events, runs, tool_stats
+    from evo_agents.hub.server import author_chat, chat_events, listen, run_events, runs, tool_stats
 
     app.include_router(runs.router)
     app.include_router(runs.worker_router)
@@ -226,7 +226,11 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(tool_stats.router)
     app.state.listener = listen.Listener(config.dsn)  # the process's one LISTEN, opened by the first claim or stream
     app.state.run_wakeups = runs.RunWakeups(app.state.listener)  # the claims waiting for a queued run
-    app.state.run_streams = run_events.RunStreams(app.state.listener)  # the event streams of runs
+    # the event streams of runs, and of group chats
+    app.state.run_streams, app.state.chat_streams = (
+        run_events.RunStreams(app.state.listener),
+        chat_events.ChatStreams(app.state.listener),
+    )
 
     from evo_agents.hub.server import curator, decisions, digests, notifications, overview, proposals
 
@@ -264,6 +268,8 @@ def create_app(config: HubConfig) -> FastAPI:
         account_views,
         accounts,
         agent_profiles,
+        chat_members,
+        chats,
         credentials,
         rate_limits,
         run_leases,
@@ -279,6 +285,10 @@ def create_app(config: HubConfig) -> FastAPI:
         account_views.router,
         rate_limits.worker_router,
         agent_profiles.router,
+        chats.router,
+        chat_members.router,
+        chat_events.router,
+        chat_events.stream_router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503

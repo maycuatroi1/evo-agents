@@ -197,8 +197,9 @@ MAX_NOTICE_COMMITS = 100  # the commits a notice of a push or merge names
 WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_finished", "run_failed")
 # curator_brief: the morning brief of a project's Curator, which the hub alone sends at the charter's brief_at;
 # curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too;
-# author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits
-NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused", "author_waiting")
+# author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits;
+# chat_mention and chat_added: someone mentioned the member in a group chat, or added them to one (``chats``)
+NOTICE_KINDS = (*WORKER_NOTICE_KINDS, "curator_brief", "curator_paused", "author_waiting", "chat_mention", "chat_added")
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel
 MAX_DELIVERY_ATTEMPTS = 5
