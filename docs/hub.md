@@ -233,6 +233,106 @@ Memories add one rule on top: `project` and `reference` memories go to every mem
 `user` and `feedback` memories go only to the person who wrote them. Memories outside any project are personal and
 only their owner sees them.
 
+## Agent profiles
+
+An agent profile says who an agent of a project is and what its runs may use (`evo_agents.hub.profiles`). It belongs
+to a project: the project's admins create, edit and delete its profiles, and every member reads them, deleted ones
+included, so an old message keeps its author's name and avatar. A writer or a reader who changes one gets 403; someone
+without a grant gets the project's 404.
+
+A profile has a handle, unique on the hub (deleted profiles' included) and never a project's name, written
+`[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
+prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
+none; and seven axes of permissions. The handle never changes. Every edit that changes something, the avatar
+included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
+lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
+`description`, and `icon_url` for the avatar.
+
+Every project has a default profile, `@<project>`, whose handle is the project's name: the registration of a project
+creates it, and migration 0030 created one for every project before it. It allows everything and has no instructions,
+always (422 otherwise), so a run whose dispatch names no profile, which goes under it, runs as runs ran before
+profiles; its name, description, colour and avatar may change, and it is never deleted. A project cannot be registered
+under the handle of another project's agent (409), since `@<name>` would name both.
+
+Each axis is `{"mode": "all"}` (the default) or `{"mode": "allowlist", "allow": [...]}`. An allowlist never grows by
+itself when a secret, a skill or a worker is added, and an empty one allows nothing. A profile only narrows what the
+member who dispatches a run has (their workers, their secrets, the projects they write to); it never widens it.
+
+| Axis | An allowlist names | Enforced |
+| --- | --- | --- |
+| `credential` | secret names, and `github-app` for a token of the hub's GitHub App | the leases of the run ([credentials.md](credentials.md)) |
+| `tool` | the tool words below, and `mcp:<server>` | the worker's adapter, in the agent session |
+| `skill` | skill names, global or of the project (ignoring case) | the dispatch of an author run (`create-exec-plan`), and the worker's adapter |
+| `worker` | worker names, or `label:<label>` (ignoring case) | the dispatch (a pinned worker, or one of the dispatcher's at least) and the claim |
+| `project` | the other projects whose runs the profile may take; its own always | the dispatch |
+| `model` | model names, as a runtime names them | the dispatch (none named: the first allowed), and the worker's adapter |
+| `runtime` | `claude-code`, `opencode`, `codex` | the dispatch, and the claim of a run asking for `any` |
+
+The tool axis speaks runtime-neutral words, which each runtime's adapter turns into its own tools: `read` (read files
+and search them), `edit` (create and change files), `bash` (run shell commands), `web` (fetch web pages and search the
+web), `agent` (start subagents), and `mcp:<server>` (the tools of one MCP server). Tools that only keep the agent's own
+notes, such as a to-do list, are always there. A runtime that cannot turn off a word a profile leaves out fails the run
+before its agent starts.
+
+### Runs under a profile
+
+`POST /v1/projects/{p}/runs`, `.../plan-runs` and `.../author-runs` take `profile`, a handle (`--agent` on `hub run
+dispatch`, `plan` and `author`); without it the run goes under the project's default. The dispatch is refused, saying
+which allowlist leaves what out and that nothing was dispatched, when:
+
+- the handle names no profile the caller sees (404), or one of another project where the caller is not a writer (403);
+- the profile was deleted, or belongs to another project whose `project` axis leaves this one out (422);
+- the runtime asked for is not allowed, or none is, or a pinned worker reports none that is (422);
+- the model asked for is not allowed, or the axis allows none (422); without a model, the run takes the first allowed;
+- the pinned worker is not allowed by name or label, or, unpinned, no worker of the caller's that serves the project
+  is (422);
+- the account picked by hand is not in the credential allowlist (422), or an author run's profile leaves out the skill
+  `create-exec-plan` (422);
+- the pinned worker's daemon does not say it applies profiles (feature `agent_profiles`) and the profile limits
+  tools, skills or models or has instructions (409, as for any worker that could never claim the run).
+
+The run records `profile_id` and `profile_version`, and `Run` shows `profile` (the handle), `profile_id` and
+`profile_version`. The hub applies that version's rules to the run: a worker claims it only when the worker axis names
+it or one of its labels, the runtime axis one of its runtimes, and, for a profile that needs it, its daemon lists
+`agent_profiles` in its heartbeat's `features`; a run asking for `any` runtime takes the first of the worker's the
+profile allows. The claim carries the profile at that version (`RunSpec.profile`: handle, version, name, instructions,
+permissions) for the worker to apply. A rerun goes under the profile of the run it reruns, at its version now, checked
+again; the next attempt of a lost run and a run that resumes a parked one keep the profile and version. A run of the
+night shift goes under the project's default. A run from before 0030 has no profile and runs as before.
+
+The audit row of a dispatch, a plan run, an author run or a rerun ends with `profile=@<handle>:v<version>`, and so does
+each `credential.lease` row, unless the profile is the project's default: a row that names none went under it. Each
+lease row records the profile and version it was handed out under.
+
+### Routes and commands
+
+| Route | Command | Who |
+| --- | --- | --- |
+| `GET /v1/projects/{p}/agents` (`?deleted=true` adds the deleted) | `hub agent list [--deleted]` | a member |
+| `GET .../agents/{handle}` | `hub agent show HANDLE` | a member |
+| `GET .../agents/{handle}/versions`, every version whole, the latest first | | a member |
+| `POST .../agents` | `hub agent create HANDLE --name NAME [...]` | an admin of the project |
+| `PATCH .../agents/{handle}` (`if_version`: 409 when it moved on) | `hub agent edit HANDLE [...]` | an admin of the project |
+| `DELETE .../agents/{handle}` | `hub agent delete HANDLE` | an admin of the project |
+| `PUT` and `DELETE .../agents/{handle}/avatar` | `--avatar PATH`, `--no-avatar` | an admin of the project |
+| `GET .../agents/{handle}/avatar` | | a member |
+
+`--allow AXIS:ITEM` (repeatable) makes an axis an allowlist of the items given for it, `--none AXIS` an allowlist of
+nothing, and on `edit` `--all AXIS` allows everything again; `edit` sends the other axes as it read them, with
+`if_version`. For example:
+
+```sh
+evo-agents hub agent create reviewer --name Reviewer --project evo-agents --allow tool:read --allow tool:mcp:github \
+  --allow credential:github-app --allow model:claude-sonnet-4-5 --instructions-file reviewer.md
+evo-agents hub run dispatch rollout 3 --agent reviewer --project evo-agents
+```
+
+The avatar is a PNG, JPEG or WebP image of at most 512 KiB, sent as base64 in JSON (`{"data": ...}`) and checked by
+its first bytes; the hub stores it in the blob store as a blob of kind `agent-avatar` the project holds, and serves it
+from `GET .../avatar`, whose URL (`icon_url`) carries a part of its SHA-256. Without one, `icon_url` is null and the
+web draws the profile's initial on its colour. The audit rows `agent.create`, `agent.update` (with the fields changed)
+and `agent.delete` name `<project>/@<handle> v<version>`, never a description, instructions or an image.
+
 ## Plans and their copies in git
 
 A harness hands its plans to the hub by naming the project in `harness.yaml`:
