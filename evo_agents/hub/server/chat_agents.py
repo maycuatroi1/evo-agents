@@ -416,7 +416,8 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
     app = request.app.state.github_app
     url, number, opened, problem, draft = None, None, False, None, True
     if target is not None and app is not None:
-        text = f"Opened by the hub for @{run.profile.handle}, from chat {found.chat_id} (run #{run_id}). Not merged."
+        # The handle in code spans: a bare @handle on GitHub would mention the GitHub user of that login
+        text = f"Opened by the hub for `@{run.profile.handle}`, from chat {found.chat_id} (run #{run_id}). Not merged."
         try:
             made, opened = await _open_draft(app, target, body.branch, title[:240], text)
             url, number, draft = made.get("html_url"), made.get("number"), made.get("draft") is not False
