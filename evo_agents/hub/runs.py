@@ -114,11 +114,11 @@ PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an 
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
 AUTHOR_DECISIONS = "author_decisions"
-# what this package's daemon says it does besides its kinds of run (features of its heartbeat)
-WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS)
 # a daemon whose adapters apply a run's agent profile (evo_agents.hub.profiles): tool, skill and model, instructions
 AGENT_PROFILES = "agent_profiles"
-HUB_FEATURES = (*WORKER_FEATURES, AGENT_PROFILES)  # the features a heartbeat may name that the hub keeps
+# what this package's daemon says it does besides its kinds of run (features of its heartbeat)
+WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES)
+HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
