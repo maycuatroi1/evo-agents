@@ -31,6 +31,13 @@ engineered voice that reads the same in English and Vietnamese.
 No gradients, no glass, no coloured left borders on cards, no emoji: state lives in the pill and the dot. Icons are
 Lucide only; the GitHub mark is the Simple Icons path.
 
+One exception: the reactions of a group chat are emoji, since a person picks them and the hub only stores and counts
+them (`evo_agents/hub/chats.py`). An emoji appears only inside a reaction chip under a chat message, as the chip's
+content with its count, and in the picker that adds one; the status reactions an agent's run puts by rule (eyes when
+a worker claims it, a check mark when it is done, a cross when it failed or was cancelled) are reactions like any
+other. A reaction chip's accessible name says the emoji's name, the count and who put it, never the emoji alone. No
+other part of the hub, a chat's own chrome included, shows emoji: a run's state there is still the pill and the dot.
+
 ## Colour
 
 Light and dark are both first-class; the hub follows the system until a person picks one in the user menu

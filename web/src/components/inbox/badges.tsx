@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  AtSign,
   Boxes,
   CircleCheck,
   CirclePause,
@@ -16,6 +17,7 @@ import {
   Target,
   Trash2,
   Upload,
+  UserPlus,
   Wallet,
 } from "lucide-react";
 import { useTranslations } from "next-intl";
@@ -54,6 +56,8 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   curator_brief: { icon: Sunrise },
   curator_paused: { icon: CirclePause },
   author_waiting: { icon: MessageCircleQuestionMark },
+  chat_mention: { icon: AtSign },
+  chat_added: { icon: UserPlus },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
