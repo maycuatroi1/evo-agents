@@ -301,6 +301,7 @@ class FakeCLI:
     def __init__(self, behaviour):
         self.behaviour = behaviour
         self.log: list[tuple] = []
+        self.answers: dict[str, dict] = {}  # the response to a control request, by subtype; {} when it has none
         self.users: asyncio.Queue = asyncio.Queue()
         self.out: asyncio.Queue = asyncio.Queue()
         self.input_closed = asyncio.Event()
@@ -320,7 +321,8 @@ class FakeCLI:
         if message["type"] == "control_request":
             subtype = message["request"]["subtype"]
             self.log.append(("control", subtype))
-            response = {"subtype": "success", "request_id": message["request_id"], "response": {}}
+            answer = self.answers.get(subtype, {})
+            response = {"subtype": "success", "request_id": message["request_id"], "response": answer}
             self.print({"type": "control_response", "response": response})
             if subtype == "interrupt":
                 self.interrupted.set()
@@ -1441,6 +1443,7 @@ class FakeOpencode:
     def __init__(self, behaviour, config_model: str | None = None):
         self.behaviour = behaviour
         self.config_model = config_model
+        self.mcp: dict = {}  # what GET /mcp answers: the MCP servers by name
         self.requests: list[tuple] = []
         self.events: asyncio.Queue = asyncio.Queue()
         self.prompts: asyncio.Queue = asyncio.Queue()
@@ -1470,6 +1473,8 @@ class FakeOpencode:
         app.router.add_get("/config/providers", self.providers)
         app.router.add_post("/session", self.create)
         app.router.add_get("/session/{id}", self.get_session)
+        app.router.add_patch("/session/{id}", self.patch_session)
+        app.router.add_get("/mcp", self.mcp_status)
         app.router.add_get("/event", self.stream)
         app.router.add_post("/session/{id}/prompt_async", self.prompt)
         app.router.add_post("/session/{id}/abort", self.abort)
@@ -1502,6 +1507,14 @@ class FakeOpencode:
     async def get_session(self, request):
         self.requests.append(("get", request.match_info["id"]))
         return web.json_response({"id": request.match_info["id"]})
+
+    async def patch_session(self, request):
+        self.requests.append(("patch", request.match_info["id"], await request.json()))
+        return web.json_response({"id": request.match_info["id"]})
+
+    async def mcp_status(self, request):
+        self.requests.append(("mcp",))
+        return web.json_response(self.mcp)
 
     async def stream(self, request):
         response = web.StreamResponse(headers={"Content-Type": "text/event-stream"})
