@@ -50,6 +50,7 @@
       "error": "Không đọc được danh sách worker"
     },
     "curator": "Curator",
+    "agents": "Agent",
     "curatorProposals": "Đề xuất",
     "curatorCharter": "Charter"
   },
@@ -1835,6 +1836,296 @@
       "failed": "Không xoá được secret {name}"
     }
   },
+  "agents": {
+    "title": "Agent",
+    "metaTitle": "Agent: {project}",
+    "count": "{count, plural, other {# agent}}",
+    "newButton": "Agent mới",
+    "default": "Mặc định",
+    "deleted": "Đã xoá",
+    "readOnly": "Mọi thành viên của {project} xem được agent của dự án và giao run dưới tên chúng; chỉ admin của dự án tạo và sửa agent.",
+    "list": {
+      "caption": "Agent của dự án {project}",
+      "toolbar": "Lọc agent của dự án {project}",
+      "shown": "{count, plural, other {Đang hiện # agent}}",
+      "facet": "Agent",
+      "active": "Đang dùng",
+      "deletedFacet": "Đã xoá",
+      "columns": {
+        "agent": "Agent",
+        "limits": "Giới hạn",
+        "version": "Phiên bản",
+        "updated": "Lần sửa",
+        "deleted": "Lúc xoá"
+      },
+      "version": "v{version}",
+      "everyPermission": "Mọi quyền",
+      "limitsLabel": "Giới hạn:",
+      "onlyDefault": "Hiện dự án mới có agent mặc định. Bấm Agent mới để tạo một agent có tên, chỉ dẫn và quyền hẹp hơn.",
+      "more": "+{count}"
+    },
+    "axes": {
+      "credential": {
+        "title": "Credential",
+        "noun": "credential",
+        "hint": "Các secret mà run được lease, theo tên; github-app là token của GitHub App của hub.",
+        "all": "Mọi credential của người giao run"
+      },
+      "tool": {
+        "title": "Tool",
+        "noun": "tool",
+        "hint": "Những việc agent được làm trong phiên: read, edit, bash, web, agent, và tool của một MCP server.",
+        "all": "Mọi tool"
+      },
+      "skill": {
+        "title": "Skill",
+        "noun": "skill",
+        "hint": "Các skill được nạp vào phiên, skill dùng chung hoặc của dự án.",
+        "all": "Mọi skill"
+      },
+      "worker": {
+        "title": "Worker",
+        "noun": "worker",
+        "hint": "Các worker được nhận run của agent, theo tên hoặc theo label.",
+        "all": "Mọi worker của người giao run"
+      },
+      "project": {
+        "title": "Dự án",
+        "noun": "dự án",
+        "hint": "Các dự án khác mà agent được nhận run; dự án của nó thì luôn được.",
+        "all": "Mọi dự án mà người giao run có quyền ghi"
+      },
+      "model": {
+        "title": "Model",
+        "noun": "model",
+        "hint": "Các model mà run được dùng, theo tên mỗi runtime đặt; run không ghi model thì dùng model đầu tiên.",
+        "all": "Mọi model"
+      },
+      "runtime": {
+        "title": "Runtime",
+        "noun": "runtime",
+        "hint": "Các chương trình agent mà run được khởi chạy.",
+        "all": "Mọi runtime"
+      }
+    },
+    "tools": {
+      "read": "đọc và tìm trong file",
+      "edit": "tạo và sửa file",
+      "bash": "chạy lệnh shell",
+      "web": "tải trang web và tìm trên web",
+      "agent": "khởi chạy subagent"
+    },
+    "errors": {
+      "apiMessage": "Hub trả lời: {message}",
+      "unavailable": "Blob store của hub không trả lời nên avatar chưa đổi. Hãy thử lại sau ít phút.",
+      "tooLarge": "Ảnh quá lớn so với giới hạn của hub.",
+      "forbidden": "Chỉ admin của dự án sửa được agent. Hãy tải lại trang nếu vai trò của bạn vừa đổi.",
+      "notFound": "Hub không còn agent này. Hãy tải lại trang.",
+      "conflict": "Hub từ chối thay đổi: nó xung đột với dữ liệu hub đang giữ.",
+      "invalid": "Hub không nhận các giá trị này."
+    },
+    "form": {
+      "newTitle": "Agent mới",
+      "editTitle": "Sửa @{handle}",
+      "newDescription": "Một agent của {project}: tên và gương mặt, chỉ dẫn cho các run của nó, và những gì run được dùng.",
+      "editDescription": "Lưu sẽ tạo phiên bản kế tiếp, và các run giao từ lúc đó chạy theo phiên bản ấy. Form này mở từ phiên bản {version}.",
+      "close": "Đóng",
+      "handle": "Handle",
+      "handleHint": "Chữ thường, chữ số và dấu gạch ngang, duy nhất trên hub. Mọi người @ agent bằng handle này, và nó không bao giờ đổi.",
+      "name": "Tên",
+      "nameHint": "Tên agent hiện trong run và chat.",
+      "description": "Mô tả",
+      "descriptionHint": "Agent dùng để làm gì.",
+      "optional": "(không bắt buộc)",
+      "chars": "{count} trên {max} ký tự.",
+      "instructions": "Chỉ dẫn",
+      "instructionsHint": "Được nối vào system prompt của mọi run dưới agent này.",
+      "permissions": "Quyền",
+      "permissionsHint": "Mỗi trục cho phép mọi giá trị, hoặc chỉ những giá trị được chọn. Agent chỉ thu hẹp những gì người giao run có: worker, secret của họ, các dự án họ có quyền ghi.",
+      "defaultNote": "Agent mặc định của {project} luôn có mọi quyền và không có chỉ dẫn: run giao mà không chọn agent sẽ chạy dưới agent này, như trước khi có agent. Tên, mô tả, màu và avatar của nó thì sửa được.",
+      "fixFirst": "Hãy sửa các trường được đánh dấu ở trên trước.",
+      "unchanged": "Chưa có gì thay đổi.",
+      "cancel": "Huỷ",
+      "save": "Lưu thay đổi",
+      "create": "Tạo agent",
+      "saving": "Đang lưu…",
+      "created": "Đã tạo agent @{handle}",
+      "createdText": "Chọn nó trong Giao run, Chạy plan hoặc Plan mới.",
+      "saved": "Đã lưu @{handle} thành phiên bản {version}",
+      "savedText": "Các run giao từ bây giờ chạy theo phiên bản này.",
+      "avatarFailed": "Đã lưu @{handle}, nhưng avatar thì chưa",
+      "errors": {
+        "taken": "Hub từ chối handle: một agent khác đã dùng nó, kể cả agent đã xoá, hoặc có dự án mang tên này.",
+        "moved": "@{handle} đã thay đổi từ lúc form này mở. Hãy đóng và mở lại để bắt đầu từ phiên bản mới nhất."
+      },
+      "problems": {
+        "blank": "Hãy điền trường này.",
+        "pattern": "Dùng chữ thường, chữ số và dấu gạch ngang, bắt đầu bằng chữ hoặc số.",
+        "long": "Tối đa {max} ký tự.",
+        "line": "Chỉ một dòng, không có ký tự điều khiển.",
+        "project": "Đây là tên một dự án, dùng để @ agent mặc định của dự án đó. Hãy chọn handle khác."
+      },
+      "colour": {
+        "label": "Màu",
+        "hint": "Màu nền sau chữ cái đầu của agent ở những chỗ nó chưa có avatar.",
+        "auto": "Hub chọn theo handle",
+        "autoShort": "Tự động",
+        "custom": "Màu khác",
+        "palette": {
+          "blue": "Xanh dương",
+          "violet": "Tím",
+          "pink": "Hồng",
+          "red": "Đỏ",
+          "amber": "Hổ phách",
+          "green": "Xanh lá",
+          "cyan": "Xanh lơ",
+          "indigo": "Chàm"
+        }
+      },
+      "avatar": {
+        "label": "Avatar",
+        "choose": "Chọn ảnh",
+        "replace": "Chọn ảnh khác",
+        "clear": "Bỏ ảnh",
+        "hint": "PNG, JPEG hoặc WebP, tối đa 512 KiB. Không có ảnh thì hiện chữ cái đầu trên màu của agent.",
+        "picked": "{name} sẽ được tải lên khi agent được tạo.",
+        "type": "Hãy chọn ảnh PNG, JPEG hoặc WebP.",
+        "size": "Ảnh lớn hơn {max} KiB."
+      },
+      "axis": {
+        "mode": "Những {axis} agent được dùng",
+        "all": "Tất cả",
+        "allowlist": "Chỉ những mục này",
+        "failed": "Không đọc được danh sách {axis} của bạn: hãy gõ tên ở dưới.",
+        "filter": "Lọc {axis}",
+        "choices": "{axis} được phép",
+        "noOptions": "Không có gì để chọn: hãy gõ tên ở dưới.",
+        "noMatch": "Không có mục nào khớp bộ lọc.",
+        "typedLabel": "Thêm {axis} được phép theo tên",
+        "typed": {
+          "credential": "Tên một secret, hoặc github-app",
+          "tool": "mcp:tên-server",
+          "skill": "Tên một skill",
+          "worker": "Tên một worker, hoặc label:tên",
+          "project": "Tên một dự án",
+          "model": "Một model, theo tên runtime của nó đặt",
+          "runtime": "claude-code, opencode hoặc codex"
+        },
+        "add": "Thêm",
+        "invalid": {
+          "credential": "Tên secret gồm chữ thường, chữ số, dấu chấm, gạch ngang và gạch dưới, tối đa 64 ký tự.",
+          "tool": "Tool là read, edit, bash, web, agent, hoặc mcp: rồi tên một server.",
+          "skill": "Tên skill gồm chữ, chữ số, dấu chấm, gạch ngang và gạch dưới, tối đa 100 ký tự.",
+          "worker": "Tên một worker, hoặc label: kèm label của worker.",
+          "project": "Tên dự án gồm chữ thường, chữ số và dấu gạch ngang.",
+          "model": "Model là một dòng, tối đa 200 ký tự.",
+          "runtime": "Runtime là claude-code, opencode hoặc codex."
+        },
+        "nothing": "Không cho phép gì: run dưới agent này không có {axis} nào.",
+        "count": "Cho phép {count}, tối đa {max}.",
+        "tooMany": "Tối đa {max} mục.",
+        "badItem": "Có mục không đúng dạng trục này nhận: hãy bỏ nó.",
+        "githubApp": "token của GitHub App của hub",
+        "labelWorkers": "{count, plural, other {# worker bạn thấy mang label này}}",
+        "custom": "gõ tay",
+        "skillScope": {
+          "global": "dùng chung",
+          "project": "của dự án này"
+        }
+      }
+    },
+    "detail": {
+      "notFoundTitle": "Không có agent @{handle}",
+      "notFoundDescription": "Dự án {project} không có agent nào mang handle này.",
+      "version": "v{version}",
+      "copyHandle": "Sao chép handle",
+      "sub": "Do {login} tạo ngày {date}",
+      "edit": "Sửa",
+      "deletedNote": "Agent này đã bị xoá: nó không nhận run mới, còn các run cũ vẫn giữ tên và avatar của nó.",
+      "deletedAt": "Xoá lúc",
+      "about": {
+        "title": "Giới thiệu",
+        "noDescription": "Chưa có mô tả.",
+        "instructions": "Chỉ dẫn",
+        "noInstructions": "Không có: run của agent nhận system prompt như mọi run khác.",
+        "defaultInstructions": "Không có: agent mặc định không bao giờ có chỉ dẫn."
+      },
+      "permissions": {
+        "title": "Quyền",
+        "hint": "Những gì run dưới agent này được dùng. Hub giữ run trong giới hạn credential, skill, worker, dự án, model và runtime; worker giữ phiên trong giới hạn tool, skill và model.",
+        "defaultHint": "Agent mặc định luôn có mọi quyền.",
+        "nothing": "Không cho phép gì",
+        "allowed": "{axis} được phép"
+      },
+      "avatar": {
+        "title": "Avatar",
+        "label": "Avatar của {name}",
+        "image": "Ảnh đã tải lên.",
+        "initial": "Chưa có ảnh: hiện chữ cái đầu trên màu của agent.",
+        "upload": "Tải ảnh lên",
+        "change": "Đổi ảnh",
+        "remove": "Bỏ ảnh",
+        "uploaded": "Đã đổi avatar của @{handle}",
+        "uploadFailed": "Không đổi được avatar của @{handle}",
+        "version": "Đã lưu thành phiên bản {version}.",
+        "removed": "Đã bỏ avatar của @{handle}",
+        "removeTitle": "Bỏ avatar của @{handle}?",
+        "removeText": "Chữ cái đầu trên màu của agent sẽ hiện lại. Các phiên bản trước vẫn giữ ảnh của chúng.",
+        "removeConfirm": "Bỏ avatar",
+        "removing": "Đang bỏ…",
+        "cancel": "Huỷ"
+      },
+      "facts": {
+        "title": "Thông tin",
+        "handle": "Handle",
+        "project": "Dự án",
+        "createdBy": "Người tạo",
+        "updated": "Sửa lần cuối"
+      },
+      "history": {
+        "title": "Phiên bản",
+        "failed": "Không đọc được các phiên bản.",
+        "version": "v{version}",
+        "by": "bởi {login}",
+        "created": "Tạo agent.",
+        "changed": "Đổi {what}.",
+        "noChange": "Không đổi gì về cách hiện hay quyền.",
+        "older": "{count, plural, other {Và # phiên bản cũ hơn.}}",
+        "changes": {
+          "name": "tên",
+          "description": "mô tả",
+          "instructions": "chỉ dẫn",
+          "color": "màu",
+          "avatar": "avatar",
+          "credential": "credential",
+          "tool": "tool",
+          "skill": "skill",
+          "worker": "worker",
+          "project": "dự án",
+          "model": "model",
+          "runtime": "runtime"
+        }
+      },
+      "delete": {
+        "button": "Xoá",
+        "title": "Xoá @{handle}?",
+        "runs": "Từ giờ agent không nhận run mới. Các run đã chạy dưới nó vẫn giữ tên, avatar và phiên bản của nó.",
+        "handle": "Handle @{handle} vẫn bị chiếm: không agent nào khác dùng được nó.",
+        "confirm": "Xoá agent",
+        "pending": "Đang xoá…",
+        "cancel": "Huỷ",
+        "done": "Đã xoá agent @{handle}",
+        "doneText": "Nó không nhận run mới; các run cũ vẫn giữ tên của nó."
+      },
+      "runs": {
+        "title": "Run gần đây",
+        "failed": "Không đọc được các run của dự án.",
+        "empty": "Trong {searched} run mới nhất của dự án, không run nào chạy dưới agent này.",
+        "caption": "Run dưới @{handle}",
+        "scope": "Lấy từ {searched} run mới nhất của dự án."
+      }
+    }
+  },
   "accounts": {
     "title": "Tài khoản",
     "count": "{count, plural, other {# tài khoản}}",
@@ -3055,6 +3346,41 @@
       "none": "Chưa tài khoản nào của bạn được gắn với dự án {project}, nên quy tắc chọn trong credential sẵn có của worker. Gắn một tài khoản ở trang Secret.",
       "rerunHint": "Mặc định, lần chạy lại dùng tài khoản đã chọn tay cho run #{id}, hoặc theo quy tắc nếu không chọn. Tài khoản chọn tay được giữ, không chuyển sang tài khoản khác.",
       "expired": "{name} ({variable}), đã hết hạn"
+    },
+    "agent": {
+      "label": "Agent",
+      "option": "{name} (@{handle})",
+      "defaultOption": "{name} (@{handle}), mặc định",
+      "defaultOnly": "Agent mặc định của dự án",
+      "defaultOnlyHint": "Run chạy dưới agent mặc định của dự án.",
+      "loading": "Đang đọc agent của dự án…",
+      "defaultHint": "Agent mặc định của dự án: mọi quyền, không có chỉ dẫn.",
+      "limits": "Nó giới hạn {limits}.",
+      "noLimits": "Nó có mọi quyền.",
+      "limit": "{axis} ở {items}",
+      "nothing": "không gì cả",
+      "failed": "Không đọc được agent của dự án, nên run chạy dưới agent mặc định.",
+      "blocked": "@{handle} từ chối lần giao này: xem mục Agent ở trên.",
+      "axes": {
+        "credential": "credential",
+        "tool": "tool",
+        "skill": "skill",
+        "worker": "worker",
+        "project": "dự án",
+        "model": "model",
+        "runtime": "runtime"
+      },
+      "problem": {
+        "deleted": "@{handle} đã bị xoá và không nhận run mới.",
+        "runtime": "@{handle} không cho phép {runtime}: nó chỉ cho {allow}.",
+        "runtimeNone": "@{handle} không cho phép runtime nào.",
+        "model": "@{handle} không cho phép model {model}: nó chỉ cho {allow}.",
+        "modelNone": "@{handle} không cho phép model nào.",
+        "workers": "@{handle} không cho worker nào của bạn ở đây nhận run: nó chỉ cho {allow}.",
+        "workersNone": "@{handle} không cho phép worker nào.",
+        "daemon": "@{handle} giới hạn tool, skill hoặc model, hoặc có chỉ dẫn, mà chỉ worker có daemon áp dụng agent profile mới thực hiện được; chưa worker nào của bạn ở đây báo là có. Hãy nâng cấp daemon của một worker.",
+        "skill": "@{handle} không cho phép skill {skill}, skill mà author run dùng để viết plan."
+      }
     }
   },
   "insights": {

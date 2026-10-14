@@ -215,7 +215,7 @@ test.describe("shell", () => {
 
     await open(page, `/p/${project}/runs`);
     const sidebar = page.getByRole("navigation", { name: "Điều hướng chính" });
-    await expect(sidebar.getByRole("link")).toHaveCount(16);
+    await expect(sidebar.getByRole("link")).toHaveCount(17);
     const order = await sidebar.getByRole("link").evaluateAll((links) => links.map((link) => link.getAttribute("data-testid")));
     expect(order).toEqual([
       "nav-home",
@@ -226,6 +226,7 @@ test.describe("shell", () => {
       "nav-runs",
       "nav-insights",
       "nav-curator",
+      "nav-agents",
       "nav-memories",
       "nav-skills",
       "nav-kg",

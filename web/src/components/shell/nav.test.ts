@@ -24,7 +24,7 @@ describe("nav", () => {
       ["inbox", "/inbox", "openDecisions"],
       ["monitor", "/monitor", "runningRuns"],
     ]);
-    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "insights", "curator", "memories", "skills", "kg"]);
+    expect(PROJECT_NAV.map((item) => item.label)).toEqual(["overview", "plans", "runs", "insights", "curator", "agents", "memories", "skills", "kg"]);
     expect(PROJECT_NAV.filter((item) => item.count).map((item) => [item.label, item.count])).toEqual([
       ["runs", "activeRuns"],
     ]);
