@@ -50,6 +50,7 @@
       "error": "Couldn't read your workers"
     },
     "curator": "Curator",
+    "agents": "Agents",
     "curatorProposals": "Proposals",
     "curatorCharter": "Charter"
   },
@@ -1835,6 +1836,296 @@
       "failed": "Couldn't delete secret {name}"
     }
   },
+  "agents": {
+    "title": "Agents",
+    "metaTitle": "Agents: {project}",
+    "count": "{count, plural, one {# agent} other {# agents}}",
+    "newButton": "New agent",
+    "default": "Default",
+    "deleted": "Deleted",
+    "readOnly": "Every member of {project} sees its agents and dispatches runs under them; only an admin of the project creates and changes them.",
+    "list": {
+      "caption": "Agents of project {project}",
+      "toolbar": "Filter the agents of project {project}",
+      "shown": "{count, plural, one {# agent shown} other {# agents shown}}",
+      "facet": "Agents",
+      "active": "Active",
+      "deletedFacet": "Deleted",
+      "columns": {
+        "agent": "Agent",
+        "limits": "Limits",
+        "version": "Version",
+        "updated": "Changed",
+        "deleted": "Deleted"
+      },
+      "version": "v{version}",
+      "everyPermission": "Every permission",
+      "limitsLabel": "Limits:",
+      "onlyDefault": "Only the project's default agent so far. New agent gives one a name, instructions and narrower permissions.",
+      "more": "+{count}"
+    },
+    "axes": {
+      "credential": {
+        "title": "Credentials",
+        "noun": "credentials",
+        "hint": "Secrets its runs may lease, by name; github-app is the token of the hub's GitHub App.",
+        "all": "Every credential the person who dispatches has"
+      },
+      "tool": {
+        "title": "Tools",
+        "noun": "tools",
+        "hint": "What the agent may do in its session: read, edit, bash, web, agent, and the tools of an MCP server.",
+        "all": "Every tool"
+      },
+      "skill": {
+        "title": "Skills",
+        "noun": "skills",
+        "hint": "The skills loaded into its sessions, shared or the project's.",
+        "all": "Every skill"
+      },
+      "worker": {
+        "title": "Workers",
+        "noun": "workers",
+        "hint": "The workers that may claim its runs, by name or by label.",
+        "all": "Any worker of the person who dispatches"
+      },
+      "project": {
+        "title": "Projects",
+        "noun": "projects",
+        "hint": "Other projects whose runs it may take; its own always.",
+        "all": "Every project the person who dispatches writes to"
+      },
+      "model": {
+        "title": "Models",
+        "noun": "models",
+        "hint": "The models its runs may use, as each runtime names them; a run that names none takes the first.",
+        "all": "Every model"
+      },
+      "runtime": {
+        "title": "Runtimes",
+        "noun": "runtimes",
+        "hint": "The agent programs its runs may start.",
+        "all": "Every runtime"
+      }
+    },
+    "tools": {
+      "read": "read files and search them",
+      "edit": "create and change files",
+      "bash": "run shell commands",
+      "web": "fetch web pages and search the web",
+      "agent": "start subagents"
+    },
+    "errors": {
+      "apiMessage": "The hub says: {message}",
+      "unavailable": "The hub's blob store did not answer, so the avatar was not changed. Try again shortly.",
+      "tooLarge": "The image is too large for the hub.",
+      "forbidden": "Only an admin of the project changes its agents. Reload the page if your role changed.",
+      "notFound": "The hub no longer has this agent. Reload the page.",
+      "conflict": "The hub refused the change: it conflicts with what it holds now.",
+      "invalid": "The hub did not accept these values."
+    },
+    "form": {
+      "newTitle": "New agent",
+      "editTitle": "Edit @{handle}",
+      "newDescription": "An agent of {project}: a name and a face, instructions for its runs, and what they may use.",
+      "editDescription": "Saving makes the next version, and runs dispatched from then on go under it. This form opened on version {version}.",
+      "close": "Close",
+      "handle": "Handle",
+      "handleHint": "Lowercase letters, digits and hyphens, unique on the hub. People mention the agent with it, and it never changes.",
+      "name": "Name",
+      "nameHint": "How the agent shows in runs and chats.",
+      "description": "Description",
+      "descriptionHint": "What the agent is for.",
+      "optional": "(optional)",
+      "chars": "{count} of {max} characters.",
+      "instructions": "Instructions",
+      "instructionsHint": "Added to the system prompt of every run under this agent.",
+      "permissions": "Permissions",
+      "permissionsHint": "Each axis allows every value, or only those picked. An agent only narrows what the person who dispatches has: their workers, their secrets, the projects they write to.",
+      "defaultNote": "The default agent of {project} keeps every permission and no instructions: a run dispatched without an agent goes under it, as runs did before agents. Its name, description, colour and avatar can change.",
+      "fixFirst": "Fix the fields marked above first.",
+      "unchanged": "Nothing changed yet.",
+      "cancel": "Cancel",
+      "save": "Save changes",
+      "create": "Create agent",
+      "saving": "Saving…",
+      "created": "Agent @{handle} created",
+      "createdText": "Pick it in Dispatch, Run plan or New plan.",
+      "saved": "@{handle} saved as version {version}",
+      "savedText": "Runs dispatched from now on go under this version.",
+      "avatarFailed": "@{handle} was saved, but not its avatar",
+      "errors": {
+        "taken": "The hub refused the handle: another agent has it, deleted ones included, or a project has that name.",
+        "moved": "@{handle} changed since this form opened. Close it and open it again to start from the latest version."
+      },
+      "problems": {
+        "blank": "Fill this in.",
+        "pattern": "Use lowercase letters, digits and hyphens, starting with a letter or a digit.",
+        "long": "At most {max} characters.",
+        "line": "One line, without control characters.",
+        "project": "This is the name of a project, whose default agent it mentions. Pick another handle."
+      },
+      "colour": {
+        "label": "Colour",
+        "hint": "Behind the agent's initial wherever it has no avatar.",
+        "auto": "Picked by the hub from the handle",
+        "autoShort": "Auto",
+        "custom": "Custom",
+        "palette": {
+          "blue": "Blue",
+          "violet": "Violet",
+          "pink": "Pink",
+          "red": "Red",
+          "amber": "Amber",
+          "green": "Green",
+          "cyan": "Cyan",
+          "indigo": "Indigo"
+        }
+      },
+      "avatar": {
+        "label": "Avatar",
+        "choose": "Choose image",
+        "replace": "Choose another",
+        "clear": "Remove",
+        "hint": "PNG, JPEG or WebP, at most 512 KiB. Without one, its initial shows on its colour.",
+        "picked": "{name} is uploaded once the agent is created.",
+        "type": "Pick a PNG, JPEG or WebP image.",
+        "size": "The image is over {max} KiB."
+      },
+      "axis": {
+        "mode": "What {axis} the agent may use",
+        "all": "All",
+        "allowlist": "Only these",
+        "failed": "Your {axis} could not be read: type names below.",
+        "filter": "Filter {axis}",
+        "choices": "{axis} to allow",
+        "noOptions": "Nothing to pick from: type a name below.",
+        "noMatch": "Nothing matches the filter.",
+        "typedLabel": "Add to the allowed {axis} by name",
+        "typed": {
+          "credential": "A secret's name, or github-app",
+          "tool": "mcp:server-name",
+          "skill": "A skill's name",
+          "worker": "A worker's name, or label:name",
+          "project": "A project's name",
+          "model": "A model, as its runtime names it",
+          "runtime": "claude-code, opencode or codex"
+        },
+        "add": "Add",
+        "invalid": {
+          "credential": "A secret's name is lowercase letters, digits, dots, hyphens and underscores, at most 64.",
+          "tool": "A tool is read, edit, bash, web, agent, or mcp: followed by a server's name.",
+          "skill": "A skill's name is letters, digits, dots, hyphens and underscores, at most 100.",
+          "worker": "A worker's name, or label: with a worker's label.",
+          "project": "A project's name is lowercase letters, digits and hyphens.",
+          "model": "A model is one line of at most 200 characters.",
+          "runtime": "A runtime is claude-code, opencode or codex."
+        },
+        "nothing": "Nothing allowed: runs under this agent get no {axis}.",
+        "count": "{count} allowed, of at most {max}.",
+        "tooMany": "At most {max} items.",
+        "badItem": "An item is not of the shape this axis takes: remove it.",
+        "githubApp": "the token of the hub's GitHub App",
+        "labelWorkers": "{count, plural, one {# worker you see carries it} other {# workers you see carry it}}",
+        "custom": "typed by hand",
+        "skillScope": {
+          "global": "shared",
+          "project": "this project"
+        }
+      }
+    },
+    "detail": {
+      "notFoundTitle": "No agent @{handle}",
+      "notFoundDescription": "Project {project} has no agent with this handle.",
+      "version": "v{version}",
+      "copyHandle": "Copy handle",
+      "sub": "Created by {login} on {date}",
+      "edit": "Edit",
+      "deletedNote": "This agent was deleted: it takes no new run, while its runs keep its name and avatar.",
+      "deletedAt": "Deleted",
+      "about": {
+        "title": "About",
+        "noDescription": "No description.",
+        "instructions": "Instructions",
+        "noInstructions": "None: its runs get the system prompt any run gets.",
+        "defaultInstructions": "None: the default agent never has instructions."
+      },
+      "permissions": {
+        "title": "Permissions",
+        "hint": "What runs under this agent may use. The hub holds a run to credentials, skills, workers, projects, models and runtimes; the worker holds its session to tools, skills and models.",
+        "defaultHint": "The default agent has every permission, always.",
+        "nothing": "Nothing allowed",
+        "allowed": "{axis} allowed"
+      },
+      "avatar": {
+        "title": "Avatar",
+        "label": "Avatar of {name}",
+        "image": "An uploaded image.",
+        "initial": "No image: its initial on its colour.",
+        "upload": "Upload image",
+        "change": "Change image",
+        "remove": "Remove",
+        "uploaded": "Avatar of @{handle} updated",
+        "uploadFailed": "Couldn't update the avatar of @{handle}",
+        "version": "Saved as version {version}.",
+        "removed": "Avatar of @{handle} removed",
+        "removeTitle": "Remove the avatar of @{handle}?",
+        "removeText": "Its initial shows on its colour again. Earlier versions keep the image they had.",
+        "removeConfirm": "Remove avatar",
+        "removing": "Removing…",
+        "cancel": "Cancel"
+      },
+      "facts": {
+        "title": "Details",
+        "handle": "Handle",
+        "project": "Project",
+        "createdBy": "Created by",
+        "updated": "Last changed"
+      },
+      "history": {
+        "title": "Versions",
+        "failed": "The versions could not be read.",
+        "version": "v{version}",
+        "by": "by {login}",
+        "created": "Created the agent.",
+        "changed": "Changed {what}.",
+        "noChange": "Changed nothing it shows or allows.",
+        "older": "{count, plural, one {And # older version.} other {And # older versions.}}",
+        "changes": {
+          "name": "the name",
+          "description": "the description",
+          "instructions": "the instructions",
+          "color": "the colour",
+          "avatar": "the avatar",
+          "credential": "credentials",
+          "tool": "tools",
+          "skill": "skills",
+          "worker": "workers",
+          "project": "projects",
+          "model": "models",
+          "runtime": "runtimes"
+        }
+      },
+      "delete": {
+        "button": "Delete",
+        "title": "Delete @{handle}?",
+        "runs": "It takes no new run from now on. Runs that went under it keep its name, avatar and version.",
+        "handle": "@{handle} stays taken: no other agent can have it.",
+        "confirm": "Delete agent",
+        "pending": "Deleting…",
+        "cancel": "Cancel",
+        "done": "Agent @{handle} deleted",
+        "doneText": "It takes no new run; its runs keep its name."
+      },
+      "runs": {
+        "title": "Recent runs",
+        "failed": "The project's runs could not be read.",
+        "empty": "No run among the project's latest {searched} went under this agent.",
+        "caption": "Runs under @{handle}",
+        "scope": "From the project's latest {searched} runs."
+      }
+    }
+  },
   "accounts": {
     "title": "Accounts",
     "count": "{count, plural, one {# account} other {# accounts}}",
@@ -3055,6 +3346,40 @@
       "none": "None of your accounts is bound to project {project}, so your policy picks among the workers' own credentials. Bind one on the Secrets page.",
       "rerunHint": "By default the rerun takes the account picked by hand for run #{id}, or the rules when none was. An account picked by hand is kept, with no failover.",
       "expired": "{name} ({variable}), expired"
+    },
+    "agent": {
+      "label": "Agent",
+      "option": "{name} (@{handle})",
+      "defaultOption": "{name} (@{handle}), the default",
+      "defaultOnly": "The project's default agent",
+      "defaultOnlyHint": "The run goes under the project's default agent.",
+      "loading": "Reading the project's agents…",
+      "defaultHint": "The project's default agent: every permission, no instructions.",
+      "limits": "It limits {limits}.",
+      "noLimits": "It has every permission.",
+      "limit": "{axis} to {items}",
+      "nothing": "nothing",
+      "failed": "The project's agents could not be read, so the run goes under its default agent.",
+      "blocked": "@{handle} refuses this dispatch: see Agent above.",
+      "axes": {
+        "credential": "credentials",
+        "tool": "tools",
+        "skill": "skills",
+        "worker": "workers",
+        "project": "projects",
+        "model": "models",
+        "runtime": "runtimes"
+      },
+      "problem": {
+        "deleted": "@{handle} was deleted and takes no new run.",
+        "runtime": "@{handle} does not allow {runtime}: it allows {allow}.",
+        "runtimeNone": "@{handle} allows no runtime.",
+        "model": "@{handle} does not allow model {model}: it allows {allow}.",
+        "modelNone": "@{handle} allows no model.",
+        "workers": "@{handle} lets none of your workers here take the run: it allows {allow}.",
+        "workersNone": "@{handle} allows no worker.",
+        "skill": "@{handle} does not allow skill {skill}, which an author run writes its plan with."
+      }
     }
   },
   "insights": {

@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
+import { agentPath, agentsPath, createAgentByApi, putAvatarByApi } from "./support/agents";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { seedCurator } from "./support/curator";
 import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -125,6 +126,40 @@ async function seedSecrets(me: Member) {
     expires_at: new Date(Date.now() + 30 * 86_400_000).toISOString(),
     value: secretValue("a11y"),
   });
+}
+
+/**
+ * Agents of the first project of `me`, made its admin: one that limits five axes (credentials to none), with an
+ * avatar, instructions and a run under it, which a worker of `me` carrying the label it allows makes possible, and one
+ * deleted; returns the first's handle.
+ */
+async function seedAgents(me: Member) {
+  const project = me.projects[0];
+  await new HubAdmin().grant(project, me.login, "admin", "customer");
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, {
+    handle,
+    name: "Code reviewer",
+    description: "Reads diffs and leaves notes.",
+    instructions: "Review only; never push.",
+    color: "#d97706",
+    permissions: {
+      credential: { mode: "allowlist", allow: [] },
+      tool: { mode: "allowlist", allow: ["read", "bash"] },
+      worker: { mode: "allowlist", allow: ["label:gpu"] },
+      model: { mode: "allowlist", allow: ["claude-opus-4-1"] },
+      runtime: { mode: "allowlist", allow: ["claude-code"] },
+    },
+  });
+  await putAvatarByApi(me, project, handle);
+  const gone = uniqueName("gone");
+  await createAgentByApi(me, project, { handle: gone, name: "Old helper", color: "#0891b2" });
+  const api = await apiOf(me);
+  await api.DELETE("/v1/projects/{project}/agents/{handle}", { params: { path: { project, handle: gone } } });
+  await registerWorker(me, { name: uniqueName("gpu"), projects: [project], labels: ["gpu"] });
+  await seedRunPlan(me, project);
+  await dispatch(me, project, ["2"], { profile: handle, runtime: "claude-code" });
+  return handle;
 }
 
 async function seedSkill(me: Member) {
@@ -612,6 +647,87 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "dispatch, automatic match");
       await dialog.getByTestId("dispatch-target-pin").click();
       await expect(dialog.getByTestId("dispatch-pinned-worker")).toBeVisible();
+    },
+  },
+  {
+    name: "agents list with the default and a limited agent, then the deleted facet",
+    open: async ({ page, me }) => {
+      await seedAgents(me);
+      const project = me.projects[0];
+      await open(page, agentsPath(project));
+      await expect(page.locator("#main").getByTestId("agents-table").locator("tbody tr")).toHaveCount(2);
+      await expectNoSeriousViolations(page, "agents list");
+      await page.locator("#main").getByTestId("agents-facet").getByRole("button", { name: /^Deleted/ }).click();
+      await expect(page.locator("#main").getByTestId("agents-table").getByTestId("agent-deleted")).toBeVisible();
+    },
+  },
+  {
+    name: "agent page with its avatar, permissions, versions and runs, read by a writer",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      await new HubAdmin().grant(me.projects[0], me.login, "writer", "customer");
+      await open(page, agentPath(me.projects[0], handle));
+      await expect(page.locator("#main").getByTestId("agent-avatar-card").locator("img")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("agent-version-row")).toHaveCount(2);
+      await expect(page.locator("#main").getByTestId("agent-runs-table")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("agents-read-only")).toBeVisible();
+    },
+  },
+  {
+    name: "new agent form with its errors and every allowlist open, the edit form and the delete confirmation",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      const project = me.projects[0];
+      await open(page, agentsPath(project));
+      await page.locator("#main").getByTestId("agents-new").click();
+      const dialog = page.getByTestId("agent-dialog");
+      await dialog.getByTestId("agent-handle-input").fill(project);
+      await dialog.getByTestId("agent-save").click(); // shows the field errors
+      await expect(dialog.getByTestId("agent-form-problems")).toBeVisible();
+      for (const axis of ["credential", "tool", "skill", "worker", "project", "model", "runtime"]) {
+        await dialog.getByTestId(`agent-axis-${axis}-allowlist`).click();
+      }
+      await dialog.getByTestId("agent-axis-tool-typed").fill("shell");
+      await dialog.getByTestId("agent-axis-tool-add").click();
+      await expect(dialog.getByTestId("agent-axis-tool").getByTestId("agent-field-error")).toBeVisible();
+      await expectNoSeriousViolations(page, "new agent form");
+      await page.keyboard.press("Escape");
+      await expect(dialog).toBeHidden();
+      await open(page, agentPath(project, handle));
+      await page.locator("#main").getByTestId("agent-edit").click();
+      await expect(page.getByTestId("agent-dialog")).toHaveAttribute("data-mode", "edit");
+      await expectNoSeriousViolations(page, "edit agent form");
+      await page.keyboard.press("Escape");
+      await page.locator("#main").getByTestId("agent-delete").click();
+      await expect(page.getByTestId("agent-delete-dialog")).toBeVisible();
+    },
+  },
+  {
+    name: "dispatch dialog with an agent that refuses the runtime picked",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      const project = me.projects[0];
+      await liveWorker(me, project, uniqueName("a11y"));
+      await open(page, `/p/${project}/runs`);
+      await page.locator("#main").getByTestId("runs-dispatch").click();
+      const dialog = page.getByTestId("dispatch-dialog");
+      await dialog.getByTestId("dispatch-step-4").click();
+      await dialog.getByTestId("dispatch-agent-select").selectOption(handle);
+      await dialog.getByRole("radio", { name: /^Codex CLI/ }).check();
+      await expect(dialog.getByTestId("dispatch-agent-problem").first()).toBeVisible();
+      await expect(dialog.getByTestId("dispatch-agent-blocked")).toBeVisible();
+    },
+  },
+  {
+    name: "agents on a small screen",
+    open: async ({ page, me }) => {
+      const handle = await seedAgents(me);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, agentsPath(me.projects[0]));
+      await expect(page.locator("#main").getByTestId("agents-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "agents at 375 px");
+      await open(page, agentPath(me.projects[0], handle));
+      await expect(page.locator("#main").getByTestId("agent-permissions")).toBeVisible();
     },
   },
   {

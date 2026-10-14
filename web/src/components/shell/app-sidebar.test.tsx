@@ -110,6 +110,7 @@ describe("AppSidebar", () => {
       "nav-runs",
       "nav-insights",
       "nav-curator",
+      "nav-agents",
       "nav-memories",
       "nav-skills",
       "nav-kg",
