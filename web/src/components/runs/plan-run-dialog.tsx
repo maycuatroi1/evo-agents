@@ -6,7 +6,7 @@ import dynamic from "next/dynamic";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
-import { InlineError, useWriteFailure } from "@/components/admin/notice";
+import { InlineError, useWriteFailure } from "@/components/feedback/notice";
 import { useStepStatusText } from "@/components/plans/status";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
@@ -14,6 +14,7 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
 import { workersQuery } from "@/components/workers/queries";
+import { agentModels, agentProblems, agentWorkers, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { planQuery } from "@/lib/plan-queries";
@@ -22,6 +23,7 @@ import { projectQuery, whoamiQuery } from "@/lib/queries";
 
 import { AccountField } from "./account-field";
 import { accountField, BY_RULES } from "./account-model";
+import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
 import { Choice, ModelField, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
 import { useDispatchPlanRun } from "./hooks";
 import { dispatchOutlook, dispatchWorkers, modelSuggestions, planRunScope, readModel } from "./model";
@@ -123,16 +125,19 @@ function PlanRunForm({
   const [timeout, setTimeoutHours] = useState<PlanTimeout>(DEFAULT_PLAN_TIMEOUT);
   const [perStep, setPerStep] = useState(false);
   const [account, setAccount] = useState(BY_RULES);
+  const agents = useAgentChoice(project);
 
   const view = plan.data ? parsePlan(plan.data.body, plan.data.plan_id) : null;
   const defaults = Object.fromEntries((projectState.data?.repos ?? []).map((repo) => [repo.name, repo.default_branch ?? null]));
   const scope = view && ready.data ? planRunScope(ready.data.steps, view, defaults) : null;
   const blockers = scope && ready.data ? blockersOf(scope, ready.data.steps, ready.data.plan_run ?? null) : [];
-  const mine = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
+  const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
+  const mine = agentWorkers(own, agents.agent);
   const pinned = target === "pin" ? (pinnedChoice ?? mine[0]?.id ?? null) : null;
   const model = readModel(modelText, runtime);
-  const suggestions = modelSuggestions(mine, runtime);
-  const runnable = scope !== null && blockers.length === 0;
+  const suggestions = agentModels(agents.agent, modelSuggestions(mine, runtime));
+  const problems = agentProblems(agents.agent, { runtime, model: model.model, workers: own });
+  const runnable = scope !== null && blockers.length === 0 && problems.length === 0;
   const repos = scope?.repos.map((repo) => repo.repo) ?? [];
   const outlook = dispatchOutlook(runnable ? 1 : 0, mine, { project, runtime, repos, sessionPerStep: perStep }, pinned);
   const pending = write.isPending;
@@ -145,7 +150,17 @@ function PlanRunForm({
     let run: Run;
     try {
       const each = perStep ? { session_per_step: true as const } : {}; // sent only when on: an older hub ignores it
-      run = await write.mutateAsync({ plan_id: planId, worker_id: pinned, runtime, model: model.model, mode, timeout_h: timeout, ...each, ...accountField(account) });
+      run = await write.mutateAsync({
+        plan_id: planId,
+        worker_id: pinned,
+        runtime,
+        model: model.model,
+        mode,
+        timeout_h: timeout,
+        ...each,
+        ...accountField(account),
+        ...profileField(agents.agent),
+      });
     } catch {
       return; // shown above the buttons, from the mutation's state
     }
@@ -197,6 +212,8 @@ function PlanRunForm({
           </>
         ) : null}
 
+        <AgentField choice={agents} problems={problems} disabled={pending} />
+
         <Section legend={tDispatch("runtime")} testId="dispatch-runtime">
           <div className="grid gap-2 sm:grid-cols-2">
             {(["any", ...RUNTIMES] as const).map((value) => (
@@ -244,6 +261,7 @@ function PlanRunForm({
         <WorkerPicker
           project={project}
           workers={mine}
+          registered={own.length}
           loading={workersState.isPending || me.isPending}
           target={target}
           pinned={pinned}
@@ -281,7 +299,7 @@ function PlanRunForm({
       </div>
 
       <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-        <Outlook outlook={outlook} project={project} subject="plan" />
+        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : <Outlook outlook={outlook} project={project} subject="plan" />}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button

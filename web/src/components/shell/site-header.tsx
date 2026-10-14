@@ -58,6 +58,8 @@ function useCrumbs(): Crumb[] {
           label: itemLabel(parts[3]),
           href: parts[4] ? projectHref(project, `${section.segment}/${parts[3]}`) : undefined,
         });
+        // An agent goes by its handle, as everywhere else: @handle.
+        if (section.segment === "agents") crumbs[2].label = `@${itemLabel(parts[3])}`;
         // A run's diff is the one page below an item that names itself in the trail.
         if (section.segment === "runs" && parts[4] === "diff" && !parts[5]) crumbs.push({ label: t("runDiff") });
         // The Curator's pages name themselves (Proposals, Charter), and a proposal is #id below Proposals.

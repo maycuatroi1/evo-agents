@@ -121,9 +121,15 @@ export function RuntimeHint({ runtime, workers, loaded }: { runtime: RequestedRu
   );
 }
 
+/**
+ * Match a worker or pin one of `workers`. `registered` is how many workers of the visitor's serve the project before
+ * the agent picked narrowed them: with some but none left, the agent's problem says why, not the note about registering
+ * a worker.
+ */
 export function WorkerPicker({
   project,
   workers,
+  registered = workers.length,
   loading,
   target,
   pinned,
@@ -133,6 +139,7 @@ export function WorkerPicker({
 }: {
   project: string;
   workers: Worker[];
+  registered?: number;
   loading: boolean;
   target: Target;
   pinned: number | null;
@@ -143,7 +150,7 @@ export function WorkerPicker({
   const t = useTranslations("runs.dispatch");
   const tStatus = useStatusText("worker");
   const ids = useId();
-  const none = !loading && workers.length === 0;
+  const none = !loading && registered === 0;
   return (
     <Section legend={t("worker")} testId="dispatch-worker">
       <Choice
@@ -160,7 +167,7 @@ export function WorkerPicker({
         name="target"
         value="pin"
         checked={target === "pin"}
-        disabled={none}
+        disabled={!loading && workers.length === 0}
         onChange={() => onTarget("pin")}
         title={t("workerPin")}
         hint={t("workerPinHint", { subject })}

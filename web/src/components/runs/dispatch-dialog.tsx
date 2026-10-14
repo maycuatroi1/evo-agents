@@ -1,19 +1,18 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { CircleCheck, CircleDashed, Info, Send, X } from "lucide-react";
+import { Send, X } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
-import { InlineError, useWriteFailure } from "@/components/admin/notice";
-import { type StepStatus, useStatusText } from "@/components/status/status-badge";
-import { Badge } from "@/components/ui/badge";
+import { InlineError, useWriteFailure } from "@/components/feedback/notice";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
 import { workersQuery } from "@/components/workers/queries";
+import { agentProblems, agentWorkers, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { plansQuery } from "@/lib/plan-queries";
@@ -21,9 +20,10 @@ import { whoamiQuery } from "@/lib/queries";
 
 import { AccountField } from "./account-field";
 import { accountField, BY_RULES } from "./account-model";
+import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
 import { Choice, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
-import { type PlanRunHold, planRunReason, readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
-import { PlanRunHoldNote } from "./plan-run-hold";
+import { StepPicker } from "./dispatch-step-picker";
+import { readySelection, selectedRepos } from "./dispatch-steps";
 import { useDispatch } from "./hooks";
 import { dispatchOutlook, dispatchWorkers } from "./model";
 import {
@@ -37,7 +37,6 @@ import {
   type Run,
   type RunMode,
   RUNTIMES,
-  type StepReadiness,
   TIMEOUT_CHOICES,
 } from "./queries";
 
@@ -134,8 +133,12 @@ function DispatchForm({
   const [approval, setApproval] = useState<Approval>("review");
   const [timeout, setTimeoutMinutes] = useState<number>(DEFAULT_TIMEOUT);
   const [account, setAccount] = useState(BY_RULES);
+  const agents = useAgentChoice(project);
 
-  const mine = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
+  // The workers of the visitor's for the project, then those the agent lets claim the runs.
+  const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
+  const mine = agentWorkers(own, agents.agent);
+  const problems = agentProblems(agents.agent, { runtime, workers: own });
   const pinned = target === "pin" ? (pinnedChoice ?? mine[0]?.id ?? null) : null;
   const repos = selectedRepos(selected, steps);
   const outlook = dispatchOutlook(selected.length, mine, { project, runtime, repos }, pinned);
@@ -154,7 +157,7 @@ function DispatchForm({
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    if (pending || plan === null || selected.length === 0 || tooMany) return;
+    if (pending || plan === null || selected.length === 0 || tooMany || problems.length > 0) return;
     let runs: Run[];
     try {
       runs = await write.mutateAsync({
@@ -166,6 +169,7 @@ function DispatchForm({
         timeout_min: timeout,
         worker_id: pinned,
         ...accountField(account),
+        ...profileField(agents.agent),
       });
     } catch {
       return; // shown above the buttons, from the mutation's state
@@ -264,6 +268,8 @@ function DispatchForm({
           />
         ) : null}
 
+        <AgentField choice={agents} problems={problems} disabled={pending} />
+
         <Section legend={t("runtime")} testId="dispatch-runtime">
           <div className="grid gap-2 sm:grid-cols-2">
             {(["any", ...RUNTIMES] as const).map((value) => (
@@ -301,6 +307,7 @@ function DispatchForm({
         <WorkerPicker
           project={project}
           workers={mine}
+          registered={own.length}
           loading={workersState.isPending || me.isPending}
           target={target}
           pinned={pinned}
@@ -334,7 +341,7 @@ function DispatchForm({
       </div>
 
       <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-        <Outlook outlook={outlook} project={project} />
+        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : <Outlook outlook={outlook} project={project} />}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button
@@ -351,7 +358,7 @@ function DispatchForm({
           <Button
             type="submit"
             size="lg"
-            disabled={selected.length === 0 || tooMany || plan === null}
+            disabled={selected.length === 0 || tooMany || plan === null || problems.length > 0}
             busy={pending}
             data-testid="dispatch-submit"
           >
@@ -361,169 +368,5 @@ function DispatchForm({
         </div>
       </div>
     </form>
-  );
-}
-
-function StepPicker({
-  project,
-  state,
-  planRun,
-  steps,
-  selected,
-  onToggle,
-  onPickAll,
-}: {
-  project: string;
-  state: { isPending: boolean; isError: boolean };
-  planRun: PlanRunHold | null;
-  steps: StepReadiness[];
-  selected: string[];
-  onToggle: (key: string, on: boolean) => void;
-  onPickAll: (keys: string[]) => void;
-}) {
-  const t = useTranslations("runs.dispatch");
-  const { open, settled } = splitSteps(steps);
-  const readyKeys = steps.filter((step) => step.ready).map((step) => step.key);
-  const allPicked = readyKeys.length > 0 && readyKeys.every((key) => selected.includes(key));
-
-  return (
-    <Section legend={t("steps")} hint={t("stepsHint")} testId="dispatch-steps">
-      {state.isPending && steps.length === 0 ? (
-        <div className="flex flex-col gap-2" aria-hidden="true">
-          <Skeleton className="h-12 w-full" />
-          <Skeleton className="h-12 w-full" />
-        </div>
-      ) : state.isError && steps.length === 0 ? (
-        <p className="text-sm text-danger" role="alert">
-          {t("stepsFailed")}
-        </p>
-      ) : (
-        <>
-          {planRun ? <PlanRunHoldNote project={project} hold={planRun} testId="dispatch-plan-run" /> : null}
-          {readyKeys.length > 1 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-xs text-muted-foreground" aria-live="polite" data-testid="dispatch-picked">
-                {t("picked", { count: selected.length, ready: readyKeys.length })}
-              </p>
-              <Button type="button" variant="outline" size="sm" onClick={() => onPickAll(allPicked ? [] : readyKeys)}>
-                {allPicked ? t("pickNone") : t("pickAll", { count: readyKeys.length })}
-              </Button>
-            </div>
-          ) : null}
-          {open.length === 0 ? (
-            <p className="rounded-md border border-dashed px-3 py-2.5 text-sm text-muted-foreground" data-testid="dispatch-no-open">
-              {t("noOpen")}
-            </p>
-          ) : (
-            <ul className="flex flex-col gap-2" data-testid="dispatch-open-steps">
-              {open.map((step) => (
-                <li key={step.key}>
-                  <StepChoice step={step} planRun={planRun} checked={selected.includes(step.key)} onToggle={onToggle} />
-                </li>
-              ))}
-            </ul>
-          )}
-          {open.length > 0 && readyKeys.length === 0 ? (
-            <p className="flex items-start gap-2 text-sm text-muted-foreground" data-testid="dispatch-none-ready">
-              <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-              {t("noReady")}
-            </p>
-          ) : null}
-          {settled.length > 0 ? (
-            <details className="group rounded-md border" data-testid="dispatch-settled">
-              <summary className="flex min-h-10 cursor-pointer max-md:min-h-11 items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50">
-                {t("settled", { count: settled.length })}
-              </summary>
-              <ul className="flex flex-col gap-2 border-t p-2">
-                {settled.map((step) => (
-                  <li key={step.key}>
-                    <StepChoice step={step} planRun={planRun} checked={false} onToggle={onToggle} />
-                  </li>
-                ))}
-              </ul>
-            </details>
-          ) : null}
-        </>
-      )}
-    </Section>
-  );
-}
-
-/**
- * Why a step cannot be dispatched now, in the visitor's language where the hub's answer says enough. `planRun` is the
- * plan's active plan run, when ready-steps names one: a step it holds says so.
- */
-export function useNotReadyReason() {
-  const t = useTranslations("runs.dispatch.reason");
-  const tStatus = useStatusText("step");
-  const tState = useStatusText("run");
-  return (step: StepReadiness, planRun: PlanRunHold | null = null): string => {
-    if (step.ready) return "";
-    if (step.active_run) {
-      return t("activeRun", { id: step.active_run.id, state: tState(step.active_run.state), login: step.active_run.dispatched_by });
-    }
-    if (step.status && step.status !== "pending") {
-      const known = ["in_progress", "blocked", "done"].includes(step.status);
-      return t("status", { status: known ? tStatus(step.status as StepStatus) : step.status });
-    }
-    if (planRun && step.reason === planRunReason(planRun)) {
-      return t("planRun", { id: planRun.run.id, state: tState(planRun.run.state), login: planRun.run.dispatched_by });
-    }
-    const reason = step.reason ?? "";
-    return reason ? reason.charAt(0).toUpperCase() + reason.slice(1) : t("unknown");
-  };
-}
-
-function StepChoice({
-  step,
-  planRun,
-  checked,
-  onToggle,
-}: {
-  step: StepReadiness;
-  planRun: PlanRunHold | null;
-  checked: boolean;
-  onToggle: (key: string, on: boolean) => void;
-}) {
-  const t = useTranslations("runs.dispatch");
-  const reason = useNotReadyReason();
-  return (
-    <Choice
-      type="checkbox"
-      name="steps"
-      value={step.key}
-      checked={checked}
-      disabled={!step.ready}
-      onChange={(on) => onToggle(step.key, on)}
-      testId={`dispatch-step-${step.key}`}
-      title={
-        <>
-          <span className="mr-1.5 font-mono text-xs text-muted-foreground tabular-nums">{step.key}</span>
-          {step.title ?? t("untitled")}
-        </>
-      }
-      hint={
-        step.ready ? (
-          step.repo ? (
-            t("repo", { repo: step.repo })
-          ) : null
-        ) : (
-          <span data-testid="dispatch-step-reason">{reason(step, planRun)}</span>
-        )
-      }
-      badge={
-        step.ready ? (
-          <Badge variant="success" className="shrink-0">
-            <CircleCheck aria-hidden="true" />
-            {t("ready")}
-          </Badge>
-        ) : (
-          <Badge variant="outline" className="shrink-0 text-muted-foreground">
-            <CircleDashed aria-hidden="true" />
-            {t("notReady")}
-          </Badge>
-        )
-      }
-    />
   );
 }

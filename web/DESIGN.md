@@ -224,6 +224,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Add Claude account; Renew token; a token that ends within 30 days | `UserRoundPlus`; `RefreshCw`; `CalendarClock` |
 | The usage limits of an account | `Gauge` |
 | Knowledge graph | `Network` |
+| Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
+| An agent's axes: credentials, tools, skills, workers, projects, models, runtimes | `KeyRound`, `Wrench`, `Sparkles`, `Server`, `FolderKanban`, `BrainCircuit`, `SquareTerminal` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
 | Inbox; the bell in the top bar | `Inbox`; `Bell` |
@@ -405,7 +407,7 @@ Shared pieces built on them:
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
-  (Overview, Plans, Runs, Insights, Curator, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared
+  (Overview, Plans, Runs, Insights, Curator, Agents, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared
   skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
   and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
   of the grants (`counts.running` of `GET /v1/me/overview`, asked every 15 seconds while one runs) and Runs the project's
@@ -482,7 +484,8 @@ Shared pieces built on them:
   There is no eyebrow, no description paragraph and no rule under the head; what a page is for is said once, in its
   `EmptyState`, and parent pages are reached from the breadcrumb. The row wraps instead of squeezing: actions that do
   not fit beside the title move to their own line, still on the right, so a run's five controls never push the page
-  sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`).
+  sideways at 375 px. A plan's pages add their tabs under the head (`PlanHeader`). `leading` stands before the h1 and
+  outside it, so the heading's text stays the name: an agent's avatar.
 - `components/live`: the kit's LiveIndicator, in the top bar beside the bell. A page registers what keeps it current:
   its main query through `useHubQuery(..., { live: true })` (or `usePagedQuery`, `useLiveQuery`), a stream through
   `useLiveSignal` (the run page's event stream, with the log's Pause; the Monitor's worst tile); a page that registered nothing shows none, and a
@@ -565,7 +568,10 @@ Shared pieces built on them:
   rerun, cancel, take over, hand back, approve, drain, resume and revoke a worker, register a worker, grant and revoke
   a grant, revoke a token, answer a decision, mark as read, and copy. A failure inside a dialog that stays open is said
   in the dialog instead (`InlineError`), next to the button that failed; no page keeps an inline notice that only says
-  something worked.
+  something worked. `InlineError` and `useWriteFailure` live in `components/feedback/notice.tsx`, the confirmation of
+  a destructive action (`ConfirmAction`) in `components/feedback/confirm-action.tsx` and a time in a table cell (`When`)
+  in `components/data/when.tsx`, where every feature may import them; their old paths under `components/admin` re-export
+  them until the files that import them from there are next changed.
 - `components/data/visibility.tsx`: Visibility is the web's word for a label level, the reach of a grant (`max_level`)
   or of a memory's label. `VisibilityLevel` shows the default ladder's levels as Public, Internal, Customer and Secret
   (the same words in both languages, as the CLI's terms are English) with the code in the tooltip and in `data-level`;
@@ -690,6 +696,42 @@ Shared pieces built on them:
   refusal of the hub stays in the dialog, the saved secret is a toast. Delete asks first (`ConfirmAction`) and says
   that the leases still out are revoked and that the token should be revoked where it was made too; the result is a
   toast.
+- `components/agents`, a project's Agents (`/p/{project}/agents`, in the sidebar's project group after Curator;
+  docs/hub.md, Agent profiles). An agent is drawn by `components/data/agent-avatar.tsx` (`AgentAvatar`): its uploaded
+  image, or until there is one (and while it loads) the first letter of its name on its colour, in white or ink,
+  whichever has the higher contrast on that colour (`inkOn` in `lib/agent-rules.ts`); round, as avatars are, and
+  decorative beside the name. The list is one `DataCard` table: the avatar, the name with Default (a `Star` tag) for the
+  project's own `@<project>`, and `@handle, description` under it; Limits, the axes it narrows as tags with each axis's
+  icon (three, then `+N` whose tooltip names the rest; "Every permission" when none); the version; when it last
+  changed. Deleted agents are one facet away (`?show=deleted`), since runs keep the agent they went under. An admin of
+  the project gets New agent in the head; everyone else a note that only an admin changes agents. An agent's page puts
+  the avatar before the h1 and `@handle` (copyable), Default, Deleted and `vN` beside it; About (the description and
+  the instructions in mono on `surface-sunken`) and Permissions (each axis with its icon, what it governs, then "Every
+  ..." or the allowlist as chips; an empty allowlist says Nothing allowed in `attention`) on the left; the Avatar
+  card (Upload image or Change image and Remove for an admin, each a new version, a toast), Details and Versions (who,
+  when, and what each version changed against the one before) in a 22 rem column from `xl`; then Recent runs, the
+  project's latest 200 runs kept to the agent's, which the route composes from `components/runs/agent-runs.tsx`. Edit
+  (`outline`) and Delete (`quiet-danger`, never on the default) are an admin's; Delete asks first (`ConfirmAction`)
+  and says the handle stays taken. New agent and Edit are one dialog (`agent-dialog.tsx`): the handle (creating only,
+  after an `@`), the name, the description, the colour as round swatches of the hub's palette with a check on the one
+  chosen, Auto (the hub picks by the handle; creating only) and a custom colour, the avatar (creating only; uploaded
+  right after the agent is created), the instructions and the seven axes (`axis-field.tsx`). Each axis is All or Only
+  these (`Segmented`); Only these lists what the hub has for it, read when the form opens (`options.ts`: the admin's
+  secrets and `github-app`, the global and project skills, the workers they see and those workers' labels as
+  `label:<label>`, the models the workers list, the other projects of their grants, the API's tool words and
+  runtimes), with a filter past eight, and takes a name typed by hand for what the admin cannot see, refused where it
+  is typed when its shape is wrong. The form repeats the hub's checks and shows them once Save was tried; an edit sends
+  only what changed with `if_version`, and Save stays off until something did. The project's default agent shows only
+  its name, description, colour and avatar, with a note that it keeps every permission and no instructions.
+- The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
+  the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
+  picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are
+  those the agent allows (and, for an agent that limits tools, skills or models or has instructions, only those whose
+  daemon says it applies agent profiles, as the hub's claim does), the model suggestions its models when it limits them,
+  and what it refuses (a runtime or model it leaves out, none of the visitor's workers left, for an author run the skill
+  create-exec-plan, a deleted agent) is said under the field in `danger` while the footer says the agent refuses the
+  dispatch and the submit button stays off. A body names `profile` only for an agent other than the default, so a
+  dispatch that picks none reads as before.
 - `components/runs`: a run is in one of the API's states, waiting (a plan run's agent asked its owner a decision) and
   parked (nobody answered for 24 hours) included; both show in the running phase of a run's timeline, under their own
   name, on an `attention` node. The runs pages ask the hub every 5 seconds while the project (or the step, or the worker) has an
