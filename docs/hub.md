@@ -360,8 +360,36 @@ case. A name resolves among the chat's members only: a person by login (`via` lo
 project's name to its default agent (project). An agent the sender can see that is not in the chat, or one deleted
 since, reaches no one: the mention keeps why, and the hub answers in the message's thread with the reason. A person
 mentioned gets the notice `chat_mention`, and one added the notice `chat_added`, never for what they did themselves; in
-a restricted chat the notice names the chat and links to it, without sender or text. No message makes a run or asks a
-model anything, whatever it mentions.
+a restricted chat the notice names the chat and links to it, without sender or text. A message that mentions no agent
+makes no run and asks no model anything.
+
+**Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`,
+Chat runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile
+on its project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile
+allows, online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs,
+the one with a checkout of more of the project's repos first; the person must be a writer on the profile's project. No
+such worker, and the hub answers in the thread why, worker by worker, with no run. The mention keeps the run it made
+(`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the agent in its thread goes
+to the run of the session that is queued or held, in its inbox, and once that run ended done it wakes the session as a
+new run that goes on in it (`resume_of_run_id`), on the same worker and branch. Another person's mention starts a
+session of their own, on their own worker. In a chat of one person, a message in a thread without a mention goes to the
+one agent whose session that person has there (`via` thread); with two people or more, they mention it. The run's
+reactions follow it as above, a run that failed says why in the thread, and the agent's reply at the end of each turn
+is its message in the thread, with the run that wrote it.
+
+**Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
+rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
+and counts 0, under a time cap instead). A mention once that is spent is refused, saying so in the thread; each run gets
+what is left as its cost cap and 30 minutes of agent time. Only the creator changes it (`PATCH /v1/chats/{id}`, audited
+as `chat.budget`).
+
+**Agents in chats.** The agent of a run (a chat run, or a step, plan or author run) talks in chats with
+`evo-agents worker chat post|react|create|mention` (`docs/workers.md`): a message in its thread or in a chat it is in,
+an emoji, a new chat with the person at the origin of the chain (who gets `chat_added`, as does each person it adds,
+each with a grant that clears the agent's project), and a mention that hands work to another agent of the chat. That
+run is for the same person, at one hop more than the run that asked (a person's mention is hop 1), at most hop 3, never
+to the agent's own profile, and within the budget; a refusal is said in the thread. An `@` of an agent in an agent's
+reply or post hands no work.
 
 **Reactions.** A reaction is one emoji of one person or agent on a message, once each; a message carries at most 20
 different ones, and the hub counts them by emoji (`count`, who put each, and whether the reader did). The reactions of
@@ -390,10 +418,12 @@ its label. A member reads the events of the messages whose label they clear. Cha
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
 | `POST .../read`, `GET .../events`, `GET .../stream` | | a member |
+| `PATCH /v1/chats/{id}` (`budget_usd`) | | its creator |
 
-Creating a chat, adding and removing a member and sending a message are audited (`chat.create`, `chat.add`,
-`chat.remove`, `chat.message`; an agent's in its project), naming `chat:<id>` and the person, agent or message, never a
-title or a text. For example:
+Creating a chat, adding and removing a member, sending a message and changing the budget are audited (`chat.create`,
+`chat.add`, `chat.remove`, `chat.message`, `chat.budget`; an agent's in its project; an agent's message and chat as the
+run's dispatcher, naming the run), naming `chat:<id>` and the person, agent or message, never a title or a text. For
+example:
 
 ```sh
 evo-agents hub chat create "Release talk" --member someone-else --agent reviewer

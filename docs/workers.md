@@ -21,7 +21,7 @@ the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays 
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
 `evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in
 `evo_agents/worker/runtimes` and its end of the web terminal. `evo_agents/worker/runner` holds a run on the machine:
-each kind of run (step, plan, review, judge, author) in a module of its own, which composes the parts the kinds share
+each kind of run (step, plan, review, judge, author, chat) in a module of its own, which composes the parts the kinds share
 rather than inheriting them, and the decisions that need no I/O as pure functions in `runner/transitions.py`;
 `evo_agents/worker/run.py` keeps the names the daemon imports. The daemon has its own command group because
 `evo-agents hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes
@@ -472,6 +472,34 @@ and time, oldest first (the latest 1,000, `more` when there are older ones), and
 with its state, whose turn it is (`status`: `working`, `waiting` for a reply, waiting or parked, or `ended`), and the
 plan it wrote or revises. A run of another kind has no chat (404). The chat lives as long as the run's log
 (`EVO_HUB_RUN_LOG_DAYS` after the run ends).
+
+## Chat runs
+
+A chat run (kind `chat`, `evo_agents.hub.chat_runs`) is one turn of an agent mentioned in a group chat (`docs/hub.md`,
+Group chats): the hub queues it, pinned to the worker of the person who mentioned the agent that it picked, with no
+plan (`plan_id` empty), its chat, the message that started it (`chat_message_id`), its hop, the branch `chat/<id>` of
+the first run of its session and the repos of its project the worker has a checkout of (none when it has none of
+them). Only that worker claims it, with `chat` in its heartbeat's `run_kinds`, and the claim hands the prompt the hub
+builds then (`chat_runs.build_chat_prompt`): the rules, the chat and its members, the repos, a snapshot of the chat of
+at most 12 KiB (the first message of the thread, the 30 latest of the thread, the 10 of the chat before it, the oldest
+left out first, as the reader clears their labels) and the message that started the run, whole. Its budget is what is
+left of the chat's for 24 hours, and 30 minutes of agent time. It ends `done` with its agent's turn, without verify
+results, never waits and is never rerun (409); a lost one is tried again with its chat. The worker posts the agent's
+last message of each turn with `POST /v1/worker/runs/{id}/chat`, which the hub keeps as the agent's message in the
+thread (and in the run's log). A message to the agent in the thread while the run is queued or held goes to its inbox;
+one that comes once it ended done, or that it ended without taking, queues the run that goes on in its session
+(`resume_of_run_id`, the session, the branch and repos, pinned to its worker), with the message in its inbox.
+
+The agent of a chat run, and of a step, plan or author run, talks in chats with the worker's token
+(`evo_agents.hub.server.chat_agents`), its profile being of the run's project (409 otherwise):
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker chat post TEXT [--chat ID] [--reply-to MESSAGE]` | `POST /v1/worker/runs/{id}/chat/messages` | a message of the agent: the run's thread for a chat run, else a chat it is in (`chat_id`) |
+| `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
+| `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
+| `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
+| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App, or finds the one open, and the agent's message in the thread links it |
 
 ## Decisions and notices
 
@@ -1509,6 +1537,23 @@ worker adopts them and goes on in that session. When the heartbeat says `finish`
 agent's turn is over, with the summary of `.evo-run/result.json` or the agent's last message, and the daemon commits
 and pushes nothing. `evo-agents worker put`, `evo-agents worker plan` and `evo-agents worker ask` work inside an author run; `step`,
 `notify`, `finding` and `propose` refuse.
+
+### A chat run on the machine
+
+A chat run (kind `chat`, Chat runs above) runs headless; the daemon fails it in a terminal UI. It works without each
+repo of its claim it has no checkout of (the prompt names them), takes the run's leases for the others, checks it can
+read each, and makes the run's directory with a writable worktree of each on the branch `chat/<id>`, from origin's
+branch when the session pushed it already, else from origin's default branch (`evo-run/<run>/<repo>` when the branch is
+checked out elsewhere; the push still goes to it). A run that goes on in the session of an earlier one adopts that
+run's directory, worktrees and session. The agent starts there with `EVO_RUN_KIND=chat`; on Claude Code its prompt is
+delivered verbatim (`verbatim_prompts`, so an `@path` in the chat's words never makes it read a file) and
+AskUserQuestion is in `--disallowedTools`. After each turn the daemon posts the agent's last message, and the messages
+of the thread that came while it worked and that it did not take start another turn in the same session
+(`chat_runs.REPLY_PROMPT`). Then it reports `verifying`, commits what the agent left in each worktree as `run #N:
+<title>`, pushes the branch of each repo whose HEAD moved from where the worktree started (`gitops.check_push`, kind
+`chat`: the branch `chat/<n>` alone, never a default branch, never forced), tells the hub of each push that moved the
+branch (`POST .../chat/pulls`), and reports `done`. The worktrees stay on the branch for the next run of the session,
+until the cleanup of runs older than 7 days removes them.
 
 ### The Curator's runs on the machine
 
