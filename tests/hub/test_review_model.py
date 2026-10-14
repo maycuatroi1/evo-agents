@@ -257,6 +257,7 @@ RUN_16 = (
         ("verify command `rg -q x` exited 127; nothing was pushed", "missing_tool"),
         ("verify command `pnpm test` calls pnpm, which is not on this worker's PATH", "missing_tool"),
         ("git fetch in /src/evo-agents failed: could not resolve host", "checkout"),
+        ("the agent's account failed to authenticate (Failed to authenticate. API Error: 401 ...)", "account_auth"),
     ],
 )
 def test_the_cause_of_runs_9_and_16_and_of_the_preflight_is_read_from_their_error(error, cause):

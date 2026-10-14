@@ -19,12 +19,18 @@ in the agent's environment and on the run's socket, notes the move, and a new ag
 FAILOVER_PROMPT; else, or with no lease to move, an older hub, or one that did not answer, the run fails with cause
 ``rate_limit`` and the earliest time an account is ready again. Each note names an account by its secret's id, never its
 name or value. A run moves at most MAX_FAILOVERS times here, whatever the hub answers.
+
+A turn that ended because the account failed to authenticate (``claude_code.auth_failure_of``: the API refused its
+token, a 401; ``Outcome.auth``) is reported the same way with status ``unauthorized`` (AUTH_STATUS): the hub cools the
+account down and moves the run, and a new agent goes on with AUTH_FAILOVER_PROMPT; else the run fails with cause
+``account_auth`` and an error that says to log in again.
 """
 
 from __future__ import annotations
 
 import asyncio
 import re
+from functools import partial
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import runs
@@ -45,6 +51,11 @@ FAILOVER_PROMPT = (
     "The account this session ran on hit its usage limit, and the run goes on with another account. Go on with the "
     "task of the run from where the session and the working tree stand now, and finish it as the first message of "
     f"this session asks, writing {runs.RESULT_FILE} at the end."
+)
+AUTH_STATUS = "unauthorized"  # what the hub hears of an account that failed to authenticate
+AUTH_FAILOVER_PROMPT = FAILOVER_PROMPT.replace("hit its usage limit", "failed to authenticate")
+LOG_IN_AGAIN = (
+    "log in again: `evo-agents hub account login` renews an account of the hub, `claude` and /login a machine's own"
 )
 
 
@@ -102,6 +113,7 @@ class Limits:
         self.rejected: dict | None = None  # the limit a rejected event of the agent that runs now gave
         self.moves = 0
         self.reports: asyncio.Task | None = None  # the last usage report sent, which the next one waits for
+        self.prompt = FAILOVER_PROMPT  # what the agent after the last move is told
 
     def lease_id(self) -> int | None:
         """The id of the run's lease of CLAUDE_CODE_OAUTH_TOKEN, the account the hub may move; None for none."""
@@ -142,37 +154,52 @@ class Limits:
             await asyncio.wait({report})
 
     async def after(self, outcome: Outcome) -> Outcome | None:
-        """How the agent's end counts once its usage limit is reported: None when the run moved to another account
-        and goes on in the same session; else ``outcome``, or one failed with cause rate_limit."""
-        limit, self.rejected = self.rejected or outcome.limit, None
-        if limit is None or outcome.completed:
+        """How the agent's end counts once its usage limit, or its account's failed authentication, is reported: None
+        when the run moved to another account and goes on in the same session; else ``outcome``, or one failed with
+        cause rate_limit or account_auth."""
+        rejected, self.rejected = self.rejected, None
+        if outcome.completed:
+            return outcome
+        if outcome.auth and rejected is None:
+            said = f"the agent's account failed to authenticate ({outcome.auth})"
+            return await self._move(outcome, {"status": AUTH_STATUS}, said, "account_auth")
+        limit = rejected or outcome.limit
+        if limit is None:
             return outcome
         kind = f" ({limit['rate_limit_type']})" if limit.get("rate_limit_type") else ""
-        said = f"the agent's account hit its usage limit{kind}"
+        return await self._move(outcome, limit, f"the agent's account hit its usage limit{kind}", "rate_limit")
+
+    async def _move(self, outcome: Outcome, report: dict, said: str, cause: str) -> Outcome | None:
+        """Report ``report`` of the run's account to the hub and go on with the account it moves the run to (None),
+        else the run failed with ``cause``."""
         lease, hub = self.lease_id(), self.run.credentials.hub
+        fail = partial(self._failed, outcome, cause=cause, ready_at=report.get("resets_at"))
         if lease is None or hub is None:
-            return self._failed(outcome, f"{said}; the run holds no account of the hub to move", limit.get("resets_at"))
+            return fail(f"{said}; the run holds no account of the hub to move")
         if self.moves >= MAX_FAILOVERS:
-            return self._failed(outcome, f"{said}; the run moved {self.moves} times already", limit.get("resets_at"))
+            return fail(f"{said}; the run moved {self.moves} times already")
         from evo_agents.worker.hubapi import HubProblem  # aiohttp is the worker extra's: a core install imports limits
 
         await self._sent(self.reports)  # the usage the agent reported before its limit reaches the hub first
         try:
-            answer = await hub.rate_limit(self.run.id, {"lease_id": lease, **limit})
+            answer = await hub.rate_limit(self.run.id, {"lease_id": lease, **report})
         except HubProblem as exc:
-            why = f"{said}; the hub moved the run to no other account ({exc})"
-            return self._failed(outcome, why, limit.get("resets_at"))
+            return fail(f"{said}; the hub moved the run to no other account ({exc})")
         if answer.get("action") == "failover" and await self.run.credentials.swap() and self.lease_id() != lease:
             self.moves += 1
+            self.prompt = AUTH_FAILOVER_PROMPT if cause == "account_auth" else FAILOVER_PROMPT
+            what = "failed to authenticate" if cause == "account_auth" else "hit its usage limit"
             self.run.note(
-                f"The agent's account hit its usage limit: the run goes on with account secret "
-                f"{answer.get('secret_id')} (failover {answer.get('failovers')}) in the same session."
+                f"The agent's account {what}: the run goes on with account secret {answer.get('secret_id')} "
+                f"(failover {answer.get('failovers')}) in the same session."
             )
             return None
         reason = answer.get("reason") or "the hub moved the run to no other account"
-        return self._failed(outcome, f"{said}; {reason}", answer.get("ready_at") or limit.get("resets_at"))
+        return fail(f"{said}; {reason}", ready_at=answer.get("ready_at") or report.get("resets_at"))
 
-    def _failed(self, outcome: Outcome, why: str, ready_at: str | None) -> Outcome:
+    def _failed(self, outcome: Outcome, why: str, *, cause: str, ready_at: str | None) -> Outcome:
         error = f"{why}; an account is ready again at {ready_at}" if ready_at else why
+        if cause == "account_auth":
+            error += f": {LOG_IN_AGAIN}"
         self.run.note(error[0].upper() + error[1:] + ".")
-        return Outcome(False, error, outcome.usage, outcome.summary, cause="rate_limit")
+        return Outcome(False, error, outcome.usage, outcome.summary, cause=cause)

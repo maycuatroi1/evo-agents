@@ -173,8 +173,8 @@ in a run of the Curator; for other origins (GitLab) it gets only the `git` secre
 owner's, which should hold the Developer role and so cannot push to a protected default branch either), and of the
 `env` secrets only those the charter lists (`env_secrets`). The hub's own calls for the Curator's pull requests (open
 one, read its files and CI, write the Judge's check run, merge) use tokens of the workers' App made for that one call,
-with the permissions it needs (pull requests, checks, commit statuses), and revoked after it: the tokens a worker's run
-gets keep `GITHUB_PERMISSIONS`.
+with the permissions it needs (pull requests, contents read to open one, checks, commit statuses), and revoked after
+it: the tokens a worker's run gets keep `GITHUB_PERMISSIONS`.
 
 A run's agent profile ([hub.md](hub.md), Agent profiles), at the version the run went under, narrows all of this:
 of the secrets above, a run is leased only those whose names the profile's credential allowlist holds, and a token of
@@ -258,6 +258,13 @@ event of the run records each switch or stop, and the audit row `account.failove
 (`... run:<id> env=<variable> from=secret:<id> to=secret:<id>`): both name the accounts by secret id, never by name
 or value. A worker of an older release never calls the route, and its runs fail as before. An interactive pane only
 shows the event: the person at it switches by hand.
+
+An account whose token the API refused (the agent's turn ended with "Failed to authenticate. API Error: 401 OAuth
+access token is invalid." or the like) is reported with status `unauthorized`: the hub keeps no usage, cools the
+account down for the policy's `cooldown_seconds` with the reason "authentication failed, reported by run N: log in again
+with evo-agents hub account login", and moves the run or stops it by the same rules; a run it stops fails with cause
+`account_auth`. There is no account state for a token that needs a new login: the account shows as cooling, with that
+reason, and a token renewed with `evo-agents hub account login` is taken once the cooldown ends.
 
 `run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool` or
 `cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,

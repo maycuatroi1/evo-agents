@@ -501,7 +501,7 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
-| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App, or finds the one open, and the agent's message in the thread links it |
+| (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
 ## Decisions and notices
 
@@ -791,7 +791,7 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
 | `POST /v1/worker/runs/{id}/credentials` | takes the leases of a run it holds: the owner's secrets, a GitHub token ([credentials.md](credentials.md)) |
 | `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
-| `POST /v1/worker/runs/{id}/rate-limit` | reports what the agent's CLI said of the usage limit of the account behind a lease of the run; on a limit hit, answers `failover` (the run moved to another account) or `stop` ([An account's usage limit](#an-accounts-usage-limit)) |
+| `POST /v1/worker/runs/{id}/rate-limit` | reports what the agent's CLI said of the usage limit of the account behind a lease of the run, or that the account failed to authenticate (`unauthorized`); on a limit hit or a refused token, answers `failover` (the run moved to another account) or `stop` ([An account's usage limit](#an-accounts-usage-limit)) |
 | websocket `/v1/worker/runs/{id}/terminal` | the worker's end of the terminal |
 
 For members, with a web session or a machine token. `{p}` is a project, and run routes sit under
@@ -1700,6 +1700,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `runtime` | the worker has no adapter for the runtime, cannot run it interactive, has no login the run may use, or cannot apply the run's agent profile |
 | `worker_stopped` | the daemon was stopped, or failed, while it held the run |
 | `rate_limit` | the agent's account hit its usage limit and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
+| `account_auth` | the agent's account failed to authenticate (the API refused its token, a 401) and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 
 A run that fails for another reason (the agent's own error, the watchdog of the Curator) carries no cause, and neither
 does one an older daemon or the hub ended (a lost lease, a revoked worker); the Curator's figures read the cause of
@@ -1732,6 +1733,16 @@ limit, and the hub cools the account down until its reset, or for the policy's `
   hub that refused or did not answer, a run that holds no lease of the variable (the machine's own login), or a run
   the daemon moved 20 times already (`accounts.MAX_FAILOVERS`, whatever the policy says): the run fails with
   `failure_cause` `rate_limit`, and its error says why and, when known, when an account is ready again.
+
+A turn that ended because the API refused the account's token ("Failed to authenticate", "API Error: 401", "OAuth
+access token is invalid" or "has expired", `authentication_error`, "Invalid API key"; Claude Code 2.1 ends such a turn
+with a result of subtype `success` that is an error, which the run's error now says as "ended its turn with an error")
+is reported the same way with status `unauthorized`. The hub keeps no usage for it, cools the account down for the
+policy's `cooldown_seconds` with the reason "authentication failed, reported by run N: log in again with evo-agents hub
+account login" (there is no state of an account that needs a login; the Accounts page and `hub account list` show it
+cooling with that reason), and answers `failover` or `stop` by the same rules. On `failover` the new agent is told that
+the account failed to authenticate; otherwise the run fails with `failure_cause` `account_auth`, and its error names the
+CLI's message and says to log in again.
 
 Each note of the run names an account by its secret's id, never by name or value. The agent in a terminal (a takeover,
 `--mode interactive`) is not stopped: the person at the pane sees the CLI's message and acts on it. Codex and opencode

@@ -32,7 +32,10 @@ once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by
 GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
 required_status_checks of its own; GET .../pulls/{n}/commits lists the head commit with the message ``push`` gave it
 (``messages``); a pull request says it changes ``claimed_files`` of its branch when the test set it, else as many files
-as it lists.
+as it lists. POST .../pulls refuses with 422 and GitHub's ``errors`` as GitHub words them: a head the repo has no branch
+of (field head, code invalid), a pull request of the branch open already, a draft on a repo whose ``drafts`` is False
+(code custom, a message about drafts), and, first of all, each answer a test queued in ``pull_refusals`` for the next
+tries, one a try.
 """
 
 from __future__ import annotations
@@ -53,6 +56,8 @@ APP_TOKEN_SECONDS = 3600  # an installation token lives an hour
 JWT_MAX_SECONDS = 600  # GitHub refuses an App JWT whose exp is further ahead
 JWT_LEEWAY_SECONDS = 60  # an iat this far in the future still passes, for clocks apart
 _LEVELS = {"read": 1, "write": 2, "admin": 3}
+# What GitHub says of a draft on a repo that takes none; the hub reads only that an item is about drafts.
+NO_DRAFTS = "Draft pull requests are not supported in this repository."
 LEGACY_PERMISSIONS = {"admin": "admin", "maintain": "write", "write": "write", "triage": "read", "read": "read"}
 
 
@@ -85,6 +90,7 @@ class FakeRepo:
     files: dict = field(default_factory=dict)  # branch -> the files of its pull request, as GitHub lists them
     messages: dict = field(default_factory=dict)  # commit -> its message
     claimed_files: dict = field(default_factory=dict)  # branch -> how many files its pull request says it changes
+    drafts: bool = True  # False: GitHub takes no draft pull request on it (422)
 
 
 @dataclass
@@ -103,6 +109,7 @@ class FakePull:
     merged_at: str | None = None
     merged_by: str | None = None
     draft: bool = False  # opened as a draft (a chat run's)
+    title: str = ""
 
 
 @dataclass
@@ -159,6 +166,7 @@ class FakeGitHub:
     curator_app_public_key: str | None = None
     repos: dict = field(default_factory=dict)  # (owner, name), lower case -> FakeRepo
     pulls: dict = field(default_factory=dict)  # (owner, name, number), lower case names -> FakePull
+    pull_refusals: list = field(default_factory=list)  # (status, body) answering the next POSTs of a pull request
     check_runs: dict = field(default_factory=dict)  # sha -> [check run]
     statuses: dict = field(default_factory=dict)  # sha -> combined status
     merges: list = field(default_factory=list)  # (owner, name, number, sha, app) of each merge
@@ -539,6 +547,8 @@ class FakeGitHub:
             "merged": pull.merged,
             "mergeable": pull.mergeable,
             "html_url": f"https://github.com/{pull.owner}/{pull.name}/pull/{pull.number}",
+            "draft": pull.draft,
+            "title": pull.title,
             "head": {"ref": pull.head, "sha": pull.head_sha},
             "base": {"ref": pull.base, "sha": pull.base_sha},
             "merge_commit_sha": pull.merge_sha,
@@ -619,10 +629,18 @@ class FakeGitHub:
                 return refused
             asked = json.loads(body or "{}")
             branch, base = asked.get("head"), asked.get("base")
+            with self._lock:
+                queued = self.pull_refusals.pop(0) if self.pull_refusals else None
+            if queued is not None:
+                return queued
             if branch not in repo.heads:
-                return 422, {"message": "Validation Failed", "errors": [{"field": "head", "code": "invalid"}]}
+                return 422, _invalid({"resource": "PullRequest", "field": "head", "code": "invalid"})
             if any(item.head == branch and item.state == "open" for item in self.pulls.values()):
-                return 422, {"message": "A pull request already exists"}
+                return 422, _invalid(
+                    {"resource": "PullRequest", "code": "custom", "message": "A pull request already exists"}
+                )
+            if asked.get("draft") is True and not repo.drafts:
+                return 422, _invalid({"resource": "PullRequest", "code": "custom", "message": NO_DRAFTS})
             number = 1 + sum(1 for key in self.pulls if key[:2] == (owner.lower(), name.lower()))
             pull = FakePull(
                 number,
@@ -633,6 +651,7 @@ class FakeGitHub:
                 base,
                 base_sha=repo.heads.get(base),
                 draft=asked.get("draft") is True,
+                title=str(asked.get("title") or ""),
             )
             with self._lock:
                 self.pulls[(owner.lower(), name.lower(), number)] = pull
@@ -741,6 +760,11 @@ class FakeGitHub:
         if path == "/moved":
             return 302, None, {"Location": f"{self.url}/user"}
         return 404, {"message": "Not Found"}
+
+
+def _invalid(*errors: dict) -> dict:
+    """GitHub's body of a 422 it gives a pull request it does not open."""
+    return {"message": "Validation Failed", "errors": list(errors)}
 
 
 def _now() -> str:

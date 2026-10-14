@@ -44,6 +44,7 @@ from urllib.parse import urlencode
 
 from evo_agents import __version__
 from evo_agents.hub.author import MAX_REQUEST_BYTES
+from evo_agents.hub.chats import chat_link
 from evo_agents.hub.cli_client import _client_command, _print_json, _project_path, _signed_in, _table, _when
 from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
@@ -533,38 +534,37 @@ def cmd_list(args) -> int:
     return 0
 
 
-def _plan_run_kind(run: dict) -> str:
+KIND_TEXTS = {  # what `run show` says a run of each kind but step and plan is
+    "review": "review run: the Curator reads the project and proposes changes; it pushes nothing",
+    "judge": "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing",
+    "author": "author run: a plan written from your request with create-exec-plan; it pushes nothing",
+    "chat": "chat run: one turn of an agent mentioned in a group chat, on the branch of its session",
+}
+
+
+def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
+    """What the run does: its kind and title, or its step; its project or plan; a chat run's chat and message."""
+    kind, plan = run["kind"], f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"
+    if kind == "step":
+        return [("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")), ("plan", plan)]
     each = "a new session for each step" if run.get("session_per_step") else "one session"
-    return f"plan run: every step of the plan not done yet, in {each}"
-
-
-def _describe(run: dict) -> list[tuple[str, str]]:
-    """The fields of a run that say something, as (label, text) pairs."""
-    plan_run = run["kind"] in ("plan", "review", "judge", "author")  # these have repos too, and no step
-    lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}")]
-    if run["kind"] == "review":
-        lines.append(("kind", "review run: the Curator reads the project and proposes changes; it pushes nothing"))
-        if run["title"]:
-            lines.append(("title", run["title"]))
+    said = KIND_TEXTS.get(kind) or f"plan run: every step of the plan not done yet, in {each}"
+    lines = [("kind", said)] + ([("title", run["title"])] if run["title"] else [])
+    if kind == "review":
         lines.append(("project", run["project"]))
-    elif run["kind"] == "judge":
-        lines.append(
-            ("kind", "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing")
-        )
-        if run["title"]:
-            lines.append(("title", run["title"]))
-    elif run["kind"] == "author":
-        lines.append(("kind", "author run: a plan written from your request with create-exec-plan; it pushes nothing"))
-        if run["title"]:
-            lines.append(("title", run["title"]))
-    elif plan_run:
-        lines.append(("kind", _plan_run_kind(run)))
-        if run["title"]:
-            lines.append(("title", run["title"]))
-    else:
-        lines.append(("step", f"{run['step_key']}" + (f": {run['title']}" if run["title"] else "")))
-    if run["kind"] not in ("review", "author") or run.get("plan_id"):
-        lines.append(("plan", f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"))
+    if kind == "chat":
+        link = _origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
+        lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
+        lines.append(("message", link))
+    if kind not in ("review", "author", "chat") or run.get("plan_id"):
+        lines.append(("plan", plan))
+    return lines
+
+
+def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
+    """The fields of a run that say something, as (label, text) pairs."""
+    plan_run = run["kind"] != "step"  # every other kind has repos, and no step
+    lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}"), *_what(run, hub_url)]
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
     if plan_run:
         lines.append(("repos", (_repos(run) or "none") + commit))
@@ -656,7 +656,7 @@ def cmd_show(args) -> int:
         _print_json(run)
         return 0
     print(f"Run #{run['id']}")
-    lines = _describe(run)
+    lines = _describe(run, hub.url)
     width = max(len(label) for label, _ in lines)
     for label, text in lines:
         first, *rest = str(text).splitlines() or [""]
