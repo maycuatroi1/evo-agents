@@ -1177,6 +1177,59 @@ claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 
 used), opencode 1.18.34 with aiohttp. Otherwise the heartbeat reports it unavailable with the reason, and the hub
 hands it no run.
 
+### Agent profiles in the session
+
+The claim of a run carries its agent profile ([hub.md](hub.md), Agent profiles) as `profile`. The hub has applied the
+credential, worker, project and runtime axes and the model of the dispatch; the adapter applies the tool, skill and
+model axes and the instructions in the agent session (`evo_agents.worker.runtimes.profiles`). A profile that allows
+everything and has no instructions, a project's default, changes nothing: the agent starts with the same settings as
+a run without a profile. The daemon lists `agent_profiles` in its heartbeat's `features`, so the hub hands it runs
+whose profile limits the session.
+
+| | claude-code | opencode | codex |
+| --- | --- | --- | --- |
+| `read` | Read, Glob, Grep, LSP | read, glob, grep, list, lsp | `features.view_image` |
+| `edit` | Edit, Write, NotebookEdit | edit (write and apply_patch too) | cannot be turned off: the run fails |
+| `bash` | Bash, TaskStop, Monitor, EnterWorktree, ExitWorktree | bash | `features.shell_tool`, `features.unified_exec` |
+| `web` | WebFetch, WebSearch | webfetch, websearch, codesearch | `web_search = "disabled"` |
+| `agent` | Agent, SendMessage, ListAgents, Workflow | task | `features.multi_agent`, `features.multi_agent_v2` |
+| `mcp:<server>` | `allowedMcpServers` in `--settings` | `deny` for `<server>_*` | `mcp_servers.<server>.enabled` |
+| skills | `skills`, `setting_sources` all three | `permission.skill` in the server's config | cannot be hidden: the run fails |
+| model | the run's model, `availableModels` | the run's `providerID` and `modelID` | the thread's `model` |
+| instructions | after the adapter's note in `--append-system-prompt` | after the headless note in `system` | after the adapter's note in `developer_instructions` |
+
+- Claude Code, a tool allowlist: `tools` names the built-in tools of the allowed words, and the agent's to-do list,
+  so no other built-in is in the session; `allowedMcpServers` names the allowed servers, so no other is configured. A
+  plugin's MCP server (`plugin:<plugin>:<server>`) matches there only by its command or URL, so a profile with a tool
+  allowlist runs without plugin servers. The owner's own settings can widen `allowedMcpServers` and `availableModels`
+  (Claude Code merges arrays across settings files), so before the prompt the adapter asks the CLI for its MCP
+  servers and fails the run on one the profile leaves out. The adapter never toggles an MCP server off: Claude Code
+  records that in the owner's `~/.claude.json`, and before the servers connect it does not take.
+- Claude Code, a skill allowlist: the `skills` filter hides other skills from the main session only, not from a
+  subagent, so such a profile runs without the `agent` tools, and the run's log says so.
+- Claude Code: a PreToolUse hook, which runs for subagents too and under bypassPermissions, refuses a call of a tool
+  of an MCP server, of a skill, or of a subagent on a model, that the profile leaves out.
+- opencode: the run's `opencode serve` starts with the profile's `permission` in `OPENCODE_CONFIG_CONTENT`, merged
+  over what the variable held; rules of the config take tools out of what the model is offered and skills out of its
+  listing, a subagent's included. The session gets the same rules, and `deny` for the MCP servers `GET /mcp` names
+  that the profile leaves out; a resumed session gets them again (`PATCH /session/:id`). With a model allowlist the
+  model is never the config's own.
+- Codex: with a tool allowlist the thread's `config` also turns off `apps`, `plugins`, `browser_use`, `computer_use`
+  and `image_generation`, which bring tools of their own, and the MCP servers of the owner's and the worktree's
+  `config.toml` that the profile leaves out.
+- Tools that only keep the agent's own notes stay: Claude Code's TodoWrite, opencode's todowrite, Codex's goals.
+  Each table was checked on 2026-10-14 against fakes of the runtimes' model APIs, which recorded what the runtime
+  offered the model in the main session and in a subagent: Claude Code 2.1.296 with claude-agent-sdk 0.2.165,
+  opencode 1.18.34, codex-cli 0.153.4.
+
+Before any of the run's work, as it picks the adapter, the daemon asks it whether it can apply the profile
+(`Adapter.profile_refusal`): Codex cannot when the profile leaves out `edit` or limits skills, an adapter of another
+package that does not say it can never can, and no adapter can when the run's model is not one the profile allows.
+The run then fails with cause `runtime` and the reason in its error and its log, its leases not taken and nothing
+fetched. Claude Code's check of its MCP servers fails the run the same way as the agent starts, before the prompt
+goes in. Otherwise the log says what the profile limits. A run whose profile limits the session is never handed to a
+person in a terminal UI, which applies no profile: an interactive run fails, and a takeover is refused.
+
 ### A run on the machine
 
 1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
@@ -1597,7 +1650,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `timeout` | it ran past its timeout |
 | `cost_cap`, `turn_cap`, `time_cap` | the agent stopped at that cap of the run's budget |
 | `checkout` | the fetch, or the worktree, went wrong for another reason |
-| `runtime` | the worker has no adapter for the runtime, cannot run it interactive, or has no login the run may use |
+| `runtime` | the worker has no adapter for the runtime, cannot run it interactive, has no login the run may use, or cannot apply the run's agent profile |
 | `worker_stopped` | the daemon was stopped, or failed, while it held the run |
 | `rate_limit` | the agent's account hit its usage limit and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 
