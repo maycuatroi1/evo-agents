@@ -2889,8 +2889,9 @@ export interface paths {
         put?: never;
         /**
          * Report Rate Limit
-         * @description Keep the usage the CLI gave for the account of one of the run's leases; on a usage limit, cool the account
-         *     down and move the run to the next one when its owner's policy lets it, as the module says.
+         * @description Keep the usage the CLI gave for the account of one of the run's leases; on a usage limit or a failed
+         *     authentication, cool the account down and move the run to the next one when its owner's policy lets it, as the
+         *     module says.
          */
         post: operations["report_rate_limit_v1_worker_runs__run_id__rate_limit_post"];
         delete?: never;
@@ -8099,7 +8100,7 @@ export interface components {
         RateLimitAnswer: {
             /**
              * Action
-             * @description none: usage kept, go on; failover: ask for the run's leases again, the new account's value is in them, and go on in the same session; stop: end the run failed with cause rate_limit
+             * @description none: usage kept, go on; failover: ask for the run's leases again, the new account's value is in them, and go on in the same session; stop: end the run failed with cause rate_limit, or account_auth for unauthorized
              * @enum {string}
              */
             action: "none" | "failover" | "stop";
@@ -8115,7 +8116,7 @@ export interface components {
             failovers: number;
             /**
              * Cooldown Until
-             * @description with rejected: until when the account cools
+             * @description with rejected or unauthorized: until when the account cools
              */
             cooldown_until?: string | null;
             /**
@@ -8138,10 +8139,10 @@ export interface components {
             lease_id: number;
             /**
              * Status
-             * @description what the CLI said: rejected when the account hit its usage limit, else its usage alone
+             * @description what the CLI said: rejected when the account hit its usage limit, unauthorized when it failed to authenticate (its token refused), else its usage alone
              * @enum {string}
              */
-            status: "allowed" | "allowed_warning" | "rejected";
+            status: "allowed" | "allowed_warning" | "rejected" | "unauthorized";
             /**
              * Rate Limit Type
              * @description the limit, such as five_hour or seven_day

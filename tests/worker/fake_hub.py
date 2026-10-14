@@ -60,8 +60,9 @@ class FakeHub:
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
         # What the worker said of its agent's usage limit (POST .../rate-limit), with the run's id, and what a rejected
-        # report gets: run id -> the answers in order, each with ``leases``, the run's next leases on a failover; a
-        # run without answers is told stop. ``rate_limit_route`` False answers 404, as a hub older than the route.
+        # (or unauthorized) report gets: run id -> the answers in order, each with ``leases``, the run's next leases on
+        # a failover; a run without answers is told stop. ``rate_limit_route`` False answers 404, as a hub older than
+        # the route.
         self.rate_limits: list[dict] = []
         self.rate_limit_answers: dict[int, list[dict]] = {}
         self.rate_limit_route = True
@@ -805,7 +806,7 @@ class FakeHub:
         run_id, _ = self._run(request)
         body = await request.json()
         self.rate_limits.append({"run_id": run_id, **body})
-        if body.get("status") != "rejected":
+        if body.get("status") not in ("rejected", "unauthorized"):
             return web.json_response({"action": "none", "secret_id": 1, "failovers": 0})
         answers = self.rate_limit_answers.get(run_id) or []
         if not answers:

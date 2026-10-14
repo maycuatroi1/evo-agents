@@ -590,6 +590,24 @@ def test_claude_ending_without_a_result_or_with_an_error_result_is_not_a_complet
     assert outcome.error == "claude-code ended its turn with error_during_execution: Prompt is too long"
 
 
+def test_claude_whose_account_fails_to_authenticate_ends_with_an_error_that_says_so_never_success(tmp_path):
+    """Claude Code 2.1 ends a turn whose token the API refused with a result of subtype success and is_error (run #58
+    of 2026-10-14): an outcome with ``auth`` set, said as an error."""
+    refused = "Failed to authenticate. API Error: 401 OAuth access token is invalid."
+
+    async def unauthorized(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        cli.print(_result(refused, is_error=True))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    events, outcome = asyncio.run(_collect(_claude(tmp_path, unauthorized)))
+    assert not outcome.completed and outcome.limit is None
+    assert outcome.error == f"claude-code ended its turn with an error: {refused}"
+    assert outcome.auth == refused and "success" not in outcome.error
+
+
 def test_claude_resumes_the_runs_session_instead_of_making_one(tmp_path):
     adapter = _claude(tmp_path, _samples, resume=SESSION)
     asyncio.run(_collect(adapter))

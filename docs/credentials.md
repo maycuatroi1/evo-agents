@@ -259,6 +259,13 @@ event of the run records each switch or stop, and the audit row `account.failove
 or value. A worker of an older release never calls the route, and its runs fail as before. An interactive pane only
 shows the event: the person at it switches by hand.
 
+An account whose token the API refused (the agent's turn ended with "Failed to authenticate. API Error: 401 OAuth
+access token is invalid." or the like) is reported with status `unauthorized`: the hub keeps no usage, cools the
+account down for the policy's `cooldown_seconds` with the reason "authentication failed, reported by run N: log in again
+with evo-agents hub account login", and moves the run or stops it by the same rules; a run it stops fails with cause
+`account_auth`. There is no account state for a token that needs a new login: the account shows as cooling, with that
+reason, and a token renewed with `evo-agents hub account login` is taken once the cooldown ends.
+
 `run_accounts` records which account each run took for each variable and how (`manual`, `worker`, `charter`, `pool` or
 `cooling`); `accounts` holds each account's weight (0 to 1000, default 1), priority (0 to 1000, default 0), pause,
 cooldown, rotation and the last usage a run reported (`last_usage`, `last_usage_at`); `account_policies` holds a

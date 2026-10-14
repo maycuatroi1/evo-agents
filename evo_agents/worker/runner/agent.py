@@ -14,7 +14,8 @@ the runtime's adapter cannot apply the profile (``Adapter.profile_refusal``), or
 the agent (``ProfileRefused``), with cause ``runtime``; such a run is never handed to a person in a terminal UI, which
 applies no profile.
 A headless agent whose account hits its usage limit is stopped, and goes on in the same session with another account
-when the hub moves the run to one (``limits``); else the run fails with cause rate_limit.
+when the hub moves the run to one (``limits``); else the run fails with cause rate_limit. One whose account failed to
+authenticate goes on the same way, else fails with cause account_auth.
 """
 
 from __future__ import annotations
@@ -27,7 +28,7 @@ from evo_agents.hub import curator, runs
 from evo_agents.worker import interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
-from evo_agents.worker.runner.limits import FAILOVER_PROMPT, Limits
+from evo_agents.worker.runner.limits import Limits
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
 from evo_agents.worker.runtimes import profiles
@@ -250,7 +251,7 @@ class Agent:
                 self.run.check()
                 outcome = await self.limits.after(outcome)
                 if outcome is None:  # the run moved to another account: a new agent goes on in the session
-                    prompt = FAILOVER_PROMPT if session_id else first_prompt
+                    prompt = self.limits.prompt if session_id else first_prompt
                     continue
                 if self.takeover_asked and session_id and self.interactive_unsupported(cls) is None:
                     in_terminal = True
