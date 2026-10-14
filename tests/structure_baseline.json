@@ -18,7 +18,7 @@
     "evo_agents/hub/judge.py::ci_state": {"complexity": 18},
     "evo_agents/hub/judge.py::hack_signs": {"complexity": 35, "statements": 78},
     "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 22, "statements": 51},
-    "evo_agents/hub/run_cli.py::_describe": {"complexity": 30, "statements": 79},
+    "evo_agents/hub/run_cli.py::_describe": {"complexity": 21, "statements": 58},
     "evo_agents/hub/run_cli.py::register_runs": {"statements": 83},
     "evo_agents/hub/server/app.py::create_app": {"statements": 113},
     "evo_agents/hub/server/blobs.py::commit_uploads": {"statements": 58},
