@@ -175,8 +175,16 @@ one, read its files and CI, write the Judge's check run, merge) use tokens of th
 with the permissions it needs (pull requests, checks, commit statuses), and revoked after it: the tokens a worker's run
 gets keep `GITHUB_PERMISSIONS`.
 
+A run's agent profile ([hub.md](hub.md), Agent profiles), at the version the run went under, narrows all of this:
+of the secrets above, a run is leased only those whose names the profile's credential allowlist holds, and a token of
+the hub's GitHub App only when it holds `github-app`; a repo on GitHub it would have covered is missing, with the
+profile as the reason. The intersection is taken on every ask, so a secret the owner adds later is not leased to a
+profile that does not name it, and an account picked by hand, or picked by the rules, is one the profile allows. A
+profile with every permission, such as a project's default, changes nothing.
+
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
-secrets by id (`secrets=12,15`), the App's accounts and the repos, never a value; `credential.revoke` names the
+secrets by id (`secrets=12,15`), the App's accounts, the repos and, unless it is the project's default, the run's
+profile (`profile=@<handle>:v<version>`), never a value; each lease row records the profile and version too; `credential.revoke` names the
 secrets by id too. A secret is leased once per run and worker: asked again,
 the same lease comes back with the secret's value as it is now. A GitHub token stays sealed in its lease, bound to the
 lease's id, until it expires, so the hub can revoke it. Asked again, a run gets the same tokens while each has

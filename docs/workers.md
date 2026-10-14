@@ -579,7 +579,12 @@ dispatched from has it (a list of one command, or empty), whose programs the dae
 hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, or a
 plan run of a plan the Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
 Builder or a Judge the change, its branch, its forge (`github` or `gitlab`), the default branch, the pull request, and
-for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A worker has at most one
+for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A run under an agent profile
+([hub.md](hub.md), Agent profiles) is claimed only by a worker the profile's worker axis names by name or label, with
+a runtime its runtime axis allows (a run asking for `any` takes the first of the worker's it allows), and, when the
+profile limits tools, skills or models or has instructions, only by a daemon whose last heartbeat listed
+`agent_profiles` in `features`; the answer has `profile`, the profile at the version the run went under (handle,
+version, name, instructions, permissions), null for a run from before schema 0030. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
@@ -618,10 +623,11 @@ shows them in that shape. `free_slots` is what the daemon counts free, at most t
 and counts the runs a worker holds against its slots itself. `agent_version` is optional and replaces the version
 the worker registered with. `run_kinds`, optional, lists the kinds of run the daemon runs; the hub keeps those it
 knows, and a heartbeat without it says the daemon runs none of the kinds that need it (a review run). `features`,
-optional, lists what the daemon does besides its kinds of run (`runs.WORKER_FEATURES`): `session_per_step`, a plan run
-with a new agent session for each step, and `author_decisions`, an author run whose agent asks decisions with
+optional, lists what the daemon does besides its kinds of run (`runs.HUB_FEATURES`): `session_per_step`, a plan run
+with a new agent session for each step, `author_decisions`, an author run whose agent asks decisions with
 `evo-agents worker ask` and waits for every answer of its turn (the hub then builds the author prompt with the rules of
-decisions; without it, the rules of a chat alone). The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
+decisions; without it, the rules of a chat alone), and `agent_profiles`, a daemon whose adapters apply a run's agent
+profile (tools, skills and model in the session, the instructions in its system prompt). The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
@@ -794,7 +800,9 @@ worker of the caller's), `approval` (`review` by default, or `auto`), `timeout_m
 `model` (optional, one line of at most 200 characters, as the runtime names it; null, the default, leaves the choice
 to the runtime as before), and `account` (optional: one of the caller's env secrets bound to the project, by name,
 which the runs take and keep with no failover; null, the default, lets the rules of the caller's policy pick, see
-[credentials.md](credentials.md), Accounts; `plan-runs` and `author-runs` take it too). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
+[credentials.md](credentials.md), Accounts; `plan-runs` and `author-runs` take it too), and `profile` (optional: the
+handle of the agent profile the runs go under, the project's default when null; `plan-runs` and `author-runs` take it
+too, and [hub.md](hub.md), Agent profiles, says what it refuses). It queues one run per step, at the plan's current revision, or nothing: a step that is not ready or has an active run is
 409, a step the plan does not have or one without a repo is 422, a worker that is not the caller's (or no worker) is
 403, and a revoked worker or one that does not serve the project is 409. A worker whose owner set `dispatch_from` to
 `web` takes a pinned dispatch only from a web session: with a token the answer is 403, saying so. Each run records
