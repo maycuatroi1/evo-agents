@@ -232,6 +232,9 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | The usage limits of an account | `Gauge` |
 | Knowledge graph | `Network` |
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
+| Chats, a group chat; New chat | `MessagesSquare`; `Plus` |
+| A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
+| A chat run's run; the draft pull request an agent's message links; leave a chat | `Activity`; `GitPullRequestDraft`; `LogOut` |
 | An agent's axes: credentials, tools, skills, workers, projects, models, runtimes | `KeyRound`, `Wrench`, `Sparkles`, `Server`, `FolderKanban`, `BrainCircuit`, `SquareTerminal` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
@@ -730,6 +733,61 @@ Shared pieces built on them:
   is typed when its shape is wrong. The form repeats the hub's checks and shows them once Save was tried; an edit sends
   only what changed with `if_version`, and Save stays off until something did. The project's default agent shows only
   its name, description, colour and avatar, with a note that it keeps every permission and no instructions.
+- `components/chats`, group chats (`/chats` and `/chats/{id}`, first in the sidebar's hub group; docs/hub.md, Group
+  chats): people and the agents of projects in one conversation. One frame for the list and a chat
+  (`app/(app)/chats/layout.tsx`, `chats-shell.tsx`), so the list keeps its place from chat to chat: from 1024 px one
+  window tall, the list in a column of 19 rem (21 from 2xl) and the chat beside it, each scrolling on its own; below,
+  the list is the page at `/chats` and a chat the page at `/chats/{id}`, as tall as the window, with a back link before
+  its title. The list (`chat-list.tsx`) is a card: Chats (the h1 while no chat is open, an h2 beside one) with the
+  unread total as an `attention` badge and New chat (primary while no chat is open, `outline` beside one); a filter
+  past six chats; then a row per chat, the latest active first, its title (semibold while unread), the agents as
+  `@handle` and the people, when its last message came, and the messages of others not read yet as an `attention`
+  count (its name says the count in words); the chat shown is `surface-selected` with `aria-current="page"`. The list is
+  read every 10 seconds while shown; the sidebar's Chats item counts the same unread total, every 30. No chat is the
+  EmptyState with New chat; from 1024 px the pane beside the list says to open one. New chat
+  (`new-chat-dialog.tsx`, loaded when first pressed) takes a title (one line, 120 characters), the agents of the
+  projects the visitor writes to as checkboxes by project with each one's face (at most 10, a filter past eight) and
+  people by login, those of the visitor's other chats suggested (a login typed and not added yet goes along); the
+  hub's refusal stays in the dialog with its words, and the chat opens once made. A chat (`chat-view.tsx`) is a card:
+  its head (`chat-header.tsx`: the title as the h1, the visibility its agents' projects give it, its agents' faces, who
+  is in it, and Members), its messages, and the composer. Messages (`message-list.tsx`) sit in a `role="log"` region
+  (polite) that scrolls on its own and Tab reaches, under a line for each day; it opens at the newest message, follows
+  new ones while the visitor reads at the end and offers Jump to the latest when they scrolled up; Show earlier
+  messages reads the page before. The chat shows the messages that are no reply; replies live in their thread. A
+  message (`message-item.tsx`) is its author's face (an agent's avatar or initial on its colour, a person's initials
+  on a neutral round, the hub's mark with an Automatic tag for what the hub says by rule), the name (an agent's with
+  `@handle`), the time, the text through SafeMarkdown (`components/data/markdown.tsx`: Markdown, never HTML), then
+  square chips for where it leads (`message-links.tsx`: an agent's message's run, each mention's run as `@handle: run
+  #N`, a mention the hub refused in `attention` with the hub's reason, each GitHub pull request the message links, in
+  a new tab), its reactions, and for a message that starts a thread, the faces of who replied, "3 replies" in `brand`
+  and when the last came, which opens the thread. React and Reply in thread sit over its top right corner from 768 px
+  (a `popover` box shown while the pointer is over the message, a key is in it or its picker is open), and in a row of
+  their own under it on phones. Reactions (`reactions.tsx`) are the chat's one place for emoji (Style): a round chip
+  per emoji with its count, the visitor's own pressed (`brand-soft`, `aria-pressed`), named by the emoji's name, the
+  count and who put it ("Eyes: 1, by @reviewer"); pressing one puts the visitor's or takes it off, and Add a reaction
+  opens a grid of 16 named emoji, the three an agent's run puts by rule first. A thread (`thread-panel.tsx`) is the
+  message that starts it, a line with the count, its replies and a composer that answers in it; a column of 26 rem
+  beside the chat from 2xl (where the sidebar and the list leave it room), a sheet from the right below; it reads the
+  whole thread once opened. `?thread=ID` opens one, and `?message=ID`, where a notice links, shows that message
+  marked (`surface-selected`) and focused, in its thread when it is a reply or older than the page read. The composer
+  (`composer.tsx`) is the kit's Composer with Send and Cmd or Ctrl with Enter; typing `@` opens the suggestions above
+  the box (`mention-menu.tsx`: a listbox the text area drives through `aria-activedescendant`, grouped Agents,
+  Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space, Escape closes it, a
+  polite region says how many there are); the bar under the box says what the message will do ("Hands work to
+  @reviewer.", with the agents past the hub's three named in `attention`) and otherwise how mentions work; a blank
+  message or one over 16 KiB is refused in place, a refusal of the hub shows there with its words. Members
+  (`members-sheet.tsx`) is a sheet: the agents (any member adds one of a project they write to from a select by
+  project, or takes one out), the people (any member adds one by login; the creator takes others out; each may Leave,
+  confirmed in `ConfirmAction`), the budget of its agents' runs over 24 hours (its creator changes it; anyone else
+  reads it), and for a chat with a restricted project, that its notices name it and link only; a refusal shows at the
+  top of the sheet, a change made is a toast. Live (`use-chat-feed.ts`, `feed-model.ts`): the page follows the chat's
+  stream with an EventSource from the chat's last event when the page was read (Last-Event-ID on reconnect, an event
+  seen twice applied once), reads `events?after=` every 2 seconds while the stream fails and tries it again every 30,
+  and feeds the top bar's LiveIndicator; a message and a reaction arrive in place, a member change reads the chat
+  again, and the stream's `end` replaces the composer with why the visitor can no longer read it. While the page is in
+  view, what it shows is read (POST .../read), so its unread count and the sidebar's drop. A chat run's page carries
+  the Chat run tag (`MessagesSquare`) and links back to the message it answers; the runs list shows it with that tag
+  and "A turn of @handle in a group chat".
 - The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
   the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
   picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are
@@ -1100,7 +1158,8 @@ Shared pieces built on them:
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
-- `components/memories/markdown.tsx`: Markdown written by people (memory bodies) through react-markdown without
+- `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
+  by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
   never loaded, headings move under the page's h1 and the card's h2.
 

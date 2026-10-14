@@ -19,10 +19,11 @@ import { workerQuery } from "@/components/workers/queries";
 import { useMediaQuery, XL_QUERY } from "@/hooks/use-media-query";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { chatHref } from "@/lib/chat-keys";
 import { whoamiQuery } from "@/lib/queries";
 
 import { AgentTrace, type TraceContext } from "./agent-trace";
-import { AuthorRunKindBadge, PlanRunKindBadge } from "./badges";
+import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge } from "./badges";
 import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
 import type { RunMove } from "./log-model";
@@ -226,9 +227,22 @@ function RunPage({ run }: { run: Run }) {
           </>
         }
         status={<StatusBadge kind="run" status={run.state} size="lg" />}
-        tags={plan ? <PlanRunKindBadge /> : review ? <ReviewRunKindBadge /> : authoring ? <AuthorRunKindBadge /> : null}
+        tags={plan ? <PlanRunKindBadge /> : review ? <ReviewRunKindBadge /> : authoring ? <AuthorRunKindBadge /> : run.kind === "chat" ? <ChatRunKindBadge /> : null}
         sub={
-          authoring
+          run.kind === "chat"
+            ? t.rich("chatSub", {
+                agent: run.profile ?? run.project,
+                hop: run.hop ?? 1,
+                chatLink: (chunks) =>
+                  run.chat_id ? (
+                    <Link href={chatHref(run.chat_id, run.chat_message_id)} className={SUB_LINK} data-testid="run-chat-link">
+                      {chunks}
+                    </Link>
+                  ) : (
+                    chunks
+                  ),
+              })
+            : authoring
             ? run.plan_id
               ? t.rich("authorPlanSub", { plan: run.plan_id, title, planLink })
               : t("authorNewSub", { title })
