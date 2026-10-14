@@ -3378,6 +3378,7 @@
         "modelNone": "@{handle} allows no model.",
         "workers": "@{handle} lets none of your workers here take the run: it allows {allow}.",
         "workersNone": "@{handle} allows no worker.",
+        "daemon": "@{handle} limits tools, skills or models, or adds instructions, which only a worker whose daemon applies agent profiles carries out; none of your workers here says it does. Upgrade the daemon of one.",
         "skill": "@{handle} does not allow skill {skill}, which an author run writes its plan with."
       }
     }

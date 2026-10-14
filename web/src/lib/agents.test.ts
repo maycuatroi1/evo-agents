@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { type Agent, agentModels, agentProblems, agentWorkers, allowed, allows, allowsWorker, profileField, usableAgents } from "./agents";
+import { type Agent, agentModels, agentProblems, agentWorkers, allowed, allows, allowsWorker, needsProfileDaemon, profileField, usableAgents } from "./agents";
 import { agentInitial, inkOn, normalizedItem, PALETTE, validItem } from "./agent-rules";
 
 function agent(overrides: Partial<Agent> = {}): Agent {
@@ -121,7 +121,22 @@ describe("what an agent refuses of a dispatch", () => {
       { kind: "workers", allow: ["laptop"] },
       { kind: "skill", skill: "create-exec-plan" },
     ]);
-    expect(agentProblems(limited, { runtime: "any", model: "opus", workers: [{ name: "laptop", labels: [] }], skill: "team-notes" })).toEqual([]);
+    const upgraded = [{ name: "laptop", labels: [], features: ["agent_profiles"] }];
+    expect(agentProblems(limited, { runtime: "any", model: "opus", workers: upgraded, skill: "team-notes" })).toEqual([]);
+  });
+
+  it("keeps an agent that limits tools, skills or models, or has instructions, to daemons that apply agent profiles", () => {
+    const old = { name: "mini", labels: [] };
+    const upgraded = { name: "desk", labels: [], features: ["agent_profiles"] };
+    const tools = agent({ permissions: { tool: { mode: "allowlist", allow: ["read"] } } });
+    expect(needsProfileDaemon(tools)).toBe(true);
+    expect(needsProfileDaemon(agent({ instructions: "Be brief." }))).toBe(true);
+    expect(needsProfileDaemon(agent({ permissions: { worker: { mode: "allowlist", allow: ["mini"] } } }))).toBe(false);
+    expect(agentWorkers([old, upgraded], tools).map((worker) => worker.name)).toEqual(["desk"]);
+    expect(agentProblems(tools, { runtime: "any", workers: [old] })).toEqual([{ kind: "daemon" }]);
+    // Named by the worker axis, but on an old daemon: the daemon is what to fix.
+    const named = agent({ permissions: { tool: { mode: "allowlist", allow: ["read"] }, worker: { mode: "allowlist", allow: ["mini"] } } });
+    expect(agentProblems(named, { runtime: "any", workers: [old, upgraded] })).toEqual([{ kind: "daemon" }]);
   });
 
   it("refuses any runtime when the agent allows none, and a deleted agent always", () => {
