@@ -79,7 +79,10 @@ here.
   the CLI takes.
 - A turn that ends with an error that reads as the account's usage limit (``limit_of_text``) gives an outcome with
   ``limit`` set, and its ``rate_limit_event`` messages reach the run's log raw: ``evo_agents.worker.runner.limits``
-  reports them and moves the run to another account.
+  reports them and moves the run to another account. One whose error reads as the account failing to authenticate
+  (``auth_failure_of``: "Failed to authenticate. API Error: 401 OAuth access token is invalid.") gives an outcome with
+  ``auth`` set, which ``limits`` reports and moves the same way. A result whose subtype is ``success`` but is an error
+  is said as "ended its turn with an error", never "with success".
 - A run under an agent profile that limits tool, skill or model, or has instructions, gets them in the session as
   ``evo_agents.worker.runtimes.profiles`` says: ``tools``, ``skills`` and ``setting_sources``, ``allowedMcpServers``
   and ``availableModels`` in ``settings``, a PreToolUse hook, the model, and the instructions after SYSTEM_NOTE. With a
@@ -175,6 +178,14 @@ CAP_RESULTS = {"error_max_budget_usd": "cost", "error_max_turns": "turns"}
 # reached|1791507000" (the reset as a unix time), "5-hour limit reached ∙ resets 3pm", "You've hit your limit".
 USAGE_LIMIT = re.compile(r"usage limit|hit your (?:usage )?limit|\blimit reached\b|out of extra usage", re.I)
 RESET_STAMP = re.compile(r"\|\s*(\d{9,11})\b")
+# The text of a turn that ended because the API refused the account's token, as Claude Code words it: "Failed to
+# authenticate. API Error: 401 OAuth access token is invalid." (2.1, run #58 of 2026-10-14), "OAuth token has expired".
+AUTH_FAILURE = re.compile(
+    r"failed to authenticate|api error: 401\b|oauth (?:access )?token (?:is invalid|has expired|has been revoked)"
+    r"|authentication_error|invalid api key",
+    re.I,
+)
+AUTH_CHARS = 300  # of the error kept as the reason
 # The statuses of a task that has ended: task_notification says stopped, task_updated killed, for the same end.
 TERMINAL_TASK = frozenset({"completed", "failed", "stopped", "killed"})
 # The id of a background command in the text of its Bash result.
@@ -477,6 +488,14 @@ def limit_of_text(text: str | None) -> dict | None:
     return {"status": "rejected", **({"resets_at": resets_at} if resets_at else {})}
 
 
+def auth_failure_of(text: str | None) -> str | None:
+    """The error of the agent's turn, on one line, when it reads as its account failing to authenticate (the API
+    refused its token); None otherwise."""
+    if not text or not AUTH_FAILURE.search(text):
+        return None
+    return " ".join(text.split())[:AUTH_CHARS]
+
+
 def _raw_of(message) -> dict:
     """A message of the SDK as the CLI wrote it, as far as the SDK keeps it."""
     data = getattr(message, "data", None)
@@ -739,7 +758,9 @@ class ClaudeCodeAdapter(QueueAdapter):
             tail = " | ".join(list(self._stderr)[-3:])
             if tail and not self.interrupted:
                 why += f" (stderr: {tail})"
-            return Outcome(False, "interrupted" if self.interrupted else cut(f"claude-code: {why}"), usage)
+            if self.interrupted:
+                return Outcome(False, "interrupted", usage)
+            return Outcome(False, cut(f"claude-code: {why}"), usage, auth=auth_failure_of(why))
         last = self._results[-1]
         summary = last.result.strip() if isinstance(last.result, str) and last.result.strip() else None
         if self.interrupted:
@@ -748,9 +769,10 @@ class ClaudeCodeAdapter(QueueAdapter):
         if cap is not None:
             return Outcome(False, cut(self._cap_error(cap, last)), usage, summary, cap=cap)
         if last.is_error or last.subtype != "success":
-            detail = last.result or ", ".join(str(error) for error in last.errors or []) or last.stop_reason
-            error = cut(f"claude-code ended its turn with {last.subtype}: {detail}")
-            return Outcome(False, error, usage, summary, limit=limit_of_text(str(detail or "")))
+            detail = str(last.result or ", ".join(str(error) for error in last.errors or []) or last.stop_reason or "")
+            ended = "an error" if last.subtype == "success" else last.subtype  # is_error on a result of success
+            error = cut(f"claude-code ended its turn with {ended}: {detail}")
+            return Outcome(False, error, usage, summary, limit=limit_of_text(detail), auth=auth_failure_of(detail))
         return Outcome(True, None, usage, summary)
 
     def _cap_error(self, cap: str, last) -> str:

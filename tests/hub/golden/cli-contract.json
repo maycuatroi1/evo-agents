@@ -6133,7 +6133,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.15.1"
+      "version": "0.16.0"
     },
     "paths": {
       "/v1/health": {
@@ -21041,7 +21041,7 @@
             "worker protocol"
           ],
           "summary": "Report Rate Limit",
-          "description": "Keep the usage the CLI gave for the account of one of the run's leases; on a usage limit, cool the account\ndown and move the run to the next one when its owner's policy lets it, as the module says.",
+          "description": "Keep the usage the CLI gave for the account of one of the run's leases; on a usage limit or a failed\nauthentication, cool the account down and move the run to the next one when its owner's policy lets it, as the\nmodule says.",
           "operationId": "report_rate_limit_v1_worker_runs__run_id__rate_limit_post",
           "parameters": [
             {
@@ -34805,7 +34805,7 @@
                 "stop"
               ],
               "title": "Action",
-              "description": "none: usage kept, go on; failover: ask for the run's leases again, the new account's value is in them, and go on in the same session; stop: end the run failed with cause rate_limit"
+              "description": "none: usage kept, go on; failover: ask for the run's leases again, the new account's value is in them, and go on in the same session; stop: end the run failed with cause rate_limit, or account_auth for unauthorized"
             },
             "secret_id": {
               "type": "integer",
@@ -34828,7 +34828,7 @@
                 }
               ],
               "title": "Cooldown Until",
-              "description": "with rejected: until when the account cools"
+              "description": "with rejected or unauthorized: until when the account cools"
             },
             "ready_at": {
               "anyOf": [
@@ -34877,10 +34877,11 @@
               "enum": [
                 "allowed",
                 "allowed_warning",
-                "rejected"
+                "rejected",
+                "unauthorized"
               ],
               "title": "Status",
-              "description": "what the CLI said: rejected when the account hit its usage limit, else its usage alone"
+              "description": "what the CLI said: rejected when the account hit its usage limit, unauthorized when it failed to authenticate (its token refused), else its usage alone"
             },
             "rate_limit_type": {
               "anyOf": [

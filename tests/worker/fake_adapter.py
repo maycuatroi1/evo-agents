@@ -19,7 +19,8 @@ EVO_FAKE_SCENARIOS names a JSON file ``{"<step key>": [action, ...]}``; a run fo
 - ``{"rate_limit": {...}}``: send a ``rate_limit_event`` with that ``rate_limit_info``, as Claude Code's adapter passes
   it on raw (``"status": "rejected"`` when the account hit its usage limit).
 - ``{"fail": "why"}``: end the turn as failed; with ``"cap": "cost"`` (or turns, time), as the run's budget stopped it;
-  with ``"limit": {...}``, as the account's usage limit ended it (``Outcome.limit``).
+  with ``"limit": {...}``, as the account's usage limit ended it (``Outcome.limit``); with ``"auth": "..."``, as the
+  account failing to authenticate ended it (``Outcome.auth``).
 - ``{"say": "text"}``: the agent's last message is ``text`` (``Outcome.summary``), as a message chunk too: a Judge's
   verdict ends it.
 - ``{"no_input": true}``: the agent takes no more input in this turn: ``send`` raises AgentFinished, so a message of
@@ -450,8 +451,8 @@ class FakeAdapter(Adapter):
                     event = {"type": "rate_limit_event", "rate_limit_info": action["rate_limit"]}
                     await self._queue.put(AgentEvent("output", {"raw": event}))
                 elif "fail" in action:
-                    limit = action.get("limit")
-                    self._outcome = Outcome(False, action["fail"], usage, cap=action.get("cap"), limit=limit)
+                    limit, auth = action.get("limit"), action.get("auth")
+                    self._outcome = Outcome(False, action["fail"], usage, cap=action.get("cap"), limit=limit, auth=auth)
                     return
                 elif "usage" in action:
                     usage = action["usage"]

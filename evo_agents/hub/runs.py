@@ -97,6 +97,7 @@ FAILURE_CAUSES = (
     "runtime",  # the worker has no adapter for the runtime, or cannot start the agent as the run asks
     "worker_stopped",  # the daemon was stopped, or failed, while the run was held
     "rate_limit",  # the agent's account hit its usage limit and the run could not move to another one
+    "account_auth",  # the agent's account failed to authenticate (its token refused) and the run could not move
 )
 PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
