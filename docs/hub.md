@@ -334,6 +334,12 @@ from `GET .../avatar`, whose URL (`icon_url`) carries a part of its SHA-256. Wit
 web draws the profile's initial on its colour. The audit rows `agent.create`, `agent.update` (with the fields changed)
 and `agent.delete` name `<project>/@<handle> v<version>`, never a description, instructions or an image.
 
+Schema 0030 adds the profiles (`evo_agents/hub/tables_profiles.py`): `agent_profiles`, each profile as it is now, and
+`agent_profile_versions`, each version of it whole; the default profile of every project, made by the member who made
+the project, at version 1; and `profile_id` with `profile_version` on `runs` and on `credential_leases`, both null or
+both set, naming a version. Going back to 0029 drops the two tables and the columns: the profiles, and which profile
+each run and lease went under, are lost.
+
 ## Group chats
 
 A group chat holds people and the agents of projects (`evo_agents/hub/chats.py`). A signed-in member creates one with a
@@ -430,6 +436,18 @@ evo-agents hub chat create "Release talk" --member someone-else --agent reviewer
 evo-agents hub chat send 3 "@reviewer can you check the diff of run 120?"
 evo-agents hub chat react 3 41 👍
 ```
+
+Schema 0031 adds the chats (`evo_agents/hub/tables_chats.py`): `chats`; `chat_members`, a person or an agent, who
+added them (a person, or the run of an agent), when they left, and how far a person read; `chat_messages`, each with
+the event that brought it, the first message of its thread, its author (a person, an agent or the hub), the run of the
+agent that wrote it, its body and its label; `chat_mentions`, what a message mentions as the hub read it when it was
+sent, with the member it reached and the run it made, or why it reached none; `chat_reactions`; and `chat_events`, what
+happened in a chat in order. It adds the notices `chat_mention` and `chat_added` too. Going back to 0030 deletes those
+notices and drops the six tables: every chat is lost. Schema 0032 adds the chat run: the run kind `chat`, on no plan,
+that may go on from an earlier run of its session (`resume_of_run_id`), with `runs.chat_id`, `runs.chat_message_id`
+(the message that started it) and `runs.hop` (1 to 3), set for a chat run and null for any other, and
+`chats.budget_usd` (more than 0, at most 1000, 5 unless changed). Going back to 0031 deletes the chat runs and drops the
+columns.
 
 ## Plans and their copies in git
 
@@ -550,7 +568,8 @@ going back to 0023 drops it, and the Curator's figures read every cause from the
 worker hold up to 16 runs at once: the CHECKs of `workers.slots`, `workers.free_slots` and `worker_pairings.slots` go
 from 8 to 16, and the owner changes a worker's slots, labels and name with `PATCH /v1/workers/{id}` (`docs/workers.md`,
 Routes); going back to 0025 narrows them to 8 again and refuses, naming them, while a worker not revoked or a pairing
-neither used nor expired holds more than 8 slots.
+neither used nor expired holds more than 8 slots. Schema 0030 (agent profiles), and 0031 and 0032 (group chats and
+the chat run), are described under Agent profiles and Group chats above.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
