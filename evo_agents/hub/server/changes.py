@@ -1,17 +1,16 @@
-"""The Curator's changes on the hub: an accepted proposal as a plan, its Builder, its pull request, its Judge and its
-merge; and the job that moves the changes on. ``evo_agents.hub.judge`` holds the model, and
+"""The Curator's changes on the hub: an accepted proposal's plan, its Builder, its pull request, its Judge and its
+merge; and the job that moves the changes on. ``evo_agents.hub.judge`` holds the model,
+``evo_agents.hub.server.proposal_plans`` how an accepted proposal becomes the Curator's plan and its change, and
 ``evo_agents.hub.server.protection`` the repos whose ruleset keeps the Curator off their default branch.
 
-Accepting a proposal of tier 0 or 1 (``proposals.answer_proposal_as``) makes its draft a plan on the hub in the same
-transaction (``plan_from_proposal``), as the admin who accepted it, labelled as the proposal: the Curator's plan
-``curator-<proposal>-<slug>``, in the one repo the proposal names, on the branch ``curator/<proposal>-<slug>``, and a
-row of curator_changes, state ``planned``. A proposal that names several repos, a repo the project does not have or
-one without an origin cannot become one: its change is recorded ``open``, without a plan, with the reason, and nothing
-of it runs. A write of a Curator's plan that names another repo or branch for it, or changes anything but the progress
-of its steps (status, done_at, evidence and note) and its status, is refused (``plan_write_refusal``, from
-``plans._store``): its what, goal, context, verify and acceptance stay as the hub made them. A plan whose id starts with
-``curator-`` is made this way alone, never by hand. No member dispatches a run of a Curator's plan, step or plan
-(``refuse_manual_dispatch``): the night shift alone runs it.
+Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``) makes its draft the Curator's plan
+``curator-<proposal>-<slug>``, on the branch ``curator/<proposal>-<slug>`` of its one repo, and a row of
+curator_changes, state ``planned``; a draft that cannot become one leaves its change ``open``, with the reason, and
+nothing of it runs (``proposal_plans.plan_from_proposal``). A write of a Curator's plan that names another repo or
+branch for it, or changes anything but the progress of its steps (status, done_at, evidence and note) and its status,
+is refused (``plan_write_refusal``, from ``plans._store``): its what, goal, context, verify and acceptance stay as the
+hub made them. A plan whose id starts with ``curator-`` is made this way alone, never by hand. No member dispatches a
+run of a Curator's plan, step or plan (``refuse_manual_dispatch``): the night shift alone runs it.
 
 The night shift (``curator.gate_of`` and ``_fire``) queues, after the night's review run, the judge run of a change
 waiting for one (``queue_judge``), then the Builder of a planned change (``queue_builder``): a plan run of the
@@ -39,8 +38,8 @@ says, and a sign of the worker's detector puts the proposal at tier 3 too; the p
 the proposal its tier again. A judge run that ends without a verdict queues another, JUDGE_ATTEMPTS in all, then leaves
 the change open. The job then writes the Judge's check run on the pull request with the workers' App, and merges it
 when ``judge.merge_decision`` says so, reading everything again from GitHub first (the ruleset with the Curator's App,
-the files and the tier they give, the checks the ruleset requires and the head commit's message), and merging at the
-head the Judge passed; anything else leaves the pull request open for its owner, with the reason (state ``open``).
+the files and the tier they give, the checks the ruleset requires and the head commit's message), and merging a tier 0
+change at the head the Judge passed; anything else, tiers 1 and 2 included, stays open for its owner with the reason.
 While the project's night shift is paused the hub merges nothing: a judged change waits for it. Every WATCH_EVERY
 it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at which commit), closed
 without a merge, ``closed``. It also checks rulesets (``protection.check_rulesets``): the one of a repo a planned
@@ -65,7 +64,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
 from pydantic import BaseModel, Field
-from sqlalchemy import exists, func, insert, select, update
+from sqlalchemy import exists, func, select, update
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
@@ -79,14 +78,13 @@ from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.protection import (
     Target,
     check_rulesets,
     github_target,
     need_reader,
     reason_line,
-    repo_origins,
     ruleset_wait,
     store_check,
 )
@@ -99,7 +97,6 @@ from evo_agents.hub.server.security import CurrentUser, Principal
 
 log = logging.getLogger(__name__)
 
-PLAN = "curator.plan"  # an accepted proposal became a plan: "<project>/<plan> proposal:<id> change:<id> branch=<b>"
 BUILD = "curator.build"  # the night shift queued a change's Builder: "<project>/<plan> run:<id> change:<id>"
 JUDGE = "curator.judge"  # the night shift queued a change's judge run: "<project>/<plan> run:<id> change:<id> ..."
 PULL = "curator.pull"  # the hub opened a change's pull request: "<project>/<plan> change:<id> pr=<url>"
@@ -129,7 +126,7 @@ PAUSED = "the night shift of the project is paused: the hub merges nothing while
 
 
 class Change(BaseModel):
-    """What an accepted proposal of tier 0 or 1 became, and where it stands."""
+    """What an accepted proposal of tier 0 to 2 became, and where it stands."""
 
     id: int
     project: str
@@ -245,7 +242,7 @@ async def change_of_plan(conn: AsyncConnection, project_id: int, plan_id: str | 
     return (await conn.execute(query)).one_or_none()
 
 
-async def _view(conn: AsyncConnection, change_id: int) -> Change:
+async def change_view(conn: AsyncConnection, change_id: int) -> Change:
     row = (await conn.execute(_changes().where(tables.curator_changes.c.id == change_id))).one()
     return Change(**row._mapping)
 
@@ -268,93 +265,7 @@ async def _charter(conn: AsyncConnection, project_id: int) -> dict:
     return (await conn.execute(query)).scalar_one_or_none() or {}
 
 
-# An accepted proposal becomes a plan
-
-
-async def _record(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal, values: dict) -> int:
-    c = tables.curator_changes
-    values = {"project_id": access.project_id, "proposal_id": proposal.id, "tier": proposal.tier, **values}
-    change_id = (await conn.execute(insert(c).values(**values).returning(c.c.id))).scalar_one()
-    plan = values.get("plan_id") or "no plan"
-    branch = values.get("branch") or "-"
-    await audit.record(
-        conn,
-        actor_id=user.user_id,
-        token_id=user.token_id,
-        action=PLAN,
-        target=f"{access.name}/{plan} proposal:{proposal.id} change:{change_id} branch={branch}",
-        project_id=access.project_id,
-    )
-    return change_id
-
-
-async def _make_plan(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal) -> dict | str:
-    """The values of the change the draft of ``proposal`` becomes, its plan stored; or why it cannot become one."""
-    draft = proposal.plan if isinstance(proposal.plan, dict) else {}
-    origins = await repo_origins(conn, access.project_id)
-    named = {
-        item["repo"] for item in proposal.paths or [] if isinstance(item, dict) and isinstance(item.get("repo"), str)
-    }
-    for section in ("steps", "repos"):
-        for item in draft.get(section) or []:
-            if isinstance(item, dict) and isinstance(item.get("repo"), str):
-                named.add(item["repo"])
-    if not named and len(origins) == 1:
-        named = set(origins)
-    if len(named) != 1:
-        return f"a Curator's plan works in one repo, and the proposal names {', '.join(sorted(named)) or 'no repo'}"
-    (repo,) = named
-    if repo not in origins:
-        return f"project {access.name} has no repo {repo}"
-    forge = judge.forge_of(origins[repo])
-    if forge is None:
-        return f"repo {repo} has no origin a Builder could push a branch to"
-    draft_id = str(draft.get("id") or proposal.title)
-    plan_id = judge.curator_plan_id(proposal.id, draft_id)
-    branch = judge.curator_branch(proposal.id, draft_id)
-    body = judge.curator_plan(
-        draft, plan_id=plan_id, repo=repo, branch=branch, proposal_id=proposal.id, project=access.name
-    )
-    try:
-        plan_routes._schema_checked(body, plan_id)
-        label = access.push_label(proposal.label)
-        async with conn.begin_nested():  # a store refused after its insert takes nothing with it
-            stored = await plan_routes._store(
-                conn,
-                access,
-                user,
-                None,
-                area="active",
-                label=label,
-                body=body,
-                summary=f"made by the Curator from proposal #{proposal.id}",
-                action=plan_routes.PLAN_CREATE,
-                made_by_curator=True,
-            )
-    except plan_routes.PlanError as exc:
-        return exc.message
-    except HTTPException as exc:
-        return str(exc.detail)
-    if stored is None:
-        return f"project {access.name} has a plan {plan_id} already"
-    return {"plan_id": plan_id, "repo": repo, "branch": branch, "forge": forge}
-
-
-async def plan_from_proposal(conn: AsyncConnection, access: ProjectAccess, user: Principal, proposal) -> int:
-    """Make the draft of ``proposal`` (a row of proposals, as ``proposals._proposals`` reads it) the Curator's plan,
-    as ``user``, and record its change; its id. A draft that cannot become one (see the module's docstring) is
-    recorded as a change left open, with why, and no plan: nothing of it runs."""
-    made = await _make_plan(conn, access, user, proposal)
-    if isinstance(made, str):
-        why = reason_line(f"it cannot become the Curator's plan: {made}")
-        change_id = await _record(conn, access, user, proposal, {"state": "open", "reason": why})
-        await ledger_lines.change_recorded(conn, change_id)
-        log.info("curator plan not made", extra={"project": access.name, "proposal_id": proposal.id, "why": made})
-        return change_id
-    change_id = await _record(conn, access, user, proposal, made)
-    await ledger_lines.change_recorded(conn, change_id)
-    log.info("curator plan made", extra={"project": access.name, "plan_id": made["plan_id"], "change_id": change_id})
-    return change_id
+# The Curator's plans
 
 
 async def plan_write_refusal(
@@ -1071,7 +982,7 @@ async def record_verdict(
         text = f"The Judge {'passed' if passed else 'failed'} the Curator's change #{change.id}"
         text += "." if passed else f": {'; '.join(failures)}."
         await write_event(conn, run_id, {"text": text, "change_id": change.id, "passed": passed})
-        view = await _view(conn, change.id)
+        view = await change_view(conn, change.id)
     log.info("verdict recorded", extra={"run_id": run_id, "change_id": change.id, "passed": passed})
     return view
 

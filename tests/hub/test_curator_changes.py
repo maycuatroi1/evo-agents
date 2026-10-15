@@ -1,8 +1,9 @@
-"""The Curator's changes on the hub (``evo_agents.hub.server.changes``): an accepted proposal of tier 0 or 1 becomes the
+"""The Curator's changes on the hub (``evo_agents.hub.server.changes``): an accepted proposal of tier 0 to 2 becomes the
 Curator's plan on a branch of its own, the night shift builds it with a token of the Curator's App, the hub opens its
 pull request and queues its Judge, the Judge reads the project's hidden checks alone and posts its verdict, and the hub
 merges a tier 0 change with the workers' App, at the head the Judge passed, only when everything allows it; and schema
-0017. GitHub is the fake of ``tests.hub.fake_github``, with the workers' App and the Curator's App installed.
+0017. GitHub is the fake of ``tests.hub.fake_github``, with the workers' App and the Curator's App installed. Tiers 2
+and 3, and POST .../proposals/{id}/plan, are checked in ``tests.hub.test_proposal_plans``.
 
 The checks step 6 of the curator-agent plan names on the hub: a8 (the plan, the branch, the pull request, the judge run
 that reads no transcript, its runtime by the project's policy), a9 (the merge at the head the Judge passed, with CI
@@ -278,11 +279,6 @@ def test_curator_plan_an_accepted_tier_0_proposal_becomes_a_plan_on_a_branch_of_
     audit = tables.audit
     (row,) = sql(world.db, select(audit.c.target).where(audit.c.action == "curator.plan"))
     assert row[0] == f"{PROJECT}/{PLAN_ID} proposal:1 change:1 branch={BRANCH}"
-
-
-def test_curator_plan_a_tier_2_proposal_accepted_records_the_answer_alone(world):
-    accepted(world, kind="feature", paths=[{"repo": "evo-agents", "path": "evo_agents/hub/new.py"}])
-    assert changes(world) == []
 
 
 def test_curator_plan_a_draft_that_cannot_become_a_plan_is_left_open_with_why(world):

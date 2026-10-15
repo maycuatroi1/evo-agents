@@ -467,6 +467,9 @@ def test_a_tier_2_proposal_takes_accept_reject_and_defer_from_telegram(review, b
     assert targets == [(f"{PROJECT} proposal:{pid} run:{run_id} answer=defer via=telegram", None)]
     assert press(client, OWNER_CHAT, f"p:{pid}:accept", message) == "answered"  # a deferred one is answered again
     assert sql(db, select(p.c.state).where(p.c.id == pid)) == [("accepted",)]
+    c = tables.curator_changes  # accepted on Telegram as on the web: its draft becomes the Curator's plan
+    planned = sql(db, select(c.c.proposal_id, c.c.tier, c.c.state, c.c.plan_id.is_not(None)))
+    assert planned == [(pid, 2, "planned", True)]
     assert press(client, OWNER_CHAT, f"p:{pid}:reject", message) == "refused"
     assert "is accepted: only an open or deferred one is answered" in bot.fake.sent("answerCallbackQuery")[-1]["text"]
 

@@ -33,13 +33,14 @@ would list) and .../proposals/{id}, and the night's
 figures with GET .../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
 the project's admins: accept, reject, or defer (for ``defer_days``, DEFAULT_DEFER_DAYS by default), with a note, while
 the proposal is open or deferred (409 otherwise); it reads the proposal's notifications and is audited as
-curator.proposal. Accepting a proposal of tier 0 or 1 also makes its draft the Curator's plan, which the night shift
-builds on a branch of its own (``evo_agents.hub.server.changes``); a draft that cannot become one leaves a change open
-with the reason, and nothing of it runs. A deferred proposal opens again once its time has passed (the job
-curator.collect). Recording a proposal and answering it each add a line to its ledger
+curator.proposal. Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``) also makes its draft the Curator's
+plan, which the night shift builds on a branch of its own (``evo_agents.hub.server.proposal_plans``, whose POST
+.../proposals/{id}/plan does the same for an accepted proposal that has no change yet); a draft that cannot become one
+leaves a change open with the reason, and nothing of it runs. Accepting one of tier 3 records the answer alone. The hub
+merges a change of tier 0 alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time has
+passed (the job curator.collect). Recording a proposal and answering it each add a line to its ledger
 (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
-``revert_of`` is the hub's own, made when the figures of a merged change got worse
-(``evo_agents.hub.server.outcomes``).
+``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
 """
 
 from __future__ import annotations
@@ -843,7 +844,9 @@ async def list_proposals(
     )
 
 
-async def _readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink: str | None, *, lock: bool = False):
+async def readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink: str | None, *, lock: bool = False):
+    """Proposal ``proposal_id`` of the project, its row locked with ``lock``, when its label reaches the caller through
+    ``sink`` (else the project's hub sink); 404 otherwise."""
     p = tables.proposals
     query = _proposals().where(p.c.project_id == access.project_id, p.c.id == proposal_id)
     if lock:
@@ -865,7 +868,7 @@ async def show_proposal(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        row = await _readable_proposal(conn, access, proposal_id, sink)
+        row = await readable_proposal(conn, access, proposal_id, sink)
     return _proposal(access.name, row)
 
 
@@ -888,7 +891,7 @@ async def answer_proposal_as(
         raise HTTPException(
             403, f"answering a proposal of project {access.name} needs the admin role on it; you hold {access.role}"
         )
-    row = await _readable_proposal(conn, access, proposal_id, None, lock=True)
+    row = await readable_proposal(conn, access, proposal_id, None, lock=True)
     if row.state not in ("open", "deferred"):
         raise HTTPException(409, f"proposal {proposal_id} is {row.state}: only an open or deferred one is answered")
     state = review.ANSWERED[body.action]
@@ -913,7 +916,7 @@ async def answer_proposal_as(
         via=via,
     )
     if body.action == "accept" and row.tier in judge.PLANNED_TIERS:
-        from evo_agents.hub.server.changes import plan_from_proposal  # it reads proposals through this module
+        from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
 
         await plan_from_proposal(conn, access, user, row)
     await conn.execute(
@@ -928,7 +931,7 @@ async def answer_proposal_as(
         target=target if via is None else f"{target} via={via}",
         project_id=access.project_id,
     )
-    row = await _readable_proposal(conn, access, proposal_id, None)
+    row = await readable_proposal(conn, access, proposal_id, None)
     return _proposal(access.name, row)
 
 
