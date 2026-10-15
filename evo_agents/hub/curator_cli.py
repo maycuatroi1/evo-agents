@@ -13,8 +13,9 @@ cancels the runs they queued that are still queued; within a minute nothing of t
 
 ``curator proposal list`` lists the proposals of the project's review runs, newest first, filtered by ``--state``,
 ``--tier`` (each repeats), ``--lens`` and ``--run`` (GET .../curator/proposals); ``curator proposal show ID`` shows one
-with its tier's reasons, its evidence and its draft plan; ``curator proposal accept|reject|defer ID`` answers it, which
-only an admin of the project may (POST .../curator/proposals/{id}/answer), with ``--note`` and, for defer, ``--days``.
+with its tier's reasons, its evidence, its draft plan and the change accepting it made, with why that change waits;
+``curator proposal accept|reject|defer ID`` answers it, which only an admin of the project may (POST
+.../curator/proposals/{id}/answer), with ``--note`` and, for defer, ``--days``.
 Accepting a proposal of tier 0 to 2 makes it the Curator's plan, which the night shift builds; one of tier 3 builds
 nothing. ``curator proposal plan ID`` makes an accepted proposal of tier 0 to 2 that has no change yet the Curator's
 plan, as accepting it does now, which only an admin of the project may (POST .../curator/proposals/{id}/plan); it
@@ -111,6 +112,7 @@ PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "evidence",
     "plan",
     "note",
+    "change",
 )
 FINDING_KEYS = ("id", "project", "run_id", "lens", "severity", "title", "body", "evidence", "created_at")
 CHANGE_KEYS = (
@@ -393,6 +395,15 @@ def _print_proposal(proposal: dict) -> None:
         lines.append(("deferred", f"until {_when(proposal['deferred_until'])} UTC"))
     if proposal.get("note"):
         lines.append(("note", proposal["note"]))
+    change = proposal.get("change")
+    if change:
+        where = "no plan"
+        if change["plan_id"]:
+            where = f"plan {change['plan_id']} on {change['branch']} of {change['repo']}"
+        pull = f", {change['pr_url']}" if change["pr_url"] else ""
+        lines.append(("change", f"#{change['id']}, {change['state']}: {where}{pull}"))
+        if change["reason"]:
+            lines.append(("reason", change["reason"]))
     width = max(len(label) for label, _ in lines)
     for label, text in lines:
         print(f"  {label:<{width}}  {text}")

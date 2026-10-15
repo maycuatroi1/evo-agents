@@ -16,7 +16,11 @@ import {
   Clock,
   CopyX,
   Eye,
+  Gavel,
   GitMerge,
+  GitPullRequest,
+  GitPullRequestClosed,
+  GitPullRequestCreate,
   Hand,
   Hourglass,
   LoaderCircle,
@@ -26,6 +30,7 @@ import {
   Moon,
   MoonStar,
   OctagonPause,
+  Scale,
   Terminal,
   ThumbsDown,
   TimerOff,
@@ -61,6 +66,7 @@ export type PlanStatus = Schemas["PlanSummary"]["area"] | "pending" | "blocked";
 export type StepStatus = Schemas["StepReport"]["status"] | "blocked";
 export type DecisionStatus = Schemas["Decision"]["state"];
 export type ProposalStatus = Schemas["ProposalSummary"]["state"];
+export type ChangeStatus = Schemas["Change"]["state"];
 /** Where a project's night shift stands (`CuratorStatus["state"]`), and off while it has no charter. */
 export type CuratorStatusWord = NonNullable<Schemas["CuratorStatus"]["state"]> | "off";
 export type { RepoStatus };
@@ -73,6 +79,7 @@ type StatusOfKind = {
   repo: RepoStatus;
   decision: DecisionStatus;
   proposal: ProposalStatus;
+  change: ChangeStatus;
   curator: CuratorStatusWord;
 };
 export type StatusKind = keyof StatusOfKind;
@@ -151,6 +158,21 @@ const PROPOSAL = {
 } as const satisfies Record<ProposalStatus, StatusLook>;
 
 /**
+ * What an accepted proposal became (`judge.CHANGE_STATES`): planned waits for the night shift's Builder, the pull
+ * request and the Judge move it on, and open waits for its owner in `attention`, with the reason the hub kept.
+ */
+const CHANGE = {
+  planned: { tone: "neutral", icon: CircleDashed },
+  pr_pending: { tone: "running", icon: GitPullRequestCreate },
+  judge_pending: { tone: "review", icon: Hourglass },
+  judging: { tone: "review", icon: Scale },
+  judged: { tone: "review", icon: Gavel },
+  merged: { tone: "success", icon: GitMerge },
+  open: { tone: "attention", icon: GitPullRequest },
+  closed: { tone: "outline", icon: GitPullRequestClosed },
+} as const satisfies Record<ChangeStatus, StatusLook>;
+
+/**
  * A project's night shift: running while a run of it is in flight (the run itself carries the pulsing dot, so this
  * pill does not); paused waits for a person to resume it.
  */
@@ -170,6 +192,7 @@ export const STATUS_LOOKS: { [K in StatusKind]: Record<StatusOf<K>, StatusLook> 
   repo: REPO,
   decision: DECISION,
   proposal: PROPOSAL,
+  change: CHANGE,
   curator: CURATOR,
 };
 
@@ -211,6 +234,7 @@ const TEST_ID: Record<StatusKind, string> = {
   repo: "repo-status",
   decision: "decision-state",
   proposal: "proposal-state",
+  change: "change-state",
   curator: "curator-state",
 };
 

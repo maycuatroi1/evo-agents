@@ -1682,7 +1682,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -1759,7 +1760,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -1989,7 +1991,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -2048,7 +2051,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -34355,6 +34359,17 @@
               ],
               "title": "Note",
               "description": "the owner's note with the answer"
+            },
+            "change": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Change"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it waits; null before, for tier 3, and when the caller may not read its plan"
             }
           },
           "type": "object",

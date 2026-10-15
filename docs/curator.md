@@ -36,9 +36,11 @@ and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.
    its kind. Tier 2 proposals with the most evidence reach the owner's Inbox, up to the charter's
    `max_decisions_per_day`.
 4. **The owner answers.** A project admin accepts, rejects or defers a proposal on the web, on the command line or on
-   Telegram. Accepting one of tier 0 or 1 makes its draft plan a plan of the Curator on the hub.
+   Telegram. Accepting one of tier 0 to 2 makes its draft plan a plan of the Curator on the hub in the same answer, with
+   a change of state `planned`; accepting one of tier 3 records the answer and builds nothing.
 5. **The Builder.** On a later pass of the night shift, a plan run of that plan works on the branch
-   `curator/<proposal>-<slug>`, never on a default branch.
+   `curator/<proposal>-<slug>`, never on a default branch. Until it can, the change keeps why it waits, which the
+   proposal's page and the morning brief show.
 6. **The pull request and the Judge.** The hub opens the pull request (on GitLab the push opens the merge request),
    reads its diff for signs of score hacking, and queues a judge run that runs the plan's verify and the project's
    hidden checks and never reads the Builder's transcript.
@@ -185,7 +187,7 @@ agent:
 | --- | --- |
 | 0 | the night shift builds it, and the hub merges it once CI and the Judge pass, when `auto_merge` holds `0` |
 | 1 | the night shift builds it and the Judge judges it; the pull request stays open for the owner |
-| 2 | it reaches the owner's Inbox; accepting it builds nothing, and the owner makes the change or writes a plan for it |
+| 2 | it reaches the owner's Inbox; once accepted, the night shift builds it and the Judge judges it, and the pull request stays open for the owner |
 | 3 | it stays in the list; accepting it builds nothing, and the owner alone makes the change |
 
 The tier is the highest of three rules, and the proposal lists in words which rule raised it:
@@ -244,7 +246,9 @@ it: the night shift alone does. Its agent holds no push credential: the daemon a
 `curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request. An
 accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
 the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project
-may.
+may. A proposal's page on the web has a Change card once accepting it made one: the change's state, the Curator's plan
+as a link to its page, the branch (a link to it on GitHub or GitLab), the pull request once the hub opened it, and the
+reason the change keeps while it waits or stays open; `evo-agents hub curator proposal show ID` prints the same.
 
 **The Judge** runs in a worktree detached at the pull request's head. The daemon reads the diff and runs the detector of
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
@@ -308,8 +312,8 @@ show no sign and no protected path; and CI is green. Green means each check the 
 require concluded success (as a check run of the App the rule names, when it names one), every other check run ended
 success, neutral or skipped, and the commit statuses are success. A ruleset that requires no check, or a head commit
 whose message asks CI to skip it, leaves the pull request open. The hub waits up to 6 hours while CI runs, and merges
-nothing while the night shift is paused. A tier 1 change, a refusal, and every GitLab merge request stay open for the
-owner with the reason.
+nothing while the night shift is paused. A tier 1 or 2 change, a refusal, and every GitLab merge request stay open for
+the owner with the reason.
 
 **GitLab.** The charter's `git_secret` names the owner's git secret for the repo's origin, which should hold the
 Developer role: GitLab then keeps it off a protected default branch. A Builder pushes with push options that open the

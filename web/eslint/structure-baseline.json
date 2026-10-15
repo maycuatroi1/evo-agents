@@ -5,7 +5,7 @@
     "src/components/admin/member-page.tsx": 405,
     "src/components/curator/charter-form.tsx": 477,
     "src/components/curator/curator-page.tsx": 442,
-    "src/components/curator/model.ts": 613,
+    "src/components/curator/model.ts": 601,
     "src/components/inbox/decision-view.tsx": 630,
     "src/components/inbox/mobile-decision.tsx": 442,
     "src/components/kg/build-status.tsx": 429,

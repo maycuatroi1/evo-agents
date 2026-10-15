@@ -23,6 +23,8 @@ export type CharterRevision = Schemas["CharterRevision"];
 export type NightList = Schemas["NightList"];
 export type NightSummary = Schemas["NightSummary"];
 export type Proposal = Schemas["Proposal"];
+/** What accepting a proposal of tier 0 to 2 made: the Curator's plan, its branch, its pull request, why it waits. */
+export type Change = Schemas["Change"];
 export type ProposalSummary = Schemas["ProposalSummary"];
 export type ProposalList = Schemas["ProposalList"];
 export type ProposalState = ProposalSummary["state"];

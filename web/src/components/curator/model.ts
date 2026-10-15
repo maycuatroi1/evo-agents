@@ -4,6 +4,7 @@ import type { ParamSource } from "@/components/admin/data";
 import { parseRunId, runHref } from "@/components/runs/queries";
 import { PLAN_ID } from "@/lib/plans";
 
+import { webBase } from "./forge";
 import {
   type Charter,
   type CharterWrite,
@@ -232,21 +233,8 @@ function int(value: unknown): number | null {
  * name says gitlab. Null for an origin the web cannot read as https or as git's scp form (`git@host:group/repo.git`).
  */
 export function codeUrl(origin: string | null | undefined, ref: string | null, path: string, line: number | null): string | null {
-  if (!origin || !ref) return null;
-  let base: string | null = null;
-  const scp = /^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?\/?$/.exec(origin);
-  if (scp) base = `https://${scp[1]}/${scp[2]}`;
-  else {
-    try {
-      const url = new URL(origin);
-      if (url.protocol === "https:" || url.protocol === "http:") {
-        base = `https://${url.host}${url.pathname.replace(/\.git\/?$/, "").replace(/\/+$/, "")}`;
-      }
-    } catch {
-      base = null;
-    }
-  }
-  if (!base) return null;
+  const base = webBase(origin);
+  if (!base || !ref) return null;
   const encoded = path.split("/").map(encodeURIComponent).join("/");
   const blob = /gitlab/i.test(new URL(base).host) ? "-/blob" : "blob";
   return `${base}/${blob}/${encodeURIComponent(ref)}/${encoded}${line !== null ? `#L${line}` : ""}`;
