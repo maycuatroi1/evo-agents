@@ -394,13 +394,14 @@ Shared pieces built on them:
   the time zone note included, and applies with Filter, which closes the sheet unless a field is wrong (its error
   shows in the sheet).
 - `components/status/status-badge.tsx`: one `StatusBadge` (`kind` and `status`) and one map per kind, run, worker,
-  plan, step, repo, decision, proposal (open in `attention`, deferred, accepted, rejected, dropped), change (what an
-  accepted proposal became: planned, opening pull request, waiting for the Judge, judging, judged, merged, left open in
-  `attention`, closed) and curator (the
+  plan, step, repo, decision, proposal (open in `attention`, deferred, accepted, rejected, dropped) and curator (the
   night shift: running, on duty, idle, paused in `attention`, off without a charter; no pulsing dot, which the run
   itself carries); each state has a tone, a Lucide icon and its words under `status.<kind>` in
-  `messages/en.json` and `vi.json`. The maps are `satisfies Record<...>` on the API's own types in
-  `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
+  `messages/en.json` and `vi.json`. Nearly every page loads that file, so a kind only one page shows keeps its map
+  beside it and draws the same `StatusPill`: `change-badge.tsx`, the `ChangeBadge` of what an accepted proposal
+  became (planned, opening pull request, waiting for the Judge, judging, judged, merged, left open in `attention`,
+  closed), loaded with a proposal only, its words under `status.change`. The maps are `satisfies Record<...>` on the
+  API's own types in `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
   `PlanSummary["area"]` with pending and blocked; `StepReport["status"]` with blocked; `Decision["state"]`), and
   `useStatusText` reads the words through typed keys, so a state the API adds fails typecheck until it has a look
   and words. The pill is 22 px (26 px with `size="lg"`, beside an h1), the icon 14 px and `aria-hidden`; leased

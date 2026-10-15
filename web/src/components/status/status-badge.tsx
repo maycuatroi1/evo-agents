@@ -16,11 +16,7 @@ import {
   Clock,
   CopyX,
   Eye,
-  Gavel,
   GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  GitPullRequestCreate,
   Hand,
   Hourglass,
   LoaderCircle,
@@ -30,7 +26,6 @@ import {
   Moon,
   MoonStar,
   OctagonPause,
-  Scale,
   Terminal,
   ThumbsDown,
   TimerOff,
@@ -50,6 +45,8 @@ import { cn } from "@/lib/utils";
  * its words (`status.<kind>.<state>` in messages/en.json and vi.json). A fully round shape always means a state; names
  * are `Identifier` chips with square corners (web/DESIGN.md). The run, worker, plan, step and decision states come from
  * the API's own types, so a state the API adds fails typecheck until it has a look here and words in both languages.
+ * Nearly every page loads this file, so a kind that one page alone shows keeps its map and icons beside it instead:
+ * a change of the Curator (`change-badge.tsx`), held by web/bundle-budget.json.
  */
 
 type Schemas = components["schemas"];
@@ -66,7 +63,6 @@ export type PlanStatus = Schemas["PlanSummary"]["area"] | "pending" | "blocked";
 export type StepStatus = Schemas["StepReport"]["status"] | "blocked";
 export type DecisionStatus = Schemas["Decision"]["state"];
 export type ProposalStatus = Schemas["ProposalSummary"]["state"];
-export type ChangeStatus = Schemas["Change"]["state"];
 /** Where a project's night shift stands (`CuratorStatus["state"]`), and off while it has no charter. */
 export type CuratorStatusWord = NonNullable<Schemas["CuratorStatus"]["state"]> | "off";
 export type { RepoStatus };
@@ -79,7 +75,6 @@ type StatusOfKind = {
   repo: RepoStatus;
   decision: DecisionStatus;
   proposal: ProposalStatus;
-  change: ChangeStatus;
   curator: CuratorStatusWord;
 };
 export type StatusKind = keyof StatusOfKind;
@@ -158,21 +153,6 @@ const PROPOSAL = {
 } as const satisfies Record<ProposalStatus, StatusLook>;
 
 /**
- * What an accepted proposal became (`judge.CHANGE_STATES`): planned waits for the night shift's Builder, the pull
- * request and the Judge move it on, and open waits for its owner in `attention`, with the reason the hub kept.
- */
-const CHANGE = {
-  planned: { tone: "neutral", icon: CircleDashed },
-  pr_pending: { tone: "running", icon: GitPullRequestCreate },
-  judge_pending: { tone: "review", icon: Hourglass },
-  judging: { tone: "review", icon: Scale },
-  judged: { tone: "review", icon: Gavel },
-  merged: { tone: "success", icon: GitMerge },
-  open: { tone: "attention", icon: GitPullRequest },
-  closed: { tone: "outline", icon: GitPullRequestClosed },
-} as const satisfies Record<ChangeStatus, StatusLook>;
-
-/**
  * A project's night shift: running while a run of it is in flight (the run itself carries the pulsing dot, so this
  * pill does not); paused waits for a person to resume it.
  */
@@ -192,7 +172,6 @@ export const STATUS_LOOKS: { [K in StatusKind]: Record<StatusOf<K>, StatusLook> 
   repo: REPO,
   decision: DECISION,
   proposal: PROPOSAL,
-  change: CHANGE,
   curator: CURATOR,
 };
 
@@ -234,7 +213,6 @@ const TEST_ID: Record<StatusKind, string> = {
   repo: "repo-status",
   decision: "decision-state",
   proposal: "proposal-state",
-  change: "change-state",
   curator: "curator-state",
 };
 
@@ -263,12 +241,16 @@ function Mark({ look }: { look: StatusLook }) {
   return <look.icon className="size-3.5 shrink-0" aria-hidden="true" data-slot="status-mark" />;
 }
 
-type PillProps = Omit<ComponentProps<"span">, "children"> & {
+export type StatusPillProps = Omit<ComponentProps<"span">, "children"> & {
   /** `lg` beside a page's h1; the default in tables, lists and cards. */
   size?: "default" | "lg";
 };
 
-function Pill({ look, label, size = "default", className, ...props }: PillProps & { look: StatusLook; label: ReactNode }) {
+/**
+ * A look and its words as a pill, for a kind whose looks live beside the one page that shows it rather than in
+ * `STATUS_LOOKS` (`change-badge.tsx`); every other pill is a `StatusBadge` or an `OtherStatusBadge`.
+ */
+export function StatusPill({ look, label, size = "default", className, ...props }: StatusPillProps & { look: StatusLook; label: ReactNode }) {
   return (
     <span
       data-slot="status-badge"
@@ -288,7 +270,7 @@ function Pill({ look, label, size = "default", className, ...props }: PillProps 
 }
 
 type StatusBadgeProps = { [K in StatusKind]: { kind: K; status: StatusOf<K> } }[StatusKind] &
-  PillProps & {
+  StatusPillProps & {
     /** Other words for the same state, such as a plan run's "Waiting for your decision" in its banner. */
     label?: ReactNode;
   };
@@ -301,7 +283,7 @@ export function StatusBadge({ kind, status, label, ...props }: StatusBadgeProps)
   const text = useStatusText(kind);
   const look = STATUS_LOOKS[kind][status as never] as StatusLook;
   return (
-    <Pill
+    <StatusPill
       look={look}
       label={label ?? text(status as never)}
       data-kind={kind}
@@ -313,9 +295,9 @@ export function StatusBadge({ kind, status, label, ...props }: StatusBadgeProps)
 }
 
 /** A status the hub does not know, as written in the plan: "Other status: skipped". */
-export function OtherStatusBadge({ raw, ...props }: PillProps & { raw: string | null }) {
+export function OtherStatusBadge({ raw, ...props }: StatusPillProps & { raw: string | null }) {
   const t = useTranslations("status");
-  return <Pill look={OTHER_LOOK} label={t("other", { status: raw ?? "?" })} data-status="other" {...props} />;
+  return <StatusPill look={OTHER_LOOK} label={t("other", { status: raw ?? "?" })} data-status="other" {...props} />;
 }
 
 /** A look's icon alone, in its tone, with `label` for screen readers and as a tooltip. */
