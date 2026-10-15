@@ -2444,6 +2444,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/proposals/{proposal_id}/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Plan Proposal
+         * @description Make an accepted proposal of tier 0 to 2 that has no change yet the Curator's plan, as accepting it does now;
+         *     the project's admins alone may. The change: planned, or left open with why its draft cannot become a plan.
+         */
+        post: operations["plan_proposal_v1_projects__project__curator_proposals__proposal_id__plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/judge": {
         parameters: {
             query?: never;
@@ -4119,7 +4140,7 @@ export interface components {
         };
         /**
          * Change
-         * @description What an accepted proposal of tier 0 or 1 became, and where it stands.
+         * @description What an accepted proposal of tier 0 to 2 became, and where it stands.
          */
         Change: {
             /** Id */
@@ -19486,6 +19507,74 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    plan_proposal_v1_projects__project__curator_proposals__proposal_id__plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Change"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

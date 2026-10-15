@@ -4,8 +4,8 @@ on a pull request, and when the hub may merge one. Pure functions over JSON valu
 the hub's worker, the worker daemon and the tests share them. ``evo_agents.hub.server.changes`` holds the routes and
 the job built on them; ``docs/curator.md`` the design.
 
-A proposal of tier 0 or 1 that an admin accepts becomes a plan on the hub (``curator_plan_id``), the Curator's, which
-works in one repo on the branch ``curator/<proposal>-<slug>`` (``curator_branch``) and never on a default branch. The
+A proposal of tier 0 to 2 (PLANNED_TIERS) that an admin accepts becomes a plan on the hub (``curator_plan_id``), the
+Curator's, in one repo on the branch ``curator/<proposal>-<slug>`` (``curator_branch``), never a default branch. The
 night shift runs it as a plan run (the Builder); once that run ends done with every step of the plan done, the hub
 opens a pull request on GitHub (a merge request on GitLab opens with the push, ``GITLAB_PUSH_OPTIONS``), and queues a
 judge run on the worker on duty. The Judge reads the proposal, the diff, the plan's verify and the project's hidden
@@ -64,7 +64,7 @@ CHANGE_STATES = (
     "closed",  # its pull request was closed without a merge
 )
 ACTIVE_CHANGE_STATES = ("pr_pending", "judge_pending", "judging", "judged")  # what the job still moves on
-PLANNED_TIERS = (0, 1)  # the tiers whose accepted proposals become the Curator's plans
+PLANNED_TIERS = (0, 1, 2)  # the tiers whose accepted proposals become the Curator's plans; tier 3 the owner makes
 FORGES = ("github", "gitlab")  # where a Curator change goes: a pull request, or a merge request (never merged)
 BRANCH_PREFIX = "curator/"
 CURATOR_PLAN_PREFIX = "curator-"  # the ids of the Curator's plans, which the hub alone makes

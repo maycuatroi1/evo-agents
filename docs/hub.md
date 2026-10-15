@@ -88,7 +88,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -798,14 +798,17 @@ curator status` names the last one (`last_brief`).
 ## The Curator's changes
 
 Accepting a proposal of tier 0 or 1 makes its draft plan the Curator's plan on the hub, in the same transaction, as
-the admin who accepted it (schema 0017, `evo_agents/hub/server/changes.py`, `evo_agents/hub/judge.py`): the plan
+the admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
 `curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
 `curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
 or a repo without an origin, becomes no plan: its change stays `open` with the reason. A write of a Curator's plan that
 names another repo or branch, or changes anything but the progress of its steps (`status`, `done_at`, `evidence`,
 `note`) and its `status`, is 409: its what, goal, context, verify and acceptance stay as the hub made them. A plan whose
 id starts with `curator-` is made this way alone (a member's put of one is 409). No member dispatches the steps of a
-Curator's plan or a plan run of it (409): the night shift alone runs it.
+Curator's plan or a plan run of it (409): the night shift alone runs it. `evo-agents hub curator proposal plan ID`
+(`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
+accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
+the answer alone; one not accepted, of tier 3 or with a change already is 409 with the reason.
 
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub

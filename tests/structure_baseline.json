@@ -4,7 +4,7 @@
     "evo_agents/hub/judge.py": 1251,
     "evo_agents/hub/memory.py": 1129,
     "evo_agents/hub/run_cli.py": 1020,
-    "evo_agents/hub/server/changes.py": 1657,
+    "evo_agents/hub/server/changes.py": 1568,
     "evo_agents/hub/server/curator.py": 1375,
     "evo_agents/hub/tables.py": 1285,
     "evo_agents/worker/cli.py": 1255,
@@ -14,7 +14,7 @@
     "evo_agents/harness/__init__.py::knowledge_semantics": {"complexity": 17},
     "evo_agents/hub/cli_client.py::register_client": {"statements": 80},
     "evo_agents/hub/contract.py::check_words": {"complexity": 20, "statements": 53},
-    "evo_agents/hub/curator_cli.py::register_curator": {"statements": 81},
+    "evo_agents/hub/curator_cli.py::register_curator": {"statements": 56},
     "evo_agents/hub/judge.py::ci_state": {"complexity": 18},
     "evo_agents/hub/judge.py::hack_signs": {"complexity": 35, "statements": 78},
     "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 22, "statements": 51},
@@ -130,7 +130,6 @@
       "evo_agents.hub.server.curator._due"
     ],
     "evo_agents/hub/server/ledger.py": [
-      "evo_agents.hub.server.proposals._readable_proposal",
       "evo_agents.hub.server.proposals._reader"
     ],
     "evo_agents/hub/server/mcp.py": [

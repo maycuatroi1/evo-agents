@@ -241,7 +241,10 @@ events are pruned (`docs/workers.md`, "Tool figures").
 accepting answer: in the one repo the proposal names, every step pending. Its what, goal, context, verify and
 acceptance stay as the hub made them; a write may change only the progress of its steps. No member dispatches a run of
 it: the night shift alone does. Its agent holds no push credential: the daemon alone pushes, only the branch
-`curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request.
+`curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request. An
+accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
+the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project
+may.
 
 **The Judge** runs in a worktree detached at the pull request's head. The daemon reads the diff and runs the detector of
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
@@ -315,6 +318,7 @@ merge request; the hub merges nothing there.
 ```sh
 evo-agents hub curator protection --project demo              # the project's repos and the last check of each
 evo-agents hub curator changes --project demo                 # what each accepted proposal became
+evo-agents hub curator proposal plan 10 --project demo        # an accepted proposal without a change becomes a plan
 ```
 
 ## Telegram
