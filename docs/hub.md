@@ -788,8 +788,8 @@ charter with its revisions and, for an admin, its form. Tier 2 proposals in the 
 night shift's schedule a notice `curator_brief` (`evo_agents/hub/server/brief.py`), once a local day: the night it
 reports on (the one in progress when `brief_at` falls inside the window), its runs by how they ended and what they cost
 against the night's budget, its review run with what it wrote, the merges into a default branch its runs reported, the
-project's runs in review that wait for the owner's approval, the decisions that wait for the owner's answer and the
-proposals that wait for an admin's (with how many are in the owner's Inbox), and the worker on duty with its last
+project's runs in review that wait for the owner's approval, the Curator's changes still planned with why each waits,
+the decisions that wait for the owner's answer and the proposals that wait for an admin's (with how many are in the owner's Inbox), and the worker on duty with its last
 heartbeat, so a machine that stopped shows up in the morning. The brief goes out like any notification, on the web and
 on every channel the owner turned on, Telegram included (`docs/notifications.md`). A brief the hub could not send
 within three hours of `brief_at` waits for the next day. `curator_briefs` keeps each brief with what it said, and `hub
@@ -810,8 +810,13 @@ Curator's plan or a plan run of it (409): the night shift alone runs it.
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
 gets a Builder only once the hub checked, within 2 days, that a ruleset keeps the Curator's App off the repo's default
-branch; one on GitLab only once the charter names the owner's git secret for it (`git_secret`). The Builder's GitHub
-token is the Curator's App's (`docs/credentials.md`); the Builder and the Judge of a change never run at once.
+branch; one on GitLab only once the charter names the owner's git secret for it (`git_secret`). The job
+`curator.changes` checks that ruleset itself, with the Curator's App and outside any transaction, at its next pass
+after the change is planned, and again every hour while the check does not pass and the change waits; it never
+creates or changes a ruleset, and a hub without the Curator's App asks GitHub nothing. Each planned change the night
+shift passes over keeps why as its reason, written when it changes and cleared when its Builder is queued
+(`GET .../curator/changes`, `hub curator changes`, the morning brief). The Builder's GitHub token is the Curator's
+App's (`docs/credentials.md`); the Builder and the Judge of a change never run at once.
 
 When the Builder ends done with every step of its plan done, the job `curator.changes` opens its pull request on
 GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
@@ -1118,12 +1123,13 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   has passed (The Curator's review, above).
 - `curator.brief`, every minute: at each charter's `brief_at`, in its time zone, sends the owner of the project's
   schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
-  review run, merges, runs waiting for approval, open decisions and proposals, and the last heartbeat of the worker on
-  duty (`evo_agents.hub.server.brief`).
+  review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and
+  proposals, and the last heartbeat of the worker on duty (`evo_agents.hub.server.brief`).
 - `curator.changes`, every minute: the Curator's changes move on: their pull requests opened and read for signs of
   score hacking, the Judge's check runs written, the tier 0 ones merged when everything allows it and the others left
-  open for their owner, read again hourly for a merge or a close by hand; and the rulesets checked again once a day
-  (The Curator's changes, above).
+  open for their owner, read again hourly for a merge or a close by hand; and the rulesets checked: the one a planned
+  change waits for at the next pass and hourly while it does not pass, every other once a day (The Curator's changes,
+  above).
 - `curator.outcomes`, every 10 minutes: the figures of each change of the Curator merged the charter's `outcome_days`
   ago counted again, its outcome (keep, revert or unclear) added to its proposal's ledger, and a revert proposed when
   they got worse (The Curator's ledger, outcomes and circuit breaker, above).

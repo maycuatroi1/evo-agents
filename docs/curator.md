@@ -283,14 +283,20 @@ To let the night shift build on a GitHub repo:
 2. Add a branch ruleset that targets the default branch, with enforcement Active, the rule that restricts updates,
    and the rule that requires the status checks CI runs. Put evo-agents-workers and the repo's admins in its bypass
    list, never evo-agents-curator.
-3. Check it: `evo-agents hub curator protection --check REPO --project demo` (an admin of the project).
+3. Check it: `evo-agents hub curator protection --check REPO --project demo` (an admin of the project), or let the
+   hub do it: the job `curator.changes` checks the ruleset of a repo a planned change waits for on its own.
 
 The check asks GitHub, with a token of the Curator's App: the repo's default branch, the rules that apply to it, and
 for each ruleset with a rule of type `update`, whether it is `active`, whether `current_user_can_bypass` is `never`
 for the Curator's App, and whether its bypass actors leave that App out. Anything else, a field missing included, is a
-repo the Curator is not kept off. The hub keeps what it found (`curator_repo_checks`), checks again every day, and
-again each time a Builder asks for its leases. A Builder runs on a GitHub repo only after a check within 2 days that
-passed; a repo whose ruleset no longer keeps the Curator off gets no token.
+repo the Curator is not kept off. The hub keeps what it found (`curator_repo_checks`). The job `curator.changes`
+checks, on its own and with an empty `checked_by`, the ruleset of each repo a planned change waits for: at its next
+pass when the repo has no check within 2 days, and every hour while the last check did not pass and the change still
+waits. It checks every other repo checked before once a day, and the hub checks again each time a Builder asks for its
+leases. A hub without the Curator's App asks GitHub nothing, and the change says so. The hub never creates or changes
+a ruleset: a change whose repo's check did not pass keeps, as its reason, which repo, why, and that its owner has to set
+it up as above. A Builder runs on a GitHub repo only after a check within 2 days that passed; a repo whose ruleset no
+longer keeps the Curator off gets no token.
 
 **Merging tier 0.** The hub merges a pull request with the workers' App, as a merge commit, at the head the Judge
 passed, only when all of these hold: the change is tier 0 and `auto_merge` holds `0`; the Judge passed it; the repo's
@@ -327,8 +333,12 @@ that way is treated the same. No message holds a decision's context, a proposal'
 ## The brief, the ledger and the circuit breaker
 
 **The morning brief** goes to the schedule's owner at `brief_at`, once a local day: the night's runs and cost against
-its budget, its review run, merges into a default branch, runs waiting for approval, decisions and proposals waiting,
-and the last heartbeat of the worker on duty (`curator_briefs`, schema 0015).
+its budget, its review run, merges into a default branch, runs waiting for approval, the Curator's changes still
+planned with why each waits, decisions and proposals waiting, and the last heartbeat of the worker on duty
+(`curator_briefs`, schema 0015). A planned change's reason is the one the night shift wrote the last time it passed
+over it: the ruleset not checked or not keeping the Curator off, the owner's git secret missing, a run of its plan
+still active, no step ready, a worker on duty that cannot build it, or its plan gone from the hub. `evo-agents hub
+curator changes` shows it too.
 
 **The ledger** (`curator_ledger`, schema 0018) has one line for each thing that happened to a proposal, only ever
 added to: who acted (`curator`, `agent` or `user`), what happened, the commit, the default branch before and after,
