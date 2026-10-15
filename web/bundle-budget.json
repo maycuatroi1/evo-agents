@@ -50,8 +50,8 @@
       "reason": "A group chat (agent-profiles-group-chat step 7): its messages as Markdown, live over the chat's stream, reactions, threads, the composer with its @ suggestions and the members sheet, beside the list of chats."
     },
     "/inbox": {
-      "kB": 392.9,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Notices of a chat lead to the Chats pages, whose shared chunks regroup with the Inbox's (agent-profiles-group-chat step 7)."
+      "kB": 394.7,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Notices of a chat lead to the Chats pages, whose shared chunks regroup with the Inbox's (agent-profiles-group-chat step 7). The sheet of a proposal shows the change accepting it made, in a card of its own (change-card.tsx: its plan, branch, pull request and the hub's reason), and accepting says what it does for each tier (accepted-proposals-move-on step 3); the change's state pill and its icons load with it (status/change-badge.tsx), not with the status map every page loads."
     },
     "/login": {
       "kB": 209.5,
@@ -82,8 +82,8 @@
       "reason": "An agent's page (agent-profiles-group-chat step 4): its permissions, versions, avatar upload, the edit form and its recent runs. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/curator": {
-      "kB": 322.5,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 322.6,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The Curator's model reads a repo's web page from its origin in webBase, which its links to code and a change's branch link share (accepted-proposals-move-on step 3): 0.1 kB."
     },
     "/p/[project]/curator/charter": {
       "kB": 331,
@@ -94,8 +94,8 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/curator/proposals/[id]": {
-      "kB": 358.2,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page."
+      "kB": 360.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. A proposal shows the change accepting it made, in a card of its own (change-card.tsx: its plan, branch, pull request and the hub's reason), and accepting says what it does for each tier (accepted-proposals-move-on step 3); the change's state pill and its icons load with it (status/change-badge.tsx), not with the status map every page loads."
     },
     "/p/[project]/insights": {
       "kB": 290.9,

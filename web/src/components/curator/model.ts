@@ -4,7 +4,6 @@ import type { ParamSource } from "@/components/admin/data";
 import { parseRunId, runHref } from "@/components/runs/queries";
 import { PLAN_ID } from "@/lib/plans";
 
-import { webBase } from "./forge";
 import {
   type Charter,
   type CharterWrite,
@@ -226,6 +225,19 @@ function str(value: unknown): string | null {
 
 function int(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) ? value : null;
+}
+
+/** A repo's https web page from its origin (https, http or git's scp form), else null; `branchUrl` (forge.ts) uses it. */
+export function webBase(origin: string | null | undefined): string | null {
+  const scp = /^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?\/?$/.exec(origin ?? "");
+  if (scp) return `https://${scp[1]}/${scp[2]}`;
+  try {
+    const url = new URL(origin ?? "");
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return `https://${url.host}${url.pathname.replace(/\.git\/?$/, "").replace(/\/+$/, "")}`;
+  } catch {
+    return null;
+  }
 }
 
 /**

@@ -13,6 +13,7 @@ import { runHref } from "@/components/runs/queries";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
+import { ChangeBadge } from "@/components/status/change-badge";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Ago } from "@/components/workers/ago";
@@ -199,7 +200,7 @@ function AnswerCard({ project, proposal, admin }: { project: string; proposal: P
 function ChangeCard({ project, change, repos }: { project: string; change: Change; repos: RepoInfo[] }) {
   const t = useTranslations("curator.proposal.change");
   return (
-    <HomeCard title={t("title", { id: change.id })} action={<StatusBadge kind="change" status={change.state} />} testId="proposal-change">
+    <HomeCard title={t("title", { id: change.id })} action={<ChangeBadge status={change.state} />} testId="proposal-change">
       <ChangeFacts project={project} change={change} repos={repos} />
     </HomeCard>
   );

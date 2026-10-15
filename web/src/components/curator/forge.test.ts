@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
-import { branchUrl, webBase } from "./forge";
+import { branchUrl } from "./forge";
+import { webBase } from "./model";
 
 describe("forge links of the Curator", () => {
   it("reads a repo's web page from an https, http or scp origin, and nothing else", () => {
