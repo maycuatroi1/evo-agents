@@ -3,9 +3,11 @@ hub, not words in a prompt, so no agent ever sets the tier of its own change. Pu
 so the api, the command line and the tests share them; ``docs/curator.md`` and ``evo_agents.hub.server.proposals``
 are built on them.
 
-A tier is one of ``curator.TIERS``: 0, the hub may merge it once CI and the Judge pass (when the charter lets it); 1,
-the same, but it waits as an open pull request for now; 2, the owner accepts it before the night shift makes it, and
-it reaches their Inbox; 3, the owner alone makes it. ``tier_of`` computes it from three things:
+A tier is one of ``curator.TIERS``. A proposal of tier 0, 1 or 2 that the owner accepts becomes the Curator's plan,
+which the night shift builds on a branch of its own and the Judge judges (``judge.PLANNED_TIERS``): 0, the hub may
+merge its pull request once CI and the Judge pass (when the charter lets it); 1, its pull request stays open for the
+owner to merge; 2, the same as 1, and the proposal also reaches the owner's Inbox. 3, the night shift builds nothing
+and the owner alone makes the change. ``tier_of`` computes it from three things:
 
 - the kind of change the proposal names (CHANGE_KINDS), each with its tier; the kinds that loosen or remove a test,
   change a plan's verify, change CI or lint, touch credentials or permissions, or change the Curator's own rules

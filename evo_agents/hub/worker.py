@@ -41,7 +41,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 - ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
   written, the tier 0 ones merged when everything allows it, the others left open for their owner and read again
-  hourly for a merge or a close by hand; and the rulesets checked again once a day (``evo_agents.hub.server.changes``).
+  hourly for a merge or a close by hand; and the rulesets checked, the one a planned change waits for at the next
+  pass and hourly while it does not pass, every other once a day (``evo_agents.hub.server.changes``, ``.protection``).
 - ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
   ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
   got worse (``evo_agents.hub.server.outcomes``).
@@ -209,7 +210,8 @@ async def deliver_notifications(context: JobContext, timestamp: int | None = Non
 async def fire_schedules(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.curator import fire_schedules as fire
 
-    return await fire(hub(context).engine)
+    found = hub(context)
+    return await fire(found.engine, curator_app=getattr(found, "curator_app", None) is not None)
 
 
 @queue.periodic(cron="* * * * *")

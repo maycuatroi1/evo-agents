@@ -36,9 +36,11 @@ and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.
    its kind. Tier 2 proposals with the most evidence reach the owner's Inbox, up to the charter's
    `max_decisions_per_day`.
 4. **The owner answers.** A project admin accepts, rejects or defers a proposal on the web, on the command line or on
-   Telegram. Accepting one of tier 0 or 1 makes its draft plan a plan of the Curator on the hub.
+   Telegram. Accepting one of tier 0 to 2 makes its draft plan a plan of the Curator on the hub in the same answer, with
+   a change of state `planned`; accepting one of tier 3 records the answer and builds nothing.
 5. **The Builder.** On a later pass of the night shift, a plan run of that plan works on the branch
-   `curator/<proposal>-<slug>`, never on a default branch.
+   `curator/<proposal>-<slug>`, never on a default branch. Until it can, the change keeps why it waits, which the
+   proposal's page and the morning brief show.
 6. **The pull request and the Judge.** The hub opens the pull request (on GitLab the push opens the merge request),
    reads its diff for signs of score hacking, and queues a judge run that runs the plan's verify and the project's
    hidden checks and never reads the Builder's transcript.
@@ -185,7 +187,7 @@ agent:
 | --- | --- |
 | 0 | the night shift builds it, and the hub merges it once CI and the Judge pass, when `auto_merge` holds `0` |
 | 1 | the night shift builds it and the Judge judges it; the pull request stays open for the owner |
-| 2 | it reaches the owner's Inbox; accepting it builds nothing, and the owner makes the change or writes a plan for it |
+| 2 | it reaches the owner's Inbox; once accepted, the night shift builds it and the Judge judges it, and the pull request stays open for the owner |
 | 3 | it stays in the list; accepting it builds nothing, and the owner alone makes the change |
 
 The tier is the highest of three rules, and the proposal lists in words which rule raised it:
@@ -241,7 +243,12 @@ events are pruned (`docs/workers.md`, "Tool figures").
 accepting answer: in the one repo the proposal names, every step pending. Its what, goal, context, verify and
 acceptance stay as the hub made them; a write may change only the progress of its steps. No member dispatches a run of
 it: the night shift alone does. Its agent holds no push credential: the daemon alone pushes, only the branch
-`curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request.
+`curator/...`, and never a default branch whatever the plan says. On GitLab the push opens the merge request. An
+accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
+the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project
+may. A proposal's page on the web has a Change card once accepting it made one: the change's state, the Curator's plan
+as a link to its page, the branch (a link to it on GitHub or GitLab), the pull request once the hub opened it, and the
+reason the change keeps while it waits or stays open; `evo-agents hub curator proposal show ID` prints the same.
 
 **The Judge** runs in a worktree detached at the pull request's head. The daemon reads the diff and runs the detector of
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
@@ -283,14 +290,20 @@ To let the night shift build on a GitHub repo:
 2. Add a branch ruleset that targets the default branch, with enforcement Active, the rule that restricts updates,
    and the rule that requires the status checks CI runs. Put evo-agents-workers and the repo's admins in its bypass
    list, never evo-agents-curator.
-3. Check it: `evo-agents hub curator protection --check REPO --project demo` (an admin of the project).
+3. Check it: `evo-agents hub curator protection --check REPO --project demo` (an admin of the project), or let the
+   hub do it: the job `curator.changes` checks the ruleset of a repo a planned change waits for on its own.
 
 The check asks GitHub, with a token of the Curator's App: the repo's default branch, the rules that apply to it, and
 for each ruleset with a rule of type `update`, whether it is `active`, whether `current_user_can_bypass` is `never`
 for the Curator's App, and whether its bypass actors leave that App out. Anything else, a field missing included, is a
-repo the Curator is not kept off. The hub keeps what it found (`curator_repo_checks`), checks again every day, and
-again each time a Builder asks for its leases. A Builder runs on a GitHub repo only after a check within 2 days that
-passed; a repo whose ruleset no longer keeps the Curator off gets no token.
+repo the Curator is not kept off. The hub keeps what it found (`curator_repo_checks`). The job `curator.changes`
+checks, on its own and with an empty `checked_by`, the ruleset of each repo a planned change waits for: at its next
+pass when the repo has no check within 2 days, and every hour while the last check did not pass and the change still
+waits. It checks every other repo checked before once a day, and the hub checks again each time a Builder asks for its
+leases. A hub without the Curator's App asks GitHub nothing, and the change says so. The hub never creates or changes
+a ruleset: a change whose repo's check did not pass keeps, as its reason, which repo, why, and that its owner has to set
+it up as above. A Builder runs on a GitHub repo only after a check within 2 days that passed; a repo whose ruleset no
+longer keeps the Curator off gets no token.
 
 **Merging tier 0.** The hub merges a pull request with the workers' App, as a merge commit, at the head the Judge
 passed, only when all of these hold: the change is tier 0 and `auto_merge` holds `0`; the Judge passed it; the repo's
@@ -299,8 +312,8 @@ show no sign and no protected path; and CI is green. Green means each check the 
 require concluded success (as a check run of the App the rule names, when it names one), every other check run ended
 success, neutral or skipped, and the commit statuses are success. A ruleset that requires no check, or a head commit
 whose message asks CI to skip it, leaves the pull request open. The hub waits up to 6 hours while CI runs, and merges
-nothing while the night shift is paused. A tier 1 change, a refusal, and every GitLab merge request stay open for the
-owner with the reason.
+nothing while the night shift is paused. A tier 1 or 2 change, a refusal, and every GitLab merge request stay open for
+the owner with the reason.
 
 **GitLab.** The charter's `git_secret` names the owner's git secret for the repo's origin, which should hold the
 Developer role: GitLab then keeps it off a protected default branch. A Builder pushes with push options that open the
@@ -309,6 +322,7 @@ merge request; the hub merges nothing there.
 ```sh
 evo-agents hub curator protection --project demo              # the project's repos and the last check of each
 evo-agents hub curator changes --project demo                 # what each accepted proposal became
+evo-agents hub curator proposal plan 10 --project demo        # an accepted proposal without a change becomes a plan
 ```
 
 ## Telegram
@@ -327,8 +341,12 @@ that way is treated the same. No message holds a decision's context, a proposal'
 ## The brief, the ledger and the circuit breaker
 
 **The morning brief** goes to the schedule's owner at `brief_at`, once a local day: the night's runs and cost against
-its budget, its review run, merges into a default branch, runs waiting for approval, decisions and proposals waiting,
-and the last heartbeat of the worker on duty (`curator_briefs`, schema 0015).
+its budget, its review run, merges into a default branch, runs waiting for approval, the Curator's changes still
+planned with why each waits, decisions and proposals waiting, and the last heartbeat of the worker on duty
+(`curator_briefs`, schema 0015). A planned change's reason is the one the night shift wrote the last time it passed
+over it: the ruleset not checked or not keeping the Curator off, the owner's git secret missing, a run of its plan
+still active, no step ready, a worker on duty that cannot build it, or its plan gone from the hub. `evo-agents hub
+curator changes` shows it too.
 
 **The ledger** (`curator_ledger`, schema 0018) has one line for each thing that happened to a proposal, only ever
 added to: who acted (`curator`, `agent` or `user`), what happened, the commit, the default branch before and after,

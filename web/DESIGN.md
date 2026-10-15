@@ -397,8 +397,11 @@ Shared pieces built on them:
   plan, step, repo, decision, proposal (open in `attention`, deferred, accepted, rejected, dropped) and curator (the
   night shift: running, on duty, idle, paused in `attention`, off without a charter; no pulsing dot, which the run
   itself carries); each state has a tone, a Lucide icon and its words under `status.<kind>` in
-  `messages/en.json` and `vi.json`. The maps are `satisfies Record<...>` on the API's own types in
-  `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
+  `messages/en.json` and `vi.json`. Nearly every page loads that file, so a kind only one page shows keeps its map
+  beside it and draws the same `StatusPill`: `change-badge.tsx`, the `ChangeBadge` of what an accepted proposal
+  became (planned, opening pull request, waiting for the Judge, judging, judged, merged, left open in `attention`,
+  closed), loaded with a proposal only, its words under `status.change`. The maps are `satisfies Record<...>` on the
+  API's own types in `src/lib/api/schema.d.ts` (`Run["state"]`; `Worker["status"]` with online split into idle and busy;
   `PlanSummary["area"]` with pending and blocked; `StepReport["status"]` with blocked; `Decision["state"]`), and
   `useStatusText` reads the words through typed keys, so a state the API adds fails typecheck until it has a look
   and words. The pill is 22 px (26 px with `size="lg"`, beside an h1), the icon 14 px and `aria-hidden`; leased
@@ -1148,8 +1151,11 @@ Shared pieces built on them:
   lens, Accept (primary), Defer and Reject for an admin; the summary as SafeMarkdown, the evidence (a run's event
   opens the run's log, a session's entry unfolds in place from the digest, read when asked, a line of code opens on
   GitHub or GitLab at the commit the review read, in a new tab, said to screen readers), the findings it rests on, the
-  draft plan as steps or as its JSON (a segmented control); beside them from xl, the answer and Why tier N with its
-  reasons and paths. Each answer is confirmed in a dialog (`answer-dialog.tsx`): what it does, the defer days (1 to 90),
+  draft plan as steps or as its JSON (a segmented control); beside them from xl, the answer (what accepting does, by
+  the proposal's tier), the Change card once accepting made one (`change-card.tsx`: its state in the head, the
+  Curator's plan as a link, the repo, the branch as an `Identifier` that copies and opens on GitHub or GitLab, the pull
+  request once open, when it last moved, and the hub's reason in a note, `attention` while it is left open), and Why
+  tier N with its reasons and paths. Each answer is confirmed in a dialog (`answer-dialog.tsx`): what it does, the defer days (1 to 90),
   an optional one-line note, Cmd or Ctrl with Enter to send, a refusal shown in place. Charter: the charter in cards
   (goals, window and worker, budget and caps, what it may do, review, roles, the Judge's hidden checks to admins only)
   with its revisions beside it, any revision readable (`?revision=N`); an admin edits it in a form of the same groups

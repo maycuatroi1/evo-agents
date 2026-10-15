@@ -88,7 +88,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -775,21 +775,24 @@ how many of the project's proposals wait for an answer; `GET /v1/me/overview` sa
 charter (`projects[].curator`). `GET .../curator/nights` lists the latest nights (14 by default, up to 90): the runs
 the night shift queued for each by how they stand, their cost, the night's review run with what it wrote, and whether
 the night's figures were counted. `proposal list` (`GET .../curator/proposals`) answers `counts` with its proposals:
-what each state, tier and lens would list with the other filters applied. Accepting a proposal of tier 0 or 1 also
-makes it a plan of the night shift (The Curator's changes, below).
+what each state, tier and lens would list with the other filters applied. Accepting a proposal of tier 0 to 2 also
+makes it a plan of the night shift (The Curator's changes, below); accepting one of tier 3 records the answer alone.
+`proposal show` (`GET .../curator/proposals/{id}`) answers, as `change`, the change accepting it made, when the caller
+may read that change's plan: its state, plan, branch, pull request and reason; null otherwise.
 
 The web shows the same under each project's Curator (`/p/{project}/curator`): the night now and the nights before,
 the schedule and Pause or Resume, the proposals with their filters, a proposal's evidence (the run's log, the digest's
-entry, the line of code on the forge) and draft plan with Accept, Defer and Reject for the project's admins, and the
-charter with its revisions and, for an admin, its form. Tier 2 proposals in the Inbox open in a sheet of their own
+entry, the line of code on the forge) and draft plan with Accept, Defer and Reject for the project's admins, the
+change accepting it made (its state, the plan as a link, the branch on the forge, the pull request and why it waits or
+stays open), and the charter with its revisions and, for an admin, its form. Tier 2 proposals in the Inbox open in a sheet of their own
 (`/inbox?proposal=ID`), and Home says where each project's Curator stands.
 
 **The morning brief.** At the charter's `brief_at`, in its time zone, the job `curator.brief` sends the owner of the
 night shift's schedule a notice `curator_brief` (`evo_agents/hub/server/brief.py`), once a local day: the night it
 reports on (the one in progress when `brief_at` falls inside the window), its runs by how they ended and what they cost
 against the night's budget, its review run with what it wrote, the merges into a default branch its runs reported, the
-project's runs in review that wait for the owner's approval, the decisions that wait for the owner's answer and the
-proposals that wait for an admin's (with how many are in the owner's Inbox), and the worker on duty with its last
+project's runs in review that wait for the owner's approval, the Curator's changes still planned with why each waits,
+the decisions that wait for the owner's answer and the proposals that wait for an admin's (with how many are in the owner's Inbox), and the worker on duty with its last
 heartbeat, so a machine that stopped shows up in the morning. The brief goes out like any notification, on the web and
 on every channel the owner turned on, Telegram included (`docs/notifications.md`). A brief the hub could not send
 within three hours of `brief_at` waits for the next day. `curator_briefs` keeps each brief with what it said, and `hub
@@ -797,21 +800,29 @@ curator status` names the last one (`last_brief`).
 
 ## The Curator's changes
 
-Accepting a proposal of tier 0 or 1 makes its draft plan the Curator's plan on the hub, in the same transaction, as
-the admin who accepted it (schema 0017, `evo_agents/hub/server/changes.py`, `evo_agents/hub/judge.py`): the plan
+Accepting a proposal of tier 0 to 2 makes its draft plan the Curator's plan on the hub, in the same transaction, as
+the admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
 `curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
 `curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
 or a repo without an origin, becomes no plan: its change stays `open` with the reason. A write of a Curator's plan that
 names another repo or branch, or changes anything but the progress of its steps (`status`, `done_at`, `evidence`,
 `note`) and its `status`, is 409: its what, goal, context, verify and acceptance stay as the hub made them. A plan whose
 id starts with `curator-` is made this way alone (a member's put of one is 409). No member dispatches the steps of a
-Curator's plan or a plan run of it (409): the night shift alone runs it.
+Curator's plan or a plan run of it (409): the night shift alone runs it. `evo-agents hub curator proposal plan ID`
+(`POST .../curator/proposals/{id}/plan`, the project's admins alone, audited as curator.plan) does the same for an
+accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 accepted while that tier still recorded
+the answer alone; one not accepted, of tier 3 or with a change already is 409 with the reason.
 
 Each night, after its review run, the night shift queues the judge run of a change waiting for one, else the Builder
 of a planned change: a plan run of its plan, pinned to the worker on duty, with the night's caps. A change on GitHub
 gets a Builder only once the hub checked, within 2 days, that a ruleset keeps the Curator's App off the repo's default
-branch; one on GitLab only once the charter names the owner's git secret for it (`git_secret`). The Builder's GitHub
-token is the Curator's App's (`docs/credentials.md`); the Builder and the Judge of a change never run at once.
+branch; one on GitLab only once the charter names the owner's git secret for it (`git_secret`). The job
+`curator.changes` checks that ruleset itself, with the Curator's App and outside any transaction, at its next pass
+after the change is planned, and again every hour while the check does not pass and the change waits; it never
+creates or changes a ruleset, and a hub without the Curator's App asks GitHub nothing. Each planned change the night
+shift passes over keeps why as its reason, written when it changes and cleared when its Builder is queued
+(`GET .../curator/changes`, `hub curator changes`, the morning brief). The Builder's GitHub token is the Curator's
+App's (`docs/credentials.md`); the Builder and the Judge of a change never run at once.
 
 When the Builder ends done with every step of its plan done, the job `curator.changes` opens its pull request on
 GitHub with the workers' App (on GitLab the push opened the merge request) and reads its files for the signs of score
@@ -1118,12 +1129,13 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   has passed (The Curator's review, above).
 - `curator.brief`, every minute: at each charter's `brief_at`, in its time zone, sends the owner of the project's
   schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
-  review run, merges, runs waiting for approval, open decisions and proposals, and the last heartbeat of the worker on
-  duty (`evo_agents.hub.server.brief`).
+  review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and
+  proposals, and the last heartbeat of the worker on duty (`evo_agents.hub.server.brief`).
 - `curator.changes`, every minute: the Curator's changes move on: their pull requests opened and read for signs of
   score hacking, the Judge's check runs written, the tier 0 ones merged when everything allows it and the others left
-  open for their owner, read again hourly for a merge or a close by hand; and the rulesets checked again once a day
-  (The Curator's changes, above).
+  open for their owner, read again hourly for a merge or a close by hand; and the rulesets checked: the one a planned
+  change waits for at the next pass and hourly while it does not pass, every other once a day (The Curator's changes,
+  above).
 - `curator.outcomes`, every 10 minutes: the figures of each change of the Curator merged the charter's `outcome_days`
   ago counted again, its outcome (keep, revert or unclear) added to its proposal's ledger, and a revert proposed when
   they got worse (The Curator's ledger, outcomes and circuit breaker, above).

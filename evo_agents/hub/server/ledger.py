@@ -472,12 +472,12 @@ async def show_ledger(
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> Ledger:
     """The ledger of a proposal: what happened to it, line by line, oldest first."""
-    from evo_agents.hub.server.proposals import _readable_proposal, _reader  # it writes lines through this module
+    from evo_agents.hub.server.proposals import _reader, readable_proposal  # it writes lines through this module
 
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        await _readable_proposal(conn, access, proposal_id, sink)
+        await readable_proposal(conn, access, proposal_id, sink)
         rows = (await conn.execute(_lines(proposal_id))).all()
         due = await outcome_due_at(conn, proposal_id, access.project_id)
     return Ledger(

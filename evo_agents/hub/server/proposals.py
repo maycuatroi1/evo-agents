@@ -29,17 +29,19 @@ alone. A review run that fails sends its owner the notice run_failed (``review_e
 Readers of the project read the findings and proposals whose label their grant reaches through the sink X-Evo-Sink
 names (else the project's hub sink): GET /v1/projects/{p}/curator/findings and .../findings/{id},
 .../curator/proposals (filtered by state, tier, lens and run, newest first, with what each value of those filters
-would list) and .../proposals/{id}, and the night's
-figures with GET .../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
+would list) and .../proposals/{id}, whose ``change`` is the change accepting it made (``changes.Change``: its plan,
+branch, pull request and why it waits) when the caller may read that change's plan, and the night's figures with GET
+.../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
 the project's admins: accept, reject, or defer (for ``defer_days``, DEFAULT_DEFER_DAYS by default), with a note, while
 the proposal is open or deferred (409 otherwise); it reads the proposal's notifications and is audited as
-curator.proposal. Accepting a proposal of tier 0 or 1 also makes its draft the Curator's plan, which the night shift
-builds on a branch of its own (``evo_agents.hub.server.changes``); a draft that cannot become one leaves a change open
-with the reason, and nothing of it runs. A deferred proposal opens again once its time has passed (the job
-curator.collect). Recording a proposal and answering it each add a line to its ledger
+curator.proposal. Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``) also makes its draft the Curator's
+plan, which the night shift builds on a branch of its own (``evo_agents.hub.server.proposal_plans``, whose POST
+.../proposals/{id}/plan does the same for an accepted proposal that has no change yet); a draft that cannot become one
+leaves a change open with the reason, and nothing of it runs. Accepting one of tier 3 records the answer alone. The hub
+merges a change of tier 0 alone (``evo_agents.hub.server.changes``). A deferred proposal opens again once its time has
+passed (the job curator.collect). Recording a proposal and answering it each add a line to its ledger
 (``evo_agents.hub.server.ledger``), the first with the figures that set it off. A proposal of kind ``revert`` with
-``revert_of`` is the hub's own, made when the figures of a merged change got worse
-(``evo_agents.hub.server.outcomes``).
+``revert_of`` is the hub's own, made when the figures of a merged change got worse (``evo_agents.hub.server.outcomes``).
 """
 
 from __future__ import annotations
@@ -65,6 +67,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.changes import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import notify, run_link
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -234,6 +237,11 @@ class Proposal(ProposalSummary):
     evidence: list[dict] = Field(description="its own evidence, as the hub resolved it")
     plan: dict = Field(description="the draft plan")
     note: str | None = Field(description="the owner's note with the answer")
+    change: Change | None = Field(
+        None,
+        description="what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it "
+        "waits; null before, for tier 3, and when the caller may not read its plan",
+    )
 
 
 class ProposalCounts(BaseModel):
@@ -588,10 +596,10 @@ def _proposals():
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
-def _proposal(project: str, row) -> Proposal:
+def _proposal(project: str, row, change: Change | None = None) -> Proposal:
     data = {key: value for key, value in row._mapping.items() if key != "label"}
     data["finding_ids"] = list(data["finding_ids"] or [])
-    return Proposal(project=project, **data)
+    return Proposal(project=project, change=change, **data)
 
 
 def _summary(project: str, row) -> ProposalSummary:
@@ -843,7 +851,9 @@ async def list_proposals(
     )
 
 
-async def _readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink: str | None, *, lock: bool = False):
+async def readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink: str | None, *, lock: bool = False):
+    """Proposal ``proposal_id`` of the project, its row locked with ``lock``, when its label reaches the caller through
+    ``sink`` (else the project's hub sink); 404 otherwise."""
     p = tables.proposals
     query = _proposals().where(p.c.project_id == access.project_id, p.c.id == proposal_id)
     if lock:
@@ -852,6 +862,17 @@ async def _readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink
     if row is None or not access.visible(row.label, plan_routes._sink(access, sink)):
         raise HTTPException(404, f"project {access.name} has no proposal {proposal_id}")
     return row
+
+
+async def _change_of(conn, access: ProjectAccess, proposal_id: int, sink: str | None) -> Change | None:
+    """The change accepting proposal ``proposal_id`` made, when the caller may read its plan through ``sink`` (as GET
+    .../curator/changes shows it); None without one."""
+    c = tables.curator_changes
+    query = select(c.c.id, c.c.plan_id).where(c.c.project_id == access.project_id, c.c.proposal_id == proposal_id)
+    found = (await conn.execute(query)).one_or_none()
+    if found is None or (found.plan_id is not None and found.plan_id not in await visible_plans(conn, access, sink)):
+        return None
+    return await change_view(conn, found.id)
 
 
 @router.get("/{project}/curator/proposals/{proposal_id}", response_model=Proposal, responses=READ_REFUSALS)
@@ -865,8 +886,9 @@ async def show_proposal(
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
-        row = await _readable_proposal(conn, access, proposal_id, sink)
-    return _proposal(access.name, row)
+        row = await readable_proposal(conn, access, proposal_id, sink)
+        change = await _change_of(conn, access, proposal_id, sink)
+    return _proposal(access.name, row, change)
 
 
 async def answer_proposal_as(
@@ -888,7 +910,7 @@ async def answer_proposal_as(
         raise HTTPException(
             403, f"answering a proposal of project {access.name} needs the admin role on it; you hold {access.role}"
         )
-    row = await _readable_proposal(conn, access, proposal_id, None, lock=True)
+    row = await readable_proposal(conn, access, proposal_id, None, lock=True)
     if row.state not in ("open", "deferred"):
         raise HTTPException(409, f"proposal {proposal_id} is {row.state}: only an open or deferred one is answered")
     state = review.ANSWERED[body.action]
@@ -913,7 +935,7 @@ async def answer_proposal_as(
         via=via,
     )
     if body.action == "accept" and row.tier in judge.PLANNED_TIERS:
-        from evo_agents.hub.server.changes import plan_from_proposal  # it reads proposals through this module
+        from evo_agents.hub.server.proposal_plans import plan_from_proposal  # it reads proposals through this module
 
         await plan_from_proposal(conn, access, user, row)
     await conn.execute(
@@ -928,8 +950,8 @@ async def answer_proposal_as(
         target=target if via is None else f"{target} via={via}",
         project_id=access.project_id,
     )
-    row = await _readable_proposal(conn, access, proposal_id, None)
-    return _proposal(access.name, row)
+    row = await readable_proposal(conn, access, proposal_id, None)
+    return _proposal(access.name, row, await _change_of(conn, access, proposal_id, None))
 
 
 @router.post("/{project}/curator/proposals/{proposal_id}/answer", response_model=Proposal, responses=REFUSALS)

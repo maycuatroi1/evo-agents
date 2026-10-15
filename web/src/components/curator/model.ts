@@ -227,26 +227,26 @@ function int(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
+/** A repo's https web page from its origin (https, http or git's scp form), else null; `branchUrl` (forge.ts) uses it. */
+export function webBase(origin: string | null | undefined): string | null {
+  const scp = /^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?\/?$/.exec(origin ?? "");
+  if (scp) return `https://${scp[1]}/${scp[2]}`;
+  try {
+    const url = new URL(origin ?? "");
+    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
+    return `https://${url.host}${url.pathname.replace(/\.git\/?$/, "").replace(/\/+$/, "")}`;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * The web address of a file of a repo at `ref`, on the line given: GitHub's blob URL, or GitLab's for a host whose
  * name says gitlab. Null for an origin the web cannot read as https or as git's scp form (`git@host:group/repo.git`).
  */
 export function codeUrl(origin: string | null | undefined, ref: string | null, path: string, line: number | null): string | null {
-  if (!origin || !ref) return null;
-  let base: string | null = null;
-  const scp = /^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?\/?$/.exec(origin);
-  if (scp) base = `https://${scp[1]}/${scp[2]}`;
-  else {
-    try {
-      const url = new URL(origin);
-      if (url.protocol === "https:" || url.protocol === "http:") {
-        base = `https://${url.host}${url.pathname.replace(/\.git\/?$/, "").replace(/\/+$/, "")}`;
-      }
-    } catch {
-      base = null;
-    }
-  }
-  if (!base) return null;
+  const base = webBase(origin);
+  if (!base || !ref) return null;
   const encoded = path.split("/").map(encodeURIComponent).join("/");
   const blob = /gitlab/i.test(new URL(base).host) ? "-/blob" : "blob";
   return `${base}/${blob}/${encodeURIComponent(ref)}/${encoded}${line !== null ? `#L${line}` : ""}`;
