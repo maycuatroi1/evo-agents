@@ -243,12 +243,10 @@ def create_app(config: HubConfig) -> FastAPI:
     app.include_router(proposals.router)
     app.include_router(proposals.worker_router)
 
-    from evo_agents.hub.server import changes, ledger
+    from evo_agents.hub.server import changes, ledger, protection
 
-    app.include_router(changes.router)
-    app.include_router(changes.worker_router)
-    app.include_router(ledger.router)
-    app.include_router(digests.router)
+    for routes in (changes.router, protection.router, changes.worker_router, ledger.router, digests.router):
+        app.include_router(routes)
 
     from evo_agents.hub.server import telegram
 

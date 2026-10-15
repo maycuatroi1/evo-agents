@@ -704,7 +704,7 @@ async def _rulesets_now(engine: AsyncEngine, app: GitHubApp, survey: _Survey) ->
     """For a Builder of the Curator: check again, with the Curator's App, the ruleset of each of its repos on GitHub,
     and keep what each check found; repo -> why a repo whose ruleset does not keep the Curator off, or could not be
     checked now, gets no token."""
-    from evo_agents.hub.server.changes import _store_check  # it reads runs through the routes that import this one
+    from evo_agents.hub.server.protection import store_check  # it reads runs through the routes that import this one
     from evo_agents.hub.server.pulls import check_ruleset
 
     refused: dict[str, str] = {}
@@ -717,7 +717,7 @@ async def _rulesets_now(engine: AsyncEngine, app: GitHubApp, survey: _Survey) ->
             )
             continue
         async with engine.begin() as conn:
-            await _store_check(conn, survey.run.project_id, repo, f"{owner}/{name}", found, None)
+            await store_check(conn, survey.run.project_id, repo, f"{owner}/{name}", found, None)
         if not found.protected:
             refused[repo] = (
                 f"the ruleset of {owner}/{name} no longer keeps the Curator's App off its default branch "
