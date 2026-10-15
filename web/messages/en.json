@@ -261,6 +261,16 @@
       "rejected": "Rejected",
       "dropped": "Dropped"
     },
+    "change": {
+      "planned": "Planned",
+      "pr_pending": "Opening pull request",
+      "judge_pending": "Waiting for the Judge",
+      "judging": "Judging",
+      "judged": "Judged",
+      "merged": "Merged",
+      "open": "Left open",
+      "closed": "Closed"
+    },
     "curator": {
       "running": "Running",
       "on_duty": "On duty",
@@ -4176,7 +4186,22 @@
       "waitingAdmin": "Waiting for an admin of the project.",
       "answeredBy": "{state, select, accepted {Accepted by} rejected {Rejected by} deferred {Deferred by} other {Answered by}} <who>{login}</who> <ago></ago>",
       "deferredUntil": "It opens again <at></at>.",
-      "acceptedNext": "An accepted proposal becomes a plan of the Curator in a later step of the night shift.",
+      "acceptedNext": "{tier, select, 0 {Accepting a tier 0 proposal makes its draft a plan of the Curator, which the night shift builds on a branch of its own. Once CI and the Judge pass, the hub may merge it if the charter allows.} 3 {Tier 3 is never built: its owner makes the change.} other {Accepting a tier 1 or 2 proposal makes its draft a plan of the Curator, which the night shift builds on a branch of its own. Its pull request stays open until a person merges it.}}",
+      "change": {
+        "title": "Change #{id}",
+        "plan": "Plan",
+        "noPlan": "None: the draft could not become a plan",
+        "repo": "Repo",
+        "branch": "Branch",
+        "copyBranch": "Copy the branch {branch}",
+        "openBranch": "Branch {branch} on its forge (opens in a new tab)",
+        "pull": "Pull request",
+        "pullLabel": "Pull request #{number} (opens in a new tab)",
+        "pullPlain": "Open the pull request",
+        "newTab": "(opens in a new tab)",
+        "moved": "Last moved",
+        "reasonTitle": "{state, select, planned {Why it waits} open {Why it stays open} closed {Why it closed} other {Why it waits}}"
+      },
       "dropped": "Dropped as a repeat of <link>proposal #{id}</link>.",
       "droppedPlain": "Dropped as a repeat of a rejected proposal.",
       "inbox": "In the owner's Inbox since <ago></ago>.",
@@ -4302,7 +4327,7 @@
         "reject": "Reject proposal #{id}?"
       },
       "text": {
-        "accept": "The hub records your yes. A later step of the night shift turns an accepted proposal into a plan of the Curator.",
+        "accept": "{tier, select, 0 {The hub records your yes and makes its draft a plan of the Curator at once. The night shift builds it on a branch of its own; once CI and the Judge pass, the hub may merge it if the charter allows.} 3 {The hub records your yes and builds nothing: a tier 3 change is yours to make.} other {The hub records your yes and makes its draft a plan of the Curator at once. The night shift builds it on a branch of its own and leaves the pull request open for a person to merge.}}",
         "defer": "It leaves the list of what waits and opens again after the days you give.",
         "reject": "A proposal like it is dropped for 30 days, unless its evidence doubles."
       },
@@ -4333,7 +4358,8 @@
         "reject": "Proposal #{id} rejected"
       },
       "doneText": {
-        "accept": "It becomes a plan in a later step of the night shift.",
+        "accept": "{tier, select, 0 {Its draft is a plan of the Curator now. The night shift builds it, and the hub may merge it.} 3 {Nothing is built for tier 3: the change is yours to make.} other {Its draft is a plan of the Curator now. The night shift builds it, and its pull request waits for a person to merge it.}}",
+        "notPlanned": "Its draft could not become a plan of the Curator: the proposal's page says why.",
         "defer": "It opens again in {days, plural, one {# day} other {# days}}.",
         "reject": "A proposal like it is dropped for 30 days."
       },

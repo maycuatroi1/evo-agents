@@ -33,7 +33,9 @@ The Insights specs need runs that ended on earlier days: POST /runs/backdate {ru
 The Curator specs need the night's review run without waiting for the hub's worker: POST /curator/collect runs one pass
 of the job curator.collect (``evo_agents.hub.server.collect.collect``) on the stack's database, as that worker does
 every minute: in each charter's window it counts the night's figures and queues the night's review run. POST
-/curator/brief {project, at} sends that project's morning brief as the job curator.brief would at ``at``.
+/curator/brief {project, at} sends that project's morning brief as the job curator.brief would at ``at``. POST
+/curator/fire {project} runs one pass of the night shift (``hub.fire_schedules``) for that project's schedule alone,
+on a hub without the Curator's App as this one is, so a planned change the night shift passes over keeps why.
 
 The admin specs need tokens nobody used lately: POST /tokens/idle {token_id, days} makes a token look last used
 ``days`` days ago, its expiry TOKEN_TTL after that, as the hub would have left it; the token must not be used again,
@@ -321,6 +323,34 @@ def brief_curator(dsn: str, body: dict) -> dict:
     return asyncio.run(once())
 
 
+def fire_curator(dsn: str, body: dict) -> dict:
+    """One pass of the night shift for one project's schedule, as ``hub.fire_schedules`` runs it every minute at the
+    database's now (``evo_agents.hub.server.curator._fire``): the night's review run, a judge run or a Builder, each
+    when it may. The stack has no Curator App, so a planned change on GitHub waits for its ruleset and keeps that as
+    its reason. Other specs' projects are left alone, so their runs and changes stay as they expect."""
+    import asyncio
+
+    from sqlalchemy.ext.asyncio import create_async_engine
+    from sqlalchemy.pool import NullPool
+
+    from evo_agents.hub.server.curator import _due, _fire
+
+    async def once() -> dict:
+        engine = create_async_engine(dsn.replace("postgresql://", "postgresql+psycopg://", 1), poolclass=NullPool)
+        try:
+            async with engine.begin() as conn:
+                rows = [row for row in (await conn.execute(_due(None))).all() if row.project == body["project"]]
+            outcomes = []
+            for row in rows:
+                async with engine.begin() as conn:
+                    outcomes.append(await _fire(conn, row, curator_app=False))
+            return {"outcomes": outcomes}
+        finally:
+            await engine.dispose()
+
+    return asyncio.run(once())
+
+
 INPUT, OUTPUT, RESIZE = 0, 1, 2  # evo_agents.hub.terminal: the frame types
 CONNECT_FOR = 30.0  # seconds the fake worker keeps trying while no browser waits
 
@@ -514,6 +544,11 @@ def control_server(
             elif self.path == "/curator/brief":
                 try:
                     self._reply(200, brief_curator(dsn, body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
+            elif self.path == "/curator/fire":
+                try:
+                    self._reply(200, fire_curator(dsn, body))
                 except Exception as exc:  # the test shows what failed
                     self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/curator/collect":

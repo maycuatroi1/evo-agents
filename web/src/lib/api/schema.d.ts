@@ -7891,6 +7891,8 @@ export interface components {
              * @description the owner's note with the answer
              */
             note: string | null;
+            /** @description what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it waits; null before, for tier 3, and when the caller may not read its plan */
+            change?: components["schemas"]["Change"] | null;
         };
         /** ProposalAnswer */
         ProposalAnswer: {

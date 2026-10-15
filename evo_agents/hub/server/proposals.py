@@ -29,8 +29,9 @@ alone. A review run that fails sends its owner the notice run_failed (``review_e
 Readers of the project read the findings and proposals whose label their grant reaches through the sink X-Evo-Sink
 names (else the project's hub sink): GET /v1/projects/{p}/curator/findings and .../findings/{id},
 .../curator/proposals (filtered by state, tier, lens and run, newest first, with what each value of those filters
-would list) and .../proposals/{id}, and the night's
-figures with GET .../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
+would list) and .../proposals/{id}, whose ``change`` is the change accepting it made (``changes.Change``: its plan,
+branch, pull request and why it waits) when the caller may read that change's plan, and the night's figures with GET
+.../curator/figures (the latest night, or ``?night``). POST .../curator/proposals/{id}/answer is for
 the project's admins: accept, reject, or defer (for ``defer_days``, DEFAULT_DEFER_DAYS by default), with a note, while
 the proposal is open or deferred (409 otherwise); it reads the proposal's notifications and is audited as
 curator.proposal. Accepting a proposal of tier 0 to 2 (``judge.PLANNED_TIERS``) also makes its draft the Curator's
@@ -66,6 +67,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.changes import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import notify, run_link
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -235,6 +237,11 @@ class Proposal(ProposalSummary):
     evidence: list[dict] = Field(description="its own evidence, as the hub resolved it")
     plan: dict = Field(description="the draft plan")
     note: str | None = Field(description="the owner's note with the answer")
+    change: Change | None = Field(
+        None,
+        description="what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it "
+        "waits; null before, for tier 3, and when the caller may not read its plan",
+    )
 
 
 class ProposalCounts(BaseModel):
@@ -589,10 +596,10 @@ def _proposals():
     ).select_from(p.outerjoin(u, u.c.id == p.c.answered_by))
 
 
-def _proposal(project: str, row) -> Proposal:
+def _proposal(project: str, row, change: Change | None = None) -> Proposal:
     data = {key: value for key, value in row._mapping.items() if key != "label"}
     data["finding_ids"] = list(data["finding_ids"] or [])
-    return Proposal(project=project, **data)
+    return Proposal(project=project, change=change, **data)
 
 
 def _summary(project: str, row) -> ProposalSummary:
@@ -857,6 +864,17 @@ async def readable_proposal(conn, access: ProjectAccess, proposal_id: int, sink:
     return row
 
 
+async def _change_of(conn, access: ProjectAccess, proposal_id: int, sink: str | None) -> Change | None:
+    """The change accepting proposal ``proposal_id`` made, when the caller may read its plan through ``sink`` (as GET
+    .../curator/changes shows it); None without one."""
+    c = tables.curator_changes
+    query = select(c.c.id, c.c.plan_id).where(c.c.project_id == access.project_id, c.c.proposal_id == proposal_id)
+    found = (await conn.execute(query)).one_or_none()
+    if found is None or (found.plan_id is not None and found.plan_id not in await visible_plans(conn, access, sink)):
+        return None
+    return await change_view(conn, found.id)
+
+
 @router.get("/{project}/curator/proposals/{proposal_id}", response_model=Proposal, responses=READ_REFUSALS)
 async def show_proposal(
     request: Request,
@@ -869,7 +887,8 @@ async def show_proposal(
         access = await project_access(conn, user, project)
         _reader(access)
         row = await readable_proposal(conn, access, proposal_id, sink)
-    return _proposal(access.name, row)
+        change = await _change_of(conn, access, proposal_id, sink)
+    return _proposal(access.name, row, change)
 
 
 async def answer_proposal_as(
@@ -932,7 +951,7 @@ async def answer_proposal_as(
         project_id=access.project_id,
     )
     row = await readable_proposal(conn, access, proposal_id, None)
-    return _proposal(access.name, row)
+    return _proposal(access.name, row, await _change_of(conn, access, proposal_id, None))
 
 
 @router.post("/{project}/curator/proposals/{proposal_id}/answer", response_model=Proposal, responses=REFUSALS)

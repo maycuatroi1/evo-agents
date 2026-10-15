@@ -56,7 +56,8 @@ export function AnswerButtons({
 }
 
 /**
- * The confirm step of an answer: what accepting, deferring or rejecting does, an optional note of one line for the
+ * The confirm step of an answer: what accepting, deferring or rejecting does (accepting, as the proposal's tier says:
+ * tiers 0 to 2 become the Curator's plan at once, tier 3 is never built), an optional note of one line for the
  * record, and for a deferral its days (1 to 90, 7 at first). Cmd or Ctrl with Enter sends from anywhere in it. The
  * dialog stays open while the answer goes out and shows a refusal in place; once the hub answers, a toast says so
  * and the dialog closes. After a 409 (answered meanwhile) the proposal shown behind it is the one the hub holds.
@@ -69,7 +70,7 @@ export function AnswerDialog({
   linkBack = false,
 }: {
   project: string;
-  proposal: Pick<Proposal, "id" | "title">;
+  proposal: Pick<Proposal, "id" | "title" | "tier">;
   action: ProposalAction | null;
   onClose: () => void;
   /** Whether the toast links to the proposal's page (from the Inbox), or not (on that page). */
@@ -103,11 +104,13 @@ export function AnswerDialog({
     if (problem || mutation.isPending) return;
     setError(null);
     mutation.mutate(answerBody(shown, note, days), {
-      onSuccess: () => {
+      onSuccess: (answered) => {
+        // A draft that could not become a plan leaves its change open without one: the toast says so, not that it was made.
+        const unplanned = shown === "accept" && answered.change != null && answered.change.plan_id === null;
         notify({
           tone: "success",
           text: t(`done.${shown}`, { id: proposal.id }),
-          description: t(`doneText.${shown}`, { days: Number(days) }),
+          description: unplanned ? t("doneText.notPlanned") : t(`doneText.${shown}`, { days: Number(days), tier: String(proposal.tier) }),
           link: linkBack ? { label: t("openProposal"), href: proposalHref(project, proposal.id) } : null,
         });
         setNote("");
@@ -135,7 +138,7 @@ export function AnswerDialog({
         >
           <DialogHeader>
             <DialogTitle className="pr-8 text-balance break-words">{t(`title.${shown}`, { id: proposal.id })}</DialogTitle>
-            <DialogDescription className="text-pretty">{t(`text.${shown}`)}</DialogDescription>
+            <DialogDescription className="text-pretty">{t(`text.${shown}`, { tier: String(proposal.tier) })}</DialogDescription>
           </DialogHeader>
           <p className="rounded-sm bg-surface-sunken px-3 py-2 text-[13px] text-pretty text-foreground [overflow-wrap:anywhere]">{proposal.title}</p>
           {shown === "defer" ? (

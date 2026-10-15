@@ -255,6 +255,51 @@ def test_curator_plan_route_on_the_command_line(world, tmp_path, monkeypatch, ca
         assert refused.code == 1 and "has change #1 already, planned" in refused.err
 
 
+# a3: a proposal carries the change accepting it made, which its page shows
+
+
+def test_curator_plan_a_proposal_carries_the_change_accepting_it_made(world):  # noqa: F811
+    deferred, top, wide, made = answered_all(
+        world, (FEATURE, "defer"), (CI_CHANGE, "accept"), (TWO_REPOS, "accept"), (FEATURE, "accept")
+    )
+    listed = {item["proposal_id"]: item for item in changes(world)}
+    assert made["change"] == listed[made["id"]]  # the answer carries it at once
+    assert (made["change"]["state"], made["change"]["tier"]) == ("planned", 2)
+    assert made["change"]["plan_id"].startswith(f"curator-{made['id']}-")
+    for who in ("owner", "other"):  # an admin and a writer read it alike
+        shown = world.client.get(path("proposals", str(made["id"])), headers=world.headers[who])
+        assert shown.status_code == 200 and shown.json()["change"] == listed[made["id"]], shown.text
+    left = proposal_of(world, wide["id"])["change"]
+    assert (left["state"], left["plan_id"], left["branch"]) == ("open", None, None)
+    assert "works in one repo, and the proposal names evo-agents, lumen-identity" in left["reason"]
+    assert proposal_of(world, deferred["id"])["change"] is None  # not accepted
+    assert top["change"] is None and proposal_of(world, top["id"])["change"] is None  # tier 3 builds nothing
+
+    fire(world.client, NIGHT)  # the night shift passes over it: the repo's ruleset is not checked yet
+    waiting = proposal_of(world, made["id"])["change"]
+    assert waiting["state"] == "planned"
+    assert waiting["reason"].startswith("the hub has not checked the ruleset of repo evo-agents yet"), waiting
+
+
+def test_curator_plan_proposal_show_prints_its_change(world, tmp_path, monkeypatch, capsys):  # noqa: F811
+    made, wide = answered_all(world, (FEATURE, "accept"), (TWO_REPOS, "accept"))
+    with serving(create_app(world.app.state.config)) as url:
+        token = world.headers["owner"]["Authorization"].removeprefix("Bearer ")
+        home = write_credentials(tmp_path / "owner", url, "owner", token)
+
+        def curator(*args: str):
+            return cli(monkeypatch, capsys, home, "hub", "curator", "proposal", *args, "--project", PROJECT)
+
+        found = as_json(curator("show", str(made["id"]), "--json"))
+        assert_json_keys("hub curator proposal show", found)
+        assert set(found["change"]) == set(CHANGE_KEYS)
+        printed = ok(curator("show", str(made["id"]))).out
+        change = found["change"]
+        assert f"#{change['id']}, planned: plan {change['plan_id']} on {change['branch']} of evo-agents" in printed
+        printed = ok(curator("show", str(wide["id"]))).out
+        assert "open: no plan" in printed and "works in one repo" in printed
+
+
 def test_curator_plan_route_is_in_the_openapi_document(world):  # noqa: F811
     with TestClient(create_app(world.app.state.config)) as client:
         spec = client.get("/v1/openapi.json").json()

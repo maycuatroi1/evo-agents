@@ -775,13 +775,16 @@ how many of the project's proposals wait for an answer; `GET /v1/me/overview` sa
 charter (`projects[].curator`). `GET .../curator/nights` lists the latest nights (14 by default, up to 90): the runs
 the night shift queued for each by how they stand, their cost, the night's review run with what it wrote, and whether
 the night's figures were counted. `proposal list` (`GET .../curator/proposals`) answers `counts` with its proposals:
-what each state, tier and lens would list with the other filters applied. Accepting a proposal of tier 0 or 1 also
-makes it a plan of the night shift (The Curator's changes, below).
+what each state, tier and lens would list with the other filters applied. Accepting a proposal of tier 0 to 2 also
+makes it a plan of the night shift (The Curator's changes, below); accepting one of tier 3 records the answer alone.
+`proposal show` (`GET .../curator/proposals/{id}`) answers, as `change`, the change accepting it made, when the caller
+may read that change's plan: its state, plan, branch, pull request and reason; null otherwise.
 
 The web shows the same under each project's Curator (`/p/{project}/curator`): the night now and the nights before,
 the schedule and Pause or Resume, the proposals with their filters, a proposal's evidence (the run's log, the digest's
-entry, the line of code on the forge) and draft plan with Accept, Defer and Reject for the project's admins, and the
-charter with its revisions and, for an admin, its form. Tier 2 proposals in the Inbox open in a sheet of their own
+entry, the line of code on the forge) and draft plan with Accept, Defer and Reject for the project's admins, the
+change accepting it made (its state, the plan as a link, the branch on the forge, the pull request and why it waits or
+stays open), and the charter with its revisions and, for an admin, its form. Tier 2 proposals in the Inbox open in a sheet of their own
 (`/inbox?proposal=ID`), and Home says where each project's Curator stands.
 
 **The morning brief.** At the charter's `brief_at`, in its time zone, the job `curator.brief` sends the owner of the
@@ -797,7 +800,7 @@ curator status` names the last one (`last_brief`).
 
 ## The Curator's changes
 
-Accepting a proposal of tier 0 or 1 makes its draft plan the Curator's plan on the hub, in the same transaction, as
+Accepting a proposal of tier 0 to 2 makes its draft plan the Curator's plan on the hub, in the same transaction, as
 the admin who accepted it (schema 0017, `evo_agents/hub/server/proposal_plans.py`, `evo_agents/hub/judge.py`): the plan
 `curator-<proposal>-<slug>`, in the one repo the proposal names, every step pending, on the branch
 `curator/<proposal>-<slug>`, and a change of the Curator that says where it stands. A draft that names several repos,
