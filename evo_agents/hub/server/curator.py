@@ -1329,7 +1329,7 @@ async def gate_of(conn: AsyncConnection, due, *, figures_first: bool = False):
     return "", Gate(night=night, figures=figures, budget=budget, access=access, worker=worker)
 
 
-async def _fire(conn: AsyncConnection, due) -> str:
+async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary."""
     from evo_agents.hub.server.changes import queue_builder, queue_judge  # it queues runs through this module
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
@@ -1341,7 +1341,7 @@ async def _fire(conn: AsyncConnection, due) -> str:
         return "review"
     if await queue_judge(conn, due, gate) is not None:
         return "judge"
-    if await queue_builder(conn, due, gate) is not None:
+    if await queue_builder(conn, due, gate, curator_app=curator_app) is not None:
         return "builder"
     night, worker, budget = gate.night, gate.worker, gate.budget
     plan, why = await _next_plan(conn, gate.access, due.body, worker)
@@ -1359,16 +1359,16 @@ async def _fire(conn: AsyncConnection, due) -> str:
     return "queued"
 
 
-async def fire_schedules(engine: AsyncEngine, *, now: datetime | None = None) -> dict:
-    """One pass of ``hub.fire_schedules`` over every night_shift schedule, each in a transaction of its own, at
-    ``now`` (the database's now when None); how many schedules ended in each outcome."""
+async def fire_schedules(engine: AsyncEngine, *, curator_app: bool, now: datetime | None = None) -> dict:
+    """One pass of ``hub.fire_schedules`` over each night_shift schedule, in a transaction of its own, at ``now`` (the
+    database's now when None), ``curator_app`` whether this hub has the Curator's App; how many ended each outcome."""
     async with engine.begin() as conn:
         due = (await conn.execute(_due(now))).all()
     outcomes: Counter = Counter()
     for row in due:
         try:
             async with engine.begin() as conn:
-                outcomes[await _fire(conn, row)] += 1
+                outcomes[await _fire(conn, row, curator_app=curator_app)] += 1
         except Exception:  # one schedule failing leaves the others their turn
             log.exception("a schedule failed", extra={"project": row.project, "schedule_id": row.id})
             outcomes["failed"] += 1

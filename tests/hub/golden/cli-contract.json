@@ -1682,7 +1682,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -1759,7 +1760,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -1870,6 +1872,63 @@
         "schema": "ProposalList"
       }
     },
+    "hub curator proposal plan": {
+      "positionals": [
+        {
+          "name": "id",
+          "metavar": "ID",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "project",
+          "proposal_id",
+          "plan_id",
+          "repo",
+          "branch",
+          "forge",
+          "tier",
+          "state",
+          "reason",
+          "builder_run_id",
+          "judge_run_id",
+          "pr_number",
+          "pr_url",
+          "base_branch",
+          "head_sha",
+          "passed",
+          "verdict",
+          "merged_at",
+          "merge_sha",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "Change"
+      }
+    },
     "hub curator proposal reject": {
       "positionals": [
         {
@@ -1932,7 +1991,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -1991,7 +2051,8 @@
           "finding_ids",
           "evidence",
           "plan",
-          "note"
+          "note",
+          "change"
         ],
         "schema": "Proposal"
       }
@@ -6133,7 +6194,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.16.0"
+      "version": "0.16.1"
     },
     "paths": {
       "/v1/health": {
@@ -18974,6 +19035,101 @@
           }
         }
       },
+      "/v1/projects/{project}/curator/proposals/{proposal_id}/plan": {
+        "post": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Plan Proposal",
+          "description": "Make an accepted proposal of tier 0 to 2 that has no change yet the Curator's plan, as accepting it does now;\nthe project's admins alone may. The change: planned, or left open with why its draft cannot become a plan.",
+          "operationId": "plan_proposal_v1_projects__project__curator_proposals__proposal_id__plan_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Change"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/judge": {
         "get": {
           "tags": [
@@ -25964,7 +26120,7 @@
             "updated_at"
           ],
           "title": "Change",
-          "description": "What an accepted proposal of tier 0 or 1 became, and where it stands."
+          "description": "What an accepted proposal of tier 0 to 2 became, and where it stands."
         },
         "ChangeList": {
           "properties": {
@@ -34203,6 +34359,17 @@
               ],
               "title": "Note",
               "description": "the owner's note with the answer"
+            },
+            "change": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/Change"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what accepting it made, tier 0 to 2: the Curator's plan, its branch, its pull request and why it waits; null before, for tier 3, and when the caller may not read its plan"
             }
           },
           "type": "object",

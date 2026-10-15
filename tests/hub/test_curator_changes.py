@@ -1,8 +1,9 @@
-"""The Curator's changes on the hub (``evo_agents.hub.server.changes``): an accepted proposal of tier 0 or 1 becomes the
+"""The Curator's changes on the hub (``evo_agents.hub.server.changes``): an accepted proposal of tier 0 to 2 becomes the
 Curator's plan on a branch of its own, the night shift builds it with a token of the Curator's App, the hub opens its
 pull request and queues its Judge, the Judge reads the project's hidden checks alone and posts its verdict, and the hub
 merges a tier 0 change with the workers' App, at the head the Judge passed, only when everything allows it; and schema
-0017. GitHub is the fake of ``tests.hub.fake_github``, with the workers' App and the Curator's App installed.
+0017. GitHub is the fake of ``tests.hub.fake_github``, with the workers' App and the Curator's App installed. Tiers 2
+and 3, and POST .../proposals/{id}/plan, are checked in ``tests.hub.test_proposal_plans``.
 
 The checks step 6 of the curator-agent plan names on the hub: a8 (the plan, the branch, the pull request, the judge run
 that reads no transcript, its runtime by the project's policy), a9 (the merge at the head the Judge passed, with CI
@@ -14,6 +15,7 @@ and fails the Judge). And a12: a member's own plan run still gets the workers' A
 from __future__ import annotations
 
 import json
+from contextlib import contextmanager
 from functools import partial
 from types import SimpleNamespace
 
@@ -26,7 +28,7 @@ if not pg.DSN:
 
 import psycopg
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select, update
+from sqlalchemy import delete, func, select, update
 
 from evo_agents.hub import judge, runs, tables
 from evo_agents.hub.curator_cli import CHANGE_KEYS
@@ -279,11 +281,6 @@ def test_curator_plan_an_accepted_tier_0_proposal_becomes_a_plan_on_a_branch_of_
     assert row[0] == f"{PROJECT}/{PLAN_ID} proposal:1 change:1 branch={BRANCH}"
 
 
-def test_curator_plan_a_tier_2_proposal_accepted_records_the_answer_alone(world):
-    accepted(world, kind="feature", paths=[{"repo": "evo-agents", "path": "evo_agents/hub/new.py"}])
-    assert changes(world) == []
-
-
 def test_curator_plan_a_draft_that_cannot_become_a_plan_is_left_open_with_why(world):
     two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-identity", "path": "tests/test_x.py"}]
     accepted(world, paths=two)
@@ -383,6 +380,148 @@ def test_protection_a_builder_waits_for_a_checked_ruleset(world):
     assert fire(world.client, NIGHT)["builder"] == 1
 
 
+def checks_of(world) -> dict[str, dict]:
+    """The last check of each repo of the project, by repo."""
+    response = world.client.get(path("protection"), headers=world.headers["owner"])
+    assert response.status_code == 200, response.text
+    return {repo["repo"]: repo for repo in response.json()["repos"]}
+
+
+def checked_ago(world, minutes: int) -> None:
+    rc = tables.curator_repo_checks
+    sql(world.db, update(rc).values(checked_at=func.now() - func.make_interval(0, 0, 0, 0, 0, minutes)))
+
+
+def rules_read(github) -> list:
+    """The hub's reads of the rules of a default branch on the fake GitHub: one each check of a ruleset."""
+    return [r for r in github.requests if "/rules/branches/" in r.path]
+
+
+def test_protection_the_job_checks_the_ruleset_a_planned_change_waits_for_at_its_next_pass(world):
+    accepted(world)
+    assert checks_of(world)["evo-agents"]["protected"] is None  # nobody checked it
+    assert moved_on(world) == {"ruleset_checked": 1}
+    found = checks_of(world)["evo-agents"]
+    assert found["protected"] is True and found["checked_by"] is None  # the hub's own check
+    (asked,) = rules_read(world.github)
+    app, permissions = token_permissions(world.github, asked.headers["authorization"].partition(" ")[2])
+    assert app == "curator" and permissions == {"metadata": "read"}
+    assert moved_on(world) == {}  # a check that passed: again after RECHECK_HOURS alone
+    assert len(rules_read(world.github)) == 1
+    assert fire(world.client, NIGHT)["builder"] == 1
+    assert one_change(world)["reason"] is None
+    audit = tables.audit
+    assert sql(world.db, select(func.count()).select_from(audit).where(audit.c.action == "curator.protection")) == [
+        (0,)
+    ]
+
+
+def test_protection_a_ruleset_that_did_not_pass_is_checked_again_hourly_while_a_change_waits(world):
+    repo = world.github.repos[(MINE.lower(), "evo-agents")]
+    repo.rulesets = [{**RULESET, "bypass": {"workers", "curator"}}]
+    accepted(world)
+    assert moved_on(world) == {"ruleset_checked": 1}
+    assert checks_of(world)["evo-agents"]["protected"] is False
+    assert fire(world.client, NIGHT).get("builder") is None
+    reason = one_change(world)["reason"]
+    assert reason.startswith(
+        f"the ruleset of repo evo-agents ({MINE}/evo-agents on GitHub) does not keep the Curator's App off its default "
+        f"branch: no active ruleset of main on {MINE}/evo-agents says the Curator's App may never bypass it. The "
+        'repo\'s owner has to set it up as docs/curator.md, under "Two GitHub Apps and the ruleset" says'
+    ), reason
+    checked_ago(world, 59)
+    assert moved_on(world) == {}  # at most once an hour
+    repo.rulesets = [dict(RULESET)]  # the owner fixed the ruleset
+    checked_ago(world, 61)
+    assert moved_on(world) == {"ruleset_checked": 1}
+    assert checks_of(world)["evo-agents"]["protected"] is True
+    assert fire(world.client, NIGHT)["builder"] == 1
+    assert one_change(world)["reason"] is None
+    asked = {r.method for r in world.github.requests if "/rulesets" in r.path or "/rules/" in r.path}
+    assert asked == {"GET"} and repo.rulesets == [dict(RULESET)]  # the hub never writes a ruleset
+
+
+def test_protection_a_repo_no_change_waits_for_keeps_its_daily_check(world):
+    world.github.repos[(MINE.lower(), "evo-agents")].rulesets = [{**RULESET, "bypass": {"workers", "curator"}}]
+    assert protect(world).json()["protected"] is False
+    checked_ago(world, 120)
+    assert moved_on(world) == {}  # no change waits for it: every RECHECK_HOURS, as before
+    checked_ago(world, 25 * 60)
+    assert moved_on(world) == {"rechecked": 1}
+    assert checks_of(world)["evo-agents"]["checked_by"] is None
+
+
+def test_protection_without_the_curators_app_the_hub_asks_github_nothing_and_the_change_says_so(
+    hub_db,
+    tmp_path,
+    github,
+    app_key,  # noqa: F811
+):
+    with workers_app_alone(hub_db, tmp_path, github, app_key) as world:
+        accepted(world)
+        assert moved_on(world) == {}
+        assert rules_read(github) == [] and github.calls("/app/installations/1001/access_tokens") == []
+        assert fire(world.client, NIGHT).get("builder") is None
+        reason = one_change(world)["reason"]
+        assert reason.startswith(
+            "a Builder runs on repo evo-agents only once the hub has checked that its ruleset keeps the Curator's App "
+            "off its default branch, and this hub has no Curator App to check it with (EVO_HUB_CURATOR_APP_ID and "
+            "EVO_HUB_CURATOR_APP_PRIVATE_KEY are not both set), so it asks GitHub nothing"
+        ), reason
+
+
+def test_curator_plan_the_night_shift_keeps_why_it_passes_over_a_planned_change(world):
+    accepted(world)
+    assert fire(world.client, NIGHT).get("builder") is None
+    first = one_change(world)
+    assert first["reason"] == (
+        "the hub has not checked the ruleset of repo evo-agents yet: the job curator.changes checks it with the "
+        "Curator's App at its next pass"
+    )
+    assert fire(world.client, NIGHT).get("builder") is None
+    assert one_change(world)["updated_at"] == first["updated_at"]  # the same reason is not written again
+    assert protect(world).json()["protected"] is True
+    assert fire(world.client, NIGHT)["builder"] == 1
+    assert one_change(world)["reason"] is None  # its Builder is queued
+    assert queue_now(world, "builder") is None
+    assert one_change(world)["reason"] == (
+        f"a run of its plan {PLAN_ID} is still active: the night shift builds it once that run ends"
+    )
+    spec = claim(world.client, world.worker)
+    moved(world.client, world.worker, spec["id"], "running", "failed", error="stopped for the test")
+    assert one_change(world)["reason"].startswith(f"Builder run #{spec['id']} ended failed")
+
+    owner = world.headers["owner"]
+    plan = world.client.get(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", headers=owner).json()
+    patch = {"section": "steps", "step": "1", "updates": {"status": "blocked"}, "if_revision": plan["revision"]}
+    assert world.client.patch(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json=patch, headers=owner).status_code == 200
+    assert queue_now(world, "builder") is None
+    assert one_change(world)["reason"] == (
+        f"its plan {PLAN_ID} has no step ready to run (step 1: its status is blocked, not pending); its last Builder "
+        f"was run #{spec['id']}"
+    )
+    plan = world.client.get(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", headers=owner).json()
+    patch = {"section": "steps", "step": "1", "updates": {"status": "pending"}, "if_revision": plan["revision"]}
+    assert world.client.patch(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", json=patch, headers=owner).status_code == 200
+
+    taking(world.client, {**world.worker, "checkouts": {}})  # the worker on duty lost its checkouts
+    assert queue_now(world, "builder") is None
+    assert one_change(world)["reason"].startswith(
+        f"worker mac-mini on duty cannot build it: it has no checkout of {PROJECT}/evo-agents"
+    )
+
+
+def test_curator_plan_a_planned_change_whose_plan_left_the_hub_says_so(world):
+    accepted(world)
+    assert protect(world).json()["protected"] is True
+    sql(world.db, delete(tables.plans).where(tables.plans.c.plan_id == PLAN_ID))
+    assert fire(world.client, NIGHT).get("builder") is None
+    assert changes(world) == []  # GET .../changes leaves out a change whose plan the caller cannot read
+    assert sql(world.db, select(tables.curator_changes.c.reason)) == [
+        (f"its plan {PLAN_ID} is not on the hub, or owner, the night shift's owner, may not read it",)
+    ]
+
+
 def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the_workers(world):
     accepted(world)
     assert protect(world).status_code == 200
@@ -418,15 +557,22 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
     assert app == "workers" and permissions == {"contents": "write", "metadata": "read"}
 
 
-def test_curator_plan_without_the_curators_app_a_builder_gets_no_github_token(hub_db, tmp_path, github, app_key):  # noqa: F811
-    config = credentials_config(hub_db, tmp_path, github, app_key)  # the workers' App alone
+@contextmanager
+def workers_app_alone(hub_db, tmp_path, github, app_key):  # noqa: F811
+    """The world of ``world`` on a hub with the workers' App alone, installed on evo-agents: no Curator App."""
+    config = credentials_config(hub_db, tmp_path, github, app_key)
     with TestClient(create_app(config), base_url="https://hub.test") as client:
         headers = credential_members(client, github)
         grant(client, headers, "owner", "admin")
         worker = taking(client, credential_worker(client, headers["owner"], "mac-mini"))
         written(client, headers["owner"], curator_charter())
         install(github, "evo-agents")
-        world = SimpleNamespace(client=client, headers=headers, worker=worker, github=github, db=hub_db, app=client.app)
+        yield SimpleNamespace(client=client, headers=headers, worker=worker, github=github, db=hub_db, app=client.app)
+
+
+def test_curator_plan_without_the_curators_app_a_builder_gets_no_github_token(hub_db, tmp_path, github, app_key):  # noqa: F811
+    with workers_app_alone(hub_db, tmp_path, github, app_key) as world:
+        client, worker = world.client, world.worker
         accepted(world)
         assert protect(world).status_code == 503  # nothing to check rulesets with
         rc = tables.curator_repo_checks
@@ -464,6 +610,15 @@ def test_curator_plan_a_gitlab_builder_gets_the_charters_git_secret_and_env_secr
     accepted(world, paths=[{"repo": "lumen-kb-docs", "path": "tests/test_kb.py"}], plan=plan)
     assert one_change(world)["forge"] == "gitlab"
     assert fire(world.client, NIGHT).get("builder") is None  # the charter names no git secret
+    assert one_change(world)["reason"] == (
+        "repo lumen-kb-docs is on GitLab, where a Builder pushes with the owner's git secret the charter names, and the "
+        "charter names none (git_secret)"
+    )
+    written(world.client, owner, curator_charter(git_secret="gitlab-gone"))
+    assert fire(world.client, NIGHT).get("builder") is None
+    assert one_change(world)["reason"].endswith(
+        f"and owner has no live git secret gitlab-gone bound to project {PROJECT}"
+    )
     written(world.client, owner, curator_charter(git_secret="gitlab-dev", env_secrets=["claude-oauth"]))
     assert fire(world.client, NIGHT)["builder"] == 1
     spec = claim(world.client, world.worker)
@@ -533,7 +688,9 @@ def queue_now(world, which: str):
             worker, _ = await _on_duty(conn, due.worker_id, due.project_id)
             budget = {"max_usd": 0.5, "max_turns": 40, "max_seconds": 1800}
             gate = Gate(night=THE_NIGHT, figures=None, budget=budget, access=access, worker=worker)
-            return await getattr(change_routes, f"queue_{which}")(conn, due, gate)
+            if which == "builder":
+                return await change_routes.queue_builder(conn, due, gate, curator_app=True)
+            return await change_routes.queue_judge(conn, due, gate)
 
     return world.client.portal.call(go)
 
@@ -883,8 +1040,45 @@ def test_merge_the_morning_brief_lists_the_curators_pull_requests_waiting(world)
     assert listed[0]["title"] == "pull request #1 of evo-agents (tier 0, judged)"
 
 
+def test_merge_the_morning_brief_names_the_changes_still_planned_with_why_they_wait(world, monkeypatch):
+    from datetime import date, timedelta
+
+    from evo_agents.hub.server import brief
+    from tests.hub.test_brief import BRIEF, body_of, briefed, briefs_of
+
+    accepted(world)
+    assert fire(world.client, NIGHT).get("builder") is None  # its repo's ruleset not checked yet
+    reason = one_change(world)["reason"]
+    assert briefed(world.client, BRIEF) == {"brief": 1}
+    assert body_of(world.db)["planned_changes"] == {
+        "total": 1,
+        "listed": [
+            {
+                "id": 1,
+                "proposal_id": 1,
+                "plan_id": PLAN_ID,
+                "repo": "evo-agents",
+                "tier": 0,
+                "builder_run_id": None,
+                "reason": reason,
+            }
+        ],
+    }
+    (note,) = briefs_of(world.client, world.headers["owner"])
+    listed = f"- change #1 ({PLAN_ID}, proposal #1, tier 0, evo-agents): {reason}"
+    assert f"\n\nThe Curator's changes waiting to be built: 1.\n\n{listed}\n\n" in note["body"]
+    assert note["details"]["planned_changes"] == 1
+
+    monkeypatch.setattr(brief, "MAX_LISTED", 0)  # it counts every planned change, and names MAX_LISTED of them
+    assert briefed(world.client, BRIEF + timedelta(days=1)) == {"brief": 1}
+    assert body_of(world.db, date(2026, 10, 10))["planned_changes"] == {"total": 1, "listed": []}
+    newest = max(briefs_of(world.client, world.headers["owner"]), key=lambda item: item["id"])
+    assert "The Curator's changes waiting to be built: 1.\n\nDecisions waiting" in newest["body"]
+
+
 def test_curator_plan_changes_and_protection_on_the_command_line(world, tmp_path, monkeypatch, capsys):
     accepted(world)
+    assert fire(world.client, NIGHT).get("builder") is None  # the change says why: its repo's ruleset not checked
     with serving(create_app(world.app.state.config)) as url:
         token = world.headers["owner"]["Authorization"].removeprefix("Bearer ")
         home = write_credentials(tmp_path / "owner", url, "owner", token)
@@ -892,6 +1086,9 @@ def test_curator_plan_changes_and_protection_on_the_command_line(world, tmp_path
         def curator(*args: str):
             return cli(monkeypatch, capsys, home, "hub", "curator", *args, "--project", PROJECT)
 
+        waiting = "the hub has not checked the ruleset of repo evo-agents yet"
+        assert as_json(curator("changes", "--json"))["changes"][0]["reason"].startswith(waiting)
+        assert f"#1: {waiting}" in ok(curator("changes")).out
         checked = as_json(curator("protection", "--check", "evo-agents", "--json"))
         assert_json_keys("hub curator protection", checked, "--check")
         assert checked["protected"] is True

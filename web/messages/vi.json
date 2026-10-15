@@ -261,6 +261,16 @@
       "rejected": "Đã từ chối",
       "dropped": "Đã bỏ"
     },
+    "change": {
+      "planned": "Đã thành plan",
+      "pr_pending": "Đang mở pull request",
+      "judge_pending": "Chờ Judge",
+      "judging": "Judge đang chấm",
+      "judged": "Đã chấm",
+      "merged": "Đã merge",
+      "open": "Để mở",
+      "closed": "Đã đóng"
+    },
     "curator": {
       "running": "Đang chạy",
       "on_duty": "Đang trực",
@@ -4176,7 +4186,22 @@
       "waitingAdmin": "Đang chờ admin của dự án.",
       "answeredBy": "{state, select, accepted {Đã chấp nhận bởi} rejected {Đã từ chối bởi} deferred {Đã hoãn bởi} other {Đã trả lời bởi}} <who>{login}</who> <ago></ago>",
       "deferredUntil": "Mở lại <at></at>.",
-      "acceptedNext": "Đề xuất được chấp nhận sẽ thành plan của Curator ở bước sau của ca đêm.",
+      "acceptedNext": "{tier, select, 0 {Chấp nhận đề xuất tầng 0 thì plan nháp thành plan của Curator, và ca đêm làm nó trên một nhánh riêng. Khi CI và Judge đạt, hub có thể tự merge nếu charter cho phép.} 3 {Tầng 3 không bao giờ được làm tự động: chủ dự án tự làm thay đổi.} other {Chấp nhận đề xuất tầng 1 hoặc 2 thì plan nháp thành plan của Curator, và ca đêm làm nó trên một nhánh riêng. Pull request của nó để mở cho tới khi có người merge.}}",
+      "change": {
+        "title": "Thay đổi #{id}",
+        "plan": "Plan",
+        "noPlan": "Không có: plan nháp không thành plan được",
+        "repo": "Repo",
+        "branch": "Nhánh",
+        "copyBranch": "Sao chép nhánh {branch}",
+        "openBranch": "Nhánh {branch} trên forge (mở trong tab mới)",
+        "pull": "Pull request",
+        "pullLabel": "Pull request #{number} (mở trong tab mới)",
+        "pullPlain": "Mở pull request",
+        "newTab": "(mở trong tab mới)",
+        "moved": "Cập nhật lần cuối",
+        "reasonTitle": "{state, select, planned {Vì sao còn chờ} open {Vì sao để mở} closed {Vì sao đã đóng} other {Vì sao còn chờ}}"
+      },
       "dropped": "Bị bỏ vì lặp lại <link>đề xuất #{id}</link>.",
       "droppedPlain": "Bị bỏ vì lặp lại một đề xuất đã bị từ chối.",
       "inbox": "Nằm trong Inbox của chủ dự án từ <ago></ago>.",
@@ -4302,7 +4327,7 @@
         "reject": "Từ chối đề xuất #{id}?"
       },
       "text": {
-        "accept": "Hub ghi lại câu trả lời của bạn. Bước sau của ca đêm biến đề xuất được chấp nhận thành plan của Curator.",
+        "accept": "{tier, select, 0 {Hub ghi lại câu trả lời của bạn và biến plan nháp thành plan của Curator ngay. Ca đêm làm nó trên một nhánh riêng; khi CI và Judge đạt, hub có thể tự merge nếu charter cho phép.} 3 {Hub ghi lại câu trả lời của bạn và không làm gì thêm: thay đổi tầng 3 do bạn tự làm.} other {Hub ghi lại câu trả lời của bạn và biến plan nháp thành plan của Curator ngay. Ca đêm làm nó trên một nhánh riêng và để pull request mở cho người dùng merge.}}",
         "defer": "Đề xuất rời danh sách chờ và mở lại sau số ngày bạn chọn.",
         "reject": "Đề xuất giống nó sẽ bị bỏ trong 30 ngày, trừ khi bằng chứng tăng gấp đôi."
       },
@@ -4333,7 +4358,8 @@
         "reject": "Đã từ chối đề xuất #{id}"
       },
       "doneText": {
-        "accept": "Đề xuất sẽ thành plan ở bước sau của ca đêm.",
+        "accept": "{tier, select, 0 {Plan nháp đã thành plan của Curator. Ca đêm sẽ làm nó, và hub có thể tự merge.} 3 {Tầng 3 không được làm tự động: bạn tự làm thay đổi.} other {Plan nháp đã thành plan của Curator. Ca đêm sẽ làm nó, và pull request chờ người dùng merge.}}",
+        "notPlanned": "Plan nháp không thành plan của Curator được: trang đề xuất ghi lý do.",
         "defer": "Đề xuất mở lại sau {days} ngày.",
         "reject": "Đề xuất giống nó sẽ bị bỏ trong 30 ngày."
       },

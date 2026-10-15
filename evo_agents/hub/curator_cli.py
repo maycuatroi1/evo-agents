@@ -13,12 +13,16 @@ cancels the runs they queued that are still queued; within a minute nothing of t
 
 ``curator proposal list`` lists the proposals of the project's review runs, newest first, filtered by ``--state``,
 ``--tier`` (each repeats), ``--lens`` and ``--run`` (GET .../curator/proposals); ``curator proposal show ID`` shows one
-with its tier's reasons, its evidence and its draft plan; ``curator proposal accept|reject|defer ID`` answers it, which
-only an admin of the project may (POST .../curator/proposals/{id}/answer), with ``--note`` and, for defer, ``--days``.
-``curator findings`` lists what the review runs found (GET .../curator/findings), and ``curator figures`` prints the
-figures of the latest night, or of ``--night`` (GET .../curator/figures).
+with its tier's reasons, its evidence, its draft plan and the change accepting it made, with why that change waits;
+``curator proposal accept|reject|defer ID`` answers it, which only an admin of the project may (POST
+.../curator/proposals/{id}/answer), with ``--note`` and, for defer, ``--days``.
+Accepting a proposal of tier 0 to 2 makes it the Curator's plan, which the night shift builds; one of tier 3 builds
+nothing. ``curator proposal plan ID`` makes an accepted proposal of tier 0 to 2 that has no change yet the Curator's
+plan, as accepting it does now, which only an admin of the project may (POST .../curator/proposals/{id}/plan); it
+prints the change. ``curator findings`` lists what the review runs found (GET .../curator/findings), and ``curator
+figures`` prints the figures of the latest night, or of ``--night`` (GET .../curator/figures).
 
-``curator changes`` lists what the accepted proposals of tier 0 and 1 became: the Curator's plan, its branch, its pull
+``curator changes`` lists what the accepted proposals of tier 0 to 2 became: the Curator's plan, its branch, its pull
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator protection`` lists the
 project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check REPO`` checks one now
 with the Curator's App, which only an admin of the project may (POST .../curator/protection/{repo}/check): a Builder
@@ -108,6 +112,7 @@ PROPOSAL_KEYS = PROPOSAL_SUMMARY_KEYS + (
     "evidence",
     "plan",
     "note",
+    "change",
 )
 FINDING_KEYS = ("id", "project", "run_id", "lens", "severity", "title", "body", "evidence", "created_at")
 CHANGE_KEYS = (
@@ -390,6 +395,15 @@ def _print_proposal(proposal: dict) -> None:
         lines.append(("deferred", f"until {_when(proposal['deferred_until'])} UTC"))
     if proposal.get("note"):
         lines.append(("note", proposal["note"]))
+    change = proposal.get("change")
+    if change:
+        where = "no plan"
+        if change["plan_id"]:
+            where = f"plan {change['plan_id']} on {change['branch']} of {change['repo']}"
+        pull = f", {change['pr_url']}" if change["pr_url"] else ""
+        lines.append(("change", f"#{change['id']}, {change['state']}: {where}{pull}"))
+        if change["reason"]:
+            lines.append(("reason", change["reason"]))
     width = max(len(label) for label, _ in lines)
     for label, text in lines:
         print(f"  {label:<{width}}  {text}")
@@ -442,6 +456,30 @@ def _answer(action: str):
 cmd_accept = _answer("accept")
 cmd_reject = _answer("reject")
 cmd_defer = _answer("defer")
+
+
+@_client_command
+def cmd_proposal_plan(args) -> int:
+    hub, _ = _signed_in()
+    project = _project(args)
+    change = hub.call("POST", _curator_path(project, "proposals", str(args.id), "plan"))
+    if args.json:
+        _print_json(change)
+        return 0
+    if change["plan_id"]:
+        print(
+            f"Proposal #{change['proposal_id']} of {project} is the Curator's plan {change['plan_id']}, on "
+            f"{change['branch']} of {change['repo']}: change #{change['id']}, {change['state']}; the night shift "
+            "builds it"
+        )
+        return 0
+    print(
+        f"Proposal #{change['proposal_id']} of {project} did not become the Curator's plan: change #{change['id']} is "
+        f"{change['state']}, and nothing of it runs"
+    )
+    if change["reason"]:
+        print(change["reason"])
+    return 0
 
 
 @_client_command
@@ -546,6 +584,52 @@ def cmd_protection(args) -> int:
     return 0
 
 
+def _register_proposal(csub, with_project) -> None:
+    """``curator proposal`` and its commands."""
+    proposal = csub.add_parser(
+        "proposal", help="the proposals of the review runs: list, show, accept, reject, defer, plan"
+    )
+    psub = proposal.add_subparsers(dest="proposal_command", required=True)
+    listed = psub.add_parser("list", help="the proposals, newest first")
+    with_project(listed)
+    listed.add_argument("--state", action="append", choices=PROPOSAL_STATES, help="any of these states; repeat it")
+    listed.add_argument("--tier", action="append", type=int, choices=range(4), help="any of these tiers; repeat it")
+    listed.add_argument("--lens", choices=list(LENSES), help="of this lens")
+    listed.add_argument("--run", type=int, metavar="ID", help="of this review run")
+    listed.add_argument("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200")
+    listed.add_argument("--offset", type=int, default=0, metavar="N", help="the proposals to pass over")
+    json_option(listed, returns_object("proposals", "total", "limit", "offset", "counts", schema="ProposalList"))
+    listed.set_defaults(func=cmd_proposal_list)
+    shown = psub.add_parser("show", help="one proposal: its tier and why, its evidence, its draft plan")
+    shown.add_argument("id", type=int, help="the proposal's id")
+    with_project(shown)
+    json_option(shown, PROPOSAL)
+    shown.set_defaults(func=cmd_proposal_show)
+    helps = {
+        "accept": "accept it: one of tier 0 to 2 becomes the Curator's plan; an admin of the project only",
+        "reject": "reject it: one like it is dropped for 30 days, unless its evidence doubles",
+        "defer": "defer it: it opens again after --days (7 by default)",
+    }
+    for action, func in zip(ANSWERS, (cmd_accept, cmd_reject, cmd_defer), strict=True):
+        answer = psub.add_parser(action, help=helps[action])
+        answer.add_argument("id", type=int, help="the proposal's id")
+        answer.add_argument("--note", help="why, in one line")
+        if action == "defer":
+            answer.add_argument(
+                "--days", type=int, choices=range(DEFER_DAYS[0], DEFER_DAYS[1] + 1), metavar="N", help="1 to 90"
+            )
+        with_project(answer)
+        json_option(answer, PROPOSAL)
+        answer.set_defaults(func=func)
+    planned = psub.add_parser(
+        "plan", help="make an accepted proposal of tier 0 to 2 without a change the Curator's plan; an admin only"
+    )
+    planned.add_argument("id", type=int, help="the proposal's id")
+    with_project(planned)
+    json_option(planned, returns_object(*CHANGE_KEYS, schema="Change"))
+    planned.set_defaults(func=cmd_proposal_plan)
+
+
 def register_curator(hsub) -> None:
     curator = hsub.add_parser(
         "curator", help="the night shift of a project: its charter, status, pause, resume, and its review's proposals"
@@ -590,39 +674,7 @@ def register_curator(hsub) -> None:
     json_option(resume, STATUS)
     resume.set_defaults(func=cmd_resume)
 
-    proposal = csub.add_parser("proposal", help="the proposals of the review runs: list, show, accept, reject, defer")
-    psub = proposal.add_subparsers(dest="proposal_command", required=True)
-    listed = psub.add_parser("list", help="the proposals, newest first")
-    with_project(listed)
-    listed.add_argument("--state", action="append", choices=PROPOSAL_STATES, help="any of these states; repeat it")
-    listed.add_argument("--tier", action="append", type=int, choices=range(4), help="any of these tiers; repeat it")
-    listed.add_argument("--lens", choices=list(LENSES), help="of this lens")
-    listed.add_argument("--run", type=int, metavar="ID", help="of this review run")
-    listed.add_argument("--limit", type=int, default=50, choices=range(1, 201), metavar="N", help="1 to 200")
-    listed.add_argument("--offset", type=int, default=0, metavar="N", help="the proposals to pass over")
-    json_option(listed, returns_object("proposals", "total", "limit", "offset", "counts", schema="ProposalList"))
-    listed.set_defaults(func=cmd_proposal_list)
-    shown = psub.add_parser("show", help="one proposal: its tier and why, its evidence, its draft plan")
-    shown.add_argument("id", type=int, help="the proposal's id")
-    with_project(shown)
-    json_option(shown, PROPOSAL)
-    shown.set_defaults(func=cmd_proposal_show)
-    helps = {
-        "accept": "accept the proposal; an admin of the project only",
-        "reject": "reject it: one like it is dropped for 30 days, unless its evidence doubles",
-        "defer": "defer it: it opens again after --days (7 by default)",
-    }
-    for action, func in zip(ANSWERS, (cmd_accept, cmd_reject, cmd_defer), strict=True):
-        answer = psub.add_parser(action, help=helps[action])
-        answer.add_argument("id", type=int, help="the proposal's id")
-        answer.add_argument("--note", help="why, in one line")
-        if action == "defer":
-            answer.add_argument(
-                "--days", type=int, choices=range(DEFER_DAYS[0], DEFER_DAYS[1] + 1), metavar="N", help="1 to 90"
-            )
-        with_project(answer)
-        json_option(answer, PROPOSAL)
-        answer.set_defaults(func=func)
+    _register_proposal(csub, with_project)
 
     findings = csub.add_parser("findings", help="what the review runs found, newest first")
     with_project(findings)
