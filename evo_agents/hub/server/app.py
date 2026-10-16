@@ -10,10 +10,12 @@ for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
 (``evo_agents.hub.server.terminal``), which check their own credential. ``app.state.sealer`` seals the members' secrets
 (``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
-503. ``app.state.github_app`` is the hub's GitHub App (``evo_agents.hub.server.github_app``), which makes and revokes
-the runs' GitHub tokens; the lifespan opens it, None without EVO_HUB_GITHUB_APP_*, and a private key that does not open
-stops the start. ``app.state.curator_app`` is the Curator's own App, evo-agents-curator, the same way with
-EVO_HUB_CURATOR_APP_*: the runs of the Curator get their tokens from it alone, and the hub checks rulesets with it.
+503. As it starts, the hub turns off an installed plugin that no longer runs on its release and tells the hub admins
+(``evo_agents.hub.server.plugin_store``). ``app.state.github_app`` is the hub's GitHub App
+(``evo_agents.hub.server.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan opens it, None
+without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start. ``app.state.curator_app`` is
+the Curator's own App, evo-agents-curator, the same way with EVO_HUB_CURATOR_APP_*: the runs of the Curator get their
+tokens from it alone, and the hub checks rulesets with it.
 """
 
 from __future__ import annotations
@@ -40,6 +42,7 @@ from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, 
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.security import Authenticate
+from evo_agents.plugins.signing import default_sigstore
 
 log = logging.getLogger(__name__)
 
@@ -130,6 +133,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "blob store not configured: the blob routes answer 503",
                 extra={"missing": config.blob_store_missing()},
             )
+        await _check_plugins(app, config)
         log.info(
             "hub ready",
             extra={
@@ -143,6 +147,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "github_app_missing": config.github_app_missing(),
                 "curator_app_missing": config.curator_app_missing(),
                 "telegram_missing": config.telegram_missing(),
+                "plugin_publishers": [publisher.id for publisher in config.plugin_publishers],
             },
         )
         try:
@@ -176,12 +181,8 @@ def create_app(config: HubConfig) -> FastAPI:
     app.state.mcp = mcp.mount(app, config)  # McpGate runs before Authenticate, which leaves /mcp alone
     app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
-    app.include_router(health.router)
-    app.include_router(auth.router)
-    app.include_router(web_auth.router)
-    app.include_router(tokens.router)
-    app.include_router(admin.router)
-    app.include_router(projects.router)
+    for routes in (health.router, auth.router, web_auth.router, tokens.router, admin.router, projects.router):
+        app.include_router(routes)
     app.include_router(blobs.router)
 
     from evo_agents.hub.server import plans
@@ -277,6 +278,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_members,
         chats,
         credentials,
+        plugins,
         rate_limits,
         run_leases,
         secrets,
@@ -296,10 +298,25 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_events.router,
         chat_events.stream_router,
         chat_agents.worker_router,
+        plugins.router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
+    # The release plugins are checked against (a test starts a hub of another one), and the checker of the Sigstore
+    # signatures of their bundles.
+    app.state.hub_version, app.state.plugin_sigstore = __version__, default_sigstore()
     return app
+
+
+async def _check_plugins(app: FastAPI, config: HubConfig) -> None:
+    """Turn off the installed plugins that do not run on this release (``plugin_store``); a failure is logged and
+    the hub serves on."""
+    from evo_agents.hub.server.plugin_store import disable_incompatible
+
+    try:
+        await disable_incompatible(app.state.engine, config.admins, app.state.hub_version)
+    except Exception:
+        log.exception("cannot check the installed plugins against this release; the hub serves on")
 
 
 # What a Sentry event's request may not carry: the body (a pairing code, a GitHub token) and the query string (the

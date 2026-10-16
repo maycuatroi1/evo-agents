@@ -16,6 +16,7 @@ import {
   Sunrise,
   Target,
   Trash2,
+  Unplug,
   Upload,
   UserPlus,
   Wallet,
@@ -58,6 +59,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   author_waiting: { icon: MessageCircleQuestionMark },
   chat_mention: { icon: AtSign },
   chat_added: { icon: UserPlus },
+  plugin_disabled: { icon: Unplug },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */
