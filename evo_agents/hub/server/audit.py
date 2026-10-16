@@ -91,6 +91,13 @@ CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 CHAT_BUDGET = "chat.budget"  # the creator of a chat changed what its agents' runs may cost a day
+# The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
+# "plugin:<name>@<version>", never a manifest, a bundle or a signature.
+PLUGIN_PUBLISH = "plugin.publish"  # a hub admin published a signed version, which the hub now holds
+PLUGIN_INSTALL = "plugin.install"  # a hub admin installed a version, or installed one again after the hub turned it off
+PLUGIN_UPGRADE = "plugin.upgrade"  # a hub admin moved the installed version to a newer one
+PLUGIN_REMOVE = "plugin.remove"  # a hub admin removed the installed version; the versions stay in the store
+PLUGIN_DISABLE = "plugin.disable"  # the hub turned off an installed version that no longer runs on its release
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

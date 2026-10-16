@@ -1,4 +1,4 @@
-"""Migrations: a fresh database gets the sixty hub tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the sixty-two hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise. Schemas 0009 and 0010 have their checks in
 ``tests.hub.test_run_tables``, 0011 in ``tests.hub.test_sealing``, 0012 in ``tests.hub.test_curator``, 0013 in
@@ -79,6 +79,7 @@ TABLES |= pg.LEDGER_TABLES  # migration 0018
 TABLES |= pg.ACCOUNT_TABLES  # migration 0027
 TABLES |= pg.PROFILE_TABLES  # migration 0030
 TABLES |= pg.CHAT_TABLES  # migration 0031
+TABLES |= pg.PLUGIN_TABLES  # migration 0033
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -153,8 +154,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_tables(hub_db):
-    assert len(TABLES) == 60  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_sixty_two_tables(hub_db):
+    assert len(TABLES) == 62  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -564,6 +565,52 @@ def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_
     assert query(hub_db, select(t.runs.c.id, t.runs.c.kind).order_by(t.runs.c.id)) == [(author, "author")]
     assert query(hub_db, select(t.chat_messages.c.id)) == [(message_id,)]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0032") :]
+
+
+def _plugin_version(plugin_id: int, user_id: int, **extra):
+    """The INSERT of version 1.0.0 of plugin ``plugin_id``, signed with an Ed25519 key."""
+    row = {"plugin_id": plugin_id, "version": "1.0.0", "sha256": "b" * 64, "size": 10, "r2_key": "blobs/sha256/b"}
+    row |= {"publisher": "acme", "tier": "isolated", "manifest": {"id": "sandbox"}, "signature": {"kind": "ed25519"}}
+    row |= {"signature_kind": "ed25519", "signed_by": "ed25519:0123", "published_by": user_id}
+    return insert(hub_tables.plugin_versions).values(row | extra)
+
+
+def test_0033_keeps_the_plugin_store_and_going_back_drops_it_with_the_hubs_plugin_bundles(hub_db):
+    move_to(hub_db, "0032")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        bundle = {"project_id": None, "sha256": "b" * 64, "size": 10, "kind": "plugin-bundle"}
+        with pytest.raises(errors.CheckViolation):  # the hub held only skill bundles itself before 0033
+            conn.execute(insert(t.blobs).values(bundle))
+    move_to(hub_db, "0033")
+    plugins = t.plugins
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.blobs).values(bundle))
+        plugin_id = one(conn, insert(plugins).values(name="sandbox", publisher="acme").returning(plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        installed = {"installed_version": "1.0.0", "installed_by": ids["user"], "installed_at": func.now()}
+        conn.execute(update(plugins).values(installed).where(plugins.c.id == plugin_id))
+        notice = {"user_id": ids["user"], "kind": "notice", "notice_kind": "plugin_disabled", "title": "Off"}
+        conn.execute(insert(t.notifications).values(notice))
+        for bad in (
+            insert(plugins).values(name="Bad_Name", publisher="acme"),
+            update(plugins).values(installed_version="9.9.9").where(plugins.c.id == plugin_id),
+            update(plugins).values(installed_by=None).where(plugins.c.id == plugin_id),
+            update(plugins).values(disabled_reason="old").where(plugins.c.id == plugin_id),
+            _plugin_version(plugin_id, ids["user"], version="2.0.0", tier="trusted"),
+            _plugin_version(plugin_id, ids["user"], version="2.0.0", signature_kind="gpg"),
+            _plugin_version(plugin_id, ids["user"], version="2.0.0", sha256="B" * 64),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+
+    # Going back drops the store, the hub's plugin bundles and the notices that a plugin was turned off.
+    move_to(hub_db, "0032", down=True)
+    assert "plugins" not in tables(hub_db) and "plugin_versions" not in tables(hub_db)
+    assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.project_id.is_(None))) == []
+    assert query(hub_db, select(t.notifications.c.id)) == []
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0033") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

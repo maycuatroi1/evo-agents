@@ -49,6 +49,13 @@ setWebhook and checks on every update (1 to 256 characters of A-Z, a-z, 0-9, _ a
 Without either the channel is off: linking answers 503, the webhook 404, a delivery to Telegram fails at once, and the
 hub runs on. EVO_HUB_TELEGRAM_API_URL is where the Bot API is (https://api.telegram.org), so tests can point the hub
 at a fake one.
+
+Plugins (``evo_agents.plugins``) are optional too. EVO_HUB_PLUGIN_PUBLISHERS lists the publishers whose signed bundles
+the hub accepts, comma-separated ``ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml`` (a GitHub Actions workflow that
+signs keyless with Sigstore) or ``ID=ed25519:KEY`` (a public key, 32 bytes in base64) entries, several for one id when
+it has several workflows or keys (``evo_agents.plugins.signing.parse_publishers``). Unset, the hub trusts nobody and
+refuses every bundle. EVO_HUB_PLUGIN_CORE_PUBLISHERS lists, comma-separated, the ids among them whose plugins may be
+core plugins, with Python in the hub's processes; each must be in EVO_HUB_PLUGIN_PUBLISHERS.
 """
 
 from __future__ import annotations
@@ -64,6 +71,7 @@ from urllib.parse import urlsplit
 
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
+from evo_agents.plugins.signing import PUBLISHER_ID, Publisher, parse_publishers
 
 # The blob store's bound (evo_agents.hub.blobs takes it from here: that module needs boto3, this one only the stdlib).
 DEFAULT_BLOB_CONCURRENCY = 32
@@ -154,6 +162,8 @@ class HubConfig:
     telegram_bot_token: str | None = None  # the hub's bot; never logged, returned or stored
     telegram_webhook_secret: str | None = None  # the secret_token of its webhook; never logged or returned
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
+    plugin_publishers: tuple[Publisher, ...] = ()  # whose signed plugin bundles the hub accepts
+    plugin_core_publishers: frozenset[str] = frozenset()  # the ids among them whose plugins may be core plugins
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -411,6 +421,25 @@ def _telegram(env: Mapping[str, str]) -> dict:
     }
 
 
+def _plugins(env: Mapping[str, str]) -> dict:
+    """The publishers of plugins the hub trusts, and the ids among them whose plugins may be core plugins."""
+    name, core_name = "EVO_HUB_PLUGIN_PUBLISHERS", "EVO_HUB_PLUGIN_CORE_PUBLISHERS"
+    try:
+        publishers = parse_publishers(_text(env, name))
+    except ValueError as exc:
+        raise ConfigError(name, str(exc)) from None
+    core = [part.strip() for part in (_text(env, core_name) or "").split(",") if part.strip()]
+    known = {publisher.id for publisher in publishers}
+    for publisher_id in core:
+        if not PUBLISHER_ID.fullmatch(publisher_id):
+            raise ConfigError(core_name, f"{core_name} lists publisher ids, such as acme, not {publisher_id!r}")
+        if publisher_id not in known:
+            raise ConfigError(
+                core_name, f"{core_name} names {publisher_id}, which {name} does not list: a core publisher signs too"
+            )
+    return {"plugin_publishers": publishers, "plugin_core_publishers": frozenset(core)}
+
+
 def load_log_level(env: Mapping[str, str] | None = None) -> str:
     env = os.environ if env is None else env
     level = (_text(env, "EVO_HUB_LOG_LEVEL") or "INFO").upper()
@@ -488,4 +517,5 @@ def load_config(
         secrets_key=_secrets_key(env),
         **_apps(env),
         **_telegram(env),
+        **_plugins(env),
     )

@@ -1,6 +1,6 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
-migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (profile columns of runs and leases)
-and ``tables_chats`` (chat columns of runs) describe the tables of accounts, agent profiles and group chats.
+migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (with columns of runs and leases),
+``tables_chats`` (with columns of runs) and ``tables_plugins`` describe accounts, profiles, chats and plugins.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -36,9 +36,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
-from evo_agents.hub.tables_accounts import account_tables
+from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles
 from evo_agents.hub.tables_chats import chat_tables
-from evo_agents.hub.tables_profiles import profile_tables
 
 metadata = MetaData()
 
@@ -1280,6 +1279,7 @@ Index(  # a merged change has one outcome
     unique=True,
     postgresql_where=curator_ledger.c.action == "outcome",
 )
-accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0027)
-agent_profiles, agent_profile_versions = profile_tables(metadata, runs, credential_leases)  # agent profiles (0030)
+accounts, account_policies, run_accounts = tables_accounts.account_tables(metadata)  # accounts and their use (0027)
+agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
+plugins, plugin_versions = tables_plugins.plugin_tables(metadata)  # the store of plugins (0033)

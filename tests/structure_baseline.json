@@ -20,7 +20,7 @@
     "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 22, "statements": 51},
     "evo_agents/hub/run_cli.py::_describe": {"complexity": 21, "statements": 58},
     "evo_agents/hub/run_cli.py::register_runs": {"statements": 83},
-    "evo_agents/hub/server/app.py::create_app": {"statements": 110},
+    "evo_agents/hub/server/app.py::create_app": {"statements": 107},
     "evo_agents/hub/server/blobs.py::commit_uploads": {"statements": 58},
     "evo_agents/hub/server/changes.py::_merge": {"complexity": 17, "statements": 77},
     "evo_agents/hub/server/collect.py::_session_figures": {"complexity": 19},

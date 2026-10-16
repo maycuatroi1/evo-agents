@@ -3614,6 +3614,244 @@
         "schema": "evo_agents__hub__server__plans__Written"
       }
     },
+    "hub plugin install": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "publisher",
+          "state",
+          "installed_version",
+          "installed_by",
+          "installed_at",
+          "disabled_reason",
+          "disabled_at",
+          "latest_version",
+          "upgrade_to",
+          "created_at"
+        ],
+        "schema": "Plugin"
+      }
+    },
+    "hub plugin list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "name",
+          "publisher",
+          "state",
+          "installed_version",
+          "installed_by",
+          "installed_at",
+          "disabled_reason",
+          "disabled_at",
+          "latest_version",
+          "upgrade_to",
+          "created_at"
+        ],
+        "schema": "Plugin"
+      }
+    },
+    "hub plugin publish": {
+      "positionals": [
+        {
+          "name": "bundle",
+          "metavar": "BUNDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--signature"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "created",
+          "version"
+        ],
+        "schema": "PluginPublished"
+      }
+    },
+    "hub plugin remove": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "publisher",
+          "state",
+          "installed_version",
+          "installed_by",
+          "installed_at",
+          "disabled_reason",
+          "disabled_at",
+          "latest_version",
+          "upgrade_to",
+          "created_at"
+        ],
+        "schema": "Plugin"
+      }
+    },
+    "hub plugin show": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "publisher",
+          "state",
+          "installed_version",
+          "installed_by",
+          "installed_at",
+          "disabled_reason",
+          "disabled_at",
+          "latest_version",
+          "upgrade_to",
+          "created_at",
+          "manifest",
+          "versions"
+        ],
+        "schema": "PluginDetail"
+      }
+    },
+    "hub plugin upgrade": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "publisher",
+          "state",
+          "installed_version",
+          "installed_by",
+          "installed_at",
+          "disabled_reason",
+          "disabled_at",
+          "latest_version",
+          "upgrade_to",
+          "created_at"
+        ],
+        "schema": "Plugin"
+      }
+    },
     "hub project list": {
       "positionals": [],
       "options": [
@@ -24005,6 +24243,542 @@
             }
           }
         }
+      },
+      "/v1/plugins": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Plugins",
+          "description": "Every plugin of the hub's store, by name.",
+          "operationId": "plugins_v1_plugins_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/Plugin"
+                    },
+                    "type": "array",
+                    "title": "Response Plugins V1 Plugins Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugins/{name}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Plugin",
+          "description": "One plugin with every version, newest first.",
+          "operationId": "show_plugin_v1_plugins__name__get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugins/{name}/versions": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Publish Version",
+          "description": "Publish a signed bundle the hub holds as a version of plugin ``name``, after checking it whole.",
+          "operationId": "publish_version_v1_plugins__name__versions_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginPublishIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginPublished"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/plugins/{name}/install": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Install Plugin",
+          "description": "Install a version of plugin ``name``: the one asked for, or the newest that runs on this hub.",
+          "operationId": "install_plugin_v1_plugins__name__install_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginInstallIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Plugin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/plugins/{name}/upgrade": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Upgrade Plugin",
+          "description": "Move the installed version of plugin ``name`` to a newer one: the one asked for, or the newest that runs.",
+          "operationId": "upgrade_plugin_v1_plugins__name__upgrade_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginInstallIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Plugin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/plugins/{name}/remove": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Remove Plugin",
+          "description": "Remove the installed version of plugin ``name``; every version stays in the store.",
+          "operationId": "remove_plugin_v1_plugins__name__remove_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Plugin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -32089,7 +32863,8 @@
                     "curator_paused",
                     "author_waiting",
                     "chat_mention",
-                    "chat_added"
+                    "chat_added",
+                    "plugin_disabled"
                   ]
                 },
                 {
@@ -33848,6 +34623,431 @@
             "updated_by"
           ],
           "title": "PlanSummary"
+        },
+        "Plugin": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available",
+                "installed",
+                "disabled"
+              ],
+              "title": "State",
+              "description": "available: none installed; disabled: installed, turned off"
+            },
+            "installed_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed Version"
+            },
+            "installed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed By"
+            },
+            "installed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed At"
+            },
+            "disabled_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Reason"
+            },
+            "disabled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled At"
+            },
+            "latest_version": {
+              "type": "string",
+              "title": "Latest Version"
+            },
+            "upgrade_to": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Upgrade To",
+              "description": "the newest version above the installed one that runs on this hub"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "publisher",
+            "state",
+            "installed_version",
+            "installed_by",
+            "installed_at",
+            "disabled_reason",
+            "disabled_at",
+            "latest_version",
+            "upgrade_to",
+            "created_at"
+          ],
+          "title": "Plugin"
+        },
+        "PluginDetail": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "available",
+                "installed",
+                "disabled"
+              ],
+              "title": "State",
+              "description": "available: none installed; disabled: installed, turned off"
+            },
+            "installed_version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed Version"
+            },
+            "installed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed By"
+            },
+            "installed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Installed At"
+            },
+            "disabled_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Reason"
+            },
+            "disabled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled At"
+            },
+            "latest_version": {
+              "type": "string",
+              "title": "Latest Version"
+            },
+            "upgrade_to": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Upgrade To",
+              "description": "the newest version above the installed one that runs on this hub"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "manifest": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Manifest",
+              "description": "the manifest of the installed version, or of the latest one"
+            },
+            "versions": {
+              "items": {
+                "$ref": "#/components/schemas/PluginVersion"
+              },
+              "type": "array",
+              "title": "Versions",
+              "description": "the newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "publisher",
+            "state",
+            "installed_version",
+            "installed_by",
+            "installed_at",
+            "disabled_reason",
+            "disabled_at",
+            "latest_version",
+            "upgrade_to",
+            "created_at",
+            "manifest",
+            "versions"
+          ],
+          "title": "PluginDetail"
+        },
+        "PluginInstallIn": {
+          "properties": {
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]{1,40})?$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "default: the newest that runs on this hub"
+            }
+          },
+          "type": "object",
+          "title": "PluginInstallIn"
+        },
+        "PluginPublishIn": {
+          "properties": {
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "the bundle, committed to the blob store already"
+            },
+            "size": {
+              "type": "integer",
+              "maximum": 33554432.0,
+              "minimum": 1.0,
+              "title": "Size",
+              "description": "bytes of the bundle"
+            },
+            "signature": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Signature",
+              "description": "the signature envelope beside the bundle (evo_agents.plugins.signing); null is refused, unsigned"
+            }
+          },
+          "type": "object",
+          "required": [
+            "sha256",
+            "size",
+            "signature"
+          ],
+          "title": "PluginPublishIn"
+        },
+        "PluginPublished": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "false when the store holds this bundle as this version already"
+            },
+            "version": {
+              "$ref": "#/components/schemas/PluginVersion"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "created",
+            "version"
+          ],
+          "title": "PluginPublished"
+        },
+        "PluginVersion": {
+          "properties": {
+            "version": {
+              "type": "string",
+              "title": "Version"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "isolated",
+                "core"
+              ],
+              "title": "Tier"
+            },
+            "plugin_api": {
+              "type": "integer",
+              "title": "Plugin Api"
+            },
+            "engines": {
+              "type": "string",
+              "title": "Engines",
+              "description": "the evo-agents versions it runs on, as its manifest gives them"
+            },
+            "permissions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Permissions"
+            },
+            "signature_kind": {
+              "type": "string",
+              "enum": [
+                "sigstore",
+                "ed25519"
+              ],
+              "title": "Signature Kind"
+            },
+            "signed_by": {
+              "type": "string",
+              "title": "Signed By",
+              "description": "the workflow identity of the Sigstore certificate, or the Ed25519 key's id"
+            },
+            "compatible": {
+              "type": "boolean",
+              "title": "Compatible",
+              "description": "whether it runs on this hub's release"
+            },
+            "incompatible_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Incompatible Reason"
+            },
+            "published_by": {
+              "type": "string",
+              "title": "Published By"
+            },
+            "published_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Published At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "version",
+            "sha256",
+            "size",
+            "publisher",
+            "tier",
+            "plugin_api",
+            "engines",
+            "permissions",
+            "signature_kind",
+            "signed_by",
+            "compatible",
+            "incompatible_reason",
+            "published_by",
+            "published_at"
+          ],
+          "title": "PluginVersion"
         },
         "Problem": {
           "properties": {
@@ -40610,7 +41810,8 @@
                 "kg-log",
                 "kg-blob",
                 "run-log",
-                "run-diff"
+                "run-diff",
+                "plugin-bundle"
               ],
               "title": "Kind"
             }

@@ -82,6 +82,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
+| plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, for hub admins only (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
@@ -1069,6 +1070,57 @@ cache under `<data dir>/kg/home` holds the corpus as a machine's kg home does, o
 `EVO_KG_HOME=<data dir>/kg/home evo-agents kg scrub --all --purge --yes` in the worker's container cleans it the same
 way, or delete the cache, and the next build fetches what it needs again.
 
+## Plugins
+
+A plugin is a versioned bundle, a tar.gz with its manifest `evo-plugin.json` at the top, checked against
+`evo_agents/harness/schemas/plugin.schema.json` (seam plugin-v1): the plugin's id, version, publisher, tier, the
+evo-agents versions it runs on (`engines`), the plugin API it is written for (`plugin_api`), the JSON Schema of its
+config, the permissions it asks for and what it contributes to each extension point. `evo_agents.plugins` reads,
+packs, checks and places a plugin for the hub and the worker alike. An isolated plugin, the default tier, is installed
+on a hub from its store; a core plugin runs Python in the hub's and the worker's processes and is a Python package
+installed into the image, which declares itself in the entry point group `evo_agents.plugins`. The registries of
+runtime adapters and of kg connectors read the core plugins' contributions beside their own groups
+`evo_agents.worker.adapters` and `evo_agents.kg.connectors`, which keep working and win over them.
+
+A publisher signs each bundle, and the operator lists the publishers the hub trusts in `EVO_HUB_PLUGIN_PUBLISHERS`
+(section Deploying). A publisher signs keyless with Sigstore from the CI workflow of its plugin repository
+(`sigstore sign` in GitHub Actions writes `BUNDLE.sigstore.json`); the hub accepts the signature when its
+certificate's issuer is GitHub Actions and its identity a run of the workflow the operator named, the repository's
+name compared ignoring case and the workflow's path exactly. A hub that cannot reach Sigstore trusts Ed25519 keys of
+the publisher instead (`evo_agents.plugins.signing.sign_ed25519` makes the signature). Only a publisher listed in
+`EVO_HUB_PLUGIN_CORE_PUBLISHERS` may publish a core plugin.
+
+The store keeps every version a hub admin published, never changed: the bundle in the blob store, held by the hub
+itself (kind `plugin-bundle`, outside any project), its SHA-256, size, manifest, publisher, signature and who signed it
+(tables `plugins` and `plugin_versions`, migration 0033). A plugin belongs to the publisher of its first version. Only
+a hub admin uses the store, through `/v1/plugins` or the command line:
+
+```sh
+evo-agents hub plugin publish sandbox-1.2.0.tar.gz   # with sandbox-1.2.0.tar.gz.sigstore.json or .sig.json beside it
+evo-agents hub plugin publish sandbox-1.2.0.tar.gz --signature release.sig.json
+evo-agents hub plugin list                           # state, installed and latest version, the upgrade waiting
+evo-agents hub plugin show sandbox                   # every version, who signed it and what it asks for
+evo-agents hub plugin install sandbox                # the newest version that runs on this hub, or --version 1.2.0
+evo-agents hub plugin upgrade sandbox                # the newest above the installed one, or --version
+evo-agents hub plugin remove sandbox                 # every version stays in the store
+```
+
+Publishing reads the committed bundle back from the blob store and checks it whole before it records anything, and
+installing or upgrading checks the stored bytes again against the publishers and the release the hub has then. A
+refusal is a 422 whose message names its reason in parentheses and what to do: `malformed` (not a bundle, a manifest
+that does not read, a signature that is not one), `unsigned`, `altered` (the bytes are not the ones signed, or not the
+ones the store recorded), `untrusted` (a publisher the operator does not list, a workflow or key it did not name, a
+core plugin of a publisher that is not core), `invalid` (the signature does not verify) and `incompatible` (outside
+the plugin's `engines` or `plugin_api`). A signature the hub cannot check now, Sigstore's trust root out of reach, is a
+503 and records nothing. Each write is audited as `plugin.publish`, `plugin.install`, `plugin.upgrade` or
+`plugin.remove`, naming `plugin:<name>@<version>`.
+
+As the api starts, it turns off every installed plugin whose version no longer runs on its release, the hub having
+been upgraded past the plugin's `engines`: the plugin shows `disabled` with the reason, the audit trail
+`plugin.disable`, and every hub admin who has signed in gets the notice `plugin_disabled`. The hub serves on, and a
+failure of that check is logged without stopping the start. Upgrading the plugin to a version that runs, or installing
+one again, turns it back on.
+
 ## Blobs on R2
 
 Postgres holds metadata; the blob store holds bytes. The bucket stays private, and the access key the hub gets should
@@ -1084,7 +1136,8 @@ An upload takes three calls. The client asks `POST /v1/blobs/uploads` for presig
 the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blobs/commit`. The hub reads each upload
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
-Limits per kind: 10 MiB for a skill bundle, 256 MiB for a run log, 64 MiB for a source file.
+Limits per kind: 10 MiB for a skill bundle, 32 MiB for a plugin bundle, 256 MiB for a run log, 64 MiB for a source
+file.
 
 A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
 upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls
@@ -1270,6 +1323,8 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
 | `EVO_HUB_CURATOR_APP_ID`, `EVO_HUB_CURATOR_APP_PRIVATE_KEY` | api, worker | the Curator's own GitHub App, evo-agents-curator, as the two above: every run of the Curator gets its GitHub token from it alone, and the hub checks with it that each repo's ruleset keeps it off the default branch; both or neither, and without them no run of the Curator gets a GitHub token (`docs/curator.md`) |
 | `EVO_HUB_TELEGRAM_BOT_TOKEN`, `EVO_HUB_TELEGRAM_WEBHOOK_SECRET` | api, worker | the hub's Telegram bot, as @BotFather gives its token, and the secret Telegram sends back with each update (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`); without either the Telegram channel is off and the hub runs on (`docs/notifications.md`). `evo-agents hub admin telegram --set-webhook` then points the bot at `EVO_HUB_PUBLIC_URL/v1/telegram/webhook` |
+| `EVO_HUB_PLUGIN_PUBLISHERS` | api | the publishers whose signed plugin bundles the hub accepts: comma-separated `ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml` (a GitHub Actions workflow that signs keyless with Sigstore) or `ID=ed25519:KEY` (a public key, 32 bytes in base64) entries, several for one id; unset trusts nobody and every bundle is refused (section Plugins) |
+| `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |

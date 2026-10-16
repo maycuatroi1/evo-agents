@@ -3326,6 +3326,126 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plugins
+         * @description Every plugin of the hub's store, by name.
+         */
+        get: operations["plugins_v1_plugins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Plugin
+         * @description One plugin with every version, newest first.
+         */
+        get: operations["show_plugin_v1_plugins__name__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{name}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Publish Version
+         * @description Publish a signed bundle the hub holds as a version of plugin ``name``, after checking it whole.
+         */
+        post: operations["publish_version_v1_plugins__name__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{name}/install": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Install Plugin
+         * @description Install a version of plugin ``name``: the one asked for, or the newest that runs on this hub.
+         */
+        post: operations["install_plugin_v1_plugins__name__install_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{name}/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upgrade Plugin
+         * @description Move the installed version of plugin ``name`` to a newer one: the one asked for, or the newest that runs.
+         */
+        post: operations["upgrade_plugin_v1_plugins__name__upgrade_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugins/{name}/remove": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Remove Plugin
+         * @description Remove the installed version of plugin ``name``; every version stays in the store.
+         */
+        post: operations["remove_plugin_v1_plugins__name__remove_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -6878,7 +6998,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -7653,6 +7773,176 @@ export interface components {
             updated_at: string;
             /** Updated By */
             updated_by: string;
+        };
+        /** Plugin */
+        Plugin: {
+            /** Name */
+            name: string;
+            /** Publisher */
+            publisher: string;
+            /**
+             * State
+             * @description available: none installed; disabled: installed, turned off
+             * @enum {string}
+             */
+            state: "available" | "installed" | "disabled";
+            /** Installed Version */
+            installed_version: string | null;
+            /** Installed By */
+            installed_by: string | null;
+            /** Installed At */
+            installed_at: string | null;
+            /** Disabled Reason */
+            disabled_reason: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+            /** Latest Version */
+            latest_version: string;
+            /**
+             * Upgrade To
+             * @description the newest version above the installed one that runs on this hub
+             */
+            upgrade_to: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** PluginDetail */
+        PluginDetail: {
+            /** Name */
+            name: string;
+            /** Publisher */
+            publisher: string;
+            /**
+             * State
+             * @description available: none installed; disabled: installed, turned off
+             * @enum {string}
+             */
+            state: "available" | "installed" | "disabled";
+            /** Installed Version */
+            installed_version: string | null;
+            /** Installed By */
+            installed_by: string | null;
+            /** Installed At */
+            installed_at: string | null;
+            /** Disabled Reason */
+            disabled_reason: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+            /** Latest Version */
+            latest_version: string;
+            /**
+             * Upgrade To
+             * @description the newest version above the installed one that runs on this hub
+             */
+            upgrade_to: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Manifest
+             * @description the manifest of the installed version, or of the latest one
+             */
+            manifest: {
+                [key: string]: unknown;
+            };
+            /**
+             * Versions
+             * @description the newest first
+             */
+            versions: components["schemas"]["PluginVersion"][];
+        };
+        /** PluginInstallIn */
+        PluginInstallIn: {
+            /**
+             * Version
+             * @description default: the newest that runs on this hub
+             */
+            version?: string | null;
+        };
+        /** PluginPublishIn */
+        PluginPublishIn: {
+            /**
+             * Sha256
+             * @description the bundle, committed to the blob store already
+             */
+            sha256: string;
+            /**
+             * Size
+             * @description bytes of the bundle
+             */
+            size: number;
+            /**
+             * Signature
+             * @description the signature envelope beside the bundle (evo_agents.plugins.signing); null is refused, unsigned
+             */
+            signature: {
+                [key: string]: unknown;
+            } | null;
+        };
+        /** PluginPublished */
+        PluginPublished: {
+            /** Name */
+            name: string;
+            /**
+             * Created
+             * @description false when the store holds this bundle as this version already
+             */
+            created: boolean;
+            version: components["schemas"]["PluginVersion"];
+        };
+        /** PluginVersion */
+        PluginVersion: {
+            /** Version */
+            version: string;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Publisher */
+            publisher: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "isolated" | "core";
+            /** Plugin Api */
+            plugin_api: number;
+            /**
+             * Engines
+             * @description the evo-agents versions it runs on, as its manifest gives them
+             */
+            engines: string;
+            /** Permissions */
+            permissions: string[];
+            /**
+             * Signature Kind
+             * @enum {string}
+             */
+            signature_kind: "sigstore" | "ed25519";
+            /**
+             * Signed By
+             * @description the workflow identity of the Sigstore certificate, or the Ed25519 key's id
+             */
+            signed_by: string;
+            /**
+             * Compatible
+             * @description whether it runs on this hub's release
+             */
+            compatible: boolean;
+            /** Incompatible Reason */
+            incompatible_reason: string | null;
+            /** Published By */
+            published_by: string;
+            /**
+             * Published At
+             * Format: date-time
+             */
+            published_at: string;
         };
         /** Problem */
         Problem: {
@@ -10633,7 +10923,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff";
+            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "plugin-bundle";
         };
         /** UploadRequest */
         UploadRequest: {
@@ -23060,6 +23350,423 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    plugins_v1_plugins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_plugin_v1_plugins__name__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the plugin's id, as its manifest gives it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    publish_version_v1_plugins__name__versions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the plugin's id, as its manifest gives it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginPublishIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginPublished"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    install_plugin_v1_plugins__name__install_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the plugin's id, as its manifest gives it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginInstallIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    upgrade_plugin_v1_plugins__name__upgrade_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the plugin's id, as its manifest gives it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PluginInstallIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    remove_plugin_v1_plugins__name__remove_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the plugin's id, as its manifest gives it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Plugin"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
                 headers: {
                     [name: string]: unknown;
                 };

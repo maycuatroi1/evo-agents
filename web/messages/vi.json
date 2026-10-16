@@ -3758,7 +3758,8 @@
       "curator_paused": "Ca đêm tạm dừng",
       "author_waiting": "Run soạn plan chờ bạn trả lời",
       "chat_mention": "Có người nhắc bạn trong một chat",
-      "chat_added": "Có người thêm bạn vào một chat"
+      "chat_added": "Có người thêm bạn vào một chat",
+      "plugin_disabled": "Hub đã tắt một plugin"
     },
     "item": {
       "unread": "Chưa đọc",
