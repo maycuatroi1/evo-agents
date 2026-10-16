@@ -1,0 +1,205 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/maycuatroi1/evo-agents/schemas/plugin.schema.json",
+  "title": "evo-plugin.json",
+  "description": "The manifest of an evo-agents plugin, at the top of its bundle (seam plugin-v1): what the plugin is, who publishes it, the evo-agents versions and plugin API it runs on, the config it takes, the permissions it asks for and what it contributes to each extension point.",
+  "type": "object",
+  "required": [
+    "id",
+    "version",
+    "publisher",
+    "engines",
+    "plugin_api"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string"
+    },
+    "id": {
+      "description": "The plugin's name on every hub: its routes live under /v1/x/<id>/ and its MCP tools are named after it.",
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9-]{0,62}$"
+    },
+    "version": {
+      "description": "MAJOR.MINOR.PATCH, with an optional -pre-release; a version never changes once published.",
+      "type": "string",
+      "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]{1,40})?$"
+    },
+    "publisher": {
+      "description": "The id of the publisher whose signature the bundle carries, as the operator of a hub lists it in EVO_HUB_PLUGIN_PUBLISHERS.",
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,62}$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 100
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1000
+    },
+    "tier": {
+      "description": "isolated (the default): backend outside the hub's processes, pages in a sandboxed iframe. core: Python in the hub's and the worker's processes, from a publisher the operator lists in EVO_HUB_PLUGIN_CORE_PUBLISHERS.",
+      "enum": [
+        "isolated",
+        "core"
+      ]
+    },
+    "engines": {
+      "type": "object",
+      "required": [
+        "evo-agents"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "evo-agents": {
+          "description": "The evo-agents versions the plugin runs on: clauses such as >=0.17, <0.19, ==0.17.* or !=0.17.2, separated by commas.",
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "plugin_api": {
+      "description": "The major version of the plugin API the plugin is written against; evo-agents names the ones it supports.",
+      "type": "integer",
+      "minimum": 1
+    },
+    "config": {
+      "$ref": "#/$defs/config"
+    },
+    "permissions": {
+      "description": "What the plugin asks to do on a project that enables it; an admin of the project sees the list before granting it.",
+      "type": "array",
+      "items": {
+        "enum": [
+          "runs:read",
+          "runs:dispatch",
+          "chats:read",
+          "chats:write",
+          "plans:read",
+          "memories:read",
+          "notifications:send"
+        ]
+      }
+    },
+    "contributes": {
+      "$ref": "#/$defs/contributes"
+    }
+  },
+  "$defs": {
+    "config": {
+      "description": "A JSON Schema of the plugin's config, an object. A property with \"x-secret\": true holds a secret: the hub stores it sealed and never shows it again.",
+      "type": "object",
+      "required": [
+        "type"
+      ],
+      "properties": {
+        "type": {
+          "const": "object"
+        },
+        "properties": {
+          "type": "object",
+          "additionalProperties": {
+            "$ref": "#/$defs/config_field"
+          }
+        },
+        "required": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "config_field": {
+      "type": "object",
+      "properties": {
+        "x-secret": {
+          "type": "boolean"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        }
+      }
+    },
+    "contribution": {
+      "description": "One contribution to an extension point. Its other keys belong to that point and its version.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        }
+      }
+    },
+    "contributions": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/contribution"
+      }
+    },
+    "contributes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "channels": {
+          "$ref": "#/$defs/contributions"
+        },
+        "routes": {
+          "$ref": "#/$defs/contributions"
+        },
+        "mcp_tools": {
+          "$ref": "#/$defs/contributions"
+        },
+        "jobs": {
+          "$ref": "#/$defs/contributions"
+        },
+        "events": {
+          "$ref": "#/$defs/contributions"
+        },
+        "pages": {
+          "$ref": "#/$defs/contributions"
+        },
+        "agent_packs": {
+          "$ref": "#/$defs/contributions"
+        },
+        "agent_types": {
+          "$ref": "#/$defs/contributions"
+        },
+        "runtimes": {
+          "$ref": "#/$defs/contributions"
+        },
+        "environments": {
+          "$ref": "#/$defs/contributions"
+        },
+        "kg_connectors": {
+          "$ref": "#/$defs/contributions"
+        }
+      }
+    }
+  }
+}
