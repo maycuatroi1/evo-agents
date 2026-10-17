@@ -514,12 +514,16 @@ export async function openPlanStepFolds(scope: Locator): Promise<void> {
   }
 }
 
-/** Choose a control from the run page's menu of actions ("More actions for the run"), whose items render outside #main. */
+/**
+ * Choose a control from the run page's menu of actions ("More actions for the run"), whose items render outside #main.
+ * The trigger's aria-expanded says whether the menu is open: a menu closing (after Escape) still shows its items while
+ * it fades out, so their being visible is no sign it will stay open for the click.
+ */
 export async function chooseRunAction(page: Page, testId: string): Promise<void> {
+  const trigger = page.locator("#main").getByTestId("run-actions-menu");
   const item = page.getByTestId(testId);
   await expect(async () => {
-    if (!(await item.isVisible())) await page.locator("#main").getByTestId("run-actions-menu").click();
-    await expect(item).toBeVisible({ timeout: 1_000 });
+    if ((await trigger.getAttribute("aria-expanded")) !== "true") await trigger.click();
+    await item.click({ timeout: 1_000 });
   }).toPass();
-  await item.click();
 }
