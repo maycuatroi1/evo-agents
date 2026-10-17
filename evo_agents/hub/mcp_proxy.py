@@ -158,12 +158,13 @@ class McpClient:
         return self._answer(status, raw)
 
     def _local_run(self, message) -> int | None:
-        """The local run of the session that calls plan_step (``local_sync.run_for``), so the hub records the step as
-        that run's; None for any other message, for a worker's run and when the session has no local run."""
+        """The local run of the session that calls plan_step or ask_member (``local_sync.run_for``), so the hub records
+        the step as that run's, or asks the question of that run; None for any other message, for a worker's run and
+        when the session has no local run."""
         params = message.get("params") if isinstance(message, dict) else None
         if self.run is not None or message.get("method") != "tools/call" or not isinstance(params, dict):
             return None
-        if params.get("name") != "plan_step":
+        if params.get("name") not in ("plan_step", "ask_member"):
             return None
         arguments = params.get("arguments")
         named = arguments.get("project") if isinstance(arguments, dict) else None

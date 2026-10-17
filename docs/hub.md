@@ -100,9 +100,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 22 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 23 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
+`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
 `digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
@@ -1004,6 +1004,10 @@ does not know the run gets the write again without it. `EVO_HUB_LOCAL_SYNC=0` (o
 the Stop digest and memory push are unchanged. A PostToolUse hook asks the hub at most every 2 seconds, with request
 timeouts of 1.5 s and a deadline of 6 s; events wait in the session file (500 at most) while the hub does not answer
 (the same cooldown as the digest) or refuses the session (10 minutes), and go in order afterwards. Every hook exits 0.
+The questions of the session reach the member too (`docs/notifications.md`, A decision of a local run): a PreToolUse
+hook on AskUserQuestion (`local-ask`, 15 s) puts each question of the dialog to the hub and does not wait, PostToolUse
+reports the answer given in the dialog, and UserPromptSubmit hands the agent the answers that came from the hub after
+it stopped waiting.
 [Unverified] The Codex plugin loads the same hooks.json; whether a Codex session registers a local run was not tried.
 
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex

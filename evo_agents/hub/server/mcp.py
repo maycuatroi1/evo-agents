@@ -26,7 +26,7 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 22 tools are ``evo_agents.hub.mcp_tools.TOOLS``. The kg_* tools are those of ``kg serve``, names, schemas,
+The 23 tools are ``evo_agents.hub.mcp_tools.TOOLS``. The kg_* tools are those of ``kg serve``, names, schemas,
 arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them; kg_more
 continues any cut result of the same user and session project, with or without a graph. The others call the hub's
 routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
@@ -63,7 +63,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.requests import Request
 
 from evo_agents import __version__
-from evo_agents.hub import tables
+from evo_agents.hub import runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
@@ -88,6 +88,7 @@ from evo_agents.hub.server import (
     decisions,
     digests,
     kg,
+    local_runs,
     memories,
     plans,
     projects,
@@ -122,6 +123,7 @@ LOOPBACK = ("127.0.0.1", "localhost", "[::1]")
 EVERY_INTERFACE = ("0.0.0.0", "::", "")
 SESSION = "evo_mcp"  # the key of McpSession in request.state
 SHOWN_PROBLEMS = 5
+ASK_WAIT_SECONDS = 20  # ask_member holds this long for an answer, well inside the proxy's 120 s and a tool's deadline
 EXCERPT = 200  # characters of a memory shown by memory_search
 PLAN_WIDTH = 110  # as the copies in git
 _PROJECT = re.compile(PROJECT_NAME)
@@ -421,6 +423,7 @@ class HubMcp(MCPServer):
             "plan_show": self._plan_show,
             "plan_handoff": self._plan_handoff,
             "plan_step": self._plan_step,
+            "ask_member": self._ask_member,
             "skill_list": self._skill_list,
             "hub_projects": self._hub_projects,
             "run_tool_stats": self._run_tool_stats,
@@ -673,7 +676,8 @@ class HubMcp(MCPServer):
                 if local_run is None or exc.status_code != 404:
                     raise
                 local_run = None  # a run the hub does not hold for this caller: the step is written without it
-                continue
+                patch = patch.model_copy(update={"run_id": None})  # at once: this is no attempt lost to a conflict
+                outcome = await plans.patch(caller.request, project, plan_id, patch, caller.user)
             if not isinstance(outcome, JSONResponse):
                 break
             payload = json.loads(outcome.body)
@@ -702,6 +706,65 @@ class HubMcp(MCPServer):
             "summary": f"step {step} {status}",
         }
         return "\n".join(lines), data
+
+    # The member's answer to a question of a local session
+
+    async def _ask_member(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        """Ask the member who runs this local session a question as a decision (Inbox, Telegram, web, the run's page,
+        ``hub decision answer``), and hold up to ASK_WAIT_SECONDS for the first answer; the answer that comes later
+        reaches the session at the member's next message."""
+        project = self._project(caller, arguments)
+        run_id = caller.local_run
+        if run_id is None:
+            raise Refusal(
+                "this session is not a local session of a hub project that sync watches (EVO_HUB_LOCAL_SYNC=0, or "
+                "its directory belongs to no project, or its first message has not reached the hub): ask the person "
+                "with AskUserQuestion or in the conversation"
+            )
+        user, request = caller.user, caller.request
+        decision_id = arguments.get("decision_id")
+        if decision_id is None:
+            if "question" not in arguments or "options" not in arguments:
+                raise Refusal("ask_member needs question and options, or the decision_id of a question asked before")
+            options = [
+                {"key": str(o.get("key") or n), **{k: o[k] for k in ("label", "description") if k in o}}
+                for n, o in enumerate(arguments["options"], start=1)
+            ]
+            recommended = arguments.get("recommended")
+            if recommended is not None:
+                recommended = str(recommended)
+                keys = [o["key"] for o in options]
+                if recommended not in keys:  # the label of the option is as good as its key
+                    recommended = next((o["key"] for o in options if o["label"] == recommended), recommended)
+            try:
+                body = local_runs.LocalDecisionAsk(
+                    category=runs.LOCAL_DECISION_CATEGORY,
+                    question=arguments["question"],
+                    context=arguments.get("context"),
+                    options=options,
+                    recommended=recommended,
+                    step_key=str(arguments["step"]) if arguments.get("step") is not None else None,
+                )
+            except ValidationError as exc:
+                raise Refusal(f"the question cannot be asked: {_problems(exc)}; nothing was asked") from None
+            decision_id = (await local_runs.ask(request, project, run_id, body, user)).id
+        found = await local_runs.take_decision(request, project, run_id, decision_id, user, ASK_WAIT_SECONDS)
+        data = {"decision": found.model_dump(mode="json", exclude={"context"}), "summary": f"decision {decision_id}"}
+        if found.state == "open":
+            return (
+                f"No answer yet: decision {decision_id} is open, and the member was told. Call ask_member again with "
+                f"decision_id {decision_id} to wait longer, or go on with what does not depend on it: if the member "
+                "answers later, the answer reaches you with their next message.",
+                data,
+            )
+        if found.state != "answered":
+            return f"Decision {decision_id} is {found.state}: nobody answered it.", data
+        label = {o.key: o.label for o in found.options}.get(found.answer_option or "")
+        said = (
+            f"option {found.answer_option}" + (f" ({label})" if label else "") if found.answer_option else "no option"
+        )
+        words = f" In their words: {found.answer_text}" if found.answer_text else ""
+        return f"The member answered decision {decision_id} ({found.question}): {said}.{words}", data
 
     # Skills and projects
 

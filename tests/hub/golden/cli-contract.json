@@ -2389,6 +2389,11 @@
         "schema": "Decision"
       }
     },
+    "hub hook local-ask": {
+      "positionals": [],
+      "options": [],
+      "json": null
+    },
     "hub hook local-tool": {
       "positionals": [],
       "options": [],
