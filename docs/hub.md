@@ -31,6 +31,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | a plan's steps as Board (by status, the default), List (in plan order) or Graph (`?view=graph`): the graph of their dependencies top to bottom, a step under every step it waits for, lines solid when the step waited for is done and dashed while it is not, Ready steps tagged, a dependency implied by another one not drawn; a step selected (`&step=11`) dims what it neither waits for nor unblocks and opens a read-only inspector beside the graph from 1024 px and in a bottom sheet below, with its dependencies, what waits for it, What to do, Verify, Evidence, its acceptance criteria and a link to the step's page; the view is kept in the URL and on the browser for the next plan; New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
+| Plugins, `/admin/plugins` and `/admin/plugins/{name}`; a project's plugins, `/p/{project}/plugins` and `.../plugins/{name}`; a plugin's page, `/p/{project}/x/{plugin}/{page}` | for a hub admin, the store (versions, an upgrade waiting, Install, Upgrade, Remove), the trusted publishers, a plugin's backend and the hub's layer of its config; for a project's members, its plugins, enabled through a consent that lists what each asks for, and the form of the project's layer drawn from the plugin's config schema (a secret never shown again); the pages enabled plugins add to the project's menu, an isolated plugin's framed in a sandbox, a core plugin's native (`docs/plugins.md`, section Pages) | `GET /v1/plugins`, `GET /v1/plugin-publishers`, `GET /v1/projects/{project}/plugins`, `.../config`, `.../config/effective` |
 
 Cmd K or Ctrl K, or the top bar's search field, opens a command palette: runs, plans, workers and pages to jump to,
 and the actions the visitor's grants allow (Run plan, New plan, Revise with agent, Dispatch a step, Rerun, Register
@@ -82,7 +83,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
-| plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins` (section Plugins) |
+| plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
@@ -1083,8 +1084,9 @@ installed into the image, which declares itself in the entry point group `evo_ag
 runtime adapters and of kg connectors read the core plugins' contributions beside their own groups
 `evo_agents.worker.adapters` and `evo_agents.kg.connectors`, which keep working and win over them. What a plugin adds
 to the hub (channels of notifications, routes under `/v1/x/<plugin>/`, MCP tools named `<plugin>__<tool>` on `/mcp`,
-periodic jobs, events delivered at least once, and the tables of a core plugin) works only in a project that enabled
-it, and each point has a version of its own: `docs/plugins.md`, section Extension points.
+periodic jobs, events delivered at least once, pages in the project's part of the web, and the tables of a core plugin)
+works only in a project that enabled it, and each point has a version of its own: `docs/plugins.md`, sections Extension
+points and Pages.
 
 A publisher signs each bundle, and the operator lists the publishers the hub trusts in `EVO_HUB_PLUGIN_PUBLISHERS`
 (section Deploying). A publisher signs keyless with Sigstore from the CI workflow of its plugin repository
@@ -1097,7 +1099,8 @@ the publisher instead (`evo_agents.plugins.signing.sign_ed25519` makes the signa
 The store keeps every version a hub admin published, never changed: the bundle in the blob store, held by the hub
 itself (kind `plugin-bundle`, outside any project), its SHA-256, size, manifest, publisher, signature and who signed it
 (tables `plugins` and `plugin_versions`, migration 0033). A plugin belongs to the publisher of its first version. Only
-a hub admin uses the store, through `/v1/plugins` or the command line:
+a hub admin uses the store, through `/v1/plugins`, the web (Administration, Plugins, which also lists the publishers
+the operator trusts, from `GET /v1/plugin-publishers`) or the command line:
 
 ```sh
 evo-agents hub plugin publish sandbox-1.2.0.tar.gz   # with sandbox-1.2.0.tar.gz.sigstore.json or .sig.json beside it
@@ -1152,7 +1155,9 @@ permission with what it lets the plugin do in the project; enabling grants exact
 back, and any other list is a 422. Once an upgrade asks for more, the plugin lists it under `pending`, and enabling it
 again grants the new list. What a plugin may do in a project is what was granted there that its installed version
 still asks for, and only while it is installed and turned on. Disabling deletes the grant; the versions of its config
-stay. Readers and writers of the project read all of this; only its admins change it.
+stay. Readers and writers of the project read all of this; only its admins change it. The web does the same on the
+project's Plugins page: Enable opens the consent, which lists every permission in words and the pages the plugin adds,
+and grants exactly that list; a plugin's page there holds the form of the project's layer of its config.
 
 ```sh
 evo-agents hub plugin list --project evo-agents                  # each installed plugin, enabled or not, what it asks for
