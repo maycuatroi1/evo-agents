@@ -36,7 +36,7 @@
   }
 
   function resize() {
-    return call("resize", { height: document.documentElement.scrollHeight });
+    return call("resize", { height: document.body.scrollHeight });
   }
 
   try {
