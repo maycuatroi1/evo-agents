@@ -3809,6 +3809,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -3970,6 +3975,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -4064,6 +4074,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -4335,6 +4350,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -4429,6 +4449,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -4523,6 +4548,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -4560,8 +4590,35 @@
             "done",
             "failed",
             "lost",
-            "cancelled"
+            "cancelled",
+            "idle",
+            "ended"
           ]
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "step",
+            "plan",
+            "review",
+            "judge",
+            "author",
+            "chat",
+            "local"
+          ]
+        },
+        {
+          "flags": [
+            "--account"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
         },
         {
           "flags": [
@@ -4886,6 +4943,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -4996,6 +5058,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -5139,6 +5206,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -5233,6 +5305,11 @@
           "profile",
           "profile_id",
           "profile_version",
+          "machine",
+          "cwd",
+          "claude_email",
+          "claude_profile",
+          "last_activity_at",
           "chat_id",
           "chat_message_id",
           "hop"
@@ -13208,7 +13285,9 @@
                     "done",
                     "failed",
                     "lost",
-                    "cancelled"
+                    "cancelled",
+                    "idle",
+                    "ended"
                   ],
                   "type": "string"
                 },
@@ -13294,6 +13373,53 @@
               "description": "a login"
             },
             {
+              "name": "kind",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "step",
+                      "plan",
+                      "review",
+                      "judge",
+                      "author",
+                      "chat",
+                      "local"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only runs of this kind",
+                "title": "Kind"
+              },
+              "description": "only runs of this kind"
+            },
+            {
+              "name": "account",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 500
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only local runs of this Claude account",
+                "title": "Account"
+              },
+              "description": "only local runs of this Claude account"
+            },
+            {
               "name": "q",
               "in": "query",
               "required": false,
@@ -13308,10 +13434,10 @@
                     "type": "null"
                   }
                 ],
-                "description": "text in the title, step, plan, repo, branch, worker, login or error, or a run number",
+                "description": "text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number",
                 "title": "Q"
               },
-              "description": "text in the title, step, plan, repo, branch, worker, login or error, or a run number"
+              "description": "text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number"
             },
             {
               "name": "limit",
@@ -16853,6 +16979,797 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{session_id}": {
+        "put": {
+          "tags": [
+            "local runs"
+          ],
+          "summary": "Register",
+          "description": "Register the Claude Code session ``session_id`` of the caller's machine, or say again that it is there: the\nrun of that session, new (201) or the caller's own (200), whose machine, directory, account and title are the ones\ngiven and which runs again when it had ended.",
+          "operationId": "register_v1_projects__project__local_runs__session_id__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "session_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 200,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+                "description": "the Claude session id",
+                "title": "Session Id"
+              },
+              "description": "the Claude session id"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalRegister"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "201": {
+              "description": "the session was not registered yet",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/state": {
+        "post": {
+          "tags": [
+            "local runs"
+          ],
+          "summary": "Report State",
+          "description": "Report the state of the session, the plan and step it works on, and its title; every call is a sign of life.\nAn ended run takes nothing but the PUT that registers the session again (409).",
+          "operationId": "report_state_v1_projects__project__local_runs__run_id__state_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalState"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Run"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/decisions": {
+        "post": {
+          "tags": [
+            "local runs"
+          ],
+          "summary": "Ask",
+          "description": "Ask the member a decision and notify them: the run waits while one is open. 409 for a run that ended and past\nthe open decisions a run may hold.",
+          "operationId": "ask_v1_projects__project__local_runs__run_id__decisions_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/LocalDecisionAsk"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/decisions/{decision_id}": {
+        "get": {
+          "tags": [
+            "local runs"
+          ],
+          "summary": "Take Decision",
+          "description": "The decision as it is now: once it is answered, the answer is in it (``answer_option``, ``answer_text``), and\nthe machine has taken it. With ``wait_s`` the request waits for the answer (long-poll) and holds no connection\nof the database meanwhile; ask again when it comes back open.",
+          "operationId": "take_decision_v1_projects__project__local_runs__run_id__decisions__decision_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "decision_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Decision Id"
+              }
+            },
+            {
+              "name": "wait_s",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 25,
+                "minimum": 0,
+                "description": "hold the request up to this many seconds while the decision is open; 0 answers at once",
+                "default": 0,
+                "title": "Wait S"
+              },
+              "description": "hold the request up to this many seconds while the decision is open; 0 answers at once"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/decisions/{decision_id}/answered": {
+        "post": {
+          "tags": [
+            "local runs"
+          ],
+          "summary": "Answered On The Spot",
+          "description": "Report that the person answered decision ``decision_id`` in the session itself: an answer like any other, so\nthe first of the web, Telegram, ``hub decision answer`` and this wins, and a later one gets 409 with who got\nthere first. Nothing goes to the session's inbox: it has the answer.",
+          "operationId": "answered_on_the_spot_v1_projects__project__local_runs__run_id__decisions__decision_id__answered_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "decision_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Decision Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AnswerIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Decision"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/inbox": {
+        "post": {
+          "tags": [
+            "local runs"
+          ],
+          "summary": "Take Inbox",
+          "description": "Mark the messages up to ``ack`` delivered, and hand out the ones that still wait: the answers to the run's\ndecisions, as a worker's inbox hands them to its agent.",
+          "operationId": "take_inbox_v1_projects__project__local_runs__run_id__inbox_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/InboxAck"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Inbox"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/local-runs/{run_id}/events": {
+        "post": {
+          "tags": [
+            "local runs"
+          ],
+          "summary": "Post Events",
+          "description": "Store the events of the batch that follow the ones stored, and say up to where the machine's spool may go: as\nthe worker's POST /v1/worker/runs/{id}/events does.",
+          "operationId": "post_events_v1_projects__project__local_runs__run_id__events_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EventBatch"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EventsAck"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
             }
           }
         }
@@ -28194,7 +29111,9 @@
                 "done",
                 "failed",
                 "lost",
-                "cancelled"
+                "cancelled",
+                "idle",
+                "ended"
               ],
               "title": "Run State"
             },
@@ -28231,7 +29150,8 @@
                 "external_send",
                 "spend_money",
                 "architecture",
-                "scope"
+                "scope",
+                "question"
               ],
               "title": "Category"
             },
@@ -31126,6 +32046,215 @@
           ],
           "title": "Live"
         },
+        "LocalDecisionAsk": {
+          "properties": {
+            "category": {
+              "type": "string",
+              "enum": [
+                "deploy",
+                "delete_data",
+                "live_migration",
+                "external_send",
+                "spend_money",
+                "architecture",
+                "scope",
+                "question"
+              ],
+              "title": "Category",
+              "description": "a question of the person fits 'question'",
+              "default": "question"
+            },
+            "question": {
+              "type": "string",
+              "maxLength": 2000,
+              "minLength": 1,
+              "title": "Question"
+            },
+            "context": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 16384,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Context",
+              "description": "markdown, at most 16 KiB of UTF-8"
+            },
+            "options": {
+              "items": {
+                "$ref": "#/components/schemas/OptionIn"
+              },
+              "type": "array",
+              "maxItems": 6,
+              "minItems": 2,
+              "title": "Options"
+            },
+            "recommended": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$",
+                  "description": "letters, digits, _ and -, at most 32"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Recommended",
+              "description": "the key of the option the agent recommends"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step of the plan it is about"
+            }
+          },
+          "type": "object",
+          "required": [
+            "question",
+            "options"
+          ],
+          "title": "LocalDecisionAsk"
+        },
+        "LocalRegister": {
+          "properties": {
+            "machine": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Machine",
+              "description": "the machine's name"
+            },
+            "cwd": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Cwd",
+              "description": "the session's working directory"
+            },
+            "claude_email": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Claude Email",
+              "description": "the Claude account the session runs as; 'unknown' when the machine could not read it",
+              "default": "unknown"
+            },
+            "claude_profile": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claude Profile",
+              "description": "the claude-profiles profile, when known"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "what the session is about; the machine and directory when left out"
+            }
+          },
+          "type": "object",
+          "required": [
+            "machine",
+            "cwd"
+          ],
+          "title": "LocalRegister"
+        },
+        "LocalState": {
+          "properties": {
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "waiting",
+                    "idle",
+                    "ended"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "running: a turn is under way; waiting: the agent waits for a decision; idle: the turn ended and the person has the word; ended: the session is over"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id",
+              "description": "the plan the session works on, as the hub holds it"
+            },
+            "step_key": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Key",
+              "description": "the step of that plan it works on"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            }
+          },
+          "type": "object",
+          "title": "LocalState"
+        },
         "MemberCounts": {
           "properties": {
             "total": {
@@ -32375,7 +33504,7 @@
               "type": "array",
               "maxItems": 20,
               "title": "Active Runs",
-              "description": "at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued: those whose agent works first, then waiting, parked and queued, the newest first within each"
+              "description": "at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued, idle: those whose agent works first, then waiting, parked and queued, the newest first within each"
             },
             "recent_runs": {
               "items": {
@@ -32618,7 +33747,9 @@
                 "done",
                 "failed",
                 "lost",
-                "cancelled"
+                "cancelled",
+                "idle",
+                "ended"
               ],
               "title": "Run State"
             },
@@ -32632,7 +33763,7 @@
                 }
               ],
               "title": "Plan Id",
-              "description": "the run's plan when its agent asked; null for an author run that had put no plan yet"
+              "description": "the run's plan when its agent asked; null for an author run that had put no plan yet, and a local run on none"
             },
             "plan_title": {
               "anyOf": [
@@ -32666,7 +33797,8 @@
                 "external_send",
                 "spend_money",
                 "architecture",
-                "scope"
+                "scope",
+                "question"
               ],
               "title": "Category"
             },
@@ -32789,7 +33921,8 @@
                 "review",
                 "judge",
                 "author",
-                "chat"
+                "chat",
+                "local"
               ],
               "title": "Kind"
             },
@@ -32851,7 +33984,9 @@
                 "done",
                 "failed",
                 "lost",
-                "cancelled"
+                "cancelled",
+                "idle",
+                "ended"
               ],
               "title": "State"
             },
@@ -32975,6 +34110,67 @@
               ],
               "title": "Error",
               "description": "why the run failed, was lost or ended"
+            },
+            "machine": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Machine",
+              "description": "the machine of a local run's session; null for any other run"
+            },
+            "cwd": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cwd",
+              "description": "the session's working directory; null for any other run"
+            },
+            "claude_email": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claude Email",
+              "description": "the Claude account of a local run; null for any other run"
+            },
+            "claude_profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claude Profile",
+              "description": "the claude-profiles profile of a local run, when known"
+            },
+            "last_activity_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Activity At",
+              "description": "the last sign of life of a local run's session"
             }
           },
           "type": "object",
@@ -33608,6 +34804,20 @@
               "minimum": 1.0,
               "title": "If Revision",
               "description": "the revision the update was made against"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the caller's own local run (kind local) whose session writes the progress: the revision records it (Revision.run_id) and the run takes the plan and the step; 404 for any other run"
             }
           },
           "type": "object",
@@ -33667,6 +34877,20 @@
               ],
               "title": "Label",
               "description": "{level, location, integrity}; default: the project's, or the held"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the caller's own local run (kind local) whose session writes the plan: the revision records it (Revision.run_id) and the run takes the plan; 404 for any other run"
             }
           },
           "type": "object",
@@ -35843,7 +37067,7 @@
                 }
               ],
               "title": "Run Id",
-              "description": "the author run that wrote the revision, as its dispatcher (actor); null for any other write"
+              "description": "the author run that wrote the revision, as its dispatcher (actor), or the local run whose session wrote it; null for any other write"
             }
           },
           "type": "object",
@@ -36042,10 +37266,11 @@
                 "review",
                 "judge",
                 "author",
-                "chat"
+                "chat",
+                "local"
               ],
               "title": "Kind",
-              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan"
+              "description": "step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches"
             },
             "project": {
               "type": "string",
@@ -36253,9 +37478,12 @@
                 "done",
                 "failed",
                 "lost",
-                "cancelled"
+                "cancelled",
+                "idle",
+                "ended"
               ],
-              "title": "State"
+              "title": "State",
+              "description": "idle and ended are a local run's alone: the turn ended and the person has the word; the session is over, or went silent for a day"
             },
             "lease_expires_at": {
               "anyOf": [
@@ -36657,6 +37885,67 @@
               ],
               "title": "Hop",
               "description": "a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most 3); null for any other run"
+            },
+            "machine": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Machine",
+              "description": "a local run's machine, as its hub login names it; null otherwise"
+            },
+            "cwd": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cwd",
+              "description": "the directory a local run's session works in; null otherwise"
+            },
+            "claude_email": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claude Email",
+              "description": "the Claude account that ran a local run's session, or unknown; null for any other run"
+            },
+            "claude_profile": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Claude Profile",
+              "description": "the claude-profiles profile of a local run, when it was read"
+            },
+            "last_activity_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last Activity At",
+              "description": "the last time a local run's session said anything; null for any other run"
             }
           },
           "type": "object",
@@ -37364,7 +38653,9 @@
                 "done",
                 "failed",
                 "lost",
-                "cancelled"
+                "cancelled",
+                "idle",
+                "ended"
               ],
               "title": "State"
             },
@@ -39553,6 +40844,18 @@
               "type": "integer",
               "minimum": 0.0,
               "title": "Cancelled",
+              "default": 0
+            },
+            "idle": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Idle",
+              "default": 0
+            },
+            "ended": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Ended",
               "default": 0
             }
           },

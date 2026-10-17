@@ -58,6 +58,10 @@ expired lease does not, since the worker may come back. ``prune_run_events`` (hu
 deletes the events of runs that ended more than EVO_HUB_RUN_LOG_DAYS ago, and the sealed GitHub tokens past their end.
 A move to an end state writes the run's tool figures (``tool_stats.record``), which stay after its events go.
 
+A ``local`` run (``local_runs``) is none of this: no worker holds it, so it has no lease, timeout, slot or attempts,
+and none of the passes above takes it (each leaves ``kind = 'local'`` out); the reaper's one pass over it ends the ones
+that sent nothing for ``runs.LOCAL_SILENT_SECONDS`` (``local_runs.end_silent``).
+
 A run that leaves the held states (it ends, waits in review, or is parked) gives back its credentials: ``move_run``
 marks its leases revoked in the same transaction (``credentials.end_leases``), and the GitHub tokens among them are
 revoked at GitHub once it commits, by the route that moved it and by every pass of the reaper
@@ -333,6 +337,15 @@ async def write_event(conn: AsyncConnection, run_id: int, body: dict) -> int:
     and wake its streams; its seq. Like the ``state`` events, it is written past the run's limit of events."""
     seq = await next_seq(conn, run_id)
     await _insert_event(conn, run_id, seq, "system", body)
+    await notify_events(conn, run_id)
+    return seq
+
+
+async def write_state(conn: AsyncConnection, run_id: int, old: str, new: str, actor: str, reason: str) -> int:
+    """Write the ``state`` event of a move that ``move_run`` does not make (a local run's, which no table of moves
+    governs) into the log of run ``run_id``, whose row the caller holds locked, and wake its streams; its seq."""
+    seq = await next_seq(conn, run_id)
+    await _insert_event(conn, run_id, seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
     await notify_events(conn, run_id)
     return seq
 
@@ -805,7 +818,7 @@ async def end_timed_out(engine: AsyncEngine, batch: int, ended: Counter) -> None
     """Fail every held run whose agent time is past its timeout, or cancel it when its cancel was asked for, each in a
     transaction of its own; count them in ``ended``."""
     r = tables.runs
-    late_held = (r.c.state.in_(runs.HELD_STATES), _past_timeout())
+    late_held = (r.c.state.in_(runs.HELD_STATES), r.c.kind != "local", _past_timeout())
     async with engine.begin() as conn:
         late = (await conn.execute(select(r.c.id).where(*late_held).order_by(r.c.id).limit(batch))).scalars().all()
     for run_id in late:
@@ -829,7 +842,7 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
     """Park every run that has waited ``wait`` for its owner's answer, or cancel it when its cancel was asked for,
     each in a transaction of its own; count them in ``ended``."""
     r = tables.runs
-    waited_long = (r.c.state == "waiting", r.c.waiting_since < func.now() - wait)
+    waited_long = (r.c.state == "waiting", r.c.kind != "local", r.c.waiting_since < func.now() - wait)
     async with engine.begin() as conn:
         query = select(r.c.id).where(*waited_long).order_by(r.c.waiting_since).limit(batch)
         waited = (await conn.execute(query)).scalars().all()
@@ -899,7 +912,7 @@ async def recover_runs(
     r, w = tables.runs, tables.workers
     ended: Counter[str] = Counter()
     await end_timed_out(engine, batch, ended)
-    lapsed = (r.c.state.in_(runs.HELD_STATES), r.c.lease_expires_at < func.now())
+    lapsed = (r.c.state.in_(runs.HELD_STATES), r.c.kind != "local", r.c.lease_expires_at < func.now())
     async with engine.begin() as conn:
         query = select(r.c.id).where(*lapsed).order_by(r.c.lease_expires_at).limit(batch)
         expired = (await conn.execute(query)).scalars().all()
@@ -935,6 +948,9 @@ async def recover_runs(
             ] += 1
     await park_waiting(engine, batch, decision_wait, ended)
     await expire_parked(engine, batch, parked_for, ended)
+    from evo_agents.hub.server import local_runs  # it moves runs through this module
+
+    await local_runs.end_silent(engine, batch)  # a local run no worker holds: it is neither lost nor parked
     async with engine.begin() as conn:
         unclaimable = (
             select(r.c.id, w.c.name)

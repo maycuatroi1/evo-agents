@@ -721,6 +721,17 @@ unread and how many decisions and proposals wait for an answer (`GET /v1/me/noti
 answering a decision reads its notification too. Each of these prints the hub's answer with `--json`, `notifications
 --read` its count of read and unread.
 
+## Local runs
+
+A member's Claude Code session on their own machine shows in the hub as a run of kind `local`, with its machine, cwd,
+account (`claude_email`, `claude_profile`), state (`running`, `waiting`, `idle`, `ended`), plan and step and last
+activity (`docs/workers.md`, Local runs). It is private to that member in the run list (`hub run list --kind local
+--account EMAIL`), the run page, the log and the Monitor. It takes no slot and is never lost, retried or parked, the
+Curator ignores it, and one that stays silent for 24 hours ends. Its decisions (category `question`) notify, reach
+Telegram and the Inbox like any other, and the first answer wins, from the web, Telegram, `hub decision answer` or the
+machine's report that it was answered on the spot. hub-cli-v1 only gained `hub run list --kind --account` and the new
+states and kind in `hub run list/show`; the machine side talks HTTP.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three

@@ -288,11 +288,12 @@ def decision_message(
 ) -> Message:
     """A decision: what it is about, its question, its options with the recommended one marked, a button per option
     and the web's button. Its context stays on the hub. The question gives way first when the text runs long. A
-    decision of an author run (``run_kind``) without a plan names the run and its title (``run_title``) instead."""
+    decision of an author run or a local run (``run_kind``) without a plan names the run and its title (``run_title``)
+    instead."""
     where = f"plan {plan_id}" + (f", step {step_key}" if step_key else "") if plan_id else "its plan"
     run = f"Run #{run_id}" if run_id else "A run"
-    if run_kind == "author" and run_id:
-        run = f"Author run #{run_id}"
+    if run_kind in ("author", "local") and run_id:
+        run = f"{run_kind.capitalize()} run #{run_id}"
         if not plan_id:
             where = clip(" ".join(run_title.split()), RUN_TITLE_CHARS) if run_title else "no plan yet"
     head = f"<b>{escape(run)} of {escape(project)} asks a decision</b> ({escape(category)}, {escape(where)})"
