@@ -333,10 +333,13 @@ signed in, the writer role on each project (`GET /v1/auth/whoami`) and that each
 (`GET /v1/workers`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
 unchanged, on a pseudo-terminal of its own (`evo_agents/hub/setup_token.py`). The member signs in to Claude and
 approves in the browser it opens, and the command reads the token off the screen, joining it again where the
-terminal's width wrapped it. The token never reaches the member's screen: from its first bytes on, the relay passes on
-only the escape sequences that set or reset the terminal's modes, and `claude` is stopped if it still runs 5 seconds
-later. The command writes the token, prints the account as `account show` does (on stdout; the progress lines go to
-stderr), and with `--json` prints the `Account` schema instead.
+terminal's width wrapped it. Claude Code 2.1.296 prints the token from column 1 up to the right margin and goes on at
+column 1 on the next row, so in a terminal narrower than 110 columns the token takes two rows or more. When the
+command cannot tell how the rows join, it asks for the token rather than keep the first row alone, since a token cut
+short fails every run with a 401. The token never reaches the member's screen: from its first bytes on, the relay
+passes on only the escape sequences that set or reset the terminal's modes, and `claude` is stopped if it still runs 5
+seconds later. The command writes the token, prints the account as `account show` does (on stdout; the progress lines
+go to stderr), and with `--json` prints the `Account` schema instead.
 
 When the screen held no token (a sign-in cancelled, a release of Claude Code that prints it another way), the command
 says so and asks for it at a prompt that does not echo, where Enter alone stops. With `--paste`, or when stdin is not a
