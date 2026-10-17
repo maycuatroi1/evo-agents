@@ -263,6 +263,7 @@ class Conversation:
         chat of an author run. The time spent here moves the run's deadline back."""
         run = self.run
         started = run.loop.time()
+        run.waiting_since = started
         try:
             while True:
                 if run.stop_reason is not None:
@@ -281,6 +282,7 @@ class Conversation:
                 )
         finally:
             run.deadline += run.loop.time() - started
+            run.waiting_since = None
 
     async def park(self) -> None:
         """The hub parked the run: its slot is free; the session and the worktrees stay for the run that resumes
