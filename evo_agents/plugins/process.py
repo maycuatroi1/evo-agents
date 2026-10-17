@@ -6,7 +6,9 @@ one, with no file descriptor besides its three pipes. ``call`` writes one reques
 ``timeout`` seconds: ``BackendTimeout`` when none comes, ``BackendGone`` when the process ends or closes its stdout
 first, ``protocol.RemoteError`` for the error it answers. A line on stdout that is no plugin/1 response is kept in
 ``violations``; the last lines of stderr in ``stderr_tail``, each cut at STDERR_LINE characters. ``stop`` asks the
-backend to shut down, closes its stdin, then sends SIGTERM and SIGKILL to its whole process group.
+backend to shut down, closes its stdin, then sends SIGTERM and SIGKILL to its whole process group; when the backend
+has a user of its own, it then kills every process of that user (``kill_user``), so a child that left the group with
+setsid() goes too.
 
 Standard library only (asyncio).
 """
@@ -19,6 +21,8 @@ import itertools
 import json
 import os
 import signal
+import subprocess
+import sys
 from collections import deque
 from pathlib import Path
 
@@ -30,6 +34,9 @@ STDERR_LINE = 500  # characters kept of one line of stderr
 MAX_VIOLATIONS = 20
 STOP_GRACE = 5.0  # seconds a backend has to exit after shutdown
 KILL_WAIT = 2.0  # seconds after SIGTERM before SIGKILL
+KILL_ROUNDS = 10  # kill(-1) rounds before kill_user gives up on a user that keeps forking
+KILLER = "import os, signal\nos.kill(-1, signal.SIGKILL)\n"  # run as the user: every process it may signal
+PROC = Path("/proc")
 
 
 class BackendGone(RuntimeError):
@@ -183,10 +190,67 @@ class BackendProcess:
                 await self.proc.wait()
         else:  # the process is gone; what it started in its group goes with it
             self._signal_group(signal.SIGKILL)
+        if self.owner is not None:  # and what left the group, under the plugin's user
+            await kill_user(self.owner)
         for task in self._readers:
             task.cancel()
         await asyncio.gather(*self._readers, return_exceptions=True)
         return self.proc.returncode
+
+
+def _status(pid: Path) -> dict[str, str]:
+    try:
+        text = (pid / "status").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    return dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+
+
+def processes_of(uid: int) -> list[int]:
+    """The live processes whose real, effective or saved user is ``uid``, from /proc (Linux); zombies left out, as
+    they hold nothing. /proc/<pid>/status is readable even for a process that is not dumpable."""
+    if not PROC.is_dir():
+        return []
+    found = []
+    for entry in PROC.iterdir():
+        if not entry.name.isdigit():
+            continue
+        status = _status(entry)
+        uids = status.get("Uid", "").split()[:3]
+        if str(uid) in uids and not status.get("State", "").strip().startswith(("Z", "X")):
+            found.append(int(entry.name))
+    return found
+
+
+async def kill_user(owner: Identity) -> bool:
+    """SIGKILL every process of ``owner``'s user: a process started under that user calls kill(-1), which reaches
+    every process the user may signal (all of its own, nothing else), again until /proc shows none; True when none is
+    left. The host needs CAP_SETUID and CAP_SETGID, which it has when it gives backends users of their own. The killer
+    is the host's Python, isolated, so nothing of the plugin runs in it."""
+    for _ in range(KILL_ROUNDS):
+        if PROC.is_dir() and not processes_of(owner.uid):
+            return True
+        killer = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-I",
+            "-S",
+            "-c",
+            KILLER,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            env={},
+            cwd="/",
+            close_fds=True,
+            user=owner.uid,
+            group=owner.gid,
+            extra_groups=[],
+        )
+        await killer.wait()
+        if not PROC.is_dir():
+            return True
+        await asyncio.sleep(0.05)
+    return not processes_of(owner.uid)
 
 
 def describe_exit(code: int | None) -> str:

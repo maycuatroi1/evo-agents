@@ -10,11 +10,14 @@ points (step 5) turn into a 503.
 - ``PluginHostClient.call`` proxies one plugin/1 method to a backend and returns its result, or raises within
   ``timeout``: ``PluginHostUnavailable`` when the host or the backend is down, ``PluginCallError`` for the backend's
   error. The timeout is the api's own, so a hung backend never holds an api request open past it.
-- the host calls two routes of the api, both under ``/v1/plugin-host/`` and authenticated by the shared secret (they
-  are in ``security.PUBLIC_PATHS`` and check the secret themselves, like the Telegram webhook): ``GET .../plugins``
-  gives the host every installed isolated plugin with its bundle, the token to start it with and its decrypted config
-  (``plugin_tokens.backend_payload``); ``POST .../status`` is where the host reports each backend's state, which the
-  hub keeps in ``plugin_backends`` (0035) for an admin to read with ``GET /v1/plugins/{name}/backend``.
+- the host calls the routes under ``HOST_ROUTES``, ``/internal/plugin-host/``, each authenticated by the shared secret
+  (``host_caller``). They are outside /v1, which is all the reverse proxy in front of the hub sends to the api, so only
+  a service on the stack's network reaches them; they are not in the OpenAPI document either. ``GET .../plugins``
+  gives the host every installed isolated plugin with a backend and its ``initialize`` payload, the config decrypted
+  (``plugin_tokens.backend_payload``), and mints nothing; ``POST .../plugins/{name}/token`` mints the token of the
+  backend the host is about to start, revoking the plugin's older ones; ``GET .../plugins/{name}/bundle`` gives the
+  bundle; ``POST .../status`` is where the host reports each backend's state, which the hub keeps in
+  ``plugin_backends`` (0035) for an admin to read with ``GET /v1/plugins/{name}/backend``.
 """
 
 from __future__ import annotations
@@ -39,6 +42,7 @@ from evo_agents.plugins.manifest import read_manifest
 log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30.0
+HOST_ROUTES = "/internal/plugin-host"  # outside /v1: the reverse proxy never sends it to the api
 BACKEND_STATES = ("placing", "starting", "running", "backoff")
 ISOLATIONS = ("uid", "process")
 
@@ -148,7 +152,11 @@ class BackendPlugin(BaseModel):
     sha256: str = Field(description="the bundle's SHA-256; the host fetches it from the blob store")
     size: int
     backend: dict = Field(description="the manifest's backend: runtime, entry, requirements")
-    init: dict = Field(description="the initialize payload, config secrets decrypted, the fresh token included")
+    init: dict = Field(description="the initialize payload, config secrets decrypted; the host adds the token")
+
+
+class BackendToken(BaseModel):
+    token: str = Field(description="a fresh evp_ token for the backend about to start; the plugin's older ones revoked")
 
 
 class BackendStatusIn(BaseModel):
@@ -175,16 +183,18 @@ class BackendStatus(BaseModel):
 
 
 router = APIRouter(
-    prefix="/v1/plugin-host",
+    prefix=HOST_ROUTES,
     tags=["plugin-host"],
     dependencies=[Depends(host_caller)],
     responses={401: {"model": ErrorBody}, 503: {"model": ErrorBody}},
+    include_in_schema=False,
 )
 
 
 @router.get("/plugins", response_model=list[BackendPlugin])
 async def host_plugins(request: Request, _: HostCaller) -> list[BackendPlugin]:
-    """Every installed isolated plugin with a backend, for the host to run: its bundle, a fresh token and its config."""
+    """Every installed isolated plugin with a backend, for the host to run: its bundle and its config. No token: the
+    host asks for one when it starts a backend, so pulling again changes nothing."""
     state = request.app.state
     hub_url = state.config.public_url or ""
     async with state.engine.begin() as conn:
@@ -194,8 +204,7 @@ async def host_plugins(request: Request, _: HostCaller) -> list[BackendPlugin]:
             manifest = read_manifest(row.manifest)
             if manifest.backend is None:
                 continue
-            token = await issue_token(conn, row.id)
-            init = await backend_payload(conn, state.sealer, hub_url, token, row)
+            init = await backend_payload(conn, state.sealer, hub_url, row)
             out.append(
                 BackendPlugin(
                     name=row.name,
@@ -208,6 +217,20 @@ async def host_plugins(request: Request, _: HostCaller) -> list[BackendPlugin]:
                 )
             )
     return out
+
+
+@router.post("/plugins/{name}/token", response_model=BackendToken)
+async def host_token(request: Request, name: str, _: HostCaller) -> BackendToken:
+    """A fresh token for the backend of ``name`` the host is about to start, its older tokens revoked; 404 unless it
+    is an installed, turned-on isolated plugin with a backend. The plugin's row stays locked until the token is
+    written, as removing it and the hub turning it off lock it: either of those that runs at the same time waits and
+    then revokes the token, or goes first and leaves no plugin to mint one for."""
+    async with request.app.state.engine.begin() as conn:
+        rows = await _installed_isolated(conn, name, lock=True)
+        row = next((row for row in rows if row.manifest.get("backend")), None)
+        if row is None:
+            raise not_found(name)
+        return BackendToken(token=await issue_token(conn, row.id))
 
 
 @router.get("/plugins/{name}/bundle")
@@ -258,7 +281,7 @@ async def report_status(request: Request, _: HostCaller, body: list[BackendStatu
             )
 
 
-async def _installed_isolated(conn: AsyncConnection) -> list:
+async def _installed_isolated(conn: AsyncConnection, name: str | None = None, *, lock: bool = False) -> list:
     p, v = tables.plugins, tables.plugin_versions
     query = (
         select(p.c.id, p.c.name, p.c.installed_version, v.c.manifest, v.c.sha256, v.c.size, v.c.tier)
@@ -266,6 +289,10 @@ async def _installed_isolated(conn: AsyncConnection) -> list:
         .where(p.c.installed_version.is_not(None), p.c.disabled_reason.is_(None), v.c.tier == "isolated")
         .order_by(p.c.name)
     )
+    if name is not None:
+        query = query.where(p.c.name == name)
+    if lock:
+        query = query.with_for_update(of=p)
     return list(await conn.execute(query))
 
 
