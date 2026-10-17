@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { useId, useMemo } from "react";
 
 import { Button } from "@/components/ui/button";
+import { Skeleton } from "@/components/ui/skeleton";
 import { useNow } from "@/hooks/use-now";
 import { cn } from "@/lib/utils";
 
@@ -66,8 +67,21 @@ function TextLine({ item }: { item: Exclude<Shown, ToolGroup> }) {
  * A phone's view of the trace on the run's page: its latest rows, newest first, the same rows as the trace's normal
  * view (a group of calls as what it did, the agent's words, a question, a message), and a button that opens the trace
  * (an author run's Chat, `label`) on a screen of its own, the one scroll region for it. The live group's clock is the only thing that moves.
+ * While the log is first read (`loading`) the rows are grey bars in their place, not "Nothing was recorded".
  */
-export function TracePreview({ events, active, label, onOpen }: { events: readonly RunEvent[]; active: boolean; label?: string; onOpen: () => void }) {
+export function TracePreview({
+  events,
+  active,
+  loading,
+  label,
+  onOpen,
+}: {
+  events: readonly RunEvent[];
+  active: boolean;
+  loading: boolean;
+  label?: string;
+  onOpen: () => void;
+}) {
   const t = useTranslations("runs.detail.preview");
   const id = useId();
   const items = useMemo(() => groupByIntent(buildTrace(events)), [events]);
@@ -81,14 +95,27 @@ export function TracePreview({ events, active, label, onOpen }: { events: readon
     [items],
   );
   return (
-    <section className="flex min-w-0 flex-col gap-2" aria-labelledby={id} data-testid="run-trace-preview">
+    <section className="flex min-w-0 flex-col gap-2" aria-labelledby={id} aria-busy={(loading && recent.length === 0) || undefined} data-testid="run-trace-preview">
       <div className="flex items-baseline justify-between gap-3">
         <h2 id={id} className="text-[15px] leading-[22px] font-semibold">
           {t("title")}
         </h2>
         {calls > 0 ? <span className="text-[13px] leading-[18px] text-muted-foreground tabular-nums">{t("calls", { count: calls })}</span> : null}
       </div>
-      {recent.length === 0 ? (
+      {loading && recent.length === 0 ? (
+        <ol className="flex flex-col divide-y" data-testid="run-trace-preview-loading">
+          {Array.from({ length: PREVIEW_ROWS }, (_, index) => (
+            <li key={index} className="flex items-start gap-2.5 py-2.5">
+              <Skeleton className="mt-0.5 size-4 shrink-0 rounded-sm" />
+              <div className="flex min-w-0 flex-1 flex-col gap-1.5 py-0.5">
+                <Skeleton className="h-3.5 w-24" />
+                <Skeleton className="h-3.5 w-full" />
+                <Skeleton className="h-3.5 w-2/3" />
+              </div>
+            </li>
+          ))}
+        </ol>
+      ) : recent.length === 0 ? (
         <p className="text-sm text-muted-foreground">{active ? t("waiting") : t("none")}</p>
       ) : (
         <ol className="flex flex-col divide-y">
