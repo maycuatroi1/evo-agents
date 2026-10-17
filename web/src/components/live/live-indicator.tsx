@@ -141,8 +141,10 @@ export function LiveIndicator({ className }: { className?: string }) {
   }
 
   return (
+    // Live is how the page should be: it shows only when it is not (reconnecting, offline, paused), and stays in the page
+    // for screen readers, which the status role tells of every change.
     <div
-      className={cn("flex min-w-0 items-center gap-1", className)}
+      className={cn("flex min-w-0 items-center gap-1", state === "live" && "sr-only", className)}
       data-testid="live-indicator"
       data-state={state}
       data-transport={signal.transport}

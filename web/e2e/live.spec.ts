@@ -137,10 +137,11 @@ test("the runs list and a local session's page follow the session live, and the 
 
   // The run's page follows the session's stream, and the session ending shows as Ended.
   await open(page, runPath(project, other.run.id));
-  await expect(main.getByTestId("run-state").first()).toHaveText("Running");
+  await expect(main.getByTestId("run-detail")).toHaveAttribute("data-state", "running");
   await localEvents(me, project, other.run.id, [say("Tidying the docs.")]);
   await expect(main.getByTestId("trace").getByTestId("trace-message")).toHaveText("Tidying the docs.");
   await localAsk(me, project, other.run.id, "Rename the guide?");
   await localState(me, project, other.run.id, { state: "ended" });
-  await expect(main.getByTestId("run-state").first()).toHaveText("Ended", { timeout: 15_000 });
+  await expect(main.getByTestId("run-detail")).toHaveAttribute("data-state", "ended", { timeout: 15_000 });
+  await expect(main.getByTestId("run-status-line")).toContainText("Ended after");
 });

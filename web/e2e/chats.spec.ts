@@ -132,7 +132,7 @@ test("a member makes a chat, mentions its agent through the suggestions and foll
   // The run's page names its kind and leads back to the message it answers.
   await reply.getByTestId("message-run-link").click();
   await page.waitForURL(`**/p/${project}/runs/${runId}`);
-  await expect(main(page).getByTestId("run-kind")).toHaveAttribute("data-kind", "chat");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-kind", "chat");
   const back = main(page).getByTestId("run-chat-link");
   await expect(back).toHaveAttribute("href", chatPath(chatId, (await chatPageOf(me, chatId)).messages[0].id));
   await back.click();
