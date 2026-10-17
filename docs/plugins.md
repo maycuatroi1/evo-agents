@@ -8,7 +8,7 @@ A plugin is core or isolated (`tier` in the manifest). A **core** plugin is a Py
 contributions run in the api and the worker processes. An **isolated** plugin, the default, carries a **backend**: a
 program the hub runs outside its own processes, in a plugin host, and reaches over the `plugin/1` protocol. An isolated
 plugin never runs Python in the hub; it serves its routes, MCP tools, jobs, events and channels from its backend, and
-its pages run in a sandboxed iframe (step 7).
+its pages run in a sandboxed iframe that reaches the hub only through the bridge `evo-plugin/1` (section Pages).
 
 ## The backend and its manifest
 
@@ -194,6 +194,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `jobs` | `name`, `cron` | an async function of the `job` params | method `job` |
 | `events` | `name`, `on` | an async function of the `event` params | method `event` |
 | `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
+| `pages` | `name`, `title`, `icon`, `menu`, `entry` (isolated) | a native page of the hub's web, at `/p/<project>/x/<id>/<name>` | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
 
 What a project does not enable is not there: every route, tool, job, event and channel of a plugin works in a project
 that enabled the plugin while the plugin is installed and turned on, and the hub checks it on each call, not once.
@@ -262,6 +263,98 @@ core-plugins-by-entry-point): the hub reaches them through their manifests. The 
 Telegram channel (`docs/notifications.md`), which left the core as it was: its channel of kind `telegram`, its routes at
 the paths they had (the empty `prefix`: its routers carry their own under `/v1`), its table `telegram_links` from
 migration 0015. Nothing of it is per project, so no project enables it and the store does not list it.
+
+## Pages
+
+A plugin adds pages to the part of the web of a project that enabled it, at `/p/<project>/x/<id>/<name>`, each with
+an item in the project's menu after the project's own areas (`menu: false` leaves it out; a link then reaches it), its
+`title` (60 characters; the plugin's name when left out) and an `icon` from the hub's set: `puzzle` (the default),
+`file-text`, `list-checks`, `layout-dashboard`, `table`, `kanban`, `book-open`, `chart-column`, `calendar`,
+`clipboard-list`, `notebook-pen`, `bug`, `folder-kanban`, `message-square`, `gauge`, `shield-check`, `workflow` and
+`boxes`. A plugin never brings an icon, a script or a style of its own into the hub's web. In a project that has not
+enabled the plugin, where the hub turned it off, or for a page it lacks, the page is a 404, as its routes are. A plugin
+with a page is enabled per project.
+
+**A core plugin's page is native**, a page of the hub's web itself: a feature folder of its own under
+`web/src/components` (the web's ESLint rules keep it from importing another feature), a route under
+`web/src/app/(app)/p/[project]/x/<id>/` whose layout calls `requirePlugin` (`web/src/lib/plugins-server.ts`) so the
+page answers 404 where the plugin is not on, and the plugin's own routes for its data. Its manifest names no `entry`.
+The web of the image carries it; web/DESIGN.md, section Plugins, says how to add one. The tests' core plugin `notes`
+(`tests/hub/core_notes.py`) has one, which only the web's end-to-end build carries (`EVO_WEB_FIXTURES=1`).
+
+**An isolated plugin's page is an HTML file of its bundle under `pages/`** (`entry`, such as `pages/board.html`, which
+the bundle must hold: `evo-agents plugin pack` and the store refuse it otherwise). The page loads its scripts, styles,
+images and fonts from the bundle's `pages/` by relative URL, and may write them inline. The web frames it:
+
+- **The frame.** `<iframe sandbox="allow-scripts allow-forms">`, never `allow-same-origin`: the page's document has an
+  opaque origin, so it reads no cookie or storage of the hub (`document.cookie` throws `SecurityError`), cannot reach
+  the page around it, and its own requests carry no session. It cannot open popups or navigate the hub's page.
+- **The files.** `GET /v1/plugin-ui/<id>/<project>/<expires>.<mac>/<file>` serves the files of the installed version's
+  `pages/` (HTML, JavaScript, CSS, JSON, text, SVG, PNG, JPEG, GIF, WebP, icons and web fonts; anything else is a 404).
+  The frame sends no cookie, so the path's ticket is the credential: an HMAC of the plugin, the project and the expiry
+  under the hub's session secret, handed out in `pages[].url` of `GET /v1/projects/{p}/plugins` to the project's
+  members, and the same for an hour so a page read twice frames one URL; it lasts 12 hours past that hour. Each file
+  is checked again as it is served (installed, turned on, enabled in that project), and anything else, a wrong or old
+  ticket included, is the same 404. Every file answers with
+  `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;
+  font-src 'self'; media-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none';
+  frame-src 'none'; worker-src 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-forms`, `nosniff` and no
+  referrer: the page fetches nothing itself, only the hub's web frames it, and opened on its own it is still a sandbox.
+- **The bridge `evo-plugin/1`.** The page posts requests to its parent, and the web answers each by calling the hub
+  with the viewer's session, so the hub checks the viewer's grant as it does for the web itself, on top of the
+  plugin's. A request is `{"bridge": "evo-plugin/1", "id": <string or number>, "method": "...", "params": {...}}`
+  (params 64 KiB at most as JSON); the answer is `{"bridge", "id", "result"}` or `{"bridge", "id", "error": {"code",
+  "message", "status"}}`, posted to the frame's window only. The web answers only messages from the frame's own window
+  with an opaque origin, 16 at a time, and posts `{"bridge", "event": "theme", "theme": "light" | "dark"}` when the
+  viewer's theme changes. A method opens only when the project granted the plugin the permission it needs; the others
+  are refused with `not_granted` and never reach the hub:
+
+  | Method | Needs | Params | Result |
+  | --- | --- | --- | --- |
+  | `context` | | | the bridge, project, plugin, page, viewer (`login`, `role`), locale, theme, and the methods open to the page |
+  | `resize` | | `height` (CSS px) | the frame's new height, from 240 to 4000 px |
+  | `route` | | `method` (GET by default), `path` below the plugin's routes, `query`, `body` (JSON, 1 MiB) | `{status, body}` of `/v1/x/<id>/<project>/<path>`, the plugin's own route, with the viewer's session (and its CSRF header for a write) |
+  | `runs.list` | `runs:read` | `state` (states of runs), `limit` (1 to 50), `offset` | the project's runs, as `GET /v1/projects/{p}/runs` |
+  | `runs.get` | `runs:read` | `id` | one run |
+  | `plans.list` | `plans:read` | `area` (`active` or `completed`) | the project's plans |
+  | `plans.get` | `plans:read` | `id` | one plan |
+  | `memories.list` | `memories:read` | `limit` (1 to 100), `cursor` | the project's memories |
+
+  Errors: `unsupported_bridge` (another version), `invalid_request`, `unknown_method`, `not_granted`,
+  `invalid_params`, `too_large`, `busy`, `hub_refused` (the hub's refusal, with its status and message) and
+  `hub_unavailable`. `chats:*`, `runs:dispatch` and `notifications:send` open no method of the bridge: they serve the
+  plugin's backend.
+
+A minimal page:
+
+```html
+<!doctype html>
+<main id="board">Loading</main>
+<script>
+  const pending = new Map();
+  window.addEventListener("message", (event) => {
+    const { bridge, id, result, error } = event.data ?? {};
+    if (event.source !== window.parent || bridge !== "evo-plugin/1" || !pending.has(id)) return;
+    const [resolve, reject] = pending.get(id);
+    pending.delete(id);
+    error ? reject(error) : resolve(result);
+  });
+  let next = 0;
+  const call = (method, params = {}) =>
+    new Promise((resolve, reject) => {
+      const id = ++next;
+      pending.set(id, [resolve, reject]);
+      window.parent.postMessage({ bridge: "evo-plugin/1", id, method, params }, "*");
+    });
+  call("runs.list", { limit: 5 }).then((list) => {
+    document.getElementById("board").textContent = `${list.total} runs`;
+    return call("resize", { height: document.body.scrollHeight });
+  });
+</script>
+```
+
+The sample plugin of the tests (`tests/fixtures/plugins/sample/pages`) does the same and records what its sandbox
+refuses.
 
 ## Writing and checking a plugin
 
