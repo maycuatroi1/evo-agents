@@ -83,6 +83,7 @@ TABLES |= pg.PLUGIN_TABLES  # migration 0033
 TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0034
 TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0035
 TABLES |= pg.SETTINGS_TABLES  # migration 0036
+TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0037
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -157,8 +158,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_eight_tables(hub_db):
-    assert len(TABLES) == 68  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_sixty_nine_tables(hub_db):
+    assert len(TABLES) == 69  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -726,6 +727,46 @@ def test_0036_keeps_the_versions_of_branding_and_feature_toggles_and_going_back_
     assert "hub_settings" not in tables(hub_db)
     assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.kind == "branding-image")) == []
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0036") :]
+
+
+def test_0037_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0036")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        image = {"signature_kind": "image", "signed_by": "image:pkg:MANIFEST", "published_by": None}
+        with pytest.raises((errors.CheckViolation, errors.NotNullViolation)):  # a version had a publisher before 0037
+            conn.execute(_plugin_version(plugin_id, ids["user"], version="2.0.0", **image))
+    move_to(hub_db, "0037")
+    core = {"name": "notes", "publisher": "evo-agents"}
+    delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "run.state", "contribution": "runs"}
+    delivery["payload"] = {"run_id": 1}
+    with live.connect(hub_db) as conn:
+        core_id = one(conn, insert(t.plugins).values(core).returning(t.plugins.c.id))
+        conn.execute(_plugin_version(core_id, ids["user"], tier="core", **image))
+        installed = {"installed_version": "1.0.0", "installed_by": None, "installed_at": func.now()}  # by nobody
+        conn.execute(update(t.plugins).values(installed).where(t.plugins.c.id == core_id))
+        conn.execute(insert(t.plugin_deliveries).values(delivery))
+        for bad in (
+            _plugin_version(plugin_id, ids["user"], version="2.0.0", published_by=None),  # signed, by nobody
+            _plugin_version(plugin_id, ids["user"], version="2.0.0", signature_kind="image"),  # an image's, by someone
+            update(t.plugins).values(installed_at=None).where(t.plugins.c.id == core_id),
+            insert(t.plugin_deliveries).values({**delivery, "kind": "run.started"}),
+            insert(t.plugin_deliveries).values({**delivery, "contribution": "Runs!"}),
+            insert(t.plugin_deliveries).values({**delivery, "state": "lost"}),
+            insert(t.plugin_deliveries).values({**delivery, "state": "delivered"}),  # without its time
+            insert(t.plugin_deliveries).values({**delivery, "attempts": -1}),
+            insert(t.plugin_deliveries).values({**delivery, "last_error": "x" * 2001}),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.NotNullViolation)):
+                conn.execute(bad)
+
+    move_to(hub_db, "0036", down=True)
+    assert "plugin_deliveries" not in tables(hub_db)
+    assert query(hub_db, select(t.plugins.c.name)) == [("sandbox",)]  # the image's plugin went with its versions
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0037") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

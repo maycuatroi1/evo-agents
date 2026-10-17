@@ -38,6 +38,7 @@ from evo_agents.hub.server.plugin_configs import (
 )
 from evo_agents.hub.server.plugin_host import BackendStatus, backend_status
 from evo_agents.hub.server.plugin_store import (
+    FROM_IMAGE,
     PLUGIN_NAME,
     Plugin,
     PluginDetail,
@@ -50,6 +51,7 @@ from evo_agents.hub.server.plugin_store import (
     detail,
     fetch_bundle,
     find,
+    from_image,
     held_version,
     list_plugins,
     not_found,
@@ -126,15 +128,16 @@ async def publish_version(request: Request, name: PluginName, body: PluginPublis
 
 async def _install(request: Request, user, name: str, wanted: str | None, *, upgrade: bool) -> Plugin:
     state = request.app.state
-    store = blob_store(request)
     async with state.engine.begin() as conn:
         row = await find(conn, name)
         rows = [] if row is None else await version_rows(conn, row.id)
         if not rows:
             raise not_found(name)
+        if from_image(rows):
+            raise HTTPException(409, FROM_IMAGE.format(name=name))
         check_state(row, upgrade=upgrade, target=wanted)
         target = pick_version(name, rows, wanted, row.installed_version if upgrade else None, state.hub_version)
-    data = await fetch_bundle(store, target.sha256, target.size)
+    data = await fetch_bundle(blob_store(request), target.sha256, target.size)
     await asyncio.to_thread(
         check_bundle, data, target.signature, state.config, state.plugin_sigstore, state.hub_version, NOTHING_INSTALLED
     )
@@ -168,6 +171,8 @@ async def remove_plugin(request: Request, name: PluginName, user: AdminUser) -> 
             raise not_found(name)
         if row.installed_version is None:
             raise HTTPException(409, f"plugin {name} is not installed")
+        if from_image(await version_rows(conn, row.id)):
+            raise HTTPException(409, FROM_IMAGE.format(name=name))
         await set_removed(conn, user, row)
         result = await plugin(conn, name, request.app.state.hub_version)
     log.info("plugin removed", extra={"plugin": name})

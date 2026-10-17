@@ -35,6 +35,10 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``curator.collect``, every minute: in each charter's window, the night's figures of the project, counted once
   without any model, and its review run; and the deferred proposals whose time has passed open again
   (``evo_agents.hub.server.collect``).
+- ``hub.plugin_jobs``, every minute: a ``hub.plugin_job`` for each job of a plugin enabled in a project whose cron
+  takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
+- ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
+  again with a backoff (``evo_agents.hub.plugin_events``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
@@ -245,6 +249,31 @@ async def curator_outcomes(context: JobContext, timestamp: int | None = None) ->
     from evo_agents.hub.server.outcomes import measure_outcomes
 
     return await measure_outcomes(hub(context).engine)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.PLUGIN_JOBS, pass_context=True, queueing_lock=jobs.PLUGIN_JOBS)
+async def plugin_jobs(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.plugin_jobs import fire
+
+    return await fire(hub(context).engine, context.app.job_manager, timestamp)
+
+
+@queue.task(name=jobs.PLUGIN_JOB, pass_context=True)
+async def plugin_job(context: JobContext, plugin: str, job: str) -> dict:
+    from evo_agents.hub.plugin_jobs import run_job
+
+    found = hub(context)
+    return await run_job(found.engine, found.config, plugin, job)
+
+
+@queue.periodic(cron="* * * * *")
+@queue.task(name=jobs.DELIVER_PLUGIN_EVENTS, pass_context=True, queueing_lock=jobs.DELIVER_PLUGIN_EVENTS)
+async def deliver_plugin_events(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.plugin_events import deliver
+
+    found = hub(context)
+    return await deliver(found.engine, config=found.config)
 
 
 @queue.periodic(cron="13 4 * * *")

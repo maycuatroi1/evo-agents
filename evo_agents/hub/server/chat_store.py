@@ -19,7 +19,7 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, tables
+from evo_agents.hub import chats, plugin_events, tables
 from evo_agents.hub.server.chat_access import ChatAccess
 from evo_agents.hub.server.chat_views import ChatAuthor, agent_author, profiles_by_id
 
@@ -134,6 +134,10 @@ async def insert_message(
     )
     message_id = (await conn.execute(statement)).scalar_one()
     await write_event(conn, chat.chat_id, "message", {"message_id": message_id}, seq)
+    by = "person" if author_user_id is not None else "agent" if author_profile_id is not None else "hub"
+    said = {"chat_id": chat.chat_id, "message_id": message_id, "seq": seq, "thread_root_id": thread_root_id, "by": by}
+    for project in chat.projects:  # the projects of its agents: a chat of people alone belongs to none
+        await plugin_events.emit(conn, "chat.message", project.id, {**said, "run_id": run_id})
     return message_id, seq
 
 

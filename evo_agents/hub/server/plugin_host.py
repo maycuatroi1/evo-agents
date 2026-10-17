@@ -5,11 +5,12 @@ The backends of isolated plugins run in the plugin host, ``evo-agents hub plugin
 holds none of the hub's variables (``docs/plugins.md``). The api reaches it at ``config.plugin_host_url`` and the two
 authenticate each other with ``config.plugin_host_token``, the shared secret, compared in constant time; without both,
 the api runs no backend and ``PluginHostClient.call`` fails at once with ``PluginHostUnavailable``, which the extension
-points (step 5) turn into a 503.
+points turn into a 503.
 
-- ``PluginHostClient.call`` proxies one plugin/1 method to a backend and returns its result, or raises within
-  ``timeout``: ``PluginHostUnavailable`` when the host or the backend is down, ``PluginCallError`` for the backend's
-  error. The timeout is the api's own, so a hung backend never holds an api request open past it.
+- ``PluginHostClient.call`` (``evo_agents.hub.plugin_calls``, where the job worker reaches it too) proxies one
+  plugin/1 method to a backend and returns its result, or raises within ``timeout``: ``PluginHostUnavailable`` when
+  the host or the backend is down, ``PluginCallError`` for the backend's error. The timeout is the api's own, so a
+  hung backend never holds an api request open past it.
 - the host calls the routes under ``HOST_ROUTES``, ``/internal/plugin-host/``, each authenticated by the shared secret
   (``host_caller``). They are outside /v1, which is all the reverse proxy in front of the hub sends to the api, so only
   a service on the stack's network reaches them; they are not in the OpenAPI document either. ``GET .../plugins``
@@ -33,6 +34,11 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
+from evo_agents.hub.plugin_calls import (  # noqa: F401 (the api's names for them, as before)
+    PluginCallError,
+    PluginHostClient,
+    PluginHostUnavailable,
+)
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plugin_store import fetch_bundle, find, not_found, version_rows
 from evo_agents.hub.server.plugin_tokens import backend_payload, issue_token
@@ -41,87 +47,9 @@ from evo_agents.plugins.manifest import read_manifest
 
 log = logging.getLogger(__name__)
 
-DEFAULT_TIMEOUT = 30.0
 HOST_ROUTES = "/internal/plugin-host"  # outside /v1: the reverse proxy never sends it to the api
 BACKEND_STATES = ("placing", "starting", "running", "backoff")
 ISOLATIONS = ("uid", "process")
-
-
-class PluginHostUnavailable(RuntimeError):
-    """The plugin host or a backend could not be reached: not configured, down, or past the timeout."""
-
-
-class PluginCallError(RuntimeError):
-    """The backend answered a plugin/1 error."""
-
-    def __init__(self, code: int, message: str):
-        super().__init__(message)
-        self.code = code
-
-
-class PluginHostClient:
-    """The api's client to the plugin host. One per app, opened in the lifespan; ``None`` config means no host."""
-
-    def __init__(self, url: str | None, token: str | None):
-        self.url = url.rstrip("/") if url else None
-        self.token = token
-        self._client = None
-
-    @property
-    def configured(self) -> bool:
-        return bool(self.url and self.token)
-
-    async def _http(self):
-        if self._client is None:
-            import httpx
-
-            self._client = httpx.AsyncClient(base_url=self.url, headers={"Authorization": f"Bearer {self.token}"})
-        return self._client
-
-    async def call(self, plugin: str, method: str, params: dict, timeout: float = DEFAULT_TIMEOUT) -> dict:
-        """The result of one plugin/1 call on the backend of ``plugin``; raises within ``timeout``."""
-        if not self.configured:
-            raise PluginHostUnavailable("no plugin host is configured (EVO_HUB_PLUGIN_HOST_URL, _TOKEN)")
-        import httpx
-
-        body = {"method": method, "params": params, "timeout": timeout}
-        try:
-            response = await (await self._http()).post(
-                f"/v1/host/plugins/{plugin}/call", json=body, timeout=timeout + 5
-            )
-        except httpx.HTTPError as exc:
-            raise PluginHostUnavailable(f"the plugin host did not answer: {exc}") from None
-        if response.status_code == 503:
-            raise PluginHostUnavailable(response.json().get("message", "the backend is unavailable"))
-        if response.status_code >= 400:
-            payload = _json(response)
-            error = payload.get("error") or {}
-            raise PluginCallError(int(error.get("code", -32603)), str(error.get("message", response.text))[:2000])
-        return _json(response).get("result", {})
-
-    async def status(self) -> list[dict]:
-        if not self.configured:
-            return []
-        import httpx
-
-        try:
-            response = await (await self._http()).get("/v1/host/backends", timeout=10)
-            response.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise PluginHostUnavailable(f"the plugin host did not answer: {exc}") from None
-        return _json(response).get("backends", [])
-
-    async def aclose(self) -> None:
-        if self._client is not None:
-            await self._client.aclose()
-            self._client = None
-
-
-def _json(response) -> dict:
-    try:
-        return response.json()
-    except ValueError:
-        return {}
 
 
 # The secret the host and the api share

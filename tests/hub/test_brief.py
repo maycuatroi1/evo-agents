@@ -22,9 +22,9 @@ import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, func, insert, select, update
 
+from evo_agents.core_plugins.telegram import server as server_telegram
 from evo_agents.hub import curator, jobs, tables
 from evo_agents.hub.server import notifications
-from evo_agents.hub.server import telegram as server_telegram
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.brief import send_briefs
 from evo_agents.hub.worker import queue
