@@ -566,6 +566,57 @@ def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0032") :]
 
 
+def _local_run(ids, session_id: str, **extra):
+    """The INSERT of a running local run of the seeded user in demo, returning its id."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "local", "session_id": session_id}
+    row |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "interactive", "approval": "auto"}
+    row |= {"timeout_s": 86400, "state": "running", "machine": "mac", "cwd": "/work", "claude_email": "me@example.com"}
+    row |= {"last_activity_at": func.now()} | extra
+    return insert(runs).values(row).returning(runs.c.id)
+
+
+def test_0033_takes_local_runs_once_per_session_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0032")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        author = one(conn, _author_run(ids))
+        with pytest.raises(errors.CheckViolation):  # no local run before 0033
+            old = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "local", "session_id": "s0"}
+            old |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "interactive"}
+            old |= {"approval": "auto", "timeout_s": 86400, "state": "running"}
+            conn.execute(insert(table("runs", *(column(name) for name in old))).values(old))
+    move_to(hub_db, "0033")
+    with live.connect(hub_db) as conn:
+        one(conn, _local_run(ids, "s1"))
+        for state in ("waiting", "idle", "ended"):
+            extra = {"state": state}
+            if state == "waiting":
+                extra["waiting_since"] = func.now()
+            if state == "ended":
+                extra["finished_at"] = func.now()
+            one(conn, _local_run(ids, f"s-{state}", **extra))
+        for bad in (
+            _local_run(ids, "s1"),  # one run per session
+            _local_run(ids, "b1", machine=None),
+            _local_run(ids, "b2", cwd=""),
+            _local_run(ids, "b3", claude_email="a\nb"),
+            _local_run(ids, "b4", state="queued"),
+            _local_run(ids, "b5", last_activity_at=None),
+            update(t.runs).values(state="idle").where(t.runs.c.id == author),
+            update(t.runs).values(machine="mac").where(t.runs.c.id == author),
+        ):
+            with pytest.raises(
+                errors.CheckViolation if bad.is_update else (errors.CheckViolation, errors.UniqueViolation)
+            ):
+                conn.execute(bad)
+    move_to(hub_db, "0032", down=True)
+    assert query(hub_db, select(t.runs.c.id, t.runs.c.kind).order_by(t.runs.c.id)) == [(author, "author")]
+    assert "machine" not in columns(hub_db, "runs")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0033") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

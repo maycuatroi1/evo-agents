@@ -204,11 +204,12 @@ class SteadyWait(BaseModel):
 
 class Run(BaseModel):
     id: int
-    kind: Literal[runs.RUN_KINDS] = Field(
+    kind: Literal[runs.SHOWN_KINDS] = Field(
         description="step: one step of the plan; plan: every step not done yet; review: the night's review of the "
         "project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan "
         "written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in "
-        "a group chat, on no plan"
+        "a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and "
+        "the hub only watches"
     )
     project: str
     plan_id: str = Field(
@@ -239,7 +240,10 @@ class Run(BaseModel):
     max_attempts: int
     parent_run_id: int | None = Field(description="the run this one retries or reruns")
     resume_of_run_id: int | None = Field(description="the parked plan run this one goes on from, in its session")
-    state: Literal[runs.RUN_STATES]
+    state: Literal[runs.SHOWN_STATES] = Field(
+        description="idle and ended are a local run's alone: the turn ended and the person has the word; the session "
+        "is over, or went silent for a day"
+    )
     lease_expires_at: datetime | None
     session_id: str | None
     repo: str | None = Field(description="null for a plan run, which has repos")
@@ -300,6 +304,15 @@ class Run(BaseModel):
         None,
         description="a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most "
         "3); null for any other run",
+    )
+    machine: str | None = Field(None, description="a local run's machine, as its hub login names it; null otherwise")
+    cwd: str | None = Field(None, description="the directory a local run's session works in; null otherwise")
+    claude_email: str | None = Field(
+        None, description="the Claude account that ran a local run's session, or unknown; null for any other run"
+    )
+    claude_profile: str | None = Field(None, description="the claude-profiles profile of a local run, when it was read")
+    last_activity_at: datetime | None = Field(
+        None, description="the last time a local run's session said anything; null for any other run"
     )
 
 
@@ -612,7 +625,7 @@ class StepWritten(BaseModel):
 StateCounts = create_model(
     "StateCounts",
     __doc__="Runs in each state.",
-    **{state: (int, Field(0, ge=0)) for state in runs.RUN_STATES},
+    **{state: (int, Field(0, ge=0)) for state in runs.SHOWN_STATES},
 )
 
 

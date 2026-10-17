@@ -107,6 +107,11 @@ def run_select():
             r.c.chat_id,
             r.c.chat_message_id,
             r.c.hop,
+            r.c.machine,
+            r.c.cwd,
+            r.c.claude_email,
+            r.c.claude_profile,
+            r.c.last_activity_at,
             lost_on.c.id.label("steady_wait_worker_id"),
             lost_on.c.name.label("steady_wait_worker"),
             case((beating(lost_on), lost_on.c.steady_since + STEADY), else_=None).label("steady_wait_at"),
@@ -158,7 +163,8 @@ async def plan_activity(conn: AsyncConnection, project_id: int, plan_id: str) ->
             r.c.project_id == project_id,
             r.c.plan_id == plan_id,
             r.c.state.in_(runs.ACTIVE_STATES),
-            r.c.kind != "author",  # an author run writes what the plan says, never a step's progress
+            r.c.kind.not_in(("author", "local")),  # an author run writes what the plan says, never a step's progress;
+            # a local run holds no step: the person's session works on it, which no dispatch waits for
         )
         .order_by(r.c.id)
     )
@@ -252,13 +258,17 @@ async def readable_run(
     """The caller's access to ``project`` when it may read run ``run_id`` of it: a grant on the project (404 without,
     403 for a hub admin without one) and the run's plan visible to it (404 otherwise, as for no run). A review run,
     which has no plan, reads as what it reads: the project, through the project's default label; so does an author run
-    of a new plan."""
+    of a new plan. A local run is private to the member whose session it is: for anyone else it reads as no run."""
     access = await project_access(conn, user, project)
     plan_routes._reader(access)
     r = tables.runs
-    found = select(r.c.plan_id, r.c.kind).where(r.c.id == run_id, r.c.project_id == access.project_id)
+    found = select(r.c.plan_id, r.c.kind, r.c.dispatched_by).where(
+        r.c.id == run_id, r.c.project_id == access.project_id
+    )
     row = (await conn.execute(found)).one_or_none()
-    if row is not None and row.plan_id is None:  # a review run, or an author run of a new plan
+    if row is not None and row.kind == "local":
+        visible = row.dispatched_by == user.user_id
+    elif row is not None and row.plan_id is None:  # a review run, or an author run of a new plan
         visible = sees_unplanned(access, sink)
     else:
         visible = row is not None and row.plan_id in await visible_plans(conn, access, sink)

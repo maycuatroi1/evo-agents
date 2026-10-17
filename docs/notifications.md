@@ -85,6 +85,13 @@ decision that is no longer open gets 409. The answer goes into the run's inbox a
 id, and the heartbeat hands it to the agent like any message of the owner's (`docs/workers.md`, The inbox). The audit
 row `decision.answer` names the decision and the option, never the text.
 
+### A decision of a local run
+
+A local run (`docs/workers.md`, Local runs) asks decisions of category `question`, with options and no plan needed. Only
+the member who owns the session sees, is notified of and answers it (404 for anyone else). It has no deadline to park
+at (`parks_at` is empty); it is `expired` when the session ends silent and `cancelled` when the session ends. The first
+answer wins, from the web, Telegram, `hub decision answer` or the machine's report; a later one gets 409.
+
 ## Notices
 
 A notice needs no answer (`NOTICE_KINDS`):

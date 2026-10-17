@@ -174,7 +174,7 @@ class RunEvent(BaseModel):
 
 class RunEvents(BaseModel):
     run_id: int
-    state: Literal[runs.RUN_STATES]
+    state: Literal[runs.SHOWN_STATES]
     last_seq: int = Field(description="the seq of the run's latest event")
     events: list[RunEvent] = Field(description="in seq order")
     more: bool = Field(description="more events follow the last one here: ask again after it")
@@ -343,43 +343,53 @@ def _fresh(events: list[EventIn], acked: int) -> list[EventIn]:
     return taken
 
 
+async def store_events(
+    request: Request, conn: AsyncConnection, run_id: int, state: str, last_seq: int, acked: int, events: list[EventIn]
+):
+    """Store the events of a batch that follow the ``acked`` ones of run ``run_id`` (in ``state``, its row locked by
+    the caller, ``last_seq`` the hub's last number), in the caller's transaction: an ``EventsAck``, or the 413 answer
+    for a run that would pass its limit. The worker's route and the local run's route (``local_runs``) both store
+    through it."""
+    fresh = _fresh(events, acked)
+    if not fresh:
+        return EventsAck(ack_seq=acked, stored=0)
+    if last_seq + len(fresh) > runs.MAX_RUN_EVENTS:
+        message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)
+        detail = [{"limit": "events_per_run", "max": runs.MAX_RUN_EVENTS, "ack_seq": acked}]
+        return error_response(request, 413, message, detail=detail)
+    rows = []
+    for number, event in enumerate(fresh, start=last_seq + 1):
+        stored, cut = runs.fit_event_body(event.body)
+        rows.append(
+            {
+                "run_id": run_id,
+                "seq": number,
+                "seen_at": event.at,
+                "kind": event.kind,
+                "body": stored,
+                "truncated": cut,
+            }
+        )
+    e, r = tables.run_events, tables.runs
+    # A time after the hub's now is taken as now.
+    stored_at = func.least(bindparam("seen_at", type_=DateTime(timezone=True)), func.now())
+    await conn.execute(insert(e).values(at=stored_at), rows)
+    count = update(r).values(event_seq=r.c.event_seq + len(fresh), events_acked=r.c.events_acked + len(fresh))
+    await conn.execute(count.where(r.c.id == run_id))
+    if state in runs.TERMINAL_STATES:  # the spool's last events, after the end: the figures take them in
+        await tool_stats.record(conn, run_id)
+    await notify_events(conn, run_id)
+    cut = sum(1 for row in rows if row["truncated"])
+    log.debug("run events stored", extra={"run_id": run_id, "stored": len(fresh), "truncated": cut})
+    return EventsAck(ack_seq=acked + len(fresh), stored=len(fresh))
+
+
 @worker_router.post("/runs/{run_id}/events", response_model=EventsAck, responses=EVENT_REFUSALS)
 async def post_events(request: Request, run_id: RunId, body: EventBatch, user: CurrentUser):
     """Store the events of the batch that follow the ones stored, and say up to where the worker's spool may go."""
     async with request.app.state.engine.begin() as conn:
         _, state, last_seq, acked, _ = await _claimed(conn, user, run_id)
-        fresh = _fresh(body.events, acked)
-        if not fresh:
-            return EventsAck(ack_seq=acked, stored=0)
-        if last_seq + len(fresh) > runs.MAX_RUN_EVENTS:
-            message = RUN_FULL.format(id=run_id, count=last_seq, limit=runs.MAX_RUN_EVENTS)
-            detail = [{"limit": "events_per_run", "max": runs.MAX_RUN_EVENTS, "ack_seq": acked}]
-            return error_response(request, 413, message, detail=detail)
-        rows = []
-        for number, event in enumerate(fresh, start=last_seq + 1):
-            stored, cut = runs.fit_event_body(event.body)
-            rows.append(
-                {
-                    "run_id": run_id,
-                    "seq": number,
-                    "seen_at": event.at,
-                    "kind": event.kind,
-                    "body": stored,
-                    "truncated": cut,
-                }
-            )
-        e, r = tables.run_events, tables.runs
-        # A time after the hub's now is taken as now.
-        stored_at = func.least(bindparam("seen_at", type_=DateTime(timezone=True)), func.now())
-        await conn.execute(insert(e).values(at=stored_at), rows)
-        count = update(r).values(event_seq=r.c.event_seq + len(fresh), events_acked=r.c.events_acked + len(fresh))
-        await conn.execute(count.where(r.c.id == run_id))
-        if state in runs.TERMINAL_STATES:  # the spool's last events, after the end: the figures take them in
-            await tool_stats.record(conn, run_id)
-        await notify_events(conn, run_id)
-    cut = sum(1 for row in rows if row["truncated"])
-    log.debug("run events stored", extra={"run_id": run_id, "stored": len(fresh), "truncated": cut})
-    return EventsAck(ack_seq=acked + len(fresh), stored=len(fresh))
+        return await store_events(request, conn, run_id, state, last_seq, acked, body.events)
 
 
 def _deliver(run_id: int, ack: int):
@@ -571,7 +581,7 @@ async def stream(
                 yield ServerSentEvent(data=event, id=str(event.seq))
             if len(rows) == STREAM_BATCH:
                 continue
-            if state in runs.TERMINAL_STATES:
+            if state in runs.TERMINAL_STATES or state == "ended":  # ended: a local run's end
                 yield ServerSentEvent(event="end", data={"state": state, "last_seq": seen})
                 return
             await wakeup.wait(STREAM_POLL_SECONDS)
