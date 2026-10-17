@@ -4,13 +4,19 @@ import { screen, waitFor } from "@testing-library/react";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "@/lib/api/client";
-import type { PluginPage, ProjectPlugin } from "@/lib/plugin-queries";
+import { type PluginPage, type ProjectPlugin, pluginKeys } from "@/lib/plugin-queries";
 import { renderVi } from "@/test/render";
 
 import { BRIDGE } from "./bridge";
-import { PluginFrame } from "./plugin-frame";
+import { GRANT_FRESH_MS, PluginFrame } from "./plugin-frame";
 
-const api = vi.hoisted(() => ({ calls: [] as string[] }));
+// The hub as the frame reads it: each call's path and the plugin it names, and the plugin as the hub holds it now
+// (null once it is removed), which a test changes as a project or a hub admin would while the page is open.
+const api = vi.hoisted(() => ({
+  calls: [] as string[],
+  named: [] as (string | null)[],
+  plugin: null as Record<string, unknown> | null,
+}));
 
 vi.mock("@/lib/api/browser", () => ({
   browserApi: () =>
@@ -19,9 +25,11 @@ vi.mock("@/lib/api/browser", () => ({
       fetch: async (request) => {
         const url = new URL(request.url);
         api.calls.push(url.pathname);
+        api.named.push(request.headers.get("X-Evo-Plugin"));
         if (url.pathname === "/v1/auth/whoami") {
           return Response.json({ login: "octo", admin: false, grants: [{ project: "demo", role: "reader" }] });
         }
+        if (url.pathname === "/v1/projects/demo/plugins/sample" && api.plugin) return Response.json(api.plugin);
         if (url.pathname === "/v1/projects/demo/runs") return Response.json({ runs: [], total: 0 });
         return Response.json({ message: "not here" }, { status: 404 });
       },
@@ -41,6 +49,8 @@ const PAGE: PluginPage = {
 const PLUGIN = {
   name: "sample",
   title: "Sample",
+  enabled: true,
+  state: "installed",
   granted: ["runs:read"],
   pages: [PAGE],
 } as unknown as ProjectPlugin;
@@ -55,7 +65,7 @@ function setup() {
   const frame = screen.getByTestId("plugin-frame") as HTMLIFrameElement;
   const posted = vi.fn();
   Object.defineProperty(frame.contentWindow, "postMessage", { value: posted, configurable: true });
-  return { frame, posted };
+  return { frame, posted, client };
 }
 
 function send(source: MessageEventSource | null, data: unknown, origin = "null") {
@@ -64,7 +74,15 @@ function send(source: MessageEventSource | null, data: unknown, origin = "null")
 
 beforeEach(() => {
   api.calls = [];
+  api.named = [];
+  api.plugin = { ...PLUGIN };
 });
+
+function refused(posted: ReturnType<typeof vi.fn>, id: number, code: string) {
+  return waitFor(() =>
+    expect(posted).toHaveBeenCalledWith(expect.objectContaining({ id, error: expect.objectContaining({ code }) }), "*"),
+  );
+}
 
 describe("PluginFrame", () => {
   it("frames the page in a sandbox without the same origin, once the bridge listens", () => {
@@ -79,15 +97,39 @@ describe("PluginFrame", () => {
     const { frame, posted } = setup();
     send(frame.contentWindow, { bridge: BRIDGE, id: 1, method: "runs.list", params: { limit: 5 } });
     await waitFor(() => expect(posted).toHaveBeenCalledWith({ bridge: BRIDGE, id: 1, result: { runs: [], total: 0 } }, "*"));
-    expect(api.calls).toContain("/v1/projects/demo/runs");
+    // the grant read again first, then the runs, with the plugin named so the hub checks its grant too
+    const runs = api.calls.indexOf("/v1/projects/demo/runs");
+    expect(api.calls.indexOf("/v1/projects/demo/plugins/sample")).toBeLessThan(runs);
+    expect(api.named[runs]).toBe("sample");
     send(frame.contentWindow, { bridge: BRIDGE, id: 2, method: "plans.list" });
-    await waitFor(() =>
-      expect(posted).toHaveBeenCalledWith(
-        expect.objectContaining({ id: 2, error: expect.objectContaining({ code: "not_granted" }) }),
-        "*",
-      ),
-    );
+    await refused(posted, 2, "not_granted");
     expect(api.calls.some((path) => path.includes("/plans"))).toBe(false);
+  });
+
+  it("goes by the grant of now: a plugin disabled, narrowed, turned off or removed while its page is open", async () => {
+    const { frame, posted, client } = setup();
+    send(frame.contentWindow, { bridge: BRIDGE, id: 1, method: "runs.list" });
+    await waitFor(() => expect(posted).toHaveBeenCalledWith(expect.objectContaining({ id: 1, result: expect.anything() }), "*"));
+    send(frame.contentWindow, { bridge: BRIDGE, id: 2, method: "runs.list" });
+    await waitFor(() => expect(posted).toHaveBeenCalledWith(expect.objectContaining({ id: 2, result: expect.anything() }), "*"));
+    // a read of the last GRANT_FRESH_MS stands: one read of the grant for both calls
+    expect(api.calls.filter((path) => path === "/v1/projects/demo/plugins/sample")).toHaveLength(1);
+
+    const cases = [
+      [3, { ...PLUGIN, enabled: false, granted: [] }], // disabled in the project
+      [4, { ...PLUGIN, granted: [] }], // upgraded to a version that asks for less
+      [5, { ...PLUGIN, state: "disabled" }], // turned off by the hub
+      [6, null], // removed from the hub
+    ] as const;
+    for (const [id, plugin] of cases) {
+      // what the web holds still grants runs:read, read longer ago than GRANT_FRESH_MS
+      client.setQueryData(pluginKeys.projectOne("demo", "sample"), PLUGIN, { updatedAt: Date.now() - GRANT_FRESH_MS - 1 });
+      api.plugin = plugin;
+      api.calls = [];
+      send(frame.contentWindow, { bridge: BRIDGE, id, method: "runs.list" });
+      await refused(posted, id, "not_granted");
+      expect(api.calls).toEqual(["/v1/projects/demo/plugins/sample"]); // read again, and the runs never asked for
+    }
   });
 
   it("ignores a message from another window or from an origin that is not opaque", async () => {
