@@ -50,7 +50,7 @@ from evo_agents.hub.server.notifications import notify
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import compat, signing
 from evo_agents.plugins.bundle import MAX_BUNDLE, BundleError, read_bundle
-from evo_agents.plugins.manifest import TIERS, Manifest
+from evo_agents.plugins.manifest import PLUGIN_ID, TIERS, Manifest
 from evo_agents.plugins.signing import MAX_SIGNATURE, SIGNATURE_KINDS, SignatureError, SignatureUnavailable
 
 log = logging.getLogger(__name__)
@@ -59,7 +59,7 @@ STATES = ("available", "installed", "disabled")
 NOTICE = "plugin_disabled"  # evo_agents.hub.runs.NOTICE_KINDS
 ADMIN_PAGE = "/admin/plugins"
 MAX_REASON_CHARS = 2000  # plugins.disabled_reason (0033)
-PLUGIN_NAME = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id
+PLUGIN_NAME = PLUGIN_ID  # a manifest's id
 VERSION = r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]{1,40})?$"  # compat.PLUGIN_VERSION
 UNAVAILABLE = "the blob store did not answer; nothing changed, try again shortly"
 

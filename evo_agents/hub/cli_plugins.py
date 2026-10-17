@@ -11,7 +11,8 @@ without one the hub refuses the bundle as unsigned. The hub checks the bundle wh
 plugin with every version. ``install NAME`` installs the newest version that runs on the hub, or ``--version``;
 ``upgrade NAME`` moves the installed one to the newest above it, or ``--version``; ``remove NAME`` removes it, every
 version staying in the store. ``--json`` prints what the hub answered. Standard library only, like the rest of the
-client.
+client. ``list --project``, ``enable``, ``disable``, ``config`` and ``rollback``, for the members of a project, are in
+``evo_agents.hub.cli_plugin_projects``.
 """
 
 from __future__ import annotations
@@ -20,8 +21,9 @@ from pathlib import Path
 from urllib.parse import quote
 
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table, when
+from evo_agents.hub.cli_plugin_projects import list_project, project_list_output, register_project_commands
 from evo_agents.hub.client import HubError
-from evo_agents.hub.contract import json_option, returns_array, returns_object
+from evo_agents.hub.contract import JsonOutput, json_option, returns_array, returns_object
 from evo_agents.hub.skill_sync import put_bundle
 from evo_agents.plugins.bundle import KIND, MAX_BUNDLE, BundleError, read_bundle
 from evo_agents.plugins.signing import SignatureError, read_signature, sha256_of
@@ -115,6 +117,8 @@ def cmd_publish(args) -> int:
 
 @client_command
 def cmd_list(args) -> int:
+    if args.project:
+        return list_project(args)
     hub, _ = signed_in()
     found = hub.call("GET", _path())
     if args.json:
@@ -192,7 +196,9 @@ def _name(parser) -> None:
 
 
 def register_plugins(hsub) -> None:
-    plugin = hsub.add_parser("plugin", help="the hub's plugins (hub admins): publish signed bundles, install them")
+    plugin = hsub.add_parser(
+        "plugin", help="the hub's plugins: publish and install them (hub admins), enable and configure them per project"
+    )
     psub = plugin.add_subparsers(dest="plugin_command", required=True)
 
     published = psub.add_parser("publish", help="upload a signed plugin bundle and publish it as its version")
@@ -204,7 +210,9 @@ def register_plugins(hsub) -> None:
     published.set_defaults(func=cmd_publish)
 
     listed = psub.add_parser("list", help="every plugin of the hub: state, installed and latest version")
-    json_option(listed, returns_array(*PLUGIN_KEYS, schema="Plugin"))
+    listed.add_argument("--project", metavar="PROJECT", help="the installed plugins as the project has them")
+    store = returns_array(*PLUGIN_KEYS, schema="Plugin")
+    json_option(listed, JsonOutput("array", store.keys, store.schema, variants=(("--project", project_list_output()),)))
     listed.set_defaults(func=cmd_list)
 
     show = psub.add_parser("show", help="one plugin with every version, its signer and what it asks for")
@@ -226,3 +234,4 @@ def register_plugins(hsub) -> None:
     _name(removed)
     json_option(removed, returns_object(*PLUGIN_KEYS, schema="Plugin"))
     removed.set_defaults(func=cmd_remove)
+    register_project_commands(psub, _name)
