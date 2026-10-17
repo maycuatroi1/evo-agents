@@ -42,8 +42,8 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The admin area's tabs gain Branding and Features (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7)."
     },
     "/admin/members/[login]": {
-      "kB": 319.0,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The admin area's tabs gain Branding and Features (hub-agent-plugins step 6)."
+      "kB": 320.4,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The admin area's tabs gain Branding and Features (hub-agent-plugins step 6). The merge of main's local sessions (0.17.0) into hub-agent-plugins (step 9) grows the chunks this page shares with other routes."
     },
     "/admin/plugins": {
       "kB": 315.6,
@@ -158,8 +158,8 @@
       "reason": "A plugin in a project: its permissions and pages, the form of the project's layer of its config drawn from its schema, what it gets and the layer's versions (hub-agent-plugins step 7)."
     },
     "/p/[project]/runs": {
-      "kB": 327.6,
-      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
+      "kB": 327.7,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs. The merge of main's local sessions (0.17.0) into hub-agent-plugins (step 9) grows the chunks this page shares with other routes."
     },
     "/p/[project]/runs/[id]": {
       "kB": 431.0,
@@ -178,8 +178,8 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]/x/[plugin]/[page]": {
-      "kB": 296.4,
-      "reason": "An isolated plugin's page in its sandboxed frame, and the bridge evo-plugin/1 that answers it with the viewer's session (hub-agent-plugins step 7)."
+      "kB": 296.6,
+      "reason": "An isolated plugin's page in its sandboxed frame, and the bridge evo-plugin/1 that answers it with the viewer's session (hub-agent-plugins step 7). The merge of main's local sessions (0.17.0) into hub-agent-plugins (step 9) grows the chunks this page shares with other routes."
     },
     "/secrets": {
       "kB": 319.7,
