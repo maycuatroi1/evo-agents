@@ -1,5 +1,5 @@
-"""The Telegram channel on the hub (``evo_agents.hub.server.telegram``), against a fake Bot API: no call reaches
-Telegram.
+"""The Telegram channel on the hub (``evo_agents.core_plugins.telegram.server``, the core plugin telegram), against a
+fake Bot API: no call reaches Telegram.
 
 The checks step 5 of the curator-agent plan names for a7: one bot of the hub; a member links a private chat with a
 one-time code that lives 10 minutes, through /start, and unlinks with /stop or on the web; a decision goes out with one
@@ -24,10 +24,10 @@ import httpx
 from fastapi.testclient import TestClient
 from sqlalchemy import delete, extract, func, insert, select, update
 
+from evo_agents.core_plugins.telegram import server as server_telegram
 from evo_agents.hub import tables
 from evo_agents.hub import telegram as model
 from evo_agents.hub.server import notifications
-from evo_agents.hub.server import telegram as server_telegram
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.security import CSRF_HEADER, SESSION_COOKIE, csrf_token, hash_token
 from tests.hub.contract_keys import assert_json_keys

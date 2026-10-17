@@ -77,7 +77,7 @@ from sqlalchemy import Integer, case, cast, delete, exists, extract, func, inser
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import plugin_events, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -189,7 +189,8 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
     if new not in runs.HANDBACK_STATES:
         values["handback_requested_at"] = None
     values |= {name: _column_value(value) for name, value in columns.items()}
-    return update(r).values(**values).where(r.c.id == run_id, r.c.state == old).returning(r.c.event_seq)
+    moved = update(r).values(**values).where(r.c.id == run_id, r.c.state == old)
+    return moved.returning(r.c.event_seq, r.c.project_id, r.c.kind, r.c.plan_id, r.c.step_key)
 
 
 async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str, body: dict) -> None:
@@ -221,21 +222,28 @@ async def move_run(
     lease: timedelta = LEASE,
     decisions: str | None = "cancelled",
 ) -> int | None:
-    """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting
-    ``columns`` (of MOVE_COLUMNS) too; write the ``state`` event, then record the move in the plan (see the module's
-    docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held without a lease
-    (the claim) is leased for ``lease``. A run that ends puts its decisions still open in the state ``decisions``, or
-    leaves them open when it is None. Returns the plan revision the move wrote, or None. Raises
-    ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
+    """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting ``columns``
+    (of MOVE_COLUMNS) too; write the ``state`` event and the ``run.state`` event of the plugins that take it
+    (``plugin_events``), then record the move in the plan (see the module's docstring), as the dispatcher with
+    ``token_id`` in the audit row. A run that comes to be held without a lease (the claim) is leased for ``lease``. A
+    run that ends puts its decisions still open in the state ``decisions``, or leaves them open when it is None. Returns
+    the plan revision the move wrote, or None. Raises ``runs.TransitionRefused`` for a move the table refuses or a run
+    that is no longer in ``old``."""
     runs.check_transition(old, new, actor)
     columns = dict(columns or {})
     unknown = set(columns) - MOVE_COLUMNS
     if unknown:
         raise ValueError(f"a move cannot set {', '.join(sorted(unknown))}")
-    seq = (await conn.execute(_move(run_id, old, new, error, columns, lease))).scalar_one_or_none()
-    if seq is None:
+    moved = (await conn.execute(_move(run_id, old, new, error, columns, lease))).one_or_none()
+    if moved is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
-    await _insert_event(conn, run_id, seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
+    await _insert_event(
+        conn, run_id, moved.event_seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason}
+    )
+    change = {"run_id": run_id, "run_kind": moved.kind, "from": old, "to": new, "actor": actor}
+    await plugin_events.emit(
+        conn, "run.state", moved.project_id, {**change, "plan_id": moved.plan_id, "step": moved.step_key}
+    )
     if new in runs.TERMINAL_STATES:
         from evo_agents.hub.server import tool_stats  # it reads runs through the routes that import this module
 

@@ -1279,5 +1279,5 @@ accounts, account_policies, run_accounts = tables_accounts.account_tables(metada
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
-plugin_tokens, plugin_backends = tables_plugins.backend_tables(metadata)  # the plugin host (0035)
+plugin_tokens, plugin_backends, plugin_deliveries = tables_plugins.backend_tables(metadata)  # 0035, 0037
 hub_settings = tables_settings.settings_table(metadata)  # the hub's own settings: branding and features (0036)

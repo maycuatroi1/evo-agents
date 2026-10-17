@@ -21,8 +21,8 @@ if not pg.DSN:
 from fastapi.testclient import TestClient
 from sqlalchemy import func, select
 
+from evo_agents.core_plugins.telegram import server as server_telegram
 from evo_agents.hub import tables
-from evo_agents.hub.server import telegram as server_telegram
 from evo_agents.hub.server.app import create_app
 from tests.hub import live
 from tests.hub.live import bearer, sql

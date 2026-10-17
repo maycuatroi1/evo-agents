@@ -25,6 +25,11 @@ plugin_tokens holds the SHA-256 of each token the hub gave the backend of a plug
 it was revoked: starting the backend again revokes the plugin's older tokens. plugin_backends holds what the host last
 said of each backend it runs: the version, its state, the isolation it has, its process id, how many times it was
 started again, since when it runs, the last failure, when it is tried again, and when the host said so.
+
+plugin_deliveries (0037) is the outbox of the extension points (``evo_agents.hub.plugin_events``): one event or
+notification for one plugin in one project, its kind, the contribution it goes to, its payload, its state, tries, when
+it is due, the last error, when it was made and delivered. 0037 also records the core plugins of the hub's image in
+plugins and plugin_versions: signature kind ``image``, published and installed by nobody.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from sqlalchemy import (
     Integer,
     MetaData,
     PrimaryKeyConstraint,
+    SmallInteger,
     Table,
     Text,
     UniqueConstraint,
@@ -94,7 +100,7 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         Column("signature", JSONB, nullable=False),
         Column("signature_kind", Text, nullable=False),
         Column("signed_by", Text, nullable=False),
-        Column("published_by", BigInteger, nullable=False),
+        Column("published_by", BigInteger),  # NULL for a core plugin of the hub's image (0037)
         _stamp("published_at"),
         ForeignKeyConstraint(["plugin_id"], ["plugins.id"], ondelete="CASCADE", name="plugin_versions_plugin_id_fkey"),
         ForeignKeyConstraint(
@@ -177,8 +183,8 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
     return project_plugins, plugin_configs, run_plugins
 
 
-def backend_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """(plugin_tokens, plugin_backends), added to ``metadata``."""
+def backend_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
+    """(plugin_tokens, plugin_backends, plugin_deliveries), added to ``metadata``."""
     plugin_tokens = Table(
         "plugin_tokens",
         metadata,
@@ -208,4 +214,35 @@ def backend_tables(metadata: MetaData) -> tuple[Table, Table]:
         _fkey("plugin_id", "plugins.id", "plugin_backends", "CASCADE"),
         PrimaryKeyConstraint("plugin_id", name="plugin_backends_pkey"),
     )
-    return plugin_tokens, plugin_backends
+    return plugin_tokens, plugin_backends, _deliveries(metadata)
+
+
+def _deliveries(metadata: MetaData) -> Table:
+    deliveries = Table(
+        "plugin_deliveries",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("contribution", Text, nullable=False),
+        Column("payload", JSONB, nullable=False),
+        Column("state", Text, nullable=False, server_default="pending"),
+        Column("attempts", SmallInteger, nullable=False, server_default="0"),
+        _stamp("next_at"),
+        Column("last_error", Text),
+        _stamp("created_at"),
+        Column("delivered_at", DateTime(timezone=True)),
+        _fkey("plugin_id", "plugins.id", "plugin_deliveries", "CASCADE"),
+        _fkey("project_id", "projects.id", "plugin_deliveries", "CASCADE"),
+        PrimaryKeyConstraint("id", name="plugin_deliveries_pkey"),
+        Index("plugin_deliveries_plugin_idx", "plugin_id", "id"),
+        Index("plugin_deliveries_created_idx", "created_at"),
+    )
+    Index(
+        "plugin_deliveries_due_idx",
+        deliveries.c.next_at,
+        deliveries.c.id,
+        postgresql_where=deliveries.c.state == "pending",
+    )
+    return deliveries

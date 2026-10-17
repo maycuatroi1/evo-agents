@@ -19,6 +19,10 @@ the publishers and the release the hub has now: bytes in the store that are not 
 (altered), and so is a publisher the operator no longer trusts. Without a version, install takes the newest version
 that runs on this release and upgrade the newest above the installed one. Removing leaves every version in the store.
 
+A core plugin that comes with the hub's image and that projects enable (``register_core_plugins``, as the api starts)
+is recorded as a version of signature kind ``image``, published and installed by nobody, which the store neither
+installs, upgrades nor removes (409): the image does. It is recorded only when the hub's schema has every table it owns.
+
 ``disable_incompatible`` runs as the api starts: an installed plugin whose version no longer runs on this release
 (the hub was upgraded past its ``engines``) is turned off with the reason, an audit row and a notice
 ``plugin_disabled`` to every hub admin who has signed in, and the hub serves on. Installing it again, or upgrading it
@@ -28,6 +32,7 @@ to a version that runs, turns it back on.
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import io
 import json
 import logging
@@ -63,6 +68,11 @@ MAX_REASON_CHARS = 2000  # plugins.disabled_reason (0033)
 PLUGIN_NAME = PLUGIN_ID  # a manifest's id
 VERSION = r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]{1,40})?$"  # compat.PLUGIN_VERSION
 UNAVAILABLE = "the blob store did not answer; nothing changed, try again shortly"
+IMAGE = "image"  # plugin_versions.signature_kind of a core plugin that comes with the hub's image (0037)
+FROM_IMAGE = (
+    "plugin {name} is a core plugin of the hub's image: it is installed, upgraded and removed with the image, not "
+    "through the store; nothing changed"
+)
 
 
 class PluginVersion(BaseModel):
@@ -74,11 +84,15 @@ class PluginVersion(BaseModel):
     plugin_api: int
     engines: str = Field(description="the evo-agents versions it runs on, as its manifest gives them")
     permissions: list[str]
-    signature_kind: Literal[SIGNATURE_KINDS]
-    signed_by: str = Field(description="the workflow identity of the Sigstore certificate, or the Ed25519 key's id")
+    signature_kind: Literal[(*SIGNATURE_KINDS, IMAGE)] = Field(
+        description="image: a core plugin that comes with the hub's image, which nobody published or signed here"
+    )
+    signed_by: str = Field(
+        description="the workflow identity of the Sigstore certificate, the Ed25519 key's id, or image:<entry point>"
+    )
     compatible: bool = Field(description="whether it runs on this hub's release")
     incompatible_reason: str | None
-    published_by: str
+    published_by: str | None = Field(description="null for a core plugin of the hub's image")
     published_at: datetime
 
 
@@ -156,7 +170,7 @@ def check_bundle(data: bytes, signature: dict | None, config: HubConfig, sigstor
             f"publisher {manifest.publisher} is not a core publisher here: an operator lists it in "
             f"EVO_HUB_PLUGIN_CORE_PUBLISHERS; {doing}",
         )
-    problem = compat.problem(manifest.engines, manifest.plugin_api, version)
+    problem = compat.problem(manifest.engines, manifest.plugin_api, version, manifest.contributes)
     if problem is not None:
         what = f"{manifest.id} {manifest.version}"
         raise HTTPException(422, f"refused (incompatible): {what} does not run on this hub: {problem}; {doing}")
@@ -202,7 +216,7 @@ def _versions_query():
         v.c.signed_by,
         u.c.login.label("published_by"),
         v.c.published_at,
-    ).join_from(v, u, u.c.id == v.c.published_by)
+    ).outerjoin_from(v, u, u.c.id == v.c.published_by)
 
 
 def _plugins_query():
@@ -226,7 +240,7 @@ def _plugins_query():
 
 def version_model(row, hub_version: str) -> PluginVersion:
     manifest = row.manifest
-    problem = compat.problem(manifest["engines"], manifest["plugin_api"], hub_version)
+    problem = compat.problem(manifest["engines"], manifest["plugin_api"], hub_version, manifest.get("contributes"))
     return PluginVersion(
         version=row.version,
         sha256=row.sha256,
@@ -357,13 +371,16 @@ async def record_version(conn: AsyncConnection, user: Principal, body: PluginPub
         pg_insert(plugins).values(name=manifest.id, publisher=manifest.publisher).on_conflict_do_nothing()
     )
     row = await find(conn, manifest.id, lock=True)  # versions of one plugin are written one at a time
+    versions = await version_rows(conn, row.id)
+    if from_image(versions):
+        raise HTTPException(409, FROM_IMAGE.format(name=manifest.id))
     if row.publisher != manifest.publisher:
         raise HTTPException(
             409,
             f"plugin {manifest.id} is published by {row.publisher}; publisher {manifest.publisher} cannot publish a "
             "version of it",
         )
-    same = next((v for v in await version_rows(conn, row.id) if v.version == manifest.version), None)
+    same = next((v for v in versions if v.version == manifest.version), None)
     if same is not None:
         if same.sha256 == body.sha256:
             return False
@@ -394,6 +411,11 @@ async def record_version(conn: AsyncConnection, user: Principal, body: PluginPub
 
 
 # Installing
+
+
+def from_image(versions: list) -> bool:
+    """Whether a plugin, by its versions, is a core plugin of the hub's image, which the store does not install."""
+    return any(version.signature_kind == IMAGE for version in versions)
 
 
 def pick_version(name: str, rows: list, wanted: str | None, floor: str | None, hub_version: str):
@@ -504,6 +526,99 @@ async def _turn_off(conn: AsyncConnection, row, reason: str, admin_ids: list[int
         )
 
 
+def _image_version(manifest: Manifest, value: str) -> dict:
+    """The version row of core plugin ``manifest`` of the image, from entry point ``value``: its manifest hashed as
+    canonical JSON stands for the bundle it does not have."""
+    canonical = json.dumps(manifest.data, sort_keys=True, separators=(",", ":"), ensure_ascii=False).encode()
+    return {
+        "version": manifest.version,
+        "sha256": hashlib.sha256(canonical).hexdigest(),
+        "size": len(canonical),
+        "r2_key": f"{IMAGE}:{value}",
+        "publisher": manifest.publisher,
+        "tier": manifest.tier,
+        "manifest": manifest.data,
+        "signature": {},
+        "signature_kind": IMAGE,
+        "signed_by": f"{IMAGE}:{value}"[:200],
+        "published_by": None,
+    }
+
+
+async def _missing_tables(conn: AsyncConnection, manifest: Manifest) -> list[str]:
+    found = []
+    for name in manifest.tables():
+        if (await conn.execute(select(func.to_regclass(literal(f"public.{name}", Text))))).scalar() is None:
+            found.append(name)
+    return found
+
+
+async def _record_image_plugin(conn: AsyncConnection, plugin) -> bool:
+    """Record core plugin ``plugin`` (a ``CorePlugin``) as installed at its version; False, logged, when the store
+    holds a plugin of that name that is not the image's, or the hub's schema lacks a table it owns."""
+    manifest, plugins, versions = plugin.manifest, tables.plugins, tables.plugin_versions
+    missing = await _missing_tables(conn, manifest)
+    if missing:
+        log.error(
+            "core plugin not recorded: the hub's migrations do not create its tables",
+            extra={"plugin": manifest.id, "tables": missing},
+        )
+        return False
+    await conn.execute(
+        pg_insert(plugins).values(name=manifest.id, publisher=manifest.publisher).on_conflict_do_nothing()
+    )
+    row = await find(conn, manifest.id, lock=True)
+    held = await version_rows(conn, row.id)
+    if row.publisher != manifest.publisher or any(version.signature_kind != IMAGE for version in held):
+        log.error("core plugin not recorded: the store holds a plugin of its name", extra={"plugin": manifest.id})
+        return False
+    values = {"plugin_id": row.id, **_image_version(manifest, plugin.value)}
+    changed = {key: values[key] for key in ("sha256", "size", "r2_key", "manifest", "signed_by")}
+    upsert = pg_insert(versions).values(values)
+    await conn.execute(
+        upsert.on_conflict_do_update(index_elements=[versions.c.plugin_id, versions.c.version], set_=changed)
+    )
+    if row.installed_version != manifest.version or row.disabled_reason is not None:
+        on = {"installed_version": manifest.version, "installed_by": None, "installed_at": func.now()}
+        await conn.execute(
+            update(plugins).where(plugins.c.id == row.id).values({**on, "disabled_reason": None, "disabled_at": None})
+        )
+        target = f"plugin:{manifest.id}@{manifest.version} via={IMAGE}"
+        await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_INSTALL, target=target)
+    return True
+
+
+async def register_core_plugins(engine: AsyncEngine, found) -> list[str]:
+    """Record in the store each core plugin of the image (``found``, of ``evo_agents.plugins.core``) that projects
+    enable (``Manifest.per_project``), installed at its version: projects then enable it, grant it what it asks for
+    and configure it as any other. A plugin of the image that left it is no longer installed; its rows, its projects'
+    grants and configs, and the data in its tables stay. The names recorded."""
+    recorded, kept = [], set()
+    async with engine.begin() as conn:
+        for plugin in found:
+            if plugin.manifest.per_project() and await _record_image_plugin(conn, plugin):
+                recorded.append(plugin.manifest.id)
+                kept.add(plugin.manifest.id)
+        p, v = tables.plugins, tables.plugin_versions
+        left = (
+            select(p.c.id, p.c.name, p.c.installed_version)
+            .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
+            .where(v.c.signature_kind == IMAGE, p.c.name.not_in(kept or [""]))
+            .with_for_update(of=p)
+        )
+        for row in (await conn.execute(left)).all():
+            cleared = {"installed_version": None, "installed_by": None, "installed_at": None}
+            await conn.execute(
+                update(p).where(p.c.id == row.id).values({**cleared, "disabled_reason": None, "disabled_at": None})
+            )
+            target = f"plugin:{row.name}@{row.installed_version} via={IMAGE}"
+            await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_REMOVE, target=target)
+            log.warning("core plugin left the image: no longer installed, its data kept", extra={"plugin": row.name})
+    if recorded:
+        log.info("core plugins of the image recorded", extra={"plugins": recorded})
+    return recorded
+
+
 async def disable_incompatible(engine: AsyncEngine, admins: frozenset[str], hub_version: str) -> list[str]:
     """Turn off every installed plugin whose version does not run on ``hub_version``, telling the hub admins; the
     names turned off."""
@@ -512,7 +627,10 @@ async def disable_incompatible(engine: AsyncEngine, admins: frozenset[str], hub_
         rows = (await conn.execute(_installed_query())).all()
         admin_ids = None
         for row in rows:
-            problem = compat.problem(row.manifest["engines"], row.manifest["plugin_api"], hub_version)
+            manifest = row.manifest
+            problem = compat.problem(
+                manifest["engines"], manifest["plugin_api"], hub_version, manifest.get("contributes")
+            )
             if problem is None:
                 continue
             if admin_ids is None:

@@ -38638,14 +38638,16 @@
               "type": "string",
               "enum": [
                 "sigstore",
-                "ed25519"
+                "ed25519",
+                "image"
               ],
-              "title": "Signature Kind"
+              "title": "Signature Kind",
+              "description": "image: a core plugin that comes with the hub's image, which nobody published or signed here"
             },
             "signed_by": {
               "type": "string",
               "title": "Signed By",
-              "description": "the workflow identity of the Sigstore certificate, or the Ed25519 key's id"
+              "description": "the workflow identity of the Sigstore certificate, the Ed25519 key's id, or image:<entry point>"
             },
             "compatible": {
               "type": "boolean",
@@ -38664,8 +38666,16 @@
               "title": "Incompatible Reason"
             },
             "published_by": {
-              "type": "string",
-              "title": "Published By"
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Published By",
+              "description": "null for a core plugin of the hub's image"
             },
             "published_at": {
               "type": "string",

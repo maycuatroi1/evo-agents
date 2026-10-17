@@ -8739,12 +8739,13 @@ export interface components {
             permissions: string[];
             /**
              * Signature Kind
+             * @description image: a core plugin that comes with the hub's image, which nobody published or signed here
              * @enum {string}
              */
-            signature_kind: "sigstore" | "ed25519";
+            signature_kind: "sigstore" | "ed25519" | "image";
             /**
              * Signed By
-             * @description the workflow identity of the Sigstore certificate, or the Ed25519 key's id
+             * @description the workflow identity of the Sigstore certificate, the Ed25519 key's id, or image:<entry point>
              */
             signed_by: string;
             /**
@@ -8754,8 +8755,11 @@ export interface components {
             compatible: boolean;
             /** Incompatible Reason */
             incompatible_reason: string | null;
-            /** Published By */
-            published_by: string;
+            /**
+             * Published By
+             * @description null for a core plugin of the hub's image
+             */
+            published_by: string | null;
             /**
              * Published At
              * Format: date-time

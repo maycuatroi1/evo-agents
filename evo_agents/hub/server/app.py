@@ -11,12 +11,14 @@ for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
 (``evo_agents.hub.server.terminal``), which check their own credential. ``app.state.sealer`` seals the members' secrets
 (``evo_agents.hub.server.sealing``); it is None without EVO_HUB_SECRETS_KEY, and the routes that write secrets answer
-503. As it starts, the hub turns off an installed plugin that no longer runs on its release and tells the hub admins
-(``evo_agents.hub.server.plugin_store``). ``app.state.github_app`` is the hub's GitHub App
+503. As it starts, the hub records the core plugins of its image that projects enable, and turns off an installed plugin
+that no longer runs on its release and tells the hub admins (``evo_agents.hub.server.plugin_store``). The routes of
+plugins are included when the app is made (``evo_agents.hub.server.plugin_routes``): the core plugins' own, Telegram's
+among them, then the proxy to isolated plugins' backends under /v1/x. ``app.state.github_app`` is the hub's GitHub App
 (``evo_agents.hub.server.github_app``), which makes and revokes the runs' GitHub tokens; the lifespan opens it, None
-without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start. ``app.state.curator_app`` is
-the Curator's own App, evo-agents-curator, the same way with EVO_HUB_CURATOR_APP_*: the runs of the Curator get their
-tokens from it alone, and the hub checks rulesets with it.
+without EVO_HUB_GITHUB_APP_*, and a private key that does not open stops the start. ``app.state.curator_app`` is the
+Curator's own App, evo-agents-curator, the same way with EVO_HUB_CURATOR_APP_*: the runs of the Curator get their tokens
+from it alone, and the hub checks rulesets with it.
 """
 
 from __future__ import annotations
@@ -268,13 +270,10 @@ def create_app(config: HubConfig) -> FastAPI:
     ):
         app.include_router(routes)
 
-    from evo_agents.hub.server import telegram
+    from evo_agents.hub.server import plugin_routes
 
-    app.include_router(telegram.me_router)
-    app.include_router(telegram.webhook_router)
-    app.include_router(telegram.admin_router)
-    app.state.telegram_inbound = telegram.InboundLimit()  # updates per chat the webhook takes, in this process
-    app.state.telegram_bot = None  # the bot's username, once getMe told it
+    # The routes of the core plugins (Telegram's, at the paths it had), then those of isolated plugins under /v1/x.
+    app.state.core_plugins = plugin_routes.include(app)
 
     from evo_agents.hub.server import terminal
 
@@ -335,11 +334,12 @@ def create_app(config: HubConfig) -> FastAPI:
 
 
 async def _check_plugins(app: FastAPI, config: HubConfig) -> None:
-    """Turn off the installed plugins that do not run on this release (``plugin_store``); a failure is logged and
-    the hub serves on."""
-    from evo_agents.hub.server.plugin_store import disable_incompatible
+    """Record the core plugins of the image that projects enable, then turn off the installed plugins that do not run
+    on this release (``plugin_store``); a failure is logged and the hub serves on."""
+    from evo_agents.hub.server.plugin_store import disable_incompatible, register_core_plugins
 
     try:
+        await register_core_plugins(app.state.engine, app.state.core_plugins.plugins)
         await disable_incompatible(app.state.engine, config.admins, app.state.hub_version)
     except Exception:
         log.exception("cannot check the installed plugins against this release; the hub serves on")

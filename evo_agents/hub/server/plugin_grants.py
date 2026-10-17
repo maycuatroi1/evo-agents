@@ -30,6 +30,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
+from evo_agents.hub.plugin_calls import (  # noqa: F401 (where the routes and the tokens read them, as before)
+    asked_for,
+    effective_grant,
+    enabled_plugins,
+    enabled_query,
+)
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
@@ -120,10 +126,6 @@ def _query(project_id: int):
         .outerjoin(granter, granter.c.id == pp.c.granted_by)
         .order_by(p.c.name)
     )
-
-
-def asked_for(manifest: dict) -> list[str]:
-    return list(manifest.get("permissions") or [])
 
 
 def view(row) -> ProjectPlugin:
@@ -240,39 +242,6 @@ async def disable(conn: AsyncConnection, user: Principal, access: ProjectAccess,
 
 
 # What a plugin may do
-
-
-def enabled_query():
-    """The plugins each project enabled that are installed and turned on: plugin id, name, installed version and its
-    manifest, the project's id and name, and what it granted."""
-    p, v, pp, projects = tables.plugins, tables.plugin_versions, tables.project_plugins, tables.projects
-    return (
-        select(
-            p.c.id,
-            p.c.name,
-            p.c.installed_version,
-            v.c.manifest,
-            pp.c.project_id,
-            projects.c.name.label("project"),
-            pp.c.permissions,
-        )
-        .join_from(pp, p, p.c.id == pp.c.plugin_id)
-        .join(v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
-        .join(projects, projects.c.id == pp.c.project_id)
-        .where(p.c.disabled_reason.is_(None))
-    )
-
-
-def effective_grant(row) -> tuple[str, ...]:
-    """What an enabled plugin may do in the project of ``row`` (of ``enabled_query``): granted and asked for."""
-    asked = asked_for(row.manifest)
-    return tuple(name for name in row.permissions if name in asked)
-
-
-async def enabled_plugins(conn: AsyncConnection, project_id: int) -> list:
-    """The rows of ``enabled_query`` of project ``project_id``, by plugin name."""
-    query = enabled_query().where(tables.project_plugins.c.project_id == project_id).order_by(tables.plugins.c.name)
-    return list(await conn.execute(query))
 
 
 async def project_grants(conn: AsyncConnection, name: str) -> dict[str, tuple[str, ...]]:
