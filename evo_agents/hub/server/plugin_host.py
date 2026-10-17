@@ -18,7 +18,7 @@ points turn into a 503.
   (``plugin_tokens.backend_payload``), and mints nothing; ``POST .../plugins/{name}/token`` mints the token of the
   backend the host is about to start, revoking the plugin's older ones; ``GET .../plugins/{name}/bundle`` gives the
   bundle; ``POST .../status`` is where the host reports each backend's state, which the hub keeps in
-  ``plugin_backends`` (0035) for an admin to read with ``GET /v1/plugins/{name}/backend``.
+  ``plugin_backends`` (0036) for an admin to read with ``GET /v1/plugins/{name}/backend``.
 """
 
 from __future__ import annotations

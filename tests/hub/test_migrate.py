@@ -79,11 +79,11 @@ TABLES |= pg.LEDGER_TABLES  # migration 0018
 TABLES |= pg.ACCOUNT_TABLES  # migration 0027
 TABLES |= pg.PROFILE_TABLES  # migration 0030
 TABLES |= pg.CHAT_TABLES  # migration 0031
-TABLES |= pg.PLUGIN_TABLES  # migration 0033
-TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0034
-TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0035
-TABLES |= pg.SETTINGS_TABLES  # migration 0036
-TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0037
+TABLES |= pg.PLUGIN_TABLES  # migration 0034
+TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0035
+TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0036
+TABLES |= pg.SETTINGS_TABLES  # migration 0037
+TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0038
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -571,6 +571,57 @@ def test_0032_takes_chat_runs_of_a_chat_message_and_going_back_deletes_them(hub_
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0032") :]
 
 
+def _local_run(ids, session_id: str, **extra):
+    """The INSERT of a running local run of the seeded user in demo, returning its id."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "local", "session_id": session_id}
+    row |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "interactive", "approval": "auto"}
+    row |= {"timeout_s": 86400, "state": "running", "machine": "mac", "cwd": "/work", "claude_email": "me@example.com"}
+    row |= {"last_activity_at": func.now()} | extra
+    return insert(runs).values(row).returning(runs.c.id)
+
+
+def test_0033_takes_local_runs_once_per_session_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0032")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        author = one(conn, _author_run(ids))
+        with pytest.raises(errors.CheckViolation):  # no local run before 0033
+            old = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "local", "session_id": "s0"}
+            old |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "interactive"}
+            old |= {"approval": "auto", "timeout_s": 86400, "state": "running"}
+            conn.execute(insert(table("runs", *(column(name) for name in old))).values(old))
+    move_to(hub_db, "0033")
+    with live.connect(hub_db) as conn:
+        one(conn, _local_run(ids, "s1"))
+        for state in ("waiting", "idle", "ended"):
+            extra = {"state": state}
+            if state == "waiting":
+                extra["waiting_since"] = func.now()
+            if state == "ended":
+                extra["finished_at"] = func.now()
+            one(conn, _local_run(ids, f"s-{state}", **extra))
+        for bad in (
+            _local_run(ids, "s1"),  # one run per session
+            _local_run(ids, "b1", machine=None),
+            _local_run(ids, "b2", cwd=""),
+            _local_run(ids, "b3", claude_email="a\nb"),
+            _local_run(ids, "b4", state="queued"),
+            _local_run(ids, "b5", last_activity_at=None),
+            update(t.runs).values(state="idle").where(t.runs.c.id == author),
+            update(t.runs).values(machine="mac").where(t.runs.c.id == author),
+        ):
+            with pytest.raises(
+                errors.CheckViolation if bad.is_update else (errors.CheckViolation, errors.UniqueViolation)
+            ):
+                conn.execute(bad)
+    move_to(hub_db, "0032", down=True)
+    assert query(hub_db, select(t.runs.c.id, t.runs.c.kind).order_by(t.runs.c.id)) == [(author, "author")]
+    assert "machine" not in columns(hub_db, "runs")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0033") :]
+
+
 def _plugin_version(plugin_id: int, user_id: int, **extra):
     """The INSERT of version 1.0.0 of plugin ``plugin_id``, signed with an Ed25519 key."""
     row = {"plugin_id": plugin_id, "version": "1.0.0", "sha256": "b" * 64, "size": 10, "r2_key": "blobs/sha256/b"}
@@ -579,15 +630,15 @@ def _plugin_version(plugin_id: int, user_id: int, **extra):
     return insert(hub_tables.plugin_versions).values(row | extra)
 
 
-def test_0033_keeps_the_plugin_store_and_going_back_drops_it_with_the_hubs_plugin_bundles(hub_db):
-    move_to(hub_db, "0032")
+def test_0034_keeps_the_plugin_store_and_going_back_drops_it_with_the_hubs_plugin_bundles(hub_db):
+    move_to(hub_db, "0033")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         bundle = {"project_id": None, "sha256": "b" * 64, "size": 10, "kind": "plugin-bundle"}
-        with pytest.raises(errors.CheckViolation):  # the hub held only skill bundles itself before 0033
+        with pytest.raises(errors.CheckViolation):  # the hub held only skill bundles itself before 0034
             conn.execute(insert(t.blobs).values(bundle))
-    move_to(hub_db, "0033")
+    move_to(hub_db, "0034")
     plugins = t.plugins
     with live.connect(hub_db) as conn:
         conn.execute(insert(t.blobs).values(bundle))
@@ -610,15 +661,15 @@ def test_0033_keeps_the_plugin_store_and_going_back_drops_it_with_the_hubs_plugi
                 conn.execute(bad)
 
     # Going back drops the store, the hub's plugin bundles and the notices that a plugin was turned off.
-    move_to(hub_db, "0032", down=True)
+    move_to(hub_db, "0033", down=True)
     assert "plugins" not in tables(hub_db) and "plugin_versions" not in tables(hub_db)
     assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.project_id.is_(None))) == []
     assert query(hub_db, select(t.notifications.c.id)) == []
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0033") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0034") :]
 
 
-def test_0034_places_plugins_in_projects_and_going_back_drops_the_grants_configs_and_run_records(hub_db):
-    move_to(hub_db, "0033")
+def test_0035_places_plugins_in_projects_and_going_back_drops_the_grants_configs_and_run_records(hub_db):
+    move_to(hub_db, "0034")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -629,7 +680,7 @@ def test_0034_places_plugins_in_projects_and_going_back_drops_the_grants_configs
         profile |= {"permissions": {}, "created_by": ids["user"]}
         profile_id = one(conn, insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id))
         run_id = one(conn, _author_run(ids))
-    move_to(hub_db, "0034")
+    move_to(hub_db, "0035")
     configs, runs = t.plugin_configs, t.runs
     by = {"changed_by": ids["user"], "plugin_id": plugin_id}
     with live.connect(hub_db) as conn:
@@ -659,21 +710,21 @@ def test_0034_places_plugins_in_projects_and_going_back_drops_the_grants_configs
                 conn.execute(bad)
 
     # Going back drops the grants, the config versions, the run's own layer and the run records; the run stays.
-    move_to(hub_db, "0033", down=True)
+    move_to(hub_db, "0034", down=True)
     gone = {"project_plugins", "plugin_configs", "run_plugins"}
     assert not gone & tables(hub_db)
     assert query(hub_db, select(t.runs.c.id)) == [(run_id,)]
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0034") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0035") :]
 
 
-def test_0035_keeps_plugin_tokens_and_backends_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0034")
+def test_0036_keeps_plugin_tokens_and_backends_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0035")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
         conn.execute(_plugin_version(plugin_id, ids["user"]))
-    move_to(hub_db, "0035")
+    move_to(hub_db, "0036")
     backend = {"plugin_id": plugin_id, "version": "1.0.0", "state": "running", "isolation": "uid", "pid": 42}
     with live.connect(hub_db) as conn:
         conn.execute(insert(t.plugin_tokens).values(plugin_id=plugin_id, token_hash="a" * 64))
@@ -693,17 +744,17 @@ def test_0035_keeps_plugin_tokens_and_backends_and_going_back_drops_them(hub_db)
         assert one(conn, select(func.count()).select_from(t.plugin_tokens)) == 0
         assert one(conn, select(func.count()).select_from(t.plugin_backends)) == 0
 
-    move_to(hub_db, "0034", down=True)
+    move_to(hub_db, "0035", down=True)
     assert not {"plugin_tokens", "plugin_backends"} & tables(hub_db)
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0035") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0036") :]
 
 
-def test_0036_keeps_the_versions_of_branding_and_feature_toggles_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0035")
+def test_0037_keeps_the_versions_of_branding_and_feature_toggles_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0036")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
-    move_to(hub_db, "0036")
+    move_to(hub_db, "0037")
     row = {"kind": "features", "project_id": ids["project"], "version": 1, "values": {"kg": False}}
     row["changed_by"] = ids["user"]
     image = {"project_id": None, "size": 10, "created_by": ids["user"]}
@@ -723,23 +774,23 @@ def test_0036_keeps_the_versions_of_branding_and_feature_toggles_and_going_back_
             with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
                 conn.execute(bad)
 
-    move_to(hub_db, "0035", down=True)
+    move_to(hub_db, "0036", down=True)
     assert "hub_settings" not in tables(hub_db)
     assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.kind == "branding-image")) == []
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0036") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0037") :]
 
 
-def test_0037_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_them(hub_db):
-    move_to(hub_db, "0036")
+def test_0038_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0037")
     t = hub_tables
     with live.connect(hub_db) as conn:
         ids = seed(conn)
         plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
         conn.execute(_plugin_version(plugin_id, ids["user"]))
         image = {"signature_kind": "image", "signed_by": "image:pkg:MANIFEST", "published_by": None}
-        with pytest.raises((errors.CheckViolation, errors.NotNullViolation)):  # a version had a publisher before 0037
+        with pytest.raises((errors.CheckViolation, errors.NotNullViolation)):  # a version had a publisher before 0038
             conn.execute(_plugin_version(plugin_id, ids["user"], version="2.0.0", **image))
-    move_to(hub_db, "0037")
+    move_to(hub_db, "0038")
     core = {"name": "notes", "publisher": "evo-agents"}
     delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "run.state", "contribution": "runs"}
     delivery["payload"] = {"run_id": 1}
@@ -763,10 +814,10 @@ def test_0037_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_the
             with pytest.raises((errors.CheckViolation, errors.NotNullViolation)):
                 conn.execute(bad)
 
-    move_to(hub_db, "0036", down=True)
+    move_to(hub_db, "0037", down=True)
     assert "plugin_deliveries" not in tables(hub_db)
     assert query(hub_db, select(t.plugins.c.name)) == [("sandbox",)]  # the image's plugin went with its versions
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0037") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0038") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

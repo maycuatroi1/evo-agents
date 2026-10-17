@@ -65,6 +65,8 @@ async def owned_run(conn: AsyncConnection, user: Principal, project: str, run_id
         raise HTTPException(404, f"project {project} has no run {run_id}: see GET /v1/projects/{project}/runs")
     if row[0] != user.user_id:
         raise HTTPException(403, f"only {row[1]}, who dispatched run {run_id}, may {action} it")
+    if row.kind == "local":
+        raise HTTPException(409, f"run {run_id} is a local session the hub only watches: it cannot {action} it")
     return access, row
 
 

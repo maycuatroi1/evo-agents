@@ -1,7 +1,7 @@
 """Hub settings: the versions of the branding of the hub and of which features are on, for the hub and for a project.
 
-Revision ID: 0036
-Revises: 0035
+Revision ID: 0037
+Revises: 0036
 Create Date: 2026-10-17
 
 ``evo_agents.hub.tables_settings`` describes the table; the lists below are copies of it and of
@@ -17,21 +17,21 @@ The blob store holds the logo and the favicon of the branding outside any projec
 blobs.blobs_hub_kind takes it besides the bundles of skills and plugins.
 
 Going back drops the table and the blobs rows of kind branding-image (the objects stay in the bucket, as an older
-release leaves blobs it does not know), which is the schema that schema 0035 runs on.
+release leaves blobs it does not know), which is the schema that schema 0036 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0036"
-down_revision = "0035"
+revision = "0037"
+down_revision = "0036"
 branch_labels = None
 depends_on = None
 
 KINDS = ("branding", "features")  # tables_settings.KINDS
-GLOBAL_KINDS_0035 = ("skill-bundle", "plugin-bundle")
-GLOBAL_KINDS = (*GLOBAL_KINDS_0035, "branding-image")  # what the hub holds outside any project
+GLOBAL_KINDS_0036 = ("skill-bundle", "plugin-bundle")
+GLOBAL_KINDS = (*GLOBAL_KINDS_0036, "branding-image")  # what the hub holds outside any project
 
 col = sa.column
 
@@ -79,5 +79,5 @@ def upgrade() -> None:
 def downgrade() -> None:
     blobs = sa.table("blobs", col("project_id"), col("kind"))
     op.execute(blobs.delete().where(blobs.c.project_id.is_(None), blobs.c.kind == "branding-image"))
-    _hub_kinds(GLOBAL_KINDS_0035)
+    _hub_kinds(GLOBAL_KINDS_0036)
     op.drop_table("hub_settings")

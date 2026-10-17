@@ -1,7 +1,7 @@
 """Plugin backends: the tokens the hub gives the backends of isolated plugins, and what the plugin host says of each.
 
-Revision ID: 0035
-Revises: 0034
+Revision ID: 0036
+Revises: 0035
 Create Date: 2026-10-17
 
 ``evo_agents.hub.tables_plugins`` describes the tables; the lists below are copies of it as of this revision, never
@@ -17,14 +17,14 @@ plugin_backends holds one row per backend the plugin host runs, as the host last
 id, how many times it was started again, since when it runs, its last failure, when it is tried again, and when the
 host said so.
 
-Going back drops the two tables, which is the schema that schema 0034 runs on.
+Going back drops the two tables, which is the schema that schema 0035 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0035"
-down_revision = "0034"
+revision = "0036"
+down_revision = "0035"
 branch_labels = None
 depends_on = None
 

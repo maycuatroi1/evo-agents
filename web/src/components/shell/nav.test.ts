@@ -65,6 +65,8 @@ describe("nav counts", () => {
       failed: 3,
       lost: 2,
       cancelled: 4,
+      idle: 0,
+      ended: 0,
     };
     expect(activeRunCount({ counts })).toBe(9);
   });

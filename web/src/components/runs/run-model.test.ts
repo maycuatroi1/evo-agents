@@ -154,6 +154,13 @@ describe("runControls", () => {
     expect(runControls(run(), null).owner).toBe(false);
   });
 
+  it("gives a local session's owner the answer form and no worker control: the hub only watches it", () => {
+    const local = run({ kind: "local", state: "running", worker_id: null });
+    expect(runControls(local, owner)).toEqual({ owner: true, cancel: "none", takeover: "none", handback: "none", approve: false, rerun: false, message: false });
+    expect(runControls({ ...local, state: "idle" }, owner).cancel).toBe("none");
+    expect(runControls(local, other).owner).toBe(false);
+  });
+
   it("offers a running run's owner cancel, takeover and messages", () => {
     expect(runControls(run(), owner)).toEqual({
       owner: true,

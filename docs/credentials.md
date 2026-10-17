@@ -152,7 +152,12 @@ bound to the run's project, bound to no worker or to this one, and not past its 
 - each `git` secret whose `url_prefix` covers one of those origins, the longest prefix for each origin;
 - a GitHub App token for the origins on github.com that no `git` secret covers and that the run's owner may push to
   on GitHub, one per installation: a lease of kind `git` named `github-app:<owner>` for `https://github.com/<owner>`,
-  with the username `x-access-token`.
+  with the username `x-access-token`. Its permissions are `GITHUB_PERMISSIONS`, plus `workflows: write`
+  (`GITHUB_WORKFLOW_PERMISSIONS`) when the installation of the workers' App holds it: GitHub refuses a push that
+  creates or updates a file of `.github/workflows` without it. To let runs push such a change, give the App the
+  Workflows permission (read and write) in its settings and accept it on the installation; a run asks its token at
+  its start, so a run that began before keeps its token without it until that token is renewed. A run of the
+  Curator never gets it.
 
 The answer is `{leases, missing}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
 `username`, `value` and `expires_at`, as `Lease.from_json` reads them. `missing` names each repo whose origin nothing
@@ -333,10 +338,13 @@ signed in, the writer role on each project (`GET /v1/auth/whoami`) and that each
 (`GET /v1/workers`). So a refusal never throws away a token just made. Only then does it run `claude setup-token`
 unchanged, on a pseudo-terminal of its own (`evo_agents/hub/setup_token.py`). The member signs in to Claude and
 approves in the browser it opens, and the command reads the token off the screen, joining it again where the
-terminal's width wrapped it. The token never reaches the member's screen: from its first bytes on, the relay passes on
-only the escape sequences that set or reset the terminal's modes, and `claude` is stopped if it still runs 5 seconds
-later. The command writes the token, prints the account as `account show` does (on stdout; the progress lines go to
-stderr), and with `--json` prints the `Account` schema instead.
+terminal's width wrapped it. Claude Code 2.1.296 prints the token from column 1 up to the right margin and goes on at
+column 1 on the next row, so in a terminal narrower than 110 columns the token takes two rows or more. When the
+command cannot tell how the rows join, it asks for the token rather than keep the first row alone, since a token cut
+short fails every run with a 401. The token never reaches the member's screen: from its first bytes on, the relay
+passes on only the escape sequences that set or reset the terminal's modes, and `claude` is stopped if it still runs 5
+seconds later. The command writes the token, prints the account as `account show` does (on stdout; the progress lines
+go to stderr), and with `--json` prints the `Account` schema instead.
 
 When the screen held no token (a sign-in cancelled, a release of Claude Code that prints it another way), the command
 says so and asks for it at a prompt that does not echo, where Enter alone stops. With `--paste`, or when stdin is not a

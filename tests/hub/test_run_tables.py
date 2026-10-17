@@ -101,6 +101,12 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "chat":  # one turn of an agent mentioned in a group chat, on no plan (0032): its columns name the chat
         row |= {"kind": "chat", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": "chat/1", "repos": REPOS, "hop": 1}
+    elif kind == "local":  # a session on a member's machine: no worker, lease or finish but its own (0033)
+        row |= {"kind": "local", "worker_id": None, "leased_at": None, "lease_expires_at": None, "finished_at": None}
+        row |= {"runtime": "claude-code", "repo": None, "branch": None, "session_id": f"session-{state}"}
+        row |= {"machine": "mac", "cwd": "/work/evo", "claude_email": "a@example.com", "last_activity_at": now}
+        if state == "ended":
+            row["finished_at"] = now
     elif kind != "step":
         row["kind"] = kind
     row |= columns
@@ -296,7 +302,9 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
     message = new_id(conn, tables.chat_messages, chat_id=chat_id, seq=1, body="@reviewer look", label=[])
     for state in runs.RUN_STATES:  # chat runs, one a mention (0032)
         add_run(conn, ids, state, kind="chat", chat_id=chat_id, chat_message_id=message)
-    assert query_kinds(conn) == set(runs.RUN_KINDS)
+    for state in runs.LOCAL_STATES:  # local runs, a session each (0033)
+        add_run(conn, ids, state, kind="local")
+    assert query_kinds(conn) == set(runs.SHOWN_KINDS)
     for runtime in ("any", *runs.RUNTIMES):
         for mode in runs.MODES:
             for approval in runs.APPROVALS:

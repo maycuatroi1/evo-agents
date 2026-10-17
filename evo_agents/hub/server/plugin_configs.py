@@ -1,4 +1,4 @@
-"""The config of a plugin as the hub keeps it (table plugin_configs, schema 0034, and ``evo_agents.plugins.config``):
+"""The config of a plugin as the hub keeps it (table plugin_configs, schema 0035, and ``evo_agents.plugins.config``):
 versions of each stored layer, the effective config of a project, and what each run ran with.
 
 Three layers are stored: the hub's own (instance, which hub admins write), a project's and an agent profile's of that

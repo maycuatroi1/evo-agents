@@ -257,9 +257,12 @@ def find_token(lines: list[str], cols: int) -> str | None:
     """The token on the rows ``lines`` of a screen ``cols`` wide, joined again across the rows it wrapped onto; None
     when there is none, or what is there is not whole.
 
-    A token that wraps fills its rows up to the same column: the box it is printed in, or the right margin. The next
-    row goes on with it when it holds nothing but token characters, starting where the token's first row started (the
-    box) or at column 0 (the margin), and no longer than the first row's part; the part that ends short is the last.
+    A token that wraps fills its rows up to the same column: the edge of the box it is printed in, which may be the
+    right margin (Claude Code 2.1.296 prints it from column 1 up to the margin), or the margin where the terminal
+    wrapped it. The next row goes on with it when it holds nothing but token characters, starting where the token's
+    first row started (the box) or, when that row reached the margin, at column 0 (the terminal's wrap), and no longer
+    than the first row's part; the part that ends short is the last. Token characters alone on the next row anywhere
+    else give None, never the first row's part alone: a token cut short would go to the hub and fail every run.
     """
     for at, line in enumerate(lines):
         start = line.find(LEAD)
@@ -272,17 +275,19 @@ def find_token(lines: list[str], cols: int) -> str | None:
             return None
         if rest.strip():  # more text after a space on its row: the token ended there
             return _whole(first)
-        indent = 0 if end >= cols else start
+        indents = {start, 0} if end >= cols else {start}
         parts = [first]
         for following in lines[at + 1 :]:
             part = following.strip()
-            if not PART.fullmatch(part) or len(following) - len(following.lstrip(" ")) != indent:
+            if not PART.fullmatch(part):
                 break
-            if indent + len(part) > end:
-                return None  # longer than the first row allows: not a wrap of this token
+            indent = len(following) - len(following.lstrip(" "))
+            if indent not in indents or indent + len(part) > end:
+                return None  # not where a wrap of this token puts its next part, or longer than its rows
             parts.append(part)
             if indent + len(part) < end:
                 break
+            indents = {indent}
         return _whole("".join(parts))
     return None
 

@@ -1,8 +1,8 @@
 """Plugin projects: which projects enabled which installed plugin with which permissions granted, the versions of each
 layer of a plugin's config, a run's own layer, and the plugins a run ran with.
 
-Revision ID: 0034
-Revises: 0033
+Revision ID: 0035
+Revises: 0034
 Create Date: 2026-10-16
 
 ``evo_agents.hub.tables_plugins`` describes the tables; the lists below are copies of ``evo_agents.plugins`` as of
@@ -23,15 +23,15 @@ runs.plugin_config is a run's own layer, given when it was dispatched: an object
 it sets, NULL for none. run_plugins holds, per run and plugin enabled on its project when a worker claimed it, the
 version installed then and the digest of the effective config (sha256:<hex>), written again at a later claim.
 
-Going back drops the three tables and the column, which is the schema that schema 0033 runs on.
+Going back drops the three tables and the column, which is the schema that schema 0034 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0034"
-down_revision = "0033"
+revision = "0035"
+down_revision = "0034"
 branch_labels = None
 depends_on = None
 

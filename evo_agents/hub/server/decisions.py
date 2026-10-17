@@ -147,12 +147,12 @@ class Decision(BaseModel):
     id: int
     project: str
     run_id: int = Field(description="the plan run or author run the decision belongs to")
-    run_state: Literal[runs.RUN_STATES]
+    run_state: Literal[runs.SHOWN_STATES]
     plan_id: str | None = Field(
         description="the run's plan when its agent asked; null for an author run that had put no plan yet"
     )
     step_key: str | None = Field(description="the step it is about, when the agent named one")
-    category: Literal[runs.DECISION_CATEGORIES]
+    category: Literal[runs.LOCAL_DECISION_CATEGORIES]
     question: str
     context: str | None = Field(description="markdown")
     options: list[DecisionOption]
@@ -240,13 +240,23 @@ def _readable(plans: list[str], unplanned: bool):
 
 
 def _listed(
-    project_id: int, plans: list[str], unplanned: bool, states: list[str], run_id: int | None, plan_id: str | None
+    project_id: int,
+    plans: list[str],
+    unplanned: bool,
+    states: list[str],
+    run_id: int | None,
+    plan_id: str | None,
+    viewer: int,
 ) -> list:
     """The filters of the decision list, of a query that joins each decision's run: the project's decisions the
     caller reads (``_readable``), in any of ``states`` (any state when empty), of run ``run_id`` and plan ``plan_id``
-    when given."""
-    d = tables.decisions
-    where = [d.c.project_id == project_id, _readable(plans, unplanned)]
+    when given; a local run's decisions are its owner's alone (``viewer`` is the caller)."""
+    d, r = tables.decisions, tables.runs
+    where = [
+        d.c.project_id == project_id,
+        _readable(plans, unplanned),
+        or_(r.c.kind != "local", r.c.dispatched_by == viewer),
+    ]
     if states:
         where.append(d.c.state.in_(states))
     if run_id is not None:
@@ -292,12 +302,12 @@ async def readable_decision(
     plan_routes._reader(access)
     d, r = tables.decisions, tables.runs
     query = (
-        select(func.coalesce(d.c.plan_id, r.c.plan_id))
+        select(func.coalesce(d.c.plan_id, r.c.plan_id), r.c.kind, r.c.dispatched_by)
         .join_from(d, r, r.c.id == d.c.run_id)
         .where(d.c.id == decision_id, d.c.project_id == access.project_id)
     )
     found = (await conn.execute(query)).one_or_none()
-    if found is None:
+    if found is None or (found.kind == "local" and found.dispatched_by != user.user_id):  # a local run is its owner's
         raise _no_decision(project, decision_id)
     if found[0] is None:
         visible = sees_unplanned(access, sink)
@@ -330,7 +340,7 @@ async def list_decisions(
         access = await project_access(conn, user, project)
         plans = await visible_plans(conn, access, sink)
         unplanned = sees_unplanned(access, sink)
-        where = _listed(access.project_id, plans, unplanned, list(dict.fromkeys(state)), run_id, plan_id)
+        where = _listed(access.project_id, plans, unplanned, list(dict.fromkeys(state)), run_id, plan_id, user.user_id)
         query = _decisions().where(*where).order_by(d.c.id.desc()).limit(limit).offset(offset)
         page = [_decision(row) for row in (await conn.execute(query)).all()]
         counted = select(func.count()).select_from(d.join(r, r.c.id == d.c.run_id)).where(*where)
@@ -376,8 +386,8 @@ async def _step_of_run(conn: AsyncConnection, run_id: int, row, key: str | None)
         if key is not None:
             raise HTTPException(
                 422,
-                f"author run {run_id} has put no plan on the hub yet, so it has no step {key!r}: leave out step_key, "
-                "or put the plan first",
+                f"{row.kind} run {run_id} has put no plan on the hub yet, so it has no step {key!r}: leave out "
+                "step_key, or put the plan first",
             )
         return None
     pl = tables.plans
@@ -415,6 +425,41 @@ async def _notify_asked(conn: AsyncConnection, row, run_id: int, decision_id: in
     )
 
 
+async def store_decision(conn: AsyncConnection, run_id: int, row, body: DecisionAsk) -> Decision:
+    """Store the decision ``body`` asks for run ``run_id``, whose row the caller holds locked, in the caller's
+    transaction, notify the run's owner and log it: ``row`` is what ``held_plan_run`` reads, or for a local run
+    (``local_runs``) the same columns. 409 past MAX_OPEN_DECISIONS open, 422 for a step the plan does not have."""
+    d = tables.decisions
+    opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
+    if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
+        raise HTTPException(
+            409,
+            f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
+        )
+    key = await _step_of_run(conn, run_id, row, body.step_key)
+    stored = (
+        insert(d)
+        .values(
+            run_id=run_id,
+            project_id=row.project_id,
+            plan_id=row.plan_id,
+            step_key=key,
+            category=body.category,
+            question=body.question,
+            context=body.context,
+            options=body.stored_options(),
+        )
+        .returning(d.c.id)
+    )
+    decision_id = (await conn.execute(stored)).scalar_one()
+    await _notify_asked(conn, row, run_id, decision_id, key, body)
+    shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
+    await write_event(
+        conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}
+    )
+    return await decision_view(conn, decision_id)
+
+
 @worker_router.post(
     "/runs/{run_id}/decisions",
     status_code=201,
@@ -425,36 +470,8 @@ async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentU
     """Ask the owner of a plan run or an author run this worker holds a decision, and notify them."""
     async with request.app.state.engine.begin() as conn:
         _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("plan", "author"))
-        d = tables.decisions
-        opened = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
-        if (await conn.execute(opened)).scalar_one() >= MAX_OPEN_DECISIONS:
-            raise HTTPException(
-                409,
-                f"run {run_id} has {MAX_OPEN_DECISIONS} decisions open already: wait for an answer before asking more",
-            )
-        key = await _step_of_run(conn, run_id, row, body.step_key)
-        stored = (
-            insert(d)
-            .values(
-                run_id=run_id,
-                project_id=row.project_id,
-                plan_id=row.plan_id,
-                step_key=key,
-                category=body.category,
-                question=body.question,
-                context=body.context,
-                options=body.stored_options(),
-            )
-            .returning(d.c.id)
-        )
-        decision_id = (await conn.execute(stored)).scalar_one()
-        await _notify_asked(conn, row, run_id, decision_id, key, body)
-        shown = f"decision #{decision_id} asked ({body.category}): {one_line(body.question)}"
-        await write_event(
-            conn, run_id, {"text": shown, "decision": {"id": decision_id, "category": body.category, "step": key}}
-        )
-        view = await decision_view(conn, decision_id)
-    log.info("decision asked", extra={"run_id": run_id, "decision_id": decision_id, "category": body.category})
+        view = await store_decision(conn, run_id, row, body)
+    log.info("decision asked", extra={"run_id": run_id, "decision_id": view.id, "category": body.category})
     return view
 
 
@@ -528,9 +545,11 @@ def answer_message(decision_id: int, category: str, question: str, option: dict 
     return runs.clip("\n".join(lines), runs.MAX_MESSAGE_BYTES)
 
 
-def _answer_target(project: str, plan_id: str | None, key: str | None, decision_id: int, run_id: int, option) -> str:
+def _answer_target(
+    project: str, plan_id: str | None, key: str | None, decision_id: int, run_id: int, option, kind: str = "author"
+) -> str:
     step = "" if key is None else f"#{key}"
-    where = f"{project}/{plan_id}{step}" if plan_id is not None else f"{project}/author"
+    where = f"{project}/{plan_id}{step}" if plan_id is not None else f"{project}/{kind}"
     return f"{where} decision:{decision_id} run:{run_id} option={option or '-'}"
 
 
@@ -644,7 +663,12 @@ async def answer_decision(
         if chosen is None:
             keys = ", ".join(option["key"] for option in options)
             raise HTTPException(422, f"decision {decision_id} has no option {body.option!r}; its options are {keys}")
-    if run_state != "parked" and run_state not in runs.MESSAGE_STATES:
+    if kind == "local":  # the session takes the answer at its next turn, whatever it does now, but not once it is over
+        if run_state == "ended":
+            raise HTTPException(
+                409, f"run {run_id} of decision {decision_id} is a local run that ended: no session can take an answer"
+            )
+    elif run_state != "parked" and run_state not in runs.MESSAGE_STATES:
         raise HTTPException(409, f"run {run_id} of decision {decision_id} is {run_state}: no agent can take an answer")
     await web_only_steering(conn, user, run_id, "answer its decisions", "answer on the web", "answered")
     await conn.execute(
@@ -664,6 +688,10 @@ async def answer_decision(
         .values(read_at=func.now())
         .where(n.c.decision_id == decision_id, n.c.user_id == user.user_id, n.c.read_at.is_(None))
     )
+    if kind == "local" and run_state == "waiting":  # the session waited for this: it goes on once none is open
+        still_open = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
+        if (await conn.execute(still_open)).scalar_one() == 0:
+            await conn.execute(update(r).values(state="running", waiting_since=None).where(r.c.id == run_id))
     resumes = await _resumes(conn, run_id, run_state, kind)
     inbox_run = await _resume(conn, user, run_id, decision_id) if resumes else run_id
     text = answer_message(decision_id, category, question, chosen, body.text)
@@ -674,7 +702,7 @@ async def answer_decision(
     message_id = (await conn.execute(left)).scalar_one()
     event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
     await write_user_message(conn, inbox_run, event)
-    target = _answer_target(project, plan_id, key, decision_id, run_id, body.option)
+    target = _answer_target(project, plan_id, key, decision_id, run_id, body.option, kind)
     if inbox_run != run_id:
         target += f" resumed as run:{inbox_run}"
     if via is not None:

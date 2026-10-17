@@ -1,4 +1,4 @@
-"""The tables of the hub's store of plugins (0033), which ``evo_agents.hub.tables`` adds to its metadata and exposes as
+"""The tables of the hub's store of plugins (0034), which ``evo_agents.hub.tables`` adds to its metadata and exposes as
 its own attributes (``tables.plugins``, ``tables.plugin_versions``): queries name them there.
 
 plugins holds each plugin the hub knows, by the id its manifest gives (``name``): the publisher of its first version,
@@ -12,7 +12,7 @@ of a Sigstore certificate, or the id of an Ed25519 key), who published it and wh
 The installed version is a version of the plugin: (id, installed_version) refers to plugin_versions, a key created
 after both tables (``use_alter``).
 
-The tables of 0034 place plugins in projects. project_plugins holds each plugin a project enabled, the permissions of
+The tables of 0035 place plugins in projects. project_plugins holds each plugin a project enabled, the permissions of
 its manifest an admin of the project granted, who enabled it and when, who granted last and when; turning it off
 deletes the row. plugin_configs holds every version of each stored layer of a plugin's config
 (``evo_agents.plugins.config``): the hub's own (instance), a project's, an agent profile's (agent), never changed,
@@ -20,15 +20,15 @@ its plain values and its secrets sealed (``evo_agents.hub.server.plugin_configs`
 own layer, ``plugin_config``, and run_plugins holds the version and the digest of the effective config of each plugin
 enabled on a run's project when a worker claimed it.
 
-The tables of 0035 serve the plugin host, which runs the backends of isolated plugins (``backend_tables``).
+The tables of 0036 serve the plugin host, which runs the backends of isolated plugins (``backend_tables``).
 plugin_tokens holds the SHA-256 of each token the hub gave the backend of a plugin when the host started it, and when
 it was revoked: starting the backend again revokes the plugin's older tokens. plugin_backends holds what the host last
 said of each backend it runs: the version, its state, the isolation it has, its process id, how many times it was
 started again, since when it runs, the last failure, when it is tried again, and when the host said so.
 
-plugin_deliveries (0037) is the outbox of the extension points (``evo_agents.hub.plugin_events``): one event or
+plugin_deliveries (0038) is the outbox of the extension points (``evo_agents.hub.plugin_events``): one event or
 notification for one plugin in one project, its kind, the contribution it goes to, its payload, its state, tries, when
-it is due, the last error, when it was made and delivered. 0037 also records the core plugins of the hub's image in
+it is due, the last error, when it was made and delivered. 0038 also records the core plugins of the hub's image in
 plugins and plugin_versions: signature kind ``image``, published and installed by nobody.
 """
 
@@ -52,8 +52,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
-BACKEND_STATES = ("placing", "starting", "running", "backoff")  # plugin_backends.state (0035)
-ISOLATIONS = ("uid", "process")  # plugin_backends.isolation (0035), as evo_agents.plugins.environment names them
+BACKEND_STATES = ("placing", "starting", "running", "backoff")  # plugin_backends.state (0036)
+ISOLATIONS = ("uid", "process")  # plugin_backends.isolation (0036), as evo_agents.plugins.environment names them
 
 
 def _stamp(name: str) -> Column:
@@ -100,7 +100,7 @@ def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table,
         Column("signature", JSONB, nullable=False),
         Column("signature_kind", Text, nullable=False),
         Column("signed_by", Text, nullable=False),
-        Column("published_by", BigInteger),  # NULL for a core plugin of the hub's image (0037)
+        Column("published_by", BigInteger),  # NULL for a core plugin of the hub's image (0038)
         _stamp("published_at"),
         ForeignKeyConstraint(["plugin_id"], ["plugins.id"], ondelete="CASCADE", name="plugin_versions_plugin_id_fkey"),
         ForeignKeyConstraint(

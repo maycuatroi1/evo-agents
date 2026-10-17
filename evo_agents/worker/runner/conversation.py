@@ -44,7 +44,8 @@ if TYPE_CHECKING:
 ANSWER_PROMPT = (
     "The owner of this plan run wrote while your turn was over; a message that answers a decision names it. Go on "
     "with the plan in this session from where you stopped: read the plan as the hub holds it now with "
-    "`evo-agents worker plan` first."
+    "`evo-agents worker plan` first. When what the answer let you try still fails, ask again with what you found "
+    "rather than ending the run: a turn that ends with no decision open ends it."
 )
 # And when a run parked while it waited for its owner goes on, as a new run, in the same session and worktrees.
 RESUME_PROMPT = (
@@ -263,6 +264,7 @@ class Conversation:
         chat of an author run. The time spent here moves the run's deadline back."""
         run = self.run
         started = run.loop.time()
+        run.waiting_since = started
         try:
             while True:
                 if run.stop_reason is not None:
@@ -281,6 +283,7 @@ class Conversation:
                 )
         finally:
             run.deadline += run.loop.time() - started
+            run.waiting_since = None
 
     async def park(self) -> None:
         """The hub parked the run: its slot is free; the session and the worktrees stay for the run that resumes

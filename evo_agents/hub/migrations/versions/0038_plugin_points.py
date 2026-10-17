@@ -1,8 +1,8 @@
 """Plugin extension points: the deliveries of events and notifications to plugins, and the core plugins that come with
 the hub's image.
 
-Revision ID: 0037
-Revises: 0036
+Revision ID: 0038
+Revises: 0037
 Create Date: 2026-10-17
 
 ``evo_agents.hub.tables_plugins`` describes the tables; the lists below are copies of it, of
@@ -21,22 +21,22 @@ grant it what it asks for and configure it: its version's signature kind is 'ima
 (published_by is NULL), and nobody installed it (installed_by may be NULL while it is installed).
 
 Going back deletes the deliveries, then the plugins of the image with their versions, the projects' grants and
-configs and the run records of them, and puts the checks of 0033 back, which is the schema that schema 0036 runs on.
+configs and the run records of them, and puts the checks of 0034 back, which is the schema that schema 0037 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0037"
-down_revision = "0036"
+revision = "0038"
+down_revision = "0037"
 branch_labels = None
 depends_on = None
 
 TIERS = ("isolated", "core")  # evo_agents.plugins.manifest.TIERS
-SIGNATURE_KINDS_0033 = ("sigstore", "ed25519")  # evo_agents.plugins.signing.SIGNATURE_KINDS
+SIGNATURE_KINDS_0034 = ("sigstore", "ed25519")  # evo_agents.plugins.signing.SIGNATURE_KINDS
 IMAGE = "image"  # evo_agents.hub.server.plugin_store.IMAGE
-SIGNATURE_KINDS = (*SIGNATURE_KINDS_0033, IMAGE)
+SIGNATURE_KINDS = (*SIGNATURE_KINDS_0034, IMAGE)
 KINDS = ("run.state", "chat.message", "plan.step", "notification")  # evo_agents.hub.plugin_events.KINDS
 STATES = ("pending", "delivered", "failed")  # evo_agents.hub.plugin_events.STATES
 NAME_PATTERN = "^[a-z][a-z0-9_-]{0,62}$"  # a contribution's name
@@ -149,4 +149,4 @@ def downgrade() -> None:
     _installed_check(image=False)
     op.drop_constraint("plugin_versions_image_check", "plugin_versions", type_="check")
     op.alter_column("plugin_versions", "published_by", existing_type=sa.BigInteger(), nullable=False)
-    _versions_check(SIGNATURE_KINDS_0033)
+    _versions_check(SIGNATURE_KINDS_0034)

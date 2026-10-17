@@ -36,6 +36,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   spend_money: Wallet,
   architecture: Boxes,
   scope: Target,
+  // What the agent of a local Claude Code session asks that is none of the above.
+  question: MessageCircleQuestionMark,
 };
 
 export function DecisionCategoryBadge({ category, className }: { category: DecisionCategory; className?: string }) {

@@ -3,7 +3,7 @@ proxy ``evo-agents hub mcp`` answers with it too while the hub cannot be reached
 either way.
 
 The seven kg_* tools are ``evo_agents.kg.serve.TOOLS`` unchanged, names and schemas, so a session reads the graph of
-its project the same way whether ``kg serve`` answers on the machine or the hub does. The fifteen others read and
+its project the same way whether ``kg serve`` answers on the machine or the hub does. The sixteen others read and
 write what the hub holds: memories, plans and their handoffs, skills, the caller's projects, the tool figures of
 runs, and what the Curator's review run reads: the night's figures, session digests, the events of a run and
 decisions. Those about a project take an optional ``project``; without it the session's project counts (X-Evo-Project,
@@ -25,6 +25,9 @@ SERVER_NAME = "evo-hub"
 PROJECT_HEADER = "X-Evo-Project"
 SINK_HEADER = "X-Evo-Sink"
 RUN_HEADER = "X-Evo-Run"  # the run whose agent a worker token speaks for
+LOCAL_RUN_HEADER = (
+    "X-Evo-Local-Run"  # the local run of the session a machine token speaks for, on plan_step and ask_member
+)
 PROTOCOL_HEADER = "MCP-Protocol-Version"
 # The versions served with the initialize handshake, oldest first. The last is what a client of this package asks for
 # when it calls a tool without a handshake of its own, and what the proxy offers while the hub does not answer.
@@ -213,6 +216,53 @@ HUB_TOOLS = [
                 "project": _PROJECT,
             },
             "required": ["plan_id", "step", "status"],
+            "additionalProperties": False,
+        },
+    },
+    {
+        "name": "ask_member",
+        "description": (
+            "Ask the person who runs this session a question that has 2 to 6 options, in a session of a project on "
+            "the hub: it reaches them as a decision in the Inbox, Telegram, the web and the run's page, and they can "
+            "answer on any of them or on this machine with `evo-agents hub decision answer`. The first answer wins "
+            "and comes back here with the words they wrote. It waits about 20 seconds; with no answer it says so, "
+            "and you call it again with decision_id to wait longer or go on, and a late answer reaches you with the "
+            "person's next message. Outside a hub project's session it is refused: use AskUserQuestion."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "question": {"type": "string", "minLength": 1, "maxLength": 2000},
+                "options": {
+                    "type": "array",
+                    "minItems": 2,
+                    "maxItems": 6,
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "key": {
+                                "type": "string",
+                                "pattern": "^[A-Za-z0-9_-]{1,32}$",
+                                "description": "default: 1, 2, ..",
+                            },
+                            "label": {"type": "string", "minLength": 1, "maxLength": 200},
+                            "description": {"type": "string", "minLength": 1, "maxLength": 1000},
+                        },
+                        "required": ["label"],
+                        "additionalProperties": False,
+                    },
+                },
+                "recommended": {"type": "string", "description": "the key or the label of the option you recommend"},
+                "context": {"type": "string", "minLength": 1, "maxLength": 16000, "description": "markdown"},
+                "step": _STEP,
+                "decision_id": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": MAX_ID,
+                    "description": "wait for the answer of a decision you asked before; leave out question and options",
+                },
+                "project": _PROJECT,
+            },
             "additionalProperties": False,
         },
     },

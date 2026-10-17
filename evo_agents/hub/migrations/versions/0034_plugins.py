@@ -1,8 +1,8 @@
 """Plugins: the hub's store of signed plugin bundles, which version of each is installed, and the notice that the hub
 turned one off.
 
-Revision ID: 0033
-Revises: 0032
+Revision ID: 0034
+Revises: 0033
 Create Date: 2026-10-16
 
 ``evo_agents.hub.tables_plugins`` describes the two tables; the lists below are copies of ``evo_agents.hub.runs`` and
@@ -20,20 +20,20 @@ The hub holds a plugin's bundle itself, outside any project, like a global skill
 plugin-bundle without a project. notifications.notice_kind takes 'plugin_disabled': the hub turned off an installed
 plugin that no longer runs on its release.
 
-Going back deletes the plugin_disabled notices, the hub's own plugin bundles and their uploads, puts the checks of 0032
-back and drops the two tables, which is the schema that schema 0032 runs on; the bundles stay in the bucket.
+Going back deletes the plugin_disabled notices, the hub's own plugin bundles and their uploads, puts the checks of 0033
+back and drops the two tables, which is the schema that schema 0033 runs on; the bundles stay in the bucket.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0033"
-down_revision = "0032"
+revision = "0034"
+down_revision = "0033"
 branch_labels = None
 depends_on = None
 
-NOTICE_KINDS_0032 = (
+NOTICE_KINDS_0033 = (
     "push_default_branch",
     "merge_default_branch",
     "plan_finished",
@@ -45,9 +45,9 @@ NOTICE_KINDS_0032 = (
     "chat_added",
 )
 PLUGIN_NOTICES = ("plugin_disabled",)
-NOTICE_KINDS = (*NOTICE_KINDS_0032, *PLUGIN_NOTICES)  # evo_agents.hub.runs.NOTICE_KINDS
-GLOBAL_KINDS_0032 = ("skill-bundle",)
-GLOBAL_KINDS = (*GLOBAL_KINDS_0032, "plugin-bundle")  # evo_agents.hub.server.blobs.GLOBAL_KINDS
+NOTICE_KINDS = (*NOTICE_KINDS_0033, *PLUGIN_NOTICES)  # evo_agents.hub.runs.NOTICE_KINDS
+GLOBAL_KINDS_0033 = ("skill-bundle",)
+GLOBAL_KINDS = (*GLOBAL_KINDS_0033, "plugin-bundle")  # evo_agents.hub.server.blobs.GLOBAL_KINDS
 TIERS = ("isolated", "core")  # evo_agents.plugins.manifest.TIERS
 SIGNATURE_KINDS = ("sigstore", "ed25519")  # evo_agents.plugins.signing.SIGNATURE_KINDS
 NAME_PATTERN = "^[a-z][a-z0-9-]{0,62}$"  # a manifest's id
@@ -164,11 +164,11 @@ def upgrade() -> None:
 def downgrade() -> None:
     notifications = sa.table("notifications", col("notice_kind"))
     op.execute(notifications.delete().where(notifications.c.notice_kind.in_(PLUGIN_NOTICES)))
-    _notice_kinds(NOTICE_KINDS_0032)
+    _notice_kinds(NOTICE_KINDS_0033)
     for table, _ in HUB_KIND_CHECKS:
         held = sa.table(table, col("project_id"), col("kind"))
         op.execute(held.delete().where(held.c.project_id.is_(None), held.c.kind == "plugin-bundle"))
-    _hub_kinds(GLOBAL_KINDS_0032)
+    _hub_kinds(GLOBAL_KINDS_0033)
     op.drop_constraint("plugins_installed_version_fkey", "plugins", type_="foreignkey")
     op.drop_table("plugin_versions")
     op.drop_table("plugins")

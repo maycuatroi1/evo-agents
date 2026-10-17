@@ -85,6 +85,7 @@ class Run:
         self.loop = asyncio.get_running_loop()
         self.deadline = self.loop.time() + self.timeout_s  # from the claim until the agent starts, then from there
         self.agent_started = False  # the agent (headless or in a terminal) has started once: the timeout counts
+        self.waiting_since: float | None = None  # the run waits for its owner's answer: its agent time stands still
         self.park_asked = asyncio.Event()  # the hub parked a run of a kind that parks, or a new run resumes it
         self.parked = False
         self.inbox_arrived = asyncio.Event()  # the heartbeat counted messages of the owner in the inbox
@@ -226,10 +227,12 @@ class Run:
             self.deadline = self.loop.time() + self.timeout_s
 
     def agent_seconds(self) -> float:
-        """The agent time the run has used, as its timeout counts it: none before its agent first started."""
+        """The agent time the run has used, as its timeout counts it: none before its agent first started, and none
+        while it waits for its owner's answer, whose time moves the deadline back once the wait is over."""
         if not self.agent_started:
             return 0.0
-        return max(self.timeout_s - max(self.deadline - self.loop.time(), 0.0), 0.0)
+        clock = self.waiting_since if self.waiting_since is not None else self.loop.time()
+        return max(self.timeout_s - max(self.deadline - clock, 0.0), 0.0)
 
     # The run
 
