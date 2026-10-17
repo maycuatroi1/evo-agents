@@ -373,7 +373,7 @@ def test_the_plugin_command_spools_through_uvx_and_exits_0_without_it(own_home, 
     from tests.hub import pg
     from tests.hub.test_hooks import SH, fake_uvx, plugin_hooks
 
-    (group,) = plugin_hooks()["PostToolUse"]
+    group = plugin_hooks()["PostToolUse"][0]  # the second group is the local-tool hook: tests/hub/test_local_sync.py
     assert group["matcher"] == "Bash|Read|Grep|mcp__.*"
     (hook,) = group["hooks"]
     assert hook["command"].endswith(" evo-agents hub hook post-tool-use || true")

@@ -26,8 +26,11 @@ import {
   followTiles,
   gridShape,
   MAX_TILES,
+  matchesMonitorFilters,
   mediumCols,
+  type MonitorFilters,
   monitorHref,
+  NO_MONITOR_FILTERS,
   parseTiles,
   RUNS_PARAM,
   type TileRef,
@@ -108,8 +111,17 @@ function Monitor({ overview, viewer }: { overview: Overview; viewer: string | nu
   const [followed, setFollowed] = useState<readonly TileRef[]>([]);
   const merged = following ? followTiles(followed, overview.active_runs) : followed;
   if (merged !== followed) setFollowed(merged);
-  const all = chosen ?? merged;
+  // Narrowed to local sessions, or to one Claude account of them: the list and the grid both.
+  const [filters, setFilters] = useState<MonitorFilters>(NO_MONITOR_FILTERS);
+  const flightOf = useMemo(() => {
+    const byKey = new Map<string, OverviewRun>();
+    for (const run of [...overview.recent_runs, ...overview.active_runs]) byKey.set(tileKey(run), run);
+    return byKey;
+  }, [overview]);
+  const everything = chosen ?? merged;
+  const all = useMemo(() => everything.filter((tile) => matchesMonitorFilters(flightOf.get(tileKey(tile)) ?? null, filters)), [everything, flightOf, filters]);
   const tiles = useMemo(() => all.slice(0, MAX_TILES), [all]);
+  const flying = useMemo(() => overview.active_runs.filter((run) => matchesMonitorFilters(run, filters)), [overview.active_runs, filters]);
 
   // Each tile's run, read here so the page knows which runs the visitor cannot read (403, 404), and leaves them out.
   const runs = useQueries({ queries: tiles.map((tile) => runQuery(browserApi, tile.project, tile.id)) });
@@ -123,8 +135,9 @@ function Monitor({ overview, viewer }: { overview: Overview; viewer: string | nu
   const write = useCallback((next: readonly TileRef[] | null) => {
     window.history.replaceState(null, "", monitorHref(next));
   }, []);
-  const toggle = (tile: TileRef) => write(toggleTile(tiles, tile));
-  const close = (tile: TileRef) => write(tiles.filter((other) => tileKey(other) !== tileKey(tile)));
+  // With a filter on, the URL keeps the tiles the filter hides, so clearing it brings them back.
+  const toggle = (tile: TileRef) => write(toggleTile(everything, tile));
+  const close = (tile: TileRef) => write(everything.filter((other) => tileKey(other) !== tileKey(tile)));
   const followAll = () => {
     setFollowed([]);
     write(null);
@@ -141,11 +154,7 @@ function Monitor({ overview, viewer }: { overview: Overview; viewer: string | nu
     },
   });
 
-  const flights = useMemo(() => {
-    const byKey = new Map<string, OverviewRun>();
-    for (const run of [...overview.recent_runs, ...overview.active_runs]) byKey.set(tileKey(run), run);
-    return byKey;
-  }, [overview]);
+  const flights = flightOf;
   const decisions = useMemo(() => {
     const byKey = new Map<string, OverviewDecision>();
     // The visitor's own first (the overview's order), so a run with several open decisions says "Waiting for you".
@@ -175,7 +184,7 @@ function Monitor({ overview, viewer }: { overview: Overview; viewer: string | nu
     />
   );
 
-  if (following && tiles.length === 0) {
+  if (following && everything.length === 0) {
     return (
       <>
         {header}
@@ -193,7 +202,7 @@ function Monitor({ overview, viewer }: { overview: Overview; viewer: string | nu
         className="grid gap-4 xl:min-h-[30rem] xl:flex-1 xl:grid-cols-[18rem_minmax(0,1fr)] xl:grid-rows-[minmax(0,1fr)] xl:[contain:size] 2xl:grid-cols-[20rem_minmax(0,1fr)]"
         data-testid="monitor-split"
       >
-        <FlightList runs={overview.active_runs} tiles={tiles} onToggle={toggle} />
+        <FlightList runs={flying} all={overview.active_runs} filters={filters} onFilters={setFilters} tiles={tiles} onToggle={toggle} />
         <section aria-labelledby={gridId} className="flex min-h-0 min-w-0 flex-col gap-3">
           <h2 id={gridId} className="sr-only">
             {t("grid.label")}

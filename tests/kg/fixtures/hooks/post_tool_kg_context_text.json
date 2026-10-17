@@ -1,0 +1,42 @@
+{
+  "session_id": "9f9a24a2-52f1-4854-917a-b49e02271d92",
+  "transcript_path": "/home/dev/.claude/projects/-home-dev-demo-harness/9f9a24a2-52f1-4854-917a-b49e02271d92.jsonl",
+  "cwd": "/home/dev/demo-harness",
+  "scratchpad_dir": "/tmp/claude-1000/-home-dev-demo-harness/9f9a24a2-52f1-4854-917a-b49e02271d92/scratchpad",
+  "prompt_id": "1444d418-5ea5-466a-8822-12b333d4bd09",
+  "permission_mode": "default",
+  "effort": {
+    "level": "medium"
+  },
+  "hook_event_name": "PostToolUse",
+  "tool_name": "mcp__evo-kg__kg_context",
+  "tool_input": {
+    "query": "search"
+  },
+  "tool_response": [
+    {
+      "type": "text",
+      "text": "context for search: 30 nodes, 49 edges (build 1, connected through the seeds)\n[symbol:app:app/search.py::search] Symbol 'search' (parsed, customer,U) path=app/search.py line=5\n[seam:search-api] Seam 'search-api' (parsed, public,U)\n[app:file:app/search.py] File 'app/search.py' (parsed, customer,U) path=app/search.py uri=https://github.com/acme/demo-app/blob/main/app/search.py\n[symbol:app:app/search.py::rank_results] Symbol 'rank_results' (parsed, customer,U) path=app/search.py line=1\n[app:file:docs/guide.md#guide] Section 'Guide' (parsed, customer,U)\n[usecase:KB-01] UseCase 'KB-01' (declared, public,U)\n[symbol:app:app/server.py::Server.handle] Symbol 'Server.handle' (parsed, customer,U) path=app/server.py line=5\n[harness:file:contracts.yaml] File 'contracts.yaml' (parsed, public,U) path=contracts.yaml\n[app:file:docs/guide.md#setup] Section 'Setup' (parsed, customer,U)\n[repo:app] Repo 'app' (parsed, public,U) path=demo-app\n[plan:demo] Plan 'demo' (parsed, public,U)\n[dir:app:app] Directory 'app/' (parsed, customer,U) path=app\n[app:file:app/server.py] File 'app/server.py' (parsed, customer,U) path=app/server.py uri=https://github.com/acme/demo-app/blob/main/app/server.py\n[source:app] Source 'app' (parsed, customer,U)\n[plan:demo/step:1] PlanStep 'Ranking' (parsed, public,U) status=done number=1\n[app:file:docs/guide.md#details] Section 'Details' (parsed, customer,U)\n[app:file:docs/guide.md] Document 'docs/guide.md' (parsed, customer,U) path=docs/guide.md uri=https://github.com/acme/demo-app/blob/main/docs/guide.md\n[app:file:docs/guide.md#usage] Section 'Usage' (parsed, customer,U)\n[symbol:app:app/server.py::Server] Symbol 'Server' (parsed, customer,U) path=app/server.py line=4\n[source:harness] Source 'harness' (parsed, public,U)\n[harness:file:harness.yaml] File 'harness.yaml' (parsed, public,U) path=harness.yaml\n[commit:app@1a2b3c4d] Commit 'app@1a2b3c4d' (parsed, public,U)\n[plan:demo/step:2] PlanStep 'Server' (parsed, public,U) status=pending number=2\n[harness:file:plans/active/demo.yaml] File 'plans/active/demo.yaml' (parsed, public,U) path=plans/active/demo.yaml\n[harness:file:CLUSTER.md#demo] Section 'Demo' (parsed, public,U)\n[app:file:app/__init__.py] File 'app/__init__.py' (parsed, customer,U) path=app/__init__.py uri=https://github.com/acme/demo-app/blob/main/app/__init__.py\n[app:file:docs/old.md#old] Section 'Old' (parsed, customer,U)\n[app:file:docs/old.md] Document 'docs/old.md' (parsed, customer,U) path=docs/old.md uri=https://github.com/acme/demo-app/blob/main/docs/old.md\n[dir:app:docs] Directory 'docs/' (parsed, customer,U) path=docs\n[usecase:KB-02] UseCase 'KB-02' (parsed, customer,U)\nedges:\n  [symbol:app:app/search.py::search] -implements-> [usecase:KB-01] (declared)\n  [app:file:app/search.py] -defines-> [symbol:app:app/search.py::search] (parsed)\n  [app:file:docs/guide.md#guide] -mentions-> [symbol:app:app/search.py::search] (parsed)\n  [symbol:app:app/search.py::search] -calls-> [symbol:app:app/search.py::rank_results] (resolved)\n  [symbol:app:app/server.py::Server.handle] -calls-> [symbol:app:app/search.py::search] (resolved)\n  [harness:file:contracts.yaml] -declares-> [seam:search-api] (parsed)\n  [seam:search-api] -defined_in-> [app:file:app/search.py] (parsed)\n  [app:file:docs/guide.md#setup] -mentions-> [seam:search-api] (parsed)\n  [seam:search-api] -owned_by-> [repo:app] (parsed)\n  [plan:demo] -touches-> [seam:search-api] (parsed)\n  [app:file:app/search.py] -child_of-> [dir:app:app] (parsed)\n  [app:file:app/search.py] -defines-> [symbol:app:app/search.py::rank_results] (parsed)\n  [app:file:app/server.py] -imports-> [app:file:app/search.py] (parsed)\n  [app:file:app/search.py] -in_source-> [source:app] (parsed)\n  [plan:demo/step:1] -mentions-> [app:file:app/search.py] (resolved)\n  [app:file:docs/guide.md#details] -mentions-> [symbol:app:app/search.py::rank_results] (resolved)\n  [app:file:docs/guide.md#guide] -mentions-> [usecase:KB-01] (parsed)\n  [app:file:docs/guide.md#guide] -part_of-> [app:file:docs/guide.md] (parsed)\n  [app:file:docs/guide.md#setup] -part_of-> [app:file:docs/guide.md#guide] (parsed)\n  [app:file:docs/guide.md#usage] -part_of-> [app:file:docs/guide.md#guide] (parsed)\n  [plan:demo] -mentions-> [usecase:KB-01] (parsed)\n  [symbol:app:app/server.py::Server.handle] -member_of-> [symbol:app:app/server.py::Server] (parsed)\n  [harness:file:contracts.yaml] -in_source-> [source:harness] (parsed)\n  [app:file:docs/guide.md#details] -part_of-> [app:file:docs/guide.md#setup] (parsed)\n  [app:file:docs/guide.md#setup] -mentions-> [app:file:app/server.py] (resolved)\n  [harness:file:harness.yaml] -declares-> [repo:app] (parsed)\n  [commit:app@1a2b3c4d] -in_repo-> [repo:app] (parsed)\n  [plan:demo/step:1] -in_repo-> [repo:app] (parsed)\n  [plan:demo/step:2] -in_repo-> [repo:app] (parsed)\n  [plan:demo] -touches-> [repo:app] (parsed)\n  [plan:demo] -defined_in-> [harness:file:plans/active/demo.yaml] (parsed)\n  [plan:demo] -has_step-> [plan:demo/step:1] (parsed)\n  [plan:demo] -has_step-> [plan:demo/step:2] (parsed)\n  [harness:file:CLUSTER.md#demo] -mentions-> [plan:demo] (parsed)\n  [app:file:app/__init__.py] -child_of-> [dir:app:app] (parsed)\n  [app:file:app/server.py] -child_of-> [dir:app:app] (parsed)\n  [app:file:app/server.py] -defines-> [symbol:app:app/server.py::Server] (parsed)\n  [app:file:app/server.py] -in_source-> [source:app] (parsed)\n  [app:file:docs/old.md#old] -mentions-> [app:file:app/server.py] (resolved)\n  [plan:demo/step:2] -mentions-> [app:file:app/server.py] (resolved)\n  [app:file:app/__init__.py] -in_source-> [source:app] (parsed)\n  [app:file:docs/guide.md] -in_source-> [source:app] (parsed)\n  [app:file:docs/old.md] -in_source-> [source:app] (parsed)\n  [plan:demo/step:2] -depends_on-> [plan:demo/step:1] (parsed)\n  [plan:demo/step:1] -mentions-> [commit:app@1a2b3c4d] (parsed)\n  [app:file:docs/guide.md] -child_of-> [dir:app:docs] (parsed)\n  [harness:file:CLUSTER.md#demo] -mentions-> [app:file:docs/guide.md] (resolved)\n  [app:file:docs/guide.md#usage] -mentions-> [plan:demo/step:2] (parsed)\n  [app:file:docs/guide.md#usage] -mentions-> [usecase:KB-02] (parsed)",
+      "_meta": {
+        "evo-agents/read": {
+          "project": "demo",
+          "label": {
+            "level": "customer",
+            "location": "any",
+            "integrity": "U",
+            "projects": [
+              "demo"
+            ]
+          },
+          "results_read": 30
+        }
+      }
+    }
+  ],
+  "tool_use_id": "toolu_01UG2MnQrdn9KWrqE1eoj42v",
+  "duration_ms": 51,
+  "mcp_server": {
+    "name": "evo-kg",
+    "source": "dynamic"
+  }
+}

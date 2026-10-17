@@ -6,6 +6,7 @@ from evo_agents.kg import serve
 from evo_agents.kg.build import build_project
 from evo_agents.kg.extract.languages import CROSS_FILE_CALLS, TABLES, coverage_of
 from evo_agents.kg.serve import Session, diff_lines, handle
+from evo_agents.kg.sessions import READ_META, labels_in
 from evo_agents.kg.store import Store, edge_id
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
@@ -197,6 +198,38 @@ def test_mcp_protocol_and_truncation(tmp_path, kg_env, monkeypatch):
     assert not rest.get("isError")
     gone = session.call("kg_more", {"handle": "nope"})
     assert gone["isError"]
+
+
+def test_a_client_gets_the_text_alone_unless_it_asks_for_the_data(tmp_path, kg_env, monkeypatch):
+    # Claude Code 2.1.296 shows the model a result's structuredContent instead of its text when it has one: the model
+    # would read JSON 2.7 to 3.3 times longer than the text, which CAP_CHARS and the budgets bound.
+    project = built(tmp_path, kg_env)
+    session = Session(project, "agent")
+
+    def tool(id_: int, name: str, arguments: dict, meta: dict | None = None) -> dict:
+        params = {"name": name, "arguments": arguments, **({"_meta": meta} if meta else {})}
+        return handle(session, {"jsonrpc": "2.0", "id": id_, "method": "tools/call", "params": params})["result"]
+
+    full = session.call("kg_node", {"id": "plan:demo"})
+    shown = tool(1, "kg_node", {"id": "plan:demo"})
+    assert shown == {"content": full["content"]}
+    data = full["structuredContent"]
+    read = {"project": "demo", "label": data["label"], "results_read": labels_in(data)[1]}
+    assert shown["content"][0]["_meta"] == {READ_META: read} and read["results_read"] > 0
+    assert tool(2, "kg_node", {"id": "plan:demo"}, {serve.DATA_META: True}) == full
+    assert tool(3, "kg_node", {"id": "plan:demo"}, {serve.DATA_META: "yes"}) == shown  # only true asks
+    status = tool(4, "kg_status", {})
+    assert list(status) == ["content"] and "_meta" not in status["content"][0]  # reveals no element
+    missing = tool(5, "kg_node", {"id": "nope"})
+    assert missing == {"content": missing["content"], "isError": True}
+
+    monkeypatch.setattr(serve, "CAP_CHARS", 300)
+    cut = tool(6, "kg_node", {"id": "plan:demo"})
+    text = cut["content"][0]["text"]
+    assert list(cut) == ["content"] and "[truncated:" in text and len(text) < 400
+    assert cut["content"][0]["_meta"] == {READ_META: read}  # counted before the cut
+    more = tool(7, "kg_more", {"handle": text.rsplit("handle ", 1)[1].rstrip("]")})
+    assert list(more) == ["content"] and "_meta" not in more["content"][0] and more["content"][0]["text"]
 
 
 def test_eval_mocks_carry_the_real_tool_list():

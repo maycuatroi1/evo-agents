@@ -4,8 +4,9 @@ import { expectNoSeriousViolations } from "./support/a11y";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { command, endedRuns, gridLayout, monitorPath, rowOf, runningRuns, seedMonitorPlan, tileOf, trace } from "./support/monitor";
+import { localAsk, localEvents, localState, registerLocal } from "./support/local";
 import { open } from "./support/plans";
-import { planRunUnderway, reportState, runOf, say, seedPlanRunPlan } from "./support/runs";
+import { planRunUnderway, reportState, RUN_PLAN, runOf, say, seedPlanRunPlan } from "./support/runs";
 
 /**
  * The Monitor (`/monitor`) against the real API: the list of every run in flight of every project of the member's
@@ -425,3 +426,52 @@ for (const scheme of ["light", "dark"] as const) {
     });
   });
 }
+
+test("local sessions show in the list and the grid with machine and account, filter by kind and account, and take no control", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedMonitorPlan(me, project);
+  const {
+    runs: [worker],
+  } = await runningRuns(me, project, ["1"]);
+  const work = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000c01", { machine: "laptop-binh", email: "binh@work.example", title: "Fix the queue" });
+  const home = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000c02", { machine: "desktop-home", email: "binh@home.example", title: "Tidy the docs" });
+  await localState(me, project, work.run.id, { state: "running", plan_id: RUN_PLAN, step_key: "2" });
+  await localEvents(me, project, work.run.id, [say("Reading the queue module.")]);
+  await localAsk(me, project, work.run.id, "Fix the failing test or skip it?");
+  await localState(me, project, home.run.id, { state: "idle" });
+
+  await open(page, "/monitor");
+  const list = main(page).getByRole("region", { name: "In flight" });
+  await expect(list.getByTestId("flight-item")).toHaveCount(3);
+  const row = rowOf(page, work.run.id);
+  await expect(row.getByTestId("run-kind")).toHaveText("Local session");
+  await expect(row).toContainText("Fix the queue");
+  await expect(row.getByTestId("local-name")).toContainText("laptop-binh");
+  await expect(row.getByTestId("local-account")).toHaveText("binh@work.example");
+  await expect(row.getByTestId("local-plan")).toHaveText(`plan ${RUN_PLAN}, step 2`);
+  await expect(row.getByTestId("run-state")).toHaveText("Waiting for decision");
+  await expect(rowOf(page, home.run.id).getByTestId("run-state")).toHaveText("Idle");
+  await expect(rowOf(page, worker.id).getByTestId("run-kind")).toHaveCount(0);
+
+  // The tile: its machine and account, the trace of its turn, and the question that waits for the person. View only.
+  const tile = tileOf(page, work.run.id);
+  await expect(tile.getByTestId("tile-title")).toHaveText("Fix the queue");
+  await expect(tile.getByTestId("local-account")).toHaveText("binh@work.example");
+  await expect(tile.getByTestId("tile-line")).toHaveText([/Agent Reading the queue module\./, /Asked you Fix the failing test or skip it\?/]);
+  await expect(tile.getByTestId("tile-waiting-you")).toHaveText("Waiting for you");
+  await expect(tile.getByRole("button", { name: /cancel/i })).toHaveCount(0);
+  await expect(tile.getByRole("textbox")).toHaveCount(0);
+
+  // Local sessions only: the worker's run leaves the list and the grid; then one account.
+  await list.getByTestId("flight-filter-local").click();
+  await expect(list.getByTestId("flight-item")).toHaveCount(2);
+  await expect(tileOf(page, worker.id)).toHaveCount(0);
+  await list.getByTestId("flight-filter-account").selectOption("binh@home.example");
+  await expect(list.getByTestId("flight-item")).toHaveCount(1);
+  await expect(rowOf(page, home.run.id)).toBeVisible();
+  await expect(tileOf(page, work.run.id)).toHaveCount(0);
+  await list.getByTestId("flight-filter-clear").click();
+  await expect(list.getByTestId("flight-item")).toHaveCount(3);
+  await expect(tileOf(page, worker.id)).toBeVisible();
+});

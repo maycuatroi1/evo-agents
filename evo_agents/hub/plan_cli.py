@@ -104,6 +104,23 @@ def _warnings(result: dict) -> None:
 # Operations, each against one ``Hub`` (anything with its ``call`` and ``url``)
 
 
+def write_plan(hub, method: str, path: str, request: dict, project: str):
+    """A plan patch that names the local run of this session, when it has one (``local_sync.run_for``), so the hub
+    records the revision as the run's and sets the run's plan and step. A run the hub does not know (404) is left
+    out and the write is made as it would be without one: a session never loses a plan write to its own bookkeeping."""
+    from evo_agents.hub import local_sync
+
+    run = local_sync.run_for(hub.url, project)
+    if run is None:
+        return hub.call(method, path, request)
+    try:
+        return hub.call(method, path, {**request, "run_id": run})
+    except HubError as exc:
+        if exc.status != 404:
+            raise
+    return hub.call(method, path, request)
+
+
 def put_file(hub, path: Path, project: str | None = None, if_revision: int | None = None) -> dict:
     """Push the plan in ``path`` and rewrite ``path`` as the hub's copy; the hub's answer."""
     found = read_plan(path)
@@ -174,11 +191,11 @@ def patch_item(
     request = {"section": section, "updates": updates}
     request.update({"step": step} if step is not None else {"index": index})
     if if_revision is not None:
-        return hub.call("PATCH", path, {**request, "if_revision": if_revision})
+        return write_plan(hub, "PATCH", path, {**request, "if_revision": if_revision}, project)
     base = hub.call("GET", path)
     for attempt in range(attempts):
         try:
-            return hub.call("PATCH", path, {**request, "if_revision": base["revision"]})
+            return write_plan(hub, "PATCH", path, {**request, "if_revision": base["revision"]}, project)
         except HubError as exc:
             if exc.code != REVISION_CONFLICT or attempt == attempts - 1:
                 raise

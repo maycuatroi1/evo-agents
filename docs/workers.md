@@ -503,6 +503,29 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
+## Local runs
+
+A local run (kind `local`, `evo_agents.hub.server.local_runs`) is a Claude Code session on a member's own machine
+that the hub only watches. It is not part of the worker protocol: no worker claims it, and it has no lease, slot,
+attempt, retry or park. It is private to the member whose token registered it (every list, run page, log, stream,
+decision, notification and the Monitor answer 404 or leave it out for anyone else, an admin without it included), and
+the hub cannot cancel, take over, hand back, approve, rerun or message it (409). Its states are `running`, `waiting`
+(a decision is open), `idle` and `ended`; a session with no sign for 24 hours becomes `ended` (its open decisions
+`expired`). The reaper's passes (lost, park, timeout) and the Curator leave it out. The machine calls these routes with
+the member's own token (a writer of the project); `{run_id}` is the run's id.
+
+| Route | What |
+| --- | --- |
+| `PUT /v1/projects/{project}/local-runs/{session_id}` | registers the Claude session (`machine`, `cwd`, `claude_email`, `claude_profile`, `title`); once per (project, session): 201 when it made the run, 200 when it was there (an ended run starts again), 403 when another member holds the session |
+| `POST .../local-runs/{run_id}/state` | `state` (`running`, `waiting`, `idle`, `ended`), `plan_id`, `step_key`, `title`; 409 once ended; 422 for a plan or step the project lacks |
+| `POST .../local-runs/{run_id}/events` | the log, as a worker's `events` (`seq`, ack, resend) |
+| `POST .../local-runs/{run_id}/decisions` | a decision with options (category `question` by default); the run waits |
+| `GET .../local-runs/{run_id}/decisions/{id}?wait_s=0..25` | the decision, long-polling until it is answered; asking again returns the answer |
+| `POST .../local-runs/{run_id}/decisions/{id}/answered` | the machine reports it was answered on the spot; the first answer wins, a later one gets 409 |
+| `POST .../local-runs/{run_id}/inbox` | the answers not yet taken (`ack` marks them) |
+
+A plan write (`PUT` or `PATCH` of a plan) may name `run_id`: `plan_revisions.run_id` then points at the local run.
+
 ## Decisions and notices
 
 A plan run's agent stops for its owner only on a decision of one of the categories `docs/notifications.md` lists

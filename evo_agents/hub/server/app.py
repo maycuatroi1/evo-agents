@@ -232,10 +232,12 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_events.ChatStreams(app.state.listener),
     )
 
-    from evo_agents.hub.server import curator, decisions, digests, notifications, overview, proposals
+    from evo_agents.hub.server import curator, decisions, digests, local_runs, notifications, overview, proposals
 
     app.include_router(decisions.router)
     app.include_router(decisions.worker_router)
+    app.include_router(local_runs.router)
+    app.include_router(local_runs.batch_router)
     app.include_router(notifications.router)
     app.include_router(notifications.worker_router)
     app.include_router(overview.router)

@@ -514,7 +514,7 @@ def test_the_run_list_filters_searches_pages_and_counts_by_state(hub):
     assert [run["id"] for run in every["runs"]] == [five, four, two]  # newest first
     assert (every["total"], every["limit"], every["offset"]) == (3, 50, 0)
     assert {state: n for state, n in every["counts"].items() if n} == {"queued": 1, "cancelled": 1, "failed": 1}
-    assert set(every["counts"]) == set(runs.RUN_STATES)
+    assert set(every["counts"]) == set(runs.SHOWN_STATES)
     # the counts follow the other filters but not the state one, so the facets show what each state would leave
     queued = listed(state="queued")
     assert ([run["id"] for run in queued["runs"]], queued["total"]) == ([four], 1)

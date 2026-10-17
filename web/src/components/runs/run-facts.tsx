@@ -26,7 +26,7 @@ import { useDuration } from "./runs-table";
  */
 
 /** A card of the side column: its title, then what it holds; a card with nothing to hold yet is its title and `status`. */
-function Card({ title, children, status, testId }: { title: string; children?: ReactNode; status?: ReactNode; testId: string }) {
+export function Card({ title, children, status, testId }: { title: string; children?: ReactNode; status?: ReactNode; testId: string }) {
   const id = useId();
   return (
     <section className="flex min-w-0 flex-col rounded-md border bg-card shadow-raised" aria-labelledby={id} data-testid={testId}>
@@ -59,7 +59,7 @@ function Branch({ name, web }: { name: string; web: RepoWeb | null }) {
   return <Identifier value={name} externalHref={href} linkLabel={href ? named(name) : undefined} testId="run-branch" />;
 }
 
-function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
+export function Fact({ label, children, testId }: { label: string; children: ReactNode; testId?: string }) {
   return (
     <>
       <dt className="text-muted-foreground">{label}</dt>
@@ -70,7 +70,7 @@ function Fact({ label, children, testId }: { label: string; children: ReactNode;
   );
 }
 
-function When({ at }: { at: string }) {
+export function When({ at }: { at: string }) {
   const format = useFormatter();
   const date = new Date(at);
   return (

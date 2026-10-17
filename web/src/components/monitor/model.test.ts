@@ -5,6 +5,9 @@ import type { LiveSignal } from "@/components/live/live-model";
 import {
   followTiles,
   gridShape,
+  isMonitorFiltered,
+  localAccounts,
+  matchesMonitorFilters,
   MAX_TILES,
   mediumCols,
   monitorHref,
@@ -152,5 +155,29 @@ describe("the worst connection", () => {
     const failingOld = signal({ failing: true, updatedAt: 1 });
     const failingNew = signal({ failing: true, updatedAt: 9 });
     expect(worstSignal([failingNew, failingOld])).toBe(failingOld);
+  });
+});
+
+describe("the filters", () => {
+  const local = { kind: "local", claude_email: "Ana@Example.com" } as const;
+  const step = { kind: "step", claude_email: null } as const;
+
+  it("lets every run through while none is set", () => {
+    expect(isMonitorFiltered({ local: false, account: "" })).toBe(false);
+    expect(matchesMonitorFilters(step, { local: false, account: "" })).toBe(true);
+    expect(matchesMonitorFilters(null, { local: false, account: "" })).toBe(true);
+  });
+
+  it("keeps local sessions only, and of one account, whatever the email's case", () => {
+    expect(matchesMonitorFilters(local, { local: true, account: "" })).toBe(true);
+    expect(matchesMonitorFilters(step, { local: true, account: "" })).toBe(false);
+    expect(matchesMonitorFilters(local, { local: false, account: "ana@example.com" })).toBe(true);
+    expect(matchesMonitorFilters(local, { local: true, account: "bo@example.com" })).toBe(false);
+    expect(matchesMonitorFilters(step, { local: false, account: "ana@example.com" })).toBe(false);
+    expect(matchesMonitorFilters(null, { local: true, account: "" })).toBe(false);
+  });
+
+  it("lists the accounts of the local runs, each once, sorted", () => {
+    expect(localAccounts([step, local, { kind: "local", claude_email: "Ana@Example.com" }, { kind: "local", claude_email: "bo@example.com" }])).toEqual(["Ana@Example.com", "bo@example.com"]);
   });
 });

@@ -219,7 +219,9 @@
       "done": "Done",
       "failed": "Failed",
       "lost": "Lost",
-      "cancelled": "Cancelled"
+      "cancelled": "Cancelled",
+      "idle": "Idle",
+      "ended": "Ended"
     },
     "worker": {
       "idle": "Idle",
@@ -3101,7 +3103,9 @@
         "count": "{count} open",
         "inInbox": "Open in the Inbox",
         "loading": "Reading the decision…",
-        "failed": "The decision could not be read here. It is in the Inbox too."
+        "failed": "The decision could not be read here. It is in the Inbox too.",
+        "localYou": "The Claude Code session asked you a question. Your answer reaches it at its next turn.",
+        "local": "The Claude Code session asked {login} a question."
       },
       "log": {
         "title": "Log",
@@ -3452,7 +3456,9 @@
           "done": "Done in {duration}",
           "failed": "Failed after {duration}",
           "lost": "Lost after {duration}",
-          "cancelled": "Cancelled after {duration}"
+          "cancelled": "Cancelled after {duration}",
+          "idle": "Idle for {duration}",
+          "ended": "Ended after {duration}"
         },
         "progressShort": "{done}/{total} steps"
       },
@@ -3466,7 +3472,23 @@
         "back": "Back to run #{id}",
         "openChat": "Open the chat"
       },
-      "detailsToggle": "Details"
+      "detailsToggle": "Details",
+      "local": {
+        "sub": "Claude Code session on {machine}, account {account}{plan, select, none {} other {, plan <planLink>{plan}</planLink>{step, select, none {} other {, step {step}}}}}",
+        "title": "Local session",
+        "machine": "Machine",
+        "account": "Claude account",
+        "profile": "Profile",
+        "directory": "Directory",
+        "lastActivity": "Last activity",
+        "session": "Session",
+        "started": "Registered",
+        "none": "None",
+        "readOnly": "This session runs on a machine of its owner. The hub only shows it: it takes no control from here, and an answer to its question reaches it at its next turn.",
+        "unknown": "unknown",
+        "plan": "Plan",
+        "step": "Step"
+      }
     },
     "diff": {
       "metaTitle": "Diff of run #{id} of {project}",
@@ -3668,6 +3690,19 @@
         "daemon": "@{handle} limits tools, skills or models, or adds instructions, which only a worker whose daemon applies agent profiles carries out; none of your workers here says it does. Upgrade the daemon of one.",
         "skill": "@{handle} does not allow skill {skill}, which an author run writes its plan with."
       }
+    },
+    "local": {
+      "kind": "Local session",
+      "line": "{machine}, {account}{plan, select, none {} other {, plan {plan}{step, select, none {} other {, step {step}}}}}",
+      "lineProject": "{project}: {machine}, {account}{plan, select, none {} other {, plan {plan}{step, select, none {} other {, step {step}}}}}",
+      "noWorker": "Runs on your machine",
+      "kindLabel": "Kind",
+      "all": "All",
+      "local": "Local sessions",
+      "accountLabel": "Claude account",
+      "accountPlaceholder": "Filter by account email",
+      "accountClear": "Clear the account filter",
+      "accountHint": "The Claude account of a local session"
     }
   },
   "insights": {
@@ -3805,7 +3840,8 @@
       "external_send": "External send",
       "spend_money": "Spend money",
       "architecture": "Architecture",
-      "scope": "Scope"
+      "scope": "Scope",
+      "question": "Question"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",
@@ -4575,7 +4611,15 @@
       "hide": "Hide the runs in flight",
       "watch": "Watch run #{id}",
       "empty": "No run is in flight.",
-      "full": "The grid holds {max} runs at most. Close a tile to watch another."
+      "full": "The grid holds {max} runs at most. Close a tile to watch another.",
+      "filters": {
+        "filterLabel": "Filter the runs in flight",
+        "localOnly": "Local sessions only",
+        "account": "Claude account",
+        "allAccounts": "All accounts",
+        "noMatch": "No run in flight matches the filters.",
+        "clear": "Clear filters"
+      }
     },
     "grid": {
       "label": "Runs you watch",
@@ -4610,7 +4654,9 @@
       "retry": "Try again",
       "retrying": "Trying again",
       "latest": "Jump to the latest",
-      "now": "Run #{id} is now {state}."
+      "now": "Run #{id} is now {state}.",
+      "lastActivity": "last activity <time></time>",
+      "localPlan": "plan {plan}{step, select, none {} other {, step {step}}}"
     }
   }
 }
