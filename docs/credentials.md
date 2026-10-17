@@ -152,7 +152,12 @@ bound to the run's project, bound to no worker or to this one, and not past its 
 - each `git` secret whose `url_prefix` covers one of those origins, the longest prefix for each origin;
 - a GitHub App token for the origins on github.com that no `git` secret covers and that the run's owner may push to
   on GitHub, one per installation: a lease of kind `git` named `github-app:<owner>` for `https://github.com/<owner>`,
-  with the username `x-access-token`.
+  with the username `x-access-token`. Its permissions are `GITHUB_PERMISSIONS`, plus `workflows: write`
+  (`GITHUB_WORKFLOW_PERMISSIONS`) when the installation of the workers' App holds it: GitHub refuses a push that
+  creates or updates a file of `.github/workflows` without it. To let runs push such a change, give the App the
+  Workflows permission (read and write) in its settings and accept it on the installation; a run asks its token at
+  its start, so a run that began before keeps its token without it until that token is renewed. A run of the
+  Curator never gets it.
 
 The answer is `{leases, missing}`. Each lease carries `id`, `kind`, `provider`, `name`, `env_var`, `url_prefix`,
 `username`, `value` and `expires_at`, as `Lease.from_json` reads them. `missing` names each repo whose origin nothing

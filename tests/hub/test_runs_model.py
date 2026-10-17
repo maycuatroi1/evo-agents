@@ -647,6 +647,10 @@ def test_the_plan_run_prompt_holds_the_rules_the_repos_and_the_open_steps(plan):
         "`--kind merge_default_branch`",
         ".evo-run/result.json",
         '"summary"',
+        # run #80: a block only the owner can lift is asked, again when an answer did not lift it, never a stop
+        "is a scope decision, not a stop",
+        "When the answer did not lift the block, ask again with what you found; never end the run on it.",
+        "A turn that ends with no decision open ends the run",
         f"- evo-agents: branch feat/fleet-demo, worktree {WORKTREES}/evo-agents",
         "- evo-agents-harness: branch main, worktree evo-agents-harness",
         plan["goal"].strip(),
