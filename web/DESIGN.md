@@ -79,6 +79,13 @@ Light and dark are both first-class; the hub follows the system until a person p
 
 Cobalt is never a large fill; the logo tile is the one exception.
 
+**Branding.** A hub admin may set `brand`, `brand-hover`, `brand-soft` and `on-brand` for each theme
+(Administration, Branding; `evo_agents.hub.branding`), and no other token. The hub refuses a colour that leaves a pair
+under its ratio, with the tokens left unset at the values above: `brand` 4.5:1 on `surface`, `canvas` and
+`brand-soft` and 3:1 on `surface-selected`, `brand-hover` 4.5:1 on `surface`, `on-brand` 4.5:1 on `brand`. The root
+layout writes the colours over the tokens (`brandingCss` in `lib/hub-settings.ts`), and the aliases of `brand`
+(`running`, `focus-ring`, `chart-1`) follow it. The Branding page checks the same pairs as the colours are typed.
+
 **States.** Each tone has a text token, a soft ground and a solid mark. Text and icons on the soft ground use the text
 token; dots, bars and progress segments use the solid one. Ratios are text on the soft ground; marks are at least
 3:1 on surface.
@@ -242,12 +249,15 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Monitor, the runs watched live | `MonitorPlay` |
 | Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
+| The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
-The mark (`components/brand.tsx`, `src/app/icon.svg`) is three linked nodes on a rounded tile: the tile in `brand`
+The mark (`components/brand.tsx`, `public/icon.svg`) is three linked nodes on a rounded tile: the tile in `brand`
 (`#2f4bd8` in the favicon), two nodes and the edges in `on-brand`, the third node amber `#fbbf24` in both themes. It
-shows at 20 px or larger beside the name in Plex Sans 600, and is never recoloured.
+shows at 20 px or larger beside the name in Plex Sans 600, and is never recoloured. A hub's branding (Administration,
+Branding) may put its own logo in the mark's place (`HubMark`), its own favicon in the browser's tab and its own
+product name beside them; without one the shell shows the mark, the favicon and "evo-agents hub".
 
 ## Spacing and layout
 
@@ -1202,7 +1212,10 @@ so the server renders a page the same way for everyone who has not picked a lang
    send a skeleton; `e2e/server-render.spec.ts` checks Home, Workers and Runs); the client component reads with
    `useHubQuery` and renders through `QueryView`.
 3. Add the sidebar entry to `PROJECT_NAV` or `HUB_NAV` in `components/shell/nav.ts`, and its label under
-   `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step).
+   `nav` in both `messages/vi.json` and `messages/en.json` (a unit test keeps the two files in step). An area a hub
+   admin may turn off (a feature `evo_agents.hub.features` declares, `FEATURE_IDS` in `lib/hub-settings.ts`) names its
+   `feature` on the entry, which hides it from the sidebar and the palette, and its route segment gets a layout that
+   calls `requireFeature`, so its pages answer 404 as its API does.
 4. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
    fixtures from `e2e/support/fixtures.ts`. Specs see the English default; a spec that matches Vietnamese
    copy says so with `test.use({ uiLocale: "vi" })`, which sets the locale cookie on its browser context

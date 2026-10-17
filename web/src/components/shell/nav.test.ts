@@ -4,6 +4,16 @@ import { countText, HOME_NAV, HUB_NAV, isActive, PROJECT_NAV, projectHref } from
 import { activeRunCount, fleetOf } from "./nav-counts";
 
 describe("nav", () => {
+  it("names the feature a hub admin may turn off on the items it hides", () => {
+    const tagged = [...HOME_NAV, ...PROJECT_NAV, ...HUB_NAV].filter((item) => item.feature);
+    expect(tagged.map((item) => [item.label, item.feature])).toEqual([
+      ["monitor", "monitor"],
+      ["curator", "curator"],
+      ["kg", "kg"],
+      ["chats", "chats"],
+    ]);
+  });
+
   it("builds project links", () => {
     expect(projectHref("demo")).toBe("/p/demo");
     expect(projectHref("demo", "plans")).toBe("/p/demo/plans");

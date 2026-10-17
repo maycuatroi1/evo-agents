@@ -3,7 +3,7 @@ import type { AdminSection, OverviewPage } from "./admin-nav";
 type Crumb = { label: string; href?: string };
 type CrumbSection = Exclude<AdminSection, "overview"> | OverviewPage;
 
-const SECTIONS: readonly string[] = ["members", "tokens", "audit", "diagnostics"] satisfies CrumbSection[];
+const SECTIONS: readonly string[] = ["members", "tokens", "audit", "branding", "features", "diagnostics"] satisfies CrumbSection[];
 
 function isCrumbSection(value: string | undefined): value is CrumbSection {
   return SECTIONS.includes(value ?? "");

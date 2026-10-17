@@ -22,6 +22,7 @@ const python = process.env.PYTHON ?? "python3";
 const reuse = process.env.E2E_REUSE_SERVERS === "1";
 const chrome = { ...devices["Desktop Chrome"], locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" };
 const firefox = { ...devices["Desktop Firefox"], locale: "vi-VN", timezoneId: "Asia/Ho_Chi_Minh" };
+const HUB_SETTINGS = /branding\.spec\.ts$/;
 
 export default defineConfig({
   testDir: "./e2e",
@@ -52,7 +53,11 @@ export default defineConfig({
         },
       ]
     : [
-        { name: "chromium", use: chrome },
+        // The branding and the features of the whole hub show on every page: their spec runs alone and first, and
+        // leaves the hub with nothing set, so no Chromium spec sees the hub branded or a feature off. A run that
+        // names other specs runs it too, since a dependency always runs whole.
+        { name: "hub-settings", use: chrome, testMatch: HUB_SETTINGS },
+        { name: "chromium", use: chrome, testIgnore: HUB_SETTINGS, dependencies: ["hub-settings"] },
         // The web terminal also in Firefox: its websocket under connect-src 'self', and WebAssembly under the CSP.
         { name: "firefox", use: firefox, testMatch: /terminal\.spec\.ts$/ },
       ],
