@@ -9,9 +9,12 @@ The record only rises: a join never lowers the level or the location, never turn
 and never drops a project. It names levels and projects, never ids or text from the results. kg_status and
 the SessionStart note print it.
 
-Claude Code hands PostToolUse the result's structuredContent as a JSON string (see
-tests/kg/fixtures/hooks/post_tool_kg_search.json), so the labels come from the result itself: each node
-carries one, and the server adds the join of everything else the result reveals (edges, evidence items).
+The labels come from the result itself. The server sends an MCP client the text alone, with READ_META in
+the ``_meta`` of its text block: the project, the join of every label the result reveals (nodes, edges,
+evidence items) and how many elements with an id carry one. Claude Code 2.1.296 hands PostToolUse the
+content blocks with their ``_meta`` (tests/kg/fixtures/hooks/post_tool_kg_context_text.json); a result
+that kept its structuredContent comes as that JSON as a string (post_tool_kg_search.json), whose labels
+are read as they are.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from evo_agents.kg.project import resolve_project
 SESSION_VERSION = 1
 # Tool names of the evo-kg server: from the plugin, or declared by hand under the name evo-kg.
 TOOL_PREFIXES = ("mcp__plugin_evo-kg_evo-kg__", "mcp__evo-kg__")
+READ_META = "evo-agents/read"  # the _meta key of a result's text block: {project, label, results_read}
 _UNSAFE = re.compile(r"[^A-Za-z0-9_-]")
 
 
@@ -86,14 +90,19 @@ def describe(record: dict) -> str:
 
 
 def structured_result(tool_response) -> dict | None:
-    """The structuredContent of an evo-kg result as PostToolUse receives it: a JSON string from Claude Code
-    2.1; a whole MCP result or a list of content blocks is accepted too. None when it holds no JSON object."""
+    """What an evo-kg result says it reveals, as PostToolUse receives it: the READ_META of a content block, from
+    Claude Code 2.1.296; else the structuredContent, as a JSON string, a whole MCP result or a JSON text block.
+    None when it holds no JSON object."""
     if isinstance(tool_response, str):
         try:
             tool_response = json.loads(tool_response)
         except ValueError:
             return None
     if isinstance(tool_response, list):
+        for block in tool_response:
+            meta = block.get("_meta") if isinstance(block, dict) else None
+            if isinstance(meta, dict) and isinstance(meta.get(READ_META), dict):
+                return meta[READ_META]
         for block in tool_response:
             if isinstance(block, dict) and block.get("type") == "text":
                 found = structured_result(block.get("text"))
@@ -176,9 +185,13 @@ def _write(path: Path, record: dict) -> None:
 
 def record_read(session_id, data: dict, home: Path | None = None) -> dict | None:
     """Join the labels in one evo-kg result into the session's record; return the new record, or None when the
-    session id is unusable or the result names no label (an error, kg_status, kg_more)."""
+    session id is unusable or the result names no label (an error, kg_status, kg_more). ``data`` is a READ_META,
+    whose results_read gives the count, or a structuredContent, whose labelled elements are counted."""
     path = session_path(session_id, home)
     found, count = labels_in(data)
+    given = data.get("results_read")
+    if isinstance(given, int) and not isinstance(given, bool) and given >= 0:
+        count = given
     if path is None or not found:
         return None
     project = data.get("project") if isinstance(data.get("project"), str) else None

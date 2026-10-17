@@ -32,6 +32,7 @@ from evo_agents.hub import review as review_model
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.server.collect import collect
 from evo_agents.hub.worker import queue
+from evo_agents.kg.serve import DATA_META
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import MINE, app_key, install, leased  # noqa: F401 (app_key is a fixture)
@@ -375,7 +376,7 @@ def test_the_mcp_tools_of_the_review_read_the_project_of_the_run(review):
             "jsonrpc": "2.0",
             "id": 7,
             "method": "tools/call",
-            "params": {"name": name, "arguments": arguments or {}},
+            "params": {"name": name, "arguments": arguments or {}, "_meta": {DATA_META: True}},
         }
         headers = {**token, **MCP_HEADERS, "X-Evo-Run": str(run_id)}
         if project:

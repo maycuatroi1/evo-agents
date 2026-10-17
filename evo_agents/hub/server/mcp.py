@@ -33,9 +33,12 @@ routes for memories, plans and their handoffs, skills, projects, the tool figure
 review run reads (the night's figures, session digests, the events of a run, decisions) in this process, so they read
 and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write
 rule, revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text
-goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. A refusal of the hub
-becomes a tool error carrying its message, an unexpected failure one carrying the request id only. The log has one
-line per tool call with its name, project, outcome and duration, never its arguments or its result.
+goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``,
+a tool's answer is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its
+structuredContent comes only when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend
+hub`` does. A refusal of the hub becomes a tool error carrying its message, an unexpected failure one carrying the
+request id only. The log has one line per tool call with its name, project, outcome and duration, never its arguments
+or its result.
 """
 
 from __future__ import annotations
@@ -111,7 +114,7 @@ from evo_agents.hub.server.security import (
     RunScope,
     authenticate,
 )
-from evo_agents.kg.serve import Session, _error
+from evo_agents.kg.serve import Session, _error, for_model, wants_data
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -461,7 +464,8 @@ class HubMcp(MCPServer):
                 "request_id": request_id,
             },
         )
-        return CallToolResult.model_validate(result)
+        meta = context.request_context.meta if context is not None else None
+        return CallToolResult.model_validate(result if wants_data(meta) else for_model(result))
 
     async def _answer(self, caller: Caller, name: str, arguments: dict, request_id) -> dict:
         scope = caller.user.scope

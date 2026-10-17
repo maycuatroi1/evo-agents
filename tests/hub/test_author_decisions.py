@@ -24,6 +24,7 @@ from sqlalchemy import func, select
 from evo_agents.hub import tables
 from evo_agents.hub.server import telegram as server_telegram
 from evo_agents.hub.server.app import create_app
+from evo_agents.kg.serve import DATA_META
 from tests.hub import live
 from tests.hub.live import bearer, sql
 from tests.hub.test_author_chat import (
@@ -125,7 +126,8 @@ def overview(client, headers) -> dict:
 
 
 def mcp_decisions(client, headers) -> dict:
-    message = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": {"name": "decision_list", "arguments": {}}}
+    params = {"name": "decision_list", "arguments": {}, "_meta": {DATA_META: True}}
+    message = {"jsonrpc": "2.0", "id": 7, "method": "tools/call", "params": params}
     response = client.post("/mcp", json=message, headers={**headers, **MCP_HEADERS, "X-Evo-Project": PROJECT})
     assert response.status_code == 200, response.text
     result = response.json()["result"]
