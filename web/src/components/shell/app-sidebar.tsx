@@ -6,6 +6,7 @@ import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Fragment } from "react";
 
 import { HubMark } from "@/components/brand";
 import {
@@ -39,6 +40,7 @@ import {
   useNavShown,
 } from "./nav";
 import { useNavCounts } from "./nav-counts";
+import { PluginNavItems } from "./plugin-nav";
 import { ProjectSwitcher, useCurrentProject } from "./project-switcher";
 import { NAV_SHORTCUTS, ShortcutKeys } from "./shortcuts";
 import { UserMenu } from "./user-menu";
@@ -127,7 +129,8 @@ function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: 
 
 /**
  * The sidebar of the kit's AppShell: the mark and name (the hub's branding's when it sets them), the project switcher,
- * Home and Inbox, the current project's areas, the hub's areas, then the fleet line and the account at the foot.
+ * Home and Inbox, the current project's areas and the pages its plugins add, the hub's areas, then the fleet line and
+ * the account at the foot.
  * An area whose feature a hub admin turned off, for the hub or the project shown, is left out. 240 px wide, folding
  * to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a sheet under 768 px.
  */
@@ -182,16 +185,21 @@ export function AppSidebar() {
                 {PROJECT_NAV.filter((item) => shown(item, project)).map((item) => {
                   const href = projectHref(project, item.segment);
                   return (
-                    <NavItem
-                      key={item.label}
-                      label={item.label}
-                      icon={item.icon}
-                      href={href}
-                      active={isActive(pathname, href, item.segment === "")}
-                      count={item.count}
-                      value={item.count ? counts[item.count] : null}
-                      onNavigate={closeOnMobile}
-                    />
+                    <Fragment key={item.label}>
+                      {/* the pages the project's plugins add come after its own areas, before its Plugins */}
+                      {item.label === "plugins" ? (
+                        <PluginNavItems project={project} pathname={pathname} onNavigate={closeOnMobile} />
+                      ) : null}
+                      <NavItem
+                        label={item.label}
+                        icon={item.icon}
+                        href={href}
+                        active={isActive(pathname, href, item.segment === "")}
+                        count={item.count}
+                        value={item.count ? counts[item.count] : null}
+                        onNavigate={closeOnMobile}
+                      />
+                    </Fragment>
                   );
                 })}
               </SidebarMenu>

@@ -250,6 +250,9 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
+| Plugins, the store and a project's; a plugin enabled in a project; disabled there | `Puzzle`; `Plug`; `Unplug` |
+| A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
+| A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
@@ -430,7 +433,8 @@ Shared pieces built on them:
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
   "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
-  (Overview, Plans, Runs, Insights, Curator, Agents, Memories, Skills, Knowledge graph), the hub (Workers, My memories, Shared
+  (Overview, Plans, Runs, Insights, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
+  and Plugins; section Plugins below), the hub (Workers, My memories, Shared
   skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
   and the Curator's proposals waiting for the visitor's answer in `attention`, Monitor the runs at work in every project
   of the grants (`counts.running` of `GET /v1/me/overview`, asked every 15 seconds while one runs) and Runs the project's
@@ -1174,6 +1178,63 @@ Shared pieces built on them:
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.
+- `components/plugins`, plugins (docs/plugins.md; docs/hub.md, Plugins). Administration gains a Plugins tab
+  (`/admin/plugins`, hub admins): the store in one `DataCard` table, a plugin's name over its id and description, its
+  publisher in mono (a `ShieldAlert` in `attention` once the operator no longer trusts it; a core plugin of the hub's image
+  is trusted with the image), its tier as a `Tag` (Isolated `Box`, Core `Cpu`, what it means as the tooltip and in words),
+  the version installed in tabular mono with "1.1.0 available" as an `attention` tag (`ArrowUpCircle`), its state as a
+  pill (Available, Installed, Turned off in `danger`; looks in `parts.tsx`, as `change-badge.tsx` keeps its own), Install
+  and Upgrade as the row's actions; beside it from xl a 22 rem card of the trusted publishers, each id with what signs for
+  it (`sigstore:<workflow>`, `ed25519:<key id>`) and Core (`Cpu`) for those who may publish core plugins; the empty state
+  gives the CLI command that publishes one. A plugin's page (`/admin/plugins/{name}`) heads with its title, state, tier
+  and id, Install, Upgrade (a dialog: projects keep what they granted, a permission the new version adds waits for each
+  project's admin) and Remove (`quiet-danger`, confirmed in `ConfirmAction`: projects lose its pages, routes and tools and
+  keep their grants and config); About (its description, what it asks for, what it adds as a tag per extension point:
+  "1 page", "2 routes"), Versions (a `DataTable`: the version, Runs here or Does not run here with the hub's reason in
+  `danger`, Publisher's key or CI workflow (Sigstore) and what signed, who published it and when; Install on a compatible
+  row while none is installed), the form of the hub's layer of its config and its History; Details and, for an isolated
+  plugin, Backend (its state as the plugin host last reported it, restarts, the last failure in `danger`) in the side
+  column. A core plugin of the image offers no Install, Upgrade or Remove: a Comes with the hub tag (`PackageCheck`)
+  stands in their place.
+  - A project's Plugins (`/p/{project}/plugins`, last in the project's group, `Puzzle`): every installed plugin in a
+    `DataCard` table, its pages as `brand` links once it is on, its state (Enabled `Plug` in `success`, Not enabled,
+    Turned off by the hub in `danger`) and "Asks for N more" in `attention` after an upgrade; an admin of the project gets
+    Enable and Review N new permissions on the row, everyone else a note that only an admin changes them. Enable opens
+    the consent (`project-actions.tsx`): a dialog that names the plugin, its version and publisher, lists every permission
+    it asks for in the viewer's language over its code (`KeyRound`; the new ones tagged New), the pages it adds to the menu,
+    and that disabling keeps its config and data; Grant and enable names back exactly that list, as the hub requires. A
+    plugin's page in the project (`/p/{project}/plugins/{name}`) has the same head with Disable (`quiet-danger`,
+    confirmed), About with what was granted and its pages, then, once enabled, Config of the project, What the plugin
+    gets (each field with the layer that set it as a tag: Default, Hub, Project v3, Agent, Run; what does not fit the
+    schema in an `attention` box; the digest) and History.
+  - The config form (`config-form.tsx`, the pure model in `config-model.ts`) is drawn from the plugin's JSON Schema: a
+    field per property, required ones first and secrets last, by title (the hub keeps the manifest as JSONB, which keeps
+    no author's order), its title over its description, Required as a tag, the schema's default as the placeholder
+    ("Default: hello"). By kind: an input (text, a number with `inputMode`), a select with Not set here for an enum and
+    for a boolean (On, Off), a textarea of one value a line for a list of strings, JSON in mono for anything else. Empty
+    means not set in this layer, so the layers below apply. A secret shows only whether the layer sets it (Secret set,
+    `LockKeyhole`), with Replace and Clear; Replace reveals a password field never filled from the hub, sent once and
+    emptied whatever the hub answers. The form repeats the hub's checks of one layer (type, bounds, length, pattern,
+    choices) and takes focus to the first wrong field; Save sends only what changed with `if_version`, a refusal shows
+    above it, the version saved is a toast. Someone who may not write the layer reads what it sets instead.
+  - A plugin's page (`/p/{project}/x/{plugin}/{page}`), each a menu item after the project's own areas with the icon
+    and title its manifest gives (`shell/plugin-nav.tsx`; the icons, a fixed Lucide set, are a chunk of their own loaded
+    only when a plugin adds a page, the puzzle standing in meanwhile). A **core plugin's page is native**: a feature
+    folder of its own under `components/` and a route under `app/(app)/p/[project]/x/<plugin>/` whose layout calls
+    `requirePlugin` (`lib/plugins-server.ts`), so it answers 404 where the project has not enabled the plugin, then the
+    page as any other of this web, with this file's rules. `components/plugin-notes` is the tests' (`page.fixture.tsx`
+    routes, carried only by a build with `EVO_WEB_FIXTURES=1`). An **isolated plugin's page is framed**
+    (`plugin-page-view.tsx`, `plugin-frame.tsx`): the page's title as the h1, the plugin as a tag that opens its settings,
+    Sandboxed (`ShieldCheck`, what it means as the tooltip and in words), a line saying what it may read, then the frame
+    as wide as the content on `card` inside a `border` edge with the container radius, 560 px high until the page asks
+    for its own height (240 to 4000 px). The iframe is `sandbox="allow-scripts allow-forms"`, never `allow-same-origin`,
+    with no referrer and a title that names the page and the plugin; its URL, which the hub signed, is set only once the
+    bridge listens, so the plugin's first requests are never lost to a page still hydrating. The web's own CSP allows
+    `frame-src 'self'` for it; the hub serves the page's files with a CSP of their own whose `sandbox` keeps the origin
+    opaque. The bridge (`bridge.ts`, `bridge-hub.ts`; docs/plugins.md, Pages) answers only messages from that frame's
+    window with an opaque origin, opens the methods of the permissions the project granted, calls the hub with the
+    viewer's session, and refuses the rest with `not_granted` before the hub is asked; it posts the viewer's theme, so a
+    page can follow light and dark. A plugin's page draws itself: this file binds the frame around it, not what it holds.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
@@ -1216,7 +1277,11 @@ so the server renders a page the same way for everyone who has not picked a lang
    admin may turn off (a feature `evo_agents.hub.features` declares, `FEATURE_IDS` in `lib/hub-settings.ts`) names its
    `feature` on the entry, which hides it from the sidebar and the palette, and its route segment gets a layout that
    calls `requireFeature`, so its pages answer 404 as its API does.
-4. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
+4. A core plugin's page (section Plugins, `components/plugins`): its components in a feature folder of their own, its
+   route under `app/(app)/p/[project]/x/<plugin>/` with a layout that calls `requirePlugin(<plugin>, project, <page>)`,
+   no `PROJECT_NAV` entry (the menu lists it from the plugin's manifest once a project enables it), and its words under
+   a namespace of its own in both message files.
+5. Add the page to `PAGES` in `e2e/a11y.spec.ts`. Seed data with the `admin`, `member` and `signInAs`
    fixtures from `e2e/support/fixtures.ts`. Specs see the English default; a spec that matches Vietnamese
    copy says so with `test.use({ uiLocale: "vi" })`, which sets the locale cookie on its browser context
    (`e2e/locale.spec.ts` checks both).

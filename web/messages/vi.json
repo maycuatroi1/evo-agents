@@ -54,7 +54,8 @@
     "agents": "Agent",
     "chats": "Chat",
     "curatorProposals": "Đề xuất",
-    "curatorCharter": "Charter"
+    "curatorCharter": "Charter",
+    "plugins": "Plugin"
   },
   "projectSwitcher": {
     "label": "Dự án",
@@ -522,6 +523,7 @@
       "members": "Thành viên",
       "tokens": "Token",
       "audit": "Audit",
+      "plugins": "Plugin",
       "diagnostics": "Chẩn đoán",
       "branding": "Nhận diện",
       "features": "Tính năng"
@@ -4698,6 +4700,304 @@
       "retrying": "Đang thử lại",
       "latest": "Tới mục mới nhất",
       "now": "Run #{id} giờ ở trạng thái {state}."
+    }
+  },
+  "plugins": {
+    "upgrade": "Có bản {version}",
+    "fromImage": "Đi kèm hub",
+    "state": {
+      "available": "Chưa cài",
+      "installed": "Đã cài",
+      "disabled": "Hub đã tắt",
+      "enabled": "Đã bật",
+      "notEnabled": "Chưa bật"
+    },
+    "tier": {
+      "isolated": "Isolated",
+      "core": "Core",
+      "isolatedHint": "Chạy ngoài các process của hub, chỉ chạm tới hub bằng những quyền một dự án cấp",
+      "coreHint": "Chạy trong các process của hub, từ một publisher mà operator khai là publisher core"
+    },
+    "permissions": {
+      "none": "Plugin không xin quyền nào.",
+      "new": "Mới",
+      "text": {
+        "runs:read": "Đọc các run của dự án, event và kết quả của chúng",
+        "runs:dispatch": "Giao run trong dự án",
+        "chats:read": "Đọc các group chat của dự án",
+        "chats:write": "Gửi tin vào các group chat của dự án",
+        "plans:read": "Đọc các plan của dự án",
+        "memories:read": "Đọc các memory của dự án",
+        "notifications:send": "Gửi thông báo cho thành viên của dự án"
+      }
+    },
+    "points": {
+      "nothing": "Plugin chưa thêm gì vào hub.",
+      "pages": "{count, plural, other {# trang}}",
+      "routes": "{count, plural, other {# route}}",
+      "mcp_tools": "{count, plural, other {# MCP tool}}",
+      "jobs": "{count, plural, other {# job}}",
+      "events": "{count, plural, other {# đăng ký event}}",
+      "channels": "{count, plural, other {# kênh thông báo}}",
+      "tables": "{count, plural, other {# bảng}}",
+      "agent_packs": "{count, plural, other {# agent pack}}",
+      "agent_types": "{count, plural, other {# loại agent}}",
+      "runtimes": "{count, plural, other {# runtime}}",
+      "environments": "{count, plural, other {# môi trường}}",
+      "kg_connectors": "{count, plural, other {# connector của đồ thị}}"
+    },
+    "errors": {
+      "forbidden": "Bạn không có vai trò mà thay đổi này cần.",
+      "conflict": "Plugin vừa đổi. Trang đang hiện nó như hub giữ bây giờ."
+    },
+    "actions": {
+      "install": "Cài",
+      "installVersion": "Cài {version}",
+      "installing": "Đang cài",
+      "installed": "Đã cài {name} {version}",
+      "installFailed": "Không cài {name} được",
+      "upgradeTo": "Nâng lên {version}",
+      "upgradeTitle": "Nâng {name} lên {version}?",
+      "upgradeDescription": "Hub chuyển plugin từ {from} sang {to} sau khi kiểm chữ ký của bundle mới. Dự án đã bật plugin giữ những gì đã cấp; quyền mà bản mới thêm chờ admin của từng dự án cấp.",
+      "upgradeConfirm": "Nâng",
+      "upgrading": "Đang nâng",
+      "upgraded": "Đã nâng {name} lên {version}",
+      "remove": "Gỡ",
+      "removeTitle": "Gỡ {name}?",
+      "removeDescription": "Mọi dự án mất ngay các trang, route, tool và job của plugin. Quyền đã cấp và config của từng dự án vẫn giữ, mọi phiên bản vẫn ở trong kho, nên cài lại thì plugin trở về như cũ.",
+      "removeConfirm": "Gỡ plugin",
+      "removing": "Đang gỡ",
+      "removed": "Đã gỡ {name}",
+      "cancel": "Huỷ",
+      "openPlugin": "Mở plugin"
+    },
+    "admin": {
+      "title": "Plugin",
+      "count": "{count, plural, other {# plugin}}",
+      "caption": "Các plugin trong kho của hub",
+      "columns": {
+        "plugin": "Plugin",
+        "publisher": "Publisher",
+        "tier": "Hạng",
+        "version": "Phiên bản",
+        "state": "Trạng thái",
+        "actions": "Thao tác"
+      },
+      "latest": "Mới nhất {version}",
+      "untrusted": "publisher mà operator không còn tin cậy",
+      "emptyTitle": "Kho chưa có plugin nào",
+      "emptyDescription": "Plugin là một bundle do publisher của nó ký. Quản trị viên hub publish bằng CLI, cài ở đây, rồi admin của từng dự án bật nó.",
+      "publishCommand": "evo-agents hub plugin publish <bundle>",
+      "publishers": {
+        "title": "Publisher tin cậy",
+        "description": "Hub chỉ nhận bundle do các publisher này ký. Operator khai họ trong EVO_HUB_PLUGIN_PUBLISHERS.",
+        "none": "Chưa có publisher nào được tin cậy, nên chưa publish được bundle nào. Operator khai publisher trong EVO_HUB_PLUGIN_PUBLISHERS.",
+        "core": "Core",
+        "coreHint": "Được publish plugin core, loại chạy trong các process của hub (EVO_HUB_PLUGIN_CORE_PUBLISHERS)"
+      }
+    },
+    "detail": {
+      "publishedBy": "Publish bởi {publisher}",
+      "turnedOff": "Hub đã tắt: {reason}",
+      "aboutTitle": "Giới thiệu",
+      "asksFor": "Những gì plugin xin ở dự án bật nó",
+      "contributes": "Những gì plugin thêm",
+      "configTitle": "Config của hub",
+      "configDescription": "Lớp của chính hub, dưới lớp của mọi dự án: giá trị của dự án thắng giá trị ở đây.",
+      "detailsTitle": "Chi tiết",
+      "publisher": "Publisher",
+      "installed": "Đã cài",
+      "installedBy": "Bởi {login}, <when></when>",
+      "theImage": "image của hub",
+      "notInstalled": "Chưa cài",
+      "latestVersion": "Phiên bản mới nhất",
+      "inStoreSince": "Có trong kho từ",
+      "turnedOffAt": "Bị tắt lúc"
+    },
+    "versions": {
+      "title": "Phiên bản",
+      "caption": "Các phiên bản của {name}, mới nhất trước",
+      "columns": {
+        "version": "Phiên bản",
+        "runs": "Trên hub này",
+        "signedBy": "Ký bởi",
+        "published": "Publish",
+        "actions": "Thao tác"
+      },
+      "installed": "Đã cài",
+      "runsHere": "Chạy được",
+      "doesNotRun": "Không chạy được",
+      "kinds": {
+        "ed25519": "Khoá của publisher",
+        "sigstore": "Workflow CI (Sigstore)",
+        "image": "Image của hub"
+      },
+      "theImage": "image của hub"
+    },
+    "backend": {
+      "title": "Backend",
+      "description": "Process riêng của plugin, ngoài hub, theo lần báo gần nhất của plugin host.",
+      "state": "Trạng thái",
+      "notReported": "Chưa báo",
+      "states": {
+        "placing": "Đang cài",
+        "starting": "Đang khởi động",
+        "running": "Đang chạy",
+        "backoff": "Chờ khởi động lại"
+      },
+      "restarts": "Số lần khởi động lại",
+      "isolation": "Cách ly",
+      "startedAt": "Khởi động",
+      "retryAt": "Khởi động lại",
+      "error": "Lỗi gần nhất"
+    },
+    "config": {
+      "required": "Bắt buộc",
+      "notSetHere": "Không đặt ở đây",
+      "on": "Bật",
+      "off": "Tắt",
+      "defaultPlaceholder": "Mặc định: {value}",
+      "listPlaceholder": "Mỗi dòng một giá trị",
+      "secretSet": "Đã đặt secret",
+      "secretNotSet": "Lớp này chưa đặt secret",
+      "secretCleared": "Sẽ xoá khi lưu",
+      "replace": "Thay",
+      "give": "Đặt giá trị",
+      "clear": "Xoá",
+      "keep": "Giữ nguyên",
+      "noFields": "Plugin này không nhận config.",
+      "layerEmpty": "Lớp này không đặt gì: giá trị mặc định của plugin và các lớp bên dưới được dùng.",
+      "save": "Lưu",
+      "saving": "Đang lưu",
+      "discard": "Bỏ thay đổi",
+      "saved": "Đã lưu phiên bản {version} của config",
+      "conflict": "Có người vừa đổi config này. Tải lại trang để xem phiên bản của họ, rồi lưu lại.",
+      "problems": {
+        "integer": "Một số nguyên.",
+        "number": "Một số.",
+        "json": "JSON hợp lệ.",
+        "choice": "Một trong các lựa chọn.",
+        "pattern": "Giá trị không đúng dạng mà trường này nhận.",
+        "secretEmpty": "Gõ secret, hoặc giữ nguyên.",
+        "minimum": "Ít nhất {limit}.",
+        "maximum": "Nhiều nhất {limit}.",
+        "minLength": "Ít nhất {limit} ký tự.",
+        "maxLength": "Nhiều nhất {limit} ký tự."
+      },
+      "history": {
+        "title": "Lịch sử",
+        "description": "Mọi phiên bản của lớp này, mới nhất trước. Lùi về một phiên bản cũ ghi lại nó thành phiên bản kế tiếp.",
+        "empty": "Chưa từng ghi: giá trị mặc định của plugin và các lớp bên dưới được dùng.",
+        "version": "Phiên bản {version}",
+        "current": "Hiện tại",
+        "rolledBack": "Bản sao của phiên bản {version}",
+        "by": "Bởi {login}, <when></when>",
+        "sets": "Đặt {fields}",
+        "setsNothing": "Không đặt gì",
+        "rollback": "Lùi về phiên bản {version}",
+        "rolledBackTo": "Đã lùi về phiên bản {version}",
+        "rollbackFailed": "Không lùi về phiên bản {version} được"
+      }
+    },
+    "effective": {
+      "title": "Config plugin nhận được",
+      "description": "Config cho các run của dự án không chọn agent: mỗi trường lấy từ lớp cao nhất có đặt nó.",
+      "empty": "Chưa lớp nào đặt trường nào.",
+      "secret": "Secret, đã đặt",
+      "layerVersion": "{layer} v{version}",
+      "layers": {
+        "default": "Mặc định",
+        "instance": "Hub",
+        "project": "Dự án",
+        "agent": "Agent",
+        "run": "Run"
+      },
+      "digest": "Digest"
+    },
+    "consent": {
+      "title": "Bật {name} trong {project}?",
+      "regrantTitle": "Cấp những gì {name} đang xin?",
+      "description": "{name} {version} của {publisher} xin làm những việc sau trong dự án. Bật plugin là cấp tất cả.",
+      "asks": "Plugin xin",
+      "pages": "Plugin thêm vào menu của dự án",
+      "note": "Admin của dự án tắt được plugin bất cứ lúc nào; config và dữ liệu của nó vẫn giữ để bật lại.",
+      "grant": "Cấp và bật",
+      "regrant": "Cấp",
+      "granting": "Đang cấp",
+      "cancel": "Huỷ",
+      "enabled": "Đã bật {name} trong {project}",
+      "granted": "Đã cấp những gì {name} xin",
+      "turnedOff": "Hub đã tắt plugin này. Quản trị viên hub cần nâng nó trước.",
+      "openPlugin": "Mở plugin"
+    },
+    "project": {
+      "title": "Plugin",
+      "metaTitle": "Plugin của {project}",
+      "caption": "Các plugin của dự án {project}",
+      "enabledCount": "Đã bật {count} trên {total}",
+      "readOnly": "Chỉ admin của dự án bật, tắt và cấu hình plugin của nó.",
+      "emptyTitle": "Hub chưa cài plugin nào",
+      "emptyDescription": "Plugin thêm trang, tool và kênh thông báo cho một dự án. Quản trị viên hub cài chúng (Quản trị, Plugin); rồi admin của dự án bật những plugin cần.",
+      "columns": {
+        "plugin": "Plugin",
+        "tier": "Hạng",
+        "version": "Phiên bản",
+        "pages": "Trang",
+        "state": "Trạng thái",
+        "actions": "Thao tác"
+      },
+      "noPages": "Không có",
+      "pending": "{count, plural, other {Xin thêm # quyền}}",
+      "enable": "Bật",
+      "review": "{count, plural, other {Xem # quyền mới}}",
+      "disable": "Tắt",
+      "disableTitle": "Tắt {name} trong {project}?",
+      "disableDescription": "Các trang, route, tool và job của plugin ngừng trả lời ngay trong dự án này, và những gì dự án đã cấp bị thu lại. Config và dữ liệu của nó vẫn giữ để bật lại.",
+      "disableConfirm": "Tắt plugin",
+      "disabling": "Đang tắt",
+      "disabled": "Đã tắt {name} trong {project}",
+      "cancel": "Huỷ",
+      "versionFrom": "Phiên bản {version} của {publisher}",
+      "turnedOff": "Hub đã tắt: {reason}",
+      "aboutTitle": "Giới thiệu",
+      "asksFor": "Plugin xin",
+      "granted": "Dự án đã cấp cho plugin",
+      "pagesTitle": "Các trang của plugin",
+      "configTitle": "Config của dự án",
+      "configDescription": "Lớp của dự án, trên lớp của hub: giá trị đặt ở đây thắng cho các run và trang của dự án này.",
+      "configWhenEnabled": "Đặt được config khi dự án đã bật plugin.",
+      "detailsTitle": "Chi tiết",
+      "publisher": "Publisher",
+      "versionLabel": "Phiên bản",
+      "enabledAt": "Bật",
+      "grantedAt": "Cấp",
+      "by": "Bởi {login}, <when></when>"
+    },
+    "page": {
+      "metaTitle": "{page} | {plugin} | {project}",
+      "fromPlugin": "{name} {version}",
+      "sandboxed": "Sandbox",
+      "sandboxedHint": "Trang chạy trong sandbox: không đọc được cookie của hub hay trang này, và chỉ đọc những gì dự án đã cấp cho plugin của nó, với quyền của bạn.",
+      "mayRead": "Được đọc: {granted}.",
+      "nothing": "không gì của dự án",
+      "missingTitle": "Không có trang này",
+      "missingDescription": "Dự án này chưa bật plugin, hoặc plugin không có trang này."
+    },
+    "frame": {
+      "title": "{page}, một trang của plugin {plugin}"
+    },
+    "notes": {
+      "metaTitle": "Ghi chú | {project}",
+      "tag": "Plugin core",
+      "listLabel": "Ghi chú của {project}",
+      "emptyTitle": "Chưa có ghi chú",
+      "emptyDescription": "Ghi chú giữ những dòng ngắn cho cả dự án. Thêm ghi chú đầu tiên.",
+      "by": "Bởi {login}",
+      "newNote": "Ghi chú mới",
+      "hint": "Nhiều nhất {max} ký tự.",
+      "add": "Thêm ghi chú",
+      "adding": "Đang thêm",
+      "added": "Đã thêm ghi chú"
     }
   }
 }
