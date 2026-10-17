@@ -63,8 +63,9 @@ from evo_agents.hub.runs import (
     EVENT_KINDS,
     MAX_MODEL_CHARS,
     MODES,
-    RUN_STATES,
     RUNTIMES,
+    SHOWN_KINDS,
+    SHOWN_STATES,
     STEADY_GAP_SECONDS,
     STEADY_SECONDS,
     TERMINAL_STATES,
@@ -139,6 +140,7 @@ RUN_KEYS = (
     "profile_id",
     "profile_version",
 )
+RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_at")  # a local run's; null otherwise
 RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
 EVENTS_KEYS = ("run_id", "state", "last_seq", "events", "more")
@@ -503,7 +505,15 @@ def cmd_list(args) -> int:
         query.append(("plan_id", _plan_id(args.plan)))
     if args.worker is not None:
         query.append(("worker_id", _worker_id(hub, credentials.login, args.worker)))
-    given = {"step": args.step, "dispatched_by": args.by, "q": args.search, "limit": args.limit, "offset": args.offset}
+    given = {
+        "step": args.step,
+        "dispatched_by": args.by,
+        "kind": args.kind,
+        "account": args.account,
+        "q": args.search,
+        "limit": args.limit,
+        "offset": args.offset,
+    }
     query += [(key, value) for key, value in given.items() if value is not None]
     listed = hub.call("GET", _runs_path(project) + (f"?{urlencode(query)}" if query else ""))
     if args.json:
@@ -539,6 +549,7 @@ KIND_TEXTS = {  # what `run show` says a run of each kind but step and plan is
     "judge": "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing",
     "author": "author run: a plan written from your request with create-exec-plan; it pushes nothing",
     "chat": "chat run: one turn of an agent mentioned in a group chat, on the branch of its session",
+    "local": "local run: a Claude Code session on a member's own machine, which the hub only watches",
 }
 
 
@@ -556,13 +567,36 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
         link = _origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
         lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
         lines.append(("message", link))
-    if kind not in ("review", "author", "chat") or run.get("plan_id"):
+    if kind not in ("review", "author", "chat", "local") or run.get("plan_id"):
         lines.append(("plan", plan))
+    return lines
+
+
+def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
+    """A local run has no worker, repos, attempts or lease: its machine, directory and account, and what it did."""
+    lines = [("state", run["state"]), *_what(run, hub_url)]
+    where = f"{run['machine']}, {run['cwd']}"
+    lines += [
+        ("machine", where),
+        ("account", run["claude_email"] + (f" ({run['claude_profile']})" if run["claude_profile"] else "")),
+    ]
+    lines.append(("dispatched", f"by {run['dispatched_by']} at {_when(run['queued_at'])} UTC"))
+    if run["last_activity_at"]:
+        lines.append(("last activity", f"{_when(run['last_activity_at'])} UTC"))
+    if run["finished_at"]:
+        lines.append(("ended", f"{_when(run['finished_at'])} UTC"))
+    if run["waiting_since"] and run["state"] == "waiting":
+        lines.append(("waiting", f"since {_when(run['waiting_since'])} UTC, for the answer to a decision"))
+    if run["session_id"]:
+        lines.append(("session", run["session_id"]))
+    lines.append(("events", f"{run['last_seq']}"))
     return lines
 
 
 def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
     """The fields of a run that say something, as (label, text) pairs."""
+    if run["kind"] == "local":
+        return _describe_local(run, hub_url)
     plan_run = run["kind"] != "step"  # every other kind has repos, and no step
     lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}"), *_what(run, hub_url)]
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
@@ -689,7 +723,7 @@ def cmd_logs(args) -> int:
     for event in page["events"]:
         print_event(event)
     shown = f"{len(page['events'])} event(s) shown, the last of the run is {page['last_seq']}"
-    hint = "" if page["state"] in TERMINAL_STATES else "; --follow prints the next ones as they come"
+    hint = "" if page["state"] in (*TERMINAL_STATES, "ended") else "; --follow prints the next ones as they come"
     print(f"Run #{args.run} is {page['state']}: {shown}{hint}.")
     return 0
 
@@ -934,10 +968,14 @@ def register_runs(hsub) -> None:
     listed.add_argument(
         "--state",
         action="append",
-        choices=RUN_STATES,
+        choices=SHOWN_STATES,
         metavar="STATE",
-        help=f"only runs in this state, one of {', '.join(RUN_STATES)}; repeat it for several",
+        help=f"only runs in this state, one of {', '.join(SHOWN_STATES)}; repeat it for several",
     )
+    listed.add_argument(
+        "--kind", choices=SHOWN_KINDS, metavar="KIND", help=f"only runs of this kind, one of {', '.join(SHOWN_KINDS)}"
+    )
+    listed.add_argument("--account", metavar="EMAIL", help="only local runs of this Claude account")
     listed.add_argument("--plan", help="only runs of this plan")
     listed.add_argument("--step", help="only runs of this step key")
     listed.add_argument("--worker", help="only runs this worker of yours claimed, by id or name")
@@ -945,7 +983,8 @@ def register_runs(hsub) -> None:
     listed.add_argument(
         "--search",
         metavar="TEXT",
-        help="text in the title, step, plan, repo, branch, worker, login or error, or a run number such as #12",
+        help="text in the title, step, plan, repo, branch, worker, login, error, machine, directory or account, or a "
+        "run number such as #12",
     )
     listed.add_argument("--limit", type=int, choices=range(1, 201), metavar="N", help="1 to 200 (default 50)")
     listed.add_argument("--offset", type=int, metavar="N", help="skip this many runs, for the next page")

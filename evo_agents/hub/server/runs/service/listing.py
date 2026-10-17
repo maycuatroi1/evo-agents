@@ -30,15 +30,20 @@ def _like(text: str) -> str:
     return "%" + text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
 
 
-def _list_conditions(*, plan_id: bool, step: bool, worker_id: bool, login: bool, text: bool, number: bool) -> list:
+def _list_conditions(
+    *, plan_id: bool, step: bool, worker_id: bool, login: bool, kind: bool, account: bool, text: bool, number: bool
+) -> list:
     """The filters of GET .../runs but the state's, which the counts by state leave out: the runs of project
-    :project_id and of the plans in :plans, and its author runs of a new plan and chat runs when :unplanned, then each
-    filter given,
-    by its bind parameter (one not given leaves every run): :plan_id, :step, :worker_id, :login, and the text as the
-    ILIKE :pattern, or as the run :number."""
+    :project_id and of the plans in :plans, and its author runs of a new plan and chat runs on no plan when
+    :unplanned, and the local runs of :viewer, then each filter given,
+    by its bind parameter (one not given leaves every run): :plan_id, :step, :worker_id, :login, :kind, :account (the
+    Claude account of a local run, by email), and the text as the ILIKE :pattern, or as the run :number."""
     r, u, w = tables.runs, tables.users, tables.workers
     unplanned = and_(r.c.kind.in_(("author", "chat")), r.c.plan_id.is_(None), bindparam("unplanned", type_=Boolean))
-    found = [r.c.project_id == bindparam("project_id"), or_(one_of(r.c.plan_id, name="plans"), unplanned)]
+    # A local run is its member's alone (:viewer): only they list it, whatever its plan.
+    mine = and_(r.c.kind == "local", r.c.dispatched_by == bindparam("viewer"))
+    others = and_(r.c.kind != "local", or_(one_of(r.c.plan_id, name="plans"), unplanned))
+    found = [r.c.project_id == bindparam("project_id"), or_(mine, others)]
     if plan_id:
         found.append(r.c.plan_id == bindparam("plan_id"))
     if step:
@@ -47,9 +52,25 @@ def _list_conditions(*, plan_id: bool, step: bool, worker_id: bool, login: bool,
         found.append(r.c.worker_id == bindparam("worker_id"))
     if login:
         found.append(func.lower(u.c.login) == func.lower(bindparam("login", type_=String)))
+    if kind:
+        found.append(r.c.kind == bindparam("kind", type_=String))
+    if account:
+        found.append(func.lower(r.c.claude_email) == func.lower(bindparam("account", type_=String)))
     if text:
         pattern = bindparam("pattern")
-        searched = (r.c.title, r.c.step_key, r.c.plan_id, r.c.repo, r.c.branch, w.c.name, u.c.login, r.c.error)
+        searched = (
+            r.c.title,
+            r.c.step_key,
+            r.c.plan_id,
+            r.c.repo,
+            r.c.branch,
+            w.c.name,
+            u.c.login,
+            r.c.error,
+            r.c.machine,
+            r.c.cwd,
+            r.c.claude_email,
+        )
         matches = [searched_column.ilike(pattern) for searched_column in searched]
         if number:
             matches.append(r.c.id == bindparam("number"))
@@ -92,9 +113,18 @@ async def run_list(
     limit: int,
     offset: int,
     sink: str | None,
+    kind: str | None = None,
+    account: str | None = None,
 ) -> RunList:
     """The project's runs, newest first, of the plans the caller may read, with how many are in each state."""
-    filters = {"plan_id": plan_id, "step": step, "worker_id": worker_id, "login": dispatched_by}
+    filters = {
+        "plan_id": plan_id,
+        "step": step,
+        "worker_id": worker_id,
+        "login": dispatched_by,
+        "kind": kind,
+        "account": account,
+    }
     states = list(dict.fromkeys(state))
     async with engine.begin() as conn:
         access = await project_access(conn, user, project)
@@ -108,6 +138,7 @@ async def run_list(
             "project_id": access.project_id,
             "plans": plans,
             "unplanned": sees_unplanned(access, sink),
+            "viewer": user.user_id,
             "pattern": _like(text) if text else None,
             "number": int(number[1]) if number else None,
             "states": states,
@@ -116,7 +147,7 @@ async def run_list(
         }
         page = runs_of(await conn.execute(page_query, bound))
         counts = {row.state: row.runs for row in await conn.execute(counts_query, bound)}
-    wanted = states or runs.RUN_STATES
+    wanted = states or runs.SHOWN_STATES
     return RunList(
         runs=page,
         total=sum(counts.get(name, 0) for name in wanted),

@@ -219,7 +219,9 @@
       "done": "Xong",
       "failed": "Thất bại",
       "lost": "Mất lease",
-      "cancelled": "Đã huỷ"
+      "cancelled": "Đã huỷ",
+      "idle": "Đang rảnh",
+      "ended": "Đã kết thúc"
     },
     "worker": {
       "idle": "Rảnh",
@@ -3082,7 +3084,9 @@
         "count": "{count} đang mở",
         "inInbox": "Mở trong Inbox",
         "loading": "Đang đọc quyết định…",
-        "failed": "Không đọc được quyết định ở đây. Bạn cũng xem được nó trong Inbox."
+        "failed": "Không đọc được quyết định ở đây. Bạn cũng xem được nó trong Inbox.",
+        "localYou": "Phiên Claude Code đã hỏi bạn một câu. Câu trả lời của bạn đến với phiên ở lượt kế tiếp.",
+        "local": "Phiên Claude Code đã hỏi {login} một câu."
       },
       "log": {
         "title": "Log",
@@ -3408,7 +3412,23 @@
         "cancel": "Thôi",
         "hubSays": "Hub báo: {message}"
       },
-      "chatSub": "Một lượt của @{agent} trong group chat, bước chuyền {hop}. <chatLink>Mở tin mà run trả lời</chatLink>."
+      "chatSub": "Một lượt của @{agent} trong group chat, bước chuyền {hop}. <chatLink>Mở tin mà run trả lời</chatLink>.",
+      "local": {
+        "sub": "Phiên Claude Code trên {machine}, tài khoản {account}{plan, select, none {} other {, plan <planLink>{plan}</planLink>{step, select, none {} other {, bước {step}}}}}",
+        "title": "Phiên local",
+        "machine": "Máy",
+        "account": "Tài khoản Claude",
+        "profile": "Profile",
+        "directory": "Thư mục",
+        "lastActivity": "Hoạt động gần nhất",
+        "session": "Phiên",
+        "started": "Đăng ký lúc",
+        "none": "Không có",
+        "readOnly": "Phiên này chạy trên máy của chủ nó. Hub chỉ hiển thị: không điều khiển được từ đây, và câu trả lời cho câu hỏi của phiên đến với nó ở lượt kế tiếp.",
+        "unknown": "không rõ",
+        "plan": "Plan",
+        "step": "Bước"
+      }
     },
     "diff": {
       "metaTitle": "Diff của run #{id} thuộc {project}",
@@ -3610,6 +3630,19 @@
         "daemon": "@{handle} giới hạn tool, skill hoặc model, hoặc có chỉ dẫn, mà chỉ worker có daemon áp dụng agent profile mới thực hiện được; chưa worker nào của bạn ở đây báo là có. Hãy nâng cấp daemon của một worker.",
         "skill": "@{handle} không cho phép skill {skill}, skill mà author run dùng để viết plan."
       }
+    },
+    "local": {
+      "kind": "Phiên local",
+      "line": "{machine}, {account}{plan, select, none {} other {, plan {plan}{step, select, none {} other {, bước {step}}}}}",
+      "lineProject": "{project}: {machine}, {account}{plan, select, none {} other {, plan {plan}{step, select, none {} other {, bước {step}}}}}",
+      "noWorker": "Chạy trên máy của bạn",
+      "kindLabel": "Loại",
+      "all": "Tất cả",
+      "local": "Phiên local",
+      "accountLabel": "Tài khoản Claude",
+      "accountPlaceholder": "Lọc theo email tài khoản",
+      "accountClear": "Xóa bộ lọc tài khoản",
+      "accountHint": "Tài khoản Claude của một phiên local"
     }
   },
   "insights": {
@@ -3747,7 +3780,8 @@
       "external_send": "Gửi ra ngoài",
       "spend_money": "Tốn tiền",
       "architecture": "Kiến trúc",
-      "scope": "Phạm vi"
+      "scope": "Phạm vi",
+      "question": "Câu hỏi"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",
@@ -4517,7 +4551,15 @@
       "hide": "Ẩn các run đang diễn ra",
       "watch": "Xem run #{id}",
       "empty": "Không có run nào đang diễn ra.",
-      "full": "Lưới chứa tối đa {max} run. Đóng một ô để xem run khác."
+      "full": "Lưới chứa tối đa {max} run. Đóng một ô để xem run khác.",
+      "filters": {
+        "filterLabel": "Lọc các run đang chạy",
+        "localOnly": "Chỉ phiên local",
+        "account": "Tài khoản Claude",
+        "allAccounts": "Tất cả tài khoản",
+        "noMatch": "Không run nào đang chạy khớp bộ lọc.",
+        "clear": "Xóa bộ lọc"
+      }
     },
     "grid": {
       "label": "Các run bạn đang xem",
@@ -4552,7 +4594,9 @@
       "retry": "Thử lại",
       "retrying": "Đang thử lại",
       "latest": "Tới mục mới nhất",
-      "now": "Run #{id} giờ ở trạng thái {state}."
+      "now": "Run #{id} giờ ở trạng thái {state}.",
+      "lastActivity": "hoạt động gần nhất <time></time>",
+      "localPlan": "plan {plan}{step, select, none {} other {, bước {step}}}"
     }
   }
 }

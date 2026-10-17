@@ -104,6 +104,10 @@ const RUN = {
   failed: { tone: "danger", icon: CircleX },
   lost: { tone: "neutral", icon: Unplug },
   cancelled: { tone: "outline", icon: Ban },
+  // A local run's alone (a Claude Code session on a member's machine): the turn ended and the person has the word, or
+  // the session is over.
+  idle: { tone: "neutral", icon: CirclePause },
+  ended: { tone: "outline", icon: CircleOff },
 } as const satisfies Record<RunStatus, StatusLook>;
 
 const WORKER = {

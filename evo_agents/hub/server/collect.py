@@ -119,10 +119,12 @@ def _digests(project_id: int, since: datetime, until: datetime):
 
 
 def _ended_runs(project_id: int, plans: list[str], since: datetime, until: datetime):
-    """The runs of the project that ended in the span, of a plan the owner may read or a review run."""
+    """The runs of the project that ended in the span, of a plan the owner may read or a review run; never a local run,
+    which a member's session is and the Curator leaves out."""
     r = tables.runs
     return (
         r.c.project_id == project_id,
+        r.c.kind != "local",
         (r.c.plan_id.in_(plans)) | (r.c.kind == "review"),
         r.c.finished_at >= since,
         r.c.finished_at < until,
@@ -350,10 +352,11 @@ async def _plan_figures(conn: AsyncConnection, access: ProjectAccess, now: datet
 
 
 async def _decision_figures(conn: AsyncConnection, project_id: int, plans: list[str], since: datetime) -> dict:
-    d = tables.decisions
+    d, r = tables.decisions, tables.runs
     rows = await conn.execute(
         select(d.c.state, d.c.category, func.count().label("n"))
-        .where(d.c.project_id == project_id, d.c.plan_id.in_(plans), d.c.asked_at >= since)
+        .join_from(d, r, r.c.id == d.c.run_id)
+        .where(d.c.project_id == project_id, r.c.kind != "local", d.c.plan_id.in_(plans), d.c.asked_at >= since)
         .group_by(d.c.state, d.c.category)
     )
     states, categories = Counter(), Counter()
