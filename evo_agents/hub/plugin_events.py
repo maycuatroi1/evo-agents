@@ -103,6 +103,13 @@ async def emit(conn: AsyncConnection, kind: str, project_id: int | None, payload
     return len(found)
 
 
+async def emit_run_state(conn: AsyncConnection, run_id: int, row, old: str, new: str, actor: str) -> int:
+    """Store the ``run.state`` event of run ``run_id``, which ``actor`` moved from ``old`` to ``new``: ``row`` is what
+    ``run_state.move_run`` got back from its UPDATE (project_id, kind, plan_id and step_key)."""
+    change = {"run_id": run_id, "run_kind": row.kind, "from": old, "to": new, "actor": actor}
+    return await emit(conn, "run.state", row.project_id, {**change, "plan_id": row.plan_id, "step": row.step_key})
+
+
 async def emit_notification(conn: AsyncConnection, notification_id: int, project_id: int | None) -> int:
     """Store a delivery of notification ``notification_id`` for each isolated plugin's channel in its project."""
     if project_id is None:

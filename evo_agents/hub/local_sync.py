@@ -623,6 +623,12 @@ def _title(payload: dict) -> str | None:
     return _cut(line, TITLE_CHARS) if line else None
 
 
+def _refused_lately(rec: dict, now: float) -> bool:
+    """Whether the hub refused the session of ``rec`` less than REFUSAL_COOLDOWN seconds before ``now``."""
+    refused = rec.get("refused_at")
+    return isinstance(refused, int | float) and 0 <= now - refused < REFUSAL_COOLDOWN
+
+
 def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = None) -> list[str]:
     """The work of one hook of the session in ``payload`` against ``hub``; the caller keeps exceptions from the
     session. The answers the member gave on the hub, for the agent (user-prompt only), else an empty list."""
@@ -659,8 +665,7 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         _append(rec, events, hub.token)
         rec["touched"] = now
         store.save(rec)
-    refused = rec.get("refused_at")
-    if isinstance(refused, int | float) and 0 <= now - refused < REFUSAL_COOLDOWN:
+    if _refused_lately(rec, now):
         return []
     state = hooks.HookState(hub_dir())
     if state.down_since(hub.url, now) is not None:

@@ -252,16 +252,19 @@ def create_app(config: HubConfig) -> FastAPI:
 
     from evo_agents.hub.server import curator, decisions, digests, local_runs, notifications, overview, proposals
 
-    app.include_router(decisions.router)
-    app.include_router(decisions.worker_router)
-    app.include_router(local_runs.router)
-    app.include_router(local_runs.batch_router)
-    app.include_router(notifications.router)
-    app.include_router(notifications.worker_router)
-    app.include_router(overview.router)
-    app.include_router(curator.router)
-    app.include_router(proposals.router)
-    app.include_router(proposals.worker_router)
+    for routes in (
+        decisions.router,
+        decisions.worker_router,
+        local_runs.router,
+        local_runs.batch_router,
+        notifications.router,
+        notifications.worker_router,
+        overview.router,
+        curator.router,
+        proposals.router,
+        proposals.worker_router,
+    ):
+        app.include_router(routes)
 
     from evo_agents.hub.server import changes, ledger, proposal_plans, protection
 

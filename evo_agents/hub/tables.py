@@ -293,12 +293,7 @@ skills = Table(
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
     PrimaryKeyConstraint("id", name="skills_pkey"),
 )
-Index(
-    "skills_global_key",
-    func.lower(skills.c.name),
-    unique=True,
-    postgresql_where=skills.c.scope == "global",
-)
+Index("skills_global_key", func.lower(skills.c.name), unique=True, postgresql_where=skills.c.scope == "global")
 Index(
     "skills_project_key",
     skills.c.project_id,
@@ -696,25 +691,14 @@ Index(  # the reaper finds the local runs that went silent (0033)
     runs.c.last_activity_at,
     postgresql_where=(runs.c.kind == "local") & (runs.c.state != "ended"),
 )
-Index(
-    "runs_claim_idx",
-    runs.c.project_id,
-    runs.c.dispatched_by,
-    runs.c.id,
-    postgresql_where=runs.c.state == "queued",
-)
+Index("runs_claim_idx", runs.c.project_id, runs.c.dispatched_by, runs.c.id, postgresql_where=runs.c.state == "queued")
 Index("runs_lease_idx", runs.c.lease_expires_at, postgresql_where=runs.c.state.in_(RUN_HELD))
 Index("runs_worker_idx", runs.c.worker_id, runs.c.id.desc(), postgresql_where=runs.c.worker_id.is_not(None))
 Index("runs_project_idx", runs.c.project_id, runs.c.id.desc())
 Index("runs_step_idx", runs.c.project_id, runs.c.plan_id, runs.c.step_key, runs.c.id.desc())
 Index("runs_waiting_idx", runs.c.waiting_since, postgresql_where=runs.c.state == "waiting")
 Index("runs_parked_idx", runs.c.parked_at, postgresql_where=runs.c.state == "parked")
-Index(
-    "runs_schedule_idx",
-    runs.c.schedule_id,
-    runs.c.schedule_night,
-    postgresql_where=runs.c.schedule_id.is_not(None),
-)
+Index("runs_schedule_idx", runs.c.schedule_id, runs.c.schedule_night, postgresql_where=runs.c.schedule_id.is_not(None))
 
 run_events = Table(
     "run_events",
@@ -774,12 +758,7 @@ run_inbox = Table(
     ForeignKeyConstraint(["sent_by"], ["users.id"], ondelete="RESTRICT", name="run_inbox_sent_by_fkey"),
     PrimaryKeyConstraint("id", name="run_inbox_pkey"),
 )
-Index(
-    "run_inbox_pending_idx",
-    run_inbox.c.run_id,
-    run_inbox.c.id,
-    postgresql_where=run_inbox.c.delivered_at.is_(None),
-)
+Index("run_inbox_pending_idx", run_inbox.c.run_id, run_inbox.c.id, postgresql_where=run_inbox.c.delivered_at.is_(None))
 
 notifications = Table(
     "notifications",

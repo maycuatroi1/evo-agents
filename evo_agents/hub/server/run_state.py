@@ -194,7 +194,7 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
         values["handback_requested_at"] = None
     values |= {name: _column_value(value) for name, value in columns.items()}
     moved = update(r).values(**values).where(r.c.id == run_id, r.c.state == old)
-    return moved.returning(r.c.event_seq, r.c.project_id, r.c.kind, r.c.plan_id, r.c.step_key)
+    return moved.returning(r.c.event_seq.label("seq"), r.c.project_id, r.c.kind, r.c.plan_id, r.c.step_key)
 
 
 async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str, body: dict) -> None:
@@ -227,27 +227,21 @@ async def move_run(
     decisions: str | None = "cancelled",
 ) -> int | None:
     """Move run ``run_id``, whose row the caller holds locked, from ``old`` to ``new`` as ``actor``, setting ``columns``
-    (of MOVE_COLUMNS) too; write the ``state`` event and the ``run.state`` event of the plugins that take it
-    (``plugin_events``), then record the move in the plan (see the module's docstring), as the dispatcher with
-    ``token_id`` in the audit row. A run that comes to be held without a lease (the claim) is leased for ``lease``. A
-    run that ends puts its decisions still open in the state ``decisions``, or leaves them open when it is None. Returns
-    the plan revision the move wrote, or None. Raises ``runs.TransitionRefused`` for a move the table refuses or a run
-    that is no longer in ``old``."""
+    (of MOVE_COLUMNS) too; write the ``state`` event and the plugins' ``run.state`` event, then record the move in the
+    plan (see the module's docstring), as the dispatcher with ``token_id`` in the audit row. A run that comes to be held
+    without a lease (the claim) is leased for ``lease``. A run that ends puts its decisions still open in the state
+    ``decisions``, or leaves them open when it is None. Returns the plan revision the move wrote, or None. Raises
+    ``runs.TransitionRefused`` for a move the table refuses or a run that is no longer in ``old``."""
     runs.check_transition(old, new, actor)
     columns = dict(columns or {})
     unknown = set(columns) - MOVE_COLUMNS
     if unknown:
         raise ValueError(f"a move cannot set {', '.join(sorted(unknown))}")
-    moved = (await conn.execute(_move(run_id, old, new, error, columns, lease))).one_or_none()
-    if moved is None:
+    row = (await conn.execute(_move(run_id, old, new, error, columns, lease))).one_or_none()
+    if row is None:
         raise runs.TransitionRefused(f"run {run_id} is no longer {old}: it moved meanwhile")
-    await _insert_event(
-        conn, run_id, moved.event_seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason}
-    )
-    change = {"run_id": run_id, "run_kind": moved.kind, "from": old, "to": new, "actor": actor}
-    await plugin_events.emit(
-        conn, "run.state", moved.project_id, {**change, "plan_id": moved.plan_id, "step": moved.step_key}
-    )
+    await _insert_event(conn, run_id, row.seq, "state", {"from": old, "to": new, "actor": actor, "reason": reason})
+    await plugin_events.emit_run_state(conn, run_id, row, old, new, actor)
     if new in runs.TERMINAL_STATES:
         from evo_agents.hub.server import tool_stats  # it reads runs through the routes that import this module
 
@@ -702,9 +696,8 @@ async def notify_plan_run_end(conn: AsyncConnection, found: RunStep, old: str, n
 def _next_attempt(run_id: int):
     """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
-    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the
-    schedule, night and caps of a run the night shift queued; the agent profile and version it went under; and its
-    own layer of plugin config."""
+    from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the schedule,
+    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config."""
     r = tables.runs
     copied = (
         "kind",
