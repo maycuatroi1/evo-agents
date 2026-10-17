@@ -71,6 +71,7 @@ from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
 from evo_agents.hub.mcp_tools import (
     INSTRUCTIONS,
     KG_TOOL_NAMES,
+    LOCAL_RUN_HEADER,
     PROJECT_HEADER,
     RUN_HEADER,
     SCHEMAS,
@@ -174,6 +175,7 @@ class McpSession:
 
     project: str | None
     sink: str
+    local_run: int | None = None  # X-Evo-Local-Run: the local run of the session, for plan_step
 
 
 @dataclass(frozen=True)
@@ -182,6 +184,7 @@ class Caller:
     project: str | None  # the session's
     sink: str
     request: Request  # the request as the hub's routes take it
+    local_run: int | None = None  # the local run of the session, named by X-Evo-Local-Run
 
     @property
     def owner(self) -> tuple:
@@ -281,7 +284,11 @@ class McpGate:
         declared = request.headers.get("content-length")
         if declared is not None and (not declared.isdigit() or int(declared) > MAX_BODY):
             return error_response(request, 413, f"an MCP message is at most {MAX_BODY // (1024 * 1024)} MiB")
-        setattr(request.state, SESSION, McpSession(project, sink))
+        local = request.headers.get(
+            LOCAL_RUN_HEADER
+        )  # a value that is no run id is no run: the step is written as ever
+        local_run = int(local) if local is not None and _RUN.fullmatch(local) and scope is None else None
+        setattr(request.state, SESSION, McpSession(project, sink, local_run))
         return None
 
     @staticmethod
@@ -435,7 +442,9 @@ class HubMcp(MCPServer):
         if user is None or session is None:  # mounted without McpGate in front: refuse rather than guess
             result = _error(f"sign-in required: {LOGIN_HINT}")
         else:
-            caller = Caller(user, session.project, session.sink, Request({**request.scope, "app": self.hub}))
+            caller = Caller(
+                user, session.project, session.sink, Request({**request.scope, "app": self.hub}), session.local_run
+            )
             result = await self._answer(caller, name, arguments or {}, request_id)
         log.info(
             "mcp tool",
@@ -648,14 +657,23 @@ class HubMcp(MCPServer):
             updates["done_at"] = arguments.get("done_at") or date.today().isoformat()
         updates.update({key: arguments[key] for key in ("evidence", "note") if key in arguments})
         given = arguments.get("if_revision")
+        local_run = caller.local_run
         base = None if given is not None else await plans.show(caller.request, project, plan_id, caller.user, None)
         for attempt in range(ATTEMPTS):
             revision = given if given is not None else base["revision"]
             try:
-                patch = plans.PlanPatch(section="steps", step=step, updates=updates, if_revision=revision)
+                patch = plans.PlanPatch(
+                    section="steps", step=step, updates=updates, if_revision=revision, run_id=local_run
+                )
             except ValidationError as exc:
                 raise Refusal(f"the step cannot be set: {_problems(exc)}; nothing was written") from None
-            outcome = await plans.patch(caller.request, project, plan_id, patch, caller.user)
+            try:
+                outcome = await plans.patch(caller.request, project, plan_id, patch, caller.user)
+            except HTTPException as exc:
+                if local_run is None or exc.status_code != 404:
+                    raise
+                local_run = None  # a run the hub does not hold for this caller: the step is written without it
+                continue
             if not isinstance(outcome, JSONResponse):
                 break
             payload = json.loads(outcome.body)

@@ -33,6 +33,37 @@
             "timeout": 10
           }
         ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.16.1 evo-agents hub hook local-tool || true",
+            "timeout": 12
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.16.1 evo-agents hub hook user-prompt || true",
+            "timeout": 20
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.16.1 evo-agents hub hook session-end || true",
+            "timeout": 10
+          }
+        ]
       }
     ]
   }

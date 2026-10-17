@@ -978,6 +978,57 @@ def plan_body(plan_id: str = "rollout") -> dict:
     }
 
 
+LOCAL_SESSION = "0199a3c1-0000-7000-8000-0000000000b2"
+
+
+def register_local_run(hub, member: str) -> int:
+    body = {"machine": "mac-mini", "cwd": "/Users/me/alpha", "claude_email": "me@example.com"}
+    response = hub.client.put(
+        f"/v1/projects/{PROJECT}/local-runs/{LOCAL_SESSION}", json=body, headers=getattr(hub, member)
+    )
+    assert response.status_code == 201, response.text
+    return response.json()["id"]
+
+
+@needs_pg
+def test_plan_step_with_the_local_run_header_records_the_revision_as_that_runs(hub):
+    from sqlalchemy import select
+
+    from evo_agents.hub import tables
+
+    put = hub.client.put(f"/v1/projects/{PROJECT}/plans/rollout", json={"body": plan_body()}, headers=hub.alice)
+    assert put.status_code in (200, 201), put.text
+    run = register_local_run(hub, "alice")
+    sent = {"plan_id": "rollout", "step": 1, "status": "in_progress"}
+    ok(hub, "alice", "plan_step", sent, headers={mcp_tools.LOCAL_RUN_HEADER: str(run)})
+    rev, runs = tables.plan_revisions, tables.runs
+    assert live.sql(hub.db, select(rev.c.run_id).where(rev.c.plan_id == "rollout", rev.c.revision == 2)) == [(run,)]
+    assert live.sql(hub.db, select(runs.c.plan_id, runs.c.step_key).where(runs.c.id == run)) == [("rollout", "1")]
+    # A run that is nobody's, and a header that is no id, leave the step written as it is without them.
+    ok(hub, "alice", "plan_step", {**sent, "step": 2}, headers={mcp_tools.LOCAL_RUN_HEADER: "99999"})
+    ok(hub, "alice", "plan_step", {**sent, "step": 3}, headers={mcp_tools.LOCAL_RUN_HEADER: "abc"})
+    stored = live.sql(
+        hub.db, select(rev.c.revision, rev.c.run_id).where(rev.c.plan_id == "rollout").order_by(rev.c.revision)
+    )
+    assert stored == [(1, None), (2, run), (3, None), (4, None)]
+
+
+def test_the_proxy_names_the_local_run_on_plan_step_only(tmp_path, monkeypatch):
+    from evo_agents.hub import local_sync
+
+    monkeypatch.setattr(local_sync, "run_for", lambda url, project, *a, **k: 41 if project == "alpha" else None)
+    hub = FakeHub(mcp_reply)
+    try:
+        client = McpClient(hub.url, TOKEN, "alpha", "low")
+        client.post(call(1, "plan_step", {"plan_id": "p", "step": 1, "status": "done"}))
+        client.post(call(2, "plan_step", {"plan_id": "p", "step": 1, "status": "done", "project": "beta"}))
+        client.post(call(3, "plan_show", {"plan_id": "p"}))
+    finally:
+        hub.stop()
+    seen = [headers.get(mcp_tools.LOCAL_RUN_HEADER.lower()) for headers, _ in hub.requests]
+    assert seen == ["41", None, None]
+
+
 @needs_pg
 def test_plan_tools_list_show_and_mark_steps_on_the_hub(hub, monkeypatch):
     put = hub.client.put(f"/v1/projects/{PROJECT}/plans/rollout", json={"body": plan_body()}, headers=hub.alice)

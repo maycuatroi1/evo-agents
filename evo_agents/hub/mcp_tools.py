@@ -25,6 +25,7 @@ SERVER_NAME = "evo-hub"
 PROJECT_HEADER = "X-Evo-Project"
 SINK_HEADER = "X-Evo-Sink"
 RUN_HEADER = "X-Evo-Run"  # the run whose agent a worker token speaks for
+LOCAL_RUN_HEADER = "X-Evo-Local-Run"  # the local run of the session a machine token speaks for, on plan_step
 PROTOCOL_HEADER = "MCP-Protocol-Version"
 # The versions served with the initialize handshake, oldest first. The last is what a client of this package asks for
 # when it calls a tool without a handshake of its own, and what the proxy offers while the hub does not answer.

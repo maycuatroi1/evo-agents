@@ -2389,7 +2389,17 @@
         "schema": "Decision"
       }
     },
+    "hub hook local-tool": {
+      "positionals": [],
+      "options": [],
+      "json": null
+    },
     "hub hook post-tool-use": {
+      "positionals": [],
+      "options": [],
+      "json": null
+    },
+    "hub hook session-end": {
       "positionals": [],
       "options": [],
       "json": null
@@ -2400,6 +2410,11 @@
       "json": null
     },
     "hub hook stop": {
+      "positionals": [],
+      "options": [],
+      "json": null
+    },
+    "hub hook user-prompt": {
       "positionals": [],
       "options": [],
       "json": null
