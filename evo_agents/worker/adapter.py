@@ -58,10 +58,11 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
   reason, and an adapter that finds out only once its runtime runs raises ``ProfileRefused`` from ``start``. A
   profile that allows everything and has no instructions changes nothing.
 
-Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package supports), in the entry points of
-the group ``evo_agents.worker.adapters``, and in ``EVO_WORKER_ADAPTERS`` (``runtime=module:Class`` separated by
-commas), each later source winning: tests and development point a runtime at an adapter of their own that way.
-A runtime with no adapter is reported as unavailable, with the reason. Standard library only.
+Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package supports), in the ``runtimes`` that
+core plugins contribute (the entry points of the group ``evo_agents.plugins``, ``evo_agents.plugins.core``), in the
+entry points of the group ``evo_agents.worker.adapters``, and in ``EVO_WORKER_ADAPTERS`` (``runtime=module:Class``
+separated by commas), each later source winning: tests and development point a runtime at an adapter of their own
+that way. A runtime with no adapter is reported as unavailable, with the reason. Standard library only.
 """
 
 from __future__ import annotations
@@ -83,6 +84,7 @@ from typing import TYPE_CHECKING, ClassVar
 
 from evo_agents import __version__
 from evo_agents.hub import profiles, runs
+from evo_agents.plugins.core import python_contributions
 
 if TYPE_CHECKING:
     from evo_agents.worker.interactive import Tui
@@ -345,9 +347,11 @@ def _parse_spec(spec: str) -> tuple[str, str]:
 
 
 def adapter_specs(env: Mapping[str, str] | None = None) -> dict[str, str]:
-    """runtime -> "module:Class" from BUILTIN, the entry points and EVO_WORKER_ADAPTERS, later ones winning."""
+    """runtime -> "module:Class" from BUILTIN, the core plugins, the entry points and EVO_WORKER_ADAPTERS, later ones
+    winning."""
     env = os.environ if env is None else env
     specs = dict(BUILTIN)
+    specs.update(python_contributions("runtimes"))
     try:
         for point in entry_points(group=ENTRY_POINT_GROUP):
             specs[point.name] = point.value

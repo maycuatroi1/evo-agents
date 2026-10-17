@@ -1,8 +1,9 @@
 """A fake Telegram Bot API for the hub's tests: what the hub's bot calls, recorded, and answered as Telegram would.
 
-The Python tests put ``transport()`` in ``evo_agents.hub.server.telegram.TRANSPORT``; the Playwright stack serves the
-same fake over HTTP (``serve``) and points EVO_HUB_TELEGRAM_API_URL at it. ``fail_next`` makes the next sendMessage
-answer an error, such as Telegram's 429 with retry_after or the 403 of a blocked bot. Nothing here reaches Telegram.
+The Python tests put ``transport()`` in ``evo_agents.core_plugins.telegram.server.TRANSPORT``; the Playwright stack
+serves the same fake over HTTP (``serve``) and points EVO_HUB_TELEGRAM_API_URL at it. ``fail_next`` makes the next
+sendMessage answer an error, such as Telegram's 429 with retry_after or the 403 of a blocked bot. Nothing here reaches
+Telegram.
 
 The bot token and the webhook secret are built from pieces, so no scanner reads them as real ones.
 """

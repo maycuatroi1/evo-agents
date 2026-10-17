@@ -44,6 +44,8 @@ hub-server = [
     "evo-ak[graphify]",
     # Pinned: /mcp subclasses MCPServer and mounts its Streamable HTTP app, whose surface still moves within 2.x.
     "mcp==2.3.0",
+    # Keyless Sigstore signatures of plugin bundles (evo_agents.plugins.signing): the Verifier and policy API of 4.x.
+    "sigstore>=4.5,<5",
 ]
 # `evo-agents worker`, the daemon that runs plan steps on a member's machine: aiohttp for its HTTP and websocket,
 # and the SDKs of the runtimes its adapters drive.
@@ -63,6 +65,10 @@ evo-agents = "evo_agents.cli:main"
 [project.entry-points."evo_agents.kg.connectors"]
 harness = "evo_agents.kg.connectors.harness:run"
 git = "evo_agents.kg.connectors.git:run"
+
+# The core plugins evo-ak ships (evo_agents.core_plugins), which the hub's image therefore has.
+[project.entry-points."evo_agents.plugins"]
+telegram = "evo_agents.core_plugins.telegram:MANIFEST"
 
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
@@ -190,6 +196,38 @@ shape or a limit into the models. Other modules import the service and the model
 of the package goes into one of the three layers. See docs/structure.md, section Package boundaries."""
 
 [[tool.importlinter.contracts]]
+id = "plugins-standalone"
+name = "evo_agents.plugins imports neither the CLI, the worker, the hub, the knowledge graph nor the harness loader"
+type = "forbidden"
+source_modules = ["evo_agents.plugins"]
+forbidden_modules = ["evo_agents.cli", "evo_agents.worker", "evo_agents.hub", "evo_agents.kg", "evo_agents.harness"]
+broken_contract_guidance = """\
+The hub, the worker, the knowledge graph and the harness loader share evo_agents.plugins to read, trust and place a \
+plugin, so it imports none of them and loads on a core install. Pass what it needs from the caller as an argument \
+(the trusted publishers, the release, a checker of Sigstore bundles), or move the code that needs the hub into \
+evo_agents.hub. See docs/structure.md, section Package boundaries."""
+
+[[tool.importlinter.contracts]]
+id = "core-plugins-by-entry-point"
+name = "No package of evo_agents imports evo_agents.core_plugins: the hub reaches a core plugin through its manifest"
+type = "forbidden"
+source_modules = [
+    "evo_agents.cli",
+    "evo_agents.worker",
+    "evo_agents.hub",
+    "evo_agents.kg",
+    "evo_agents.harness",
+    "evo_agents.plugins",
+    "evo_agents.schema",
+]
+forbidden_modules = ["evo_agents.core_plugins"]
+broken_contract_guidance = """\
+A core plugin that evo-ak ships is a plugin like any other: the hub and the worker find it in the entry point group \
+evo_agents.plugins and import the Python its manifest names when they use it (evo_agents.hub.plugin_calls), so it \
+can leave the distribution without a change elsewhere. Reach it through its manifest, or move what the core needs \
+out of the plugin into evo_agents.hub. See docs/plugins.md, section Core plugins."""
+
+[[tool.importlinter.contracts]]
 id = "packages-acyclic"
 name = "The packages of evo_agents import each other without cycles"
 type = "acyclic_siblings"
@@ -210,7 +248,7 @@ ignore_imports = [
     "evo_agents.harness -> evo_agents.kg.schema",
 ]
 broken_contract_guidance = """\
-Packages import downward only: cli, then worker, hub, kg, harness and schema. An import going up closes a cycle, \
+Packages import downward only: cli and core_plugins, then worker, hub, kg, harness, plugins and schema. An import going up closes a cycle, \
 even inside a function, since import-linter reads those too. Move the shared code down into the package both can \
 import (a type into evo_agents.kg or evo_agents.schema, a client helper into evo_agents.hub), or have the upper \
 package pass it down as an argument. See docs/structure.md, section Package boundaries."""

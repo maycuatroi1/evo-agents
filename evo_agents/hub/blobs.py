@@ -50,6 +50,8 @@ from botocore.config import Config
 from botocore.exceptions import BotoCoreError, ClientError, ParamValidationError
 
 from evo_agents.hub.config import DEFAULT_BLOB_CONCURRENCY, MAX_BLOB_CONCURRENCY, HubConfig
+from evo_agents.plugins.bundle import KIND as PLUGIN_KIND
+from evo_agents.plugins.bundle import MAX_BUNDLE as MAX_PLUGIN_BUNDLE
 
 log = logging.getLogger(__name__)
 
@@ -69,6 +71,7 @@ KIND_LIMITS = {
     "kg-blob": 64 * MiB,  # a source file a run log refers to
     "run-log": 64 * MiB,  # the whole log of one run of a plan step, which its worker uploads when the run ends
     "run-diff": 8 * MiB,  # the diff of that run's commits
+    PLUGIN_KIND: MAX_PLUGIN_BUNDLE,  # a plugin's tar.gz, which the hub holds itself (evo_agents.plugins.bundle)
 }
 SHA256 = re.compile(r"[0-9a-f]{64}")
 CHUNK = 1 * MiB

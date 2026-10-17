@@ -26,19 +26,20 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 23 tools are ``evo_agents.hub.mcp_tools.TOOLS``. The kg_* tools are those of ``kg serve``, names, schemas,
-arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them; kg_more
-continues any cut result of the same user and session project, with or without a graph. The others call the hub's
-routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
+The 23 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
+schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
+kg_more continues any cut result of the same user and session project, with or without a graph. The others call the
+hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
 review run reads (the night's figures, session digests, the events of a run, decisions) in this process, so they read
-and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write
-rule, revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text
-goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``,
-a tool's answer is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its
-structuredContent comes only when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend
-hub`` does. A refusal of the hub becomes a tool error carrying its message, an unexpected failure one carrying the
-request id only. The log has one line per tool call with its name, project, outcome and duration, never its arguments
-or its result.
+and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write rule,
+revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text goes through
+the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a tool's answer
+is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its structuredContent comes only
+when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend hub`` does. A refusal of the hub
+becomes a tool error carrying its message, an unexpected failure one carrying the request id only; so does a tool of a
+feature a hub admin turned off for the project (``hub_settings.require_tool``: kg_*, curator_figures). The log has one
+line per tool call with its name, project, outcome and duration, never its arguments or its result.
 """
 
 from __future__ import annotations
@@ -57,7 +58,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
 from mcp.server.mcpserver import MCPServer
 from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, TransportSecuritySettings
-from mcp_types import CallToolResult
+from mcp_types import CallToolResult, ListToolsResult
 from mcp_types import Tool as McpTool
 from pydantic import ValidationError
 from sqlalchemy import and_, select
@@ -90,10 +91,12 @@ from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server import (
     decisions,
     digests,
+    hub_settings,
     kg,
     local_runs,
     memories,
     plans,
+    plugin_tools,
     projects,
     proposals,
     run_events,
@@ -440,6 +443,18 @@ class HubMcp(MCPServer):
     async def list_tools(self) -> list[McpTool]:
         return list(self._tools)
 
+    async def _handle_list_tools(self, ctx, params) -> ListToolsResult:
+        """The hub's tools, then the plugins' tools the caller may see in the session's project
+        (``plugin_tools``): the SDK's handler, pinned with the SDK, knows no caller."""
+        request = getattr(ctx, "request", None)
+        state = request.scope.get("state", {}) if isinstance(request, Request) else {}
+        user, session = state.get("principal"), state.get(SESSION)
+        tools = await self.list_tools()
+        if user is not None and session is not None:
+            found = await plugin_tools.listed(self.hub.state, user, session.project)
+            tools += [McpTool.model_validate(tool) for tool in found]
+        return ListToolsResult(tools=tools)
+
     async def call_tool(self, name: str, arguments: dict, context=None) -> CallToolResult:
         started = time.perf_counter()
         request = context.request_context.request if context is not None else None
@@ -455,7 +470,7 @@ class HubMcp(MCPServer):
         log.info(
             "mcp tool",
             extra={
-                "tool": name if name in SCHEMAS else "unknown",
+                "tool": name if name in SCHEMAS or plugin_tools.split(name) else "unknown",
                 "project": session.project if session else None,
                 "login": user.login if user else None,
                 "run_id": user.scope.run_id if user and user.scope else None,
@@ -471,7 +486,12 @@ class HubMcp(MCPServer):
         scope = caller.user.scope
         if scope is not None and scope.kind == "judge" and name not in JUDGE_TOOLS:
             return _error(JUDGE_ONLY.format(tool=name))
+        if plugin_tools.split(name) is not None:
+            return await plugin_tools.answer(self.hub.state, caller.user, caller.project, name, arguments)
         try:
+            await hub_settings.require_tool(
+                self.hub.state.engine, caller.user, name, arguments.get("project") or caller.project
+            )
             if name in KG_TOOL_NAMES:
                 return await self._kg(caller, name, arguments)
             tool = self._hub_tools.get(name)

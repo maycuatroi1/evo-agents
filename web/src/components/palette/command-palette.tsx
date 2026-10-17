@@ -33,7 +33,7 @@ import { DispatchDialog } from "@/components/runs/dispatch-dialog";
 import { useAuthorRunToast, useDispatchedToast, usePlanRunToast } from "@/components/runs/hooks";
 import { PlanRunDialog } from "@/components/runs/plan-run-dialog";
 import { controlRun, type Run, runHref, runKeys, runsQuery } from "@/components/runs/queries";
-import { HOME_NAV, HUB_NAV, PROJECT_NAV, projectHref } from "@/components/shell/nav";
+import { HOME_NAV, HUB_NAV, PROJECT_NAV, projectHref, useNavShown } from "@/components/shell/nav";
 import { useCurrentProject } from "@/components/shell/project-switcher";
 import { roleLabelKey } from "@/components/shell/role-badge";
 import { NAV_SHORTCUTS, type ShortcutId, ShortcutKeys, useOpenShortcuts } from "@/components/shell/shortcuts";
@@ -325,7 +325,7 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
   const scoped = scopeProjects(scope, projects);
   const showProject = scope === null;
   const scopeName = scope ?? t("scope.all");
-
+  const shown = useNavShown(); // a page whose feature a hub admin turned off is not offered
   const overview = useQuery(overviewQuery(browserApi));
   const plans = useQueries({ queries: scoped.map((project) => plansQuery(browserApi, project)) });
   const workers = useQuery({ ...workersQuery(browserApi), refetchInterval: false });
@@ -492,7 +492,7 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
   const projectPages: Entry[] =
     scope === null
       ? []
-      : PROJECT_NAV.map((item) => {
+      : PROJECT_NAV.filter((item) => shown(item, scope)).map((item) => {
           const label = t("goto.page", { page: tNav(item.label), project: scope });
           return {
             value: `goto:${scope}:${item.segment || "overview"}`,
@@ -505,7 +505,7 @@ function PaletteBody({ onChoose, shortcuts }: { onChoose: (target: Target) => vo
           };
         });
   const hubPages: Entry[] = [...HOME_NAV, ...HUB_NAV]
-    .filter((item) => !item.adminOnly || me?.admin)
+    .filter((item) => (!item.adminOnly || me?.admin) && shown(item))
     .map((item) => ({
       value: `goto:hub:${item.label}`,
       icon: item.icon,

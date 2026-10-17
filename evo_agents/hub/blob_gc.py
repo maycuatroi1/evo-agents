@@ -1,7 +1,7 @@
 """Deleting blobs nothing refers to any longer, without a moment when a row names an object that is gone.
 
-A blob is referred to by a ``blobs`` row of any holder, a skill version, a kg build's artifact, or the log of an
-ingested or pending kg run. Whoever drops references (the retention of built graphs, ``evo_agents.hub.kg_prune``)
+A blob is referred to by a ``blobs`` row of any holder, a skill or plugin version, a kg build's artifact, or the log
+of an ingested or pending kg run. Whoever drops references (the retention of built graphs, ``evo_agents.hub.kg_prune``)
 does it in a transaction holding the blob lock exclusively, and in that same transaction ``forget`` records in
 ``blob_deletions`` each blob it left without any reference. ``delete_pending`` then deletes their objects in a
 second transaction holding the lock exclusively, and marks the rows deleted. A deletion that fails rolls back: the
@@ -44,12 +44,13 @@ def hashes_in(sha256, hashes: list[str]):
 
 
 def _referenced(hashes: list[str]):
-    """The hashes of ``hashes`` that a blobs row, a skill version, a kg build's artifact or the log of an ingested or
-    pending kg run refers to."""
+    """The hashes of ``hashes`` that a blobs row, a skill or plugin version, a kg build's artifact or the log of an
+    ingested or pending kg run refers to."""
     h = func.unnest(literal(hashes, ARRAY(Text))).table_valued(column("sha256", Text)).render_derived(name="h")
     references = (
         tables.blobs.c.sha256,
         tables.skill_versions.c.sha256,
+        tables.plugin_versions.c.sha256,
         tables.kg_builds.c.artifact_sha256,
         tables.kg_ingests.c.log_sha256,
         tables.kg_pending_runs.c.log_sha256,

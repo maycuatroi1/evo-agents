@@ -1,6 +1,7 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
-migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (profile columns of runs and leases)
-and ``tables_chats`` (chat columns of runs) describe the tables of accounts, agent profiles and group chats.
+migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (with columns of runs and leases),
+``tables_chats`` (with columns of runs), ``tables_plugins`` and ``tables_settings`` describe accounts, profiles, chats,
+plugins and the hub's own settings.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -36,9 +37,8 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
-from evo_agents.hub.tables_accounts import account_tables
+from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles, tables_settings
 from evo_agents.hub.tables_chats import chat_tables
-from evo_agents.hub.tables_profiles import profile_tables
 
 metadata = MetaData()
 
@@ -63,7 +63,6 @@ def _id() -> Column:
 
 
 # Accounts and access (0001)
-
 users = Table(
     "users",
     metadata,
@@ -294,12 +293,7 @@ skills = Table(
     ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="skills_project_id_fkey"),
     PrimaryKeyConstraint("id", name="skills_pkey"),
 )
-Index(
-    "skills_global_key",
-    func.lower(skills.c.name),
-    unique=True,
-    postgresql_where=skills.c.scope == "global",
-)
+Index("skills_global_key", func.lower(skills.c.name), unique=True, postgresql_where=skills.c.scope == "global")
 Index(
     "skills_project_key",
     skills.c.project_id,
@@ -576,11 +570,7 @@ Index(
     unique=True,
     postgresql_where=worker_pairings.c.used_at.is_(None),
 )
-Index(
-    "worker_pairings_owner_idx",
-    worker_pairings.c.owner_id,
-    postgresql_where=worker_pairings.c.used_at.is_(None),
-)
+Index("worker_pairings_owner_idx", worker_pairings.c.owner_id, postgresql_where=worker_pairings.c.used_at.is_(None))
 
 runs = Table(
     "runs",
@@ -701,25 +691,14 @@ Index(  # the reaper finds the local runs that went silent (0033)
     runs.c.last_activity_at,
     postgresql_where=(runs.c.kind == "local") & (runs.c.state != "ended"),
 )
-Index(
-    "runs_claim_idx",
-    runs.c.project_id,
-    runs.c.dispatched_by,
-    runs.c.id,
-    postgresql_where=runs.c.state == "queued",
-)
+Index("runs_claim_idx", runs.c.project_id, runs.c.dispatched_by, runs.c.id, postgresql_where=runs.c.state == "queued")
 Index("runs_lease_idx", runs.c.lease_expires_at, postgresql_where=runs.c.state.in_(RUN_HELD))
 Index("runs_worker_idx", runs.c.worker_id, runs.c.id.desc(), postgresql_where=runs.c.worker_id.is_not(None))
 Index("runs_project_idx", runs.c.project_id, runs.c.id.desc())
 Index("runs_step_idx", runs.c.project_id, runs.c.plan_id, runs.c.step_key, runs.c.id.desc())
 Index("runs_waiting_idx", runs.c.waiting_since, postgresql_where=runs.c.state == "waiting")
 Index("runs_parked_idx", runs.c.parked_at, postgresql_where=runs.c.state == "parked")
-Index(
-    "runs_schedule_idx",
-    runs.c.schedule_id,
-    runs.c.schedule_night,
-    postgresql_where=runs.c.schedule_id.is_not(None),
-)
+Index("runs_schedule_idx", runs.c.schedule_id, runs.c.schedule_night, postgresql_where=runs.c.schedule_id.is_not(None))
 
 run_events = Table(
     "run_events",
@@ -779,12 +758,7 @@ run_inbox = Table(
     ForeignKeyConstraint(["sent_by"], ["users.id"], ondelete="RESTRICT", name="run_inbox_sent_by_fkey"),
     PrimaryKeyConstraint("id", name="run_inbox_pkey"),
 )
-Index(
-    "run_inbox_pending_idx",
-    run_inbox.c.run_id,
-    run_inbox.c.id,
-    postgresql_where=run_inbox.c.delivered_at.is_(None),
-)
+Index("run_inbox_pending_idx", run_inbox.c.run_id, run_inbox.c.id, postgresql_where=run_inbox.c.delivered_at.is_(None))
 
 notifications = Table(
     "notifications",
@@ -1299,6 +1273,9 @@ Index(  # a merged change has one outcome
     unique=True,
     postgresql_where=curator_ledger.c.action == "outcome",
 )
-accounts, account_policies, run_accounts = account_tables(metadata)  # accounts, their policies, a run's account (0027)
-agent_profiles, agent_profile_versions = profile_tables(metadata, runs, credential_leases)  # agent profiles (0030)
+accounts, account_policies, run_accounts = tables_accounts.account_tables(metadata)  # accounts and their use (0027)
+agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
+plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
+plugin_tokens, plugin_backends, plugin_deliveries = tables_plugins.backend_tables(metadata)  # 0036, 0038
+hub_settings = tables_settings.settings_table(metadata)  # the hub's own settings: branding and features (0037)

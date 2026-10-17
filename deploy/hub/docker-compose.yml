@@ -1,9 +1,9 @@
-# The evo-agents hub in production: api, worker and web built from the checkout this file is in. The platform runs
-# `docker compose up -d --build`, which .github/workflows/deploy.yml has it do for main once ci passes. The images
-# carry the names GitHub Actions publishes on GHCR for each release (.github/workflows/images.yml), tagged
-# EVO_HUB_VERSION, so `up` without --build pulls that release and builds only when GHCR lacks the tag. Postgres is not
-# in this file: the hub expects a database it can reach at EVO_HUB_DSN, such as one the platform manages, on the
-# network EVO_HUB_PLATFORM_NETWORK.
+# The evo-agents hub in production: api, worker, plugins and web built from the checkout this file is in. The
+# platform runs `docker compose up -d --build`, which .github/workflows/deploy.yml has it do for main once ci passes.
+# The images carry the names GitHub Actions publishes on GHCR for each release (.github/workflows/images.yml),
+# tagged EVO_HUB_VERSION, so `up` without --build pulls that release and builds only when GHCR lacks the tag. Postgres
+# is not in this file: the hub expects a database it can reach at EVO_HUB_DSN, such as one the platform manages, on
+# the network EVO_HUB_PLATFORM_NETWORK.
 # A reverse proxy in front sends /v1 and /mcp to api:8080 and everything else to web:3000, on one domain. The /v1
 # rule carries the web terminal's websockets too, so the proxy must pass a websocket upgrade there.
 # docs/hub.md describes every variable; deploy/hub/.env.example lists them. x-hub-environment passes every variable
@@ -48,6 +48,10 @@ x-hub-environment: &hub-environment
   EVO_HUB_CURATOR_APP_PRIVATE_KEY: ${EVO_HUB_CURATOR_APP_PRIVATE_KEY:-}
   EVO_HUB_TELEGRAM_BOT_TOKEN: ${EVO_HUB_TELEGRAM_BOT_TOKEN:-}
   EVO_HUB_TELEGRAM_WEBHOOK_SECRET: ${EVO_HUB_TELEGRAM_WEBHOOK_SECRET:-}
+  EVO_HUB_PLUGIN_PUBLISHERS: ${EVO_HUB_PLUGIN_PUBLISHERS:-}
+  EVO_HUB_PLUGIN_CORE_PUBLISHERS: ${EVO_HUB_PLUGIN_CORE_PUBLISHERS:-}
+  EVO_HUB_PLUGIN_HOST_URL: ${EVO_HUB_PLUGIN_HOST_URL:-}
+  EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
 
 # api and worker run one image, built from one definition.
 x-hub-build: &hub-build
@@ -117,6 +121,52 @@ services:
       api:
         condition: service_healthy
 
+  # The backends of isolated plugins run here, not in api or worker (docs/plugins.md). This service gets none of the
+  # hub's variables (no *hub-environment): no DSN, no EVO_HUB_SECRETS_KEY, no blob store keys. It takes only the shared
+  # secret, pulls the installed plugins from the api, and runs each backend in a process of its own built from nothing.
+  # It runs as root with only SETUID, SETGID, CHOWN and KILL, so each backend gets a user of its own: no plugin reads,
+  # writes or signals another's, nor this service's /proc. Not as root it would start no backend. pip runs under the
+  # backend's user too, from the wheels of the bundle only. The volume is mounted at /plugins, a directory of the image
+  # that root owns, because root here has neither CAP_DAC_OVERRIDE nor CAP_FOWNER and cannot enter /cache (hub's,
+  # 0750). Without EVO_HUB_PLUGIN_HOST_TOKEN it runs no backend and answers only its health check. Its limits bound
+  # every backend together; each backend also has limits of its own (open files, memory, processes of its user).
+  plugins:
+    <<: *hardening
+    image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    build: *hub-build
+    command: ["evo-agents", "hub", "plugin-host", "--hub-url", "http://evo-agents-hub-api:8080", "--data-dir", "/plugins"]
+    restart: unless-stopped
+    user: "0:0"
+    working_dir: /plugins
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, KILL]
+    environment:
+      EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
+      EVO_HUB_LOG_LEVEL: ${EVO_HUB_LOG_LEVEL:-INFO}
+    volumes:
+      - plugins-cache:/plugins
+    networks:
+      default:
+        aliases: [evo-agents-hub-plugins]
+    expose: ["8090"]
+    cpus: ${EVO_HUB_PLUGINS_CPUS:-1}
+    mem_limit: ${EVO_HUB_PLUGINS_MEMORY:-2g}
+    pids_limit: ${EVO_HUB_PLUGINS_PIDS:-512}
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/live', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 15s
+    depends_on:
+      api:
+        condition: service_healthy
+
   web:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub-web:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
@@ -146,6 +196,7 @@ services:
 volumes:
   api-cache:
   worker-cache:
+  plugins-cache:
 
 networks:
   # Where the database is: on Dokploy, the shared network its databases join. Services without a domain (the
