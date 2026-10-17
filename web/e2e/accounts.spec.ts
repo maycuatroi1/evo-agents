@@ -4,7 +4,7 @@ import { expectNoSeriousViolations } from "./support/a11y";
 import { API_URL } from "./support/env";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
-import { claimRun, dispatch, leaseCredentials, type LiveWorker, liveWorker, runPath, seedRunPlan, startRun } from "./support/runs";
+import { claimRun, dispatch, leaseCredentials, type LiveWorker, liveWorker, openRunDetails, runPath, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, recordResponses, secretsOf, secretValue } from "./support/secrets";
 import { toast } from "./support/toast";
 import { PROTOCOL_HEADER } from "./support/workers";
@@ -294,6 +294,8 @@ test("the run page names the account a run took and the usage limit it moved on 
   const received = recordResponses(page);
 
   await page.goto(runPath(project, run.id));
+  // The owner's Accounts are among the details behind Show all details.
+  await openRunDetails(page, { all: true });
   const card = main(page).getByTestId("run-accounts");
   const taken = card.getByTestId("run-account-item");
   await expect(taken).toHaveAttribute("data-env-var", VAR);

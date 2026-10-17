@@ -1,4 +1,5 @@
 import { contentText, moveOf, type RunMove } from "./log-model";
+import { commandInput, unwrapShell } from "./shell-command";
 import type { RunEvent } from "./queries";
 
 /**
@@ -145,12 +146,6 @@ function toolStatus(value: unknown): ToolStatus | null {
   if (DONE.has(status)) return "completed";
   if (status === "in_progress" || status === "inprogress" || status === "running") return "in_progress";
   return "pending";
-}
-
-/** `/bin/zsh -lc 'ls -a'` as `ls -a`: Codex names a command by the shell line that ran it. */
-export function unwrapShell(command: string): string {
-  const match = /^\s*(?:\/(?:usr\/)?bin\/)?(?:ba|z)?sh\s+-l?c\s+(['"])([\s\S]*)\1\s*$/.exec(command);
-  return match ? match[2] : command;
 }
 
 const ARG_KEYS = ["command", "cmd", "file_path", "filePath", "notebook_path", "pattern", "query", "url", "path", "skill", "description", "prompt"] as const;
@@ -303,7 +298,9 @@ function applyCall(tool: ToolCall, body: Body, at: string, first: boolean): void
     if (tool.kind === "edit") {
       tool.diff = diffStat(input, body.content) ?? tool.diff;
       tool.change = editText(input) ?? tool.change;
-    } else if (tool.kind !== "execute") {
+    } else if (tool.kind === "execute") {
+      tool.input = commandInput(input) ?? tool.input;
+    } else {
       tool.input = inputJson(input, tool.arg);
     }
   }

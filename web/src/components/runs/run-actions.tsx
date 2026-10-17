@@ -1,15 +1,17 @@
 "use client";
 
-import { Ban, Check, FileDiff, Hand, HeartPulse, Info, type LucideIcon, RotateCcw, ShieldAlert, Square, TriangleAlert, Undo2 } from "lucide-react";
+import { Check, Ellipsis, FileDiff, Hand, type LucideIcon, RotateCcw, Square, TriangleAlert, Undo2 } from "lucide-react";
+import type { Route } from "next";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
-import { type ReactNode, useState } from "react";
+import { Fragment, type ReactNode, useState } from "react";
 
 import { ConfirmAction } from "@/components/admin/confirm-action";
 import { InlineError, type WriteFailure } from "@/components/admin/notice";
 import { notify, notifyFailure } from "@/components/feedback/toast";
 import { stepHref } from "@/components/plans/links";
 import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import {
   Dialog,
   DialogContent,
@@ -19,10 +21,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { CommandLine } from "@/components/workers/command-line";
-import { cn } from "@/lib/utils";
+import { useIsMobile } from "@/hooks/use-mobile";
 
 import { useRunControl, useRunFailure } from "./hooks";
-import { HELD_STATES, type Run, type RunControl, runDiffHref, STEADY_GAP_SECONDS, STEADY_SECONDS } from "./queries";
+import { HELD_STATES, type Run, type RunControl, runDiffHref } from "./queries";
 import { RerunDialog } from "./rerun-dialog";
 import { readDiffstat, type RunControls } from "./run-model";
 
@@ -121,10 +123,32 @@ function TakeoverDialog({
  * The run's actions in its header, as the state and the visitor's rights allow (`runControls`), in the kit's order:
  * Take over (a dialog with the attach command and Remote Control), the diff once the worker uploaded one (with its
  * `+12 −3` when the worker reported a diffstat), Rerun (a dialog with the account it takes), Hand back, Approve, and
- * Cancel last (asked to confirm). Each control waits for the hub's answer, then says what happened in a toast; a
- * failure inside a dialog stays there, any other stays as a toast until dismissed.
+ * Cancel last (asked to confirm). At most one of them is a solid button (Approve or Hand back) and one an outline button
+ * (Take over, the diff or Rerun); the others are items of a menu behind `Ellipsis`, Cancel last in `danger`. Each
+ * control waits for the hub's answer, then says what happened in a toast; a failure inside a dialog stays there, any
+ * other stays as a toast until dismissed.
  */
-export function RunActions({ run, controls }: { run: Run; controls: RunControls }) {
+
+type Action = {
+  id: RunControl | "diff" | "rerun";
+  label: ReactNode;
+  icon: LucideIcon;
+  testId: string;
+  onSelect?: () => void;
+  href?: Route;
+  busy?: boolean;
+  destructive?: boolean;
+};
+export function RunActions({
+  run,
+  controls,
+  children,
+}: {
+  run: Run;
+  controls: RunControls;
+  /** Where the header puts them: the buttons under the run's progress, the menu at the end of its title line. */
+  children: (parts: { buttons: ReactNode; menu: ReactNode }) => ReactNode;
+}) {
   const t = useTranslations("runs.detail.actions");
   const format = useFormatter();
   const control = useRunControl(run);
@@ -133,6 +157,7 @@ export function RunActions({ run, controls }: { run: Run; controls: RunControls 
   const [dialogError, setDialogError] = useState<WriteFailure | null>(null);
   const [acting, setActing] = useState<RunControl | null>(null);
   const [rerunning, setRerunning] = useState(false);
+  const mobile = useIsMobile();
 
   const act = (action: RunControl) => {
     if (control.isPending) return;
@@ -173,74 +198,123 @@ export function RunActions({ run, controls }: { run: Run; controls: RunControls 
   const busy = (action: RunControl) => control.isPending && acting === action;
   const diffstat = readDiffstat(run.diffstat);
 
+  const actions: Action[] = [];
+  if (controls.takeover === "offer") {
+    actions.push({
+      id: "takeover",
+      label: t("takeover"),
+      icon: Hand,
+      testId: "run-takeover",
+      onSelect: () => {
+        setDialogError(null);
+        setConfirming("takeover");
+      },
+    });
+  }
+  if (run.diff_sha256) {
+    actions.push({
+      id: "diff",
+      label: (
+        <>
+          {t("diff")}
+          {diffstat ? (
+            <>
+              <span className="font-mono text-xs tabular-nums" aria-hidden="true" data-testid="run-view-diff-stat">
+                <span className="text-success">+{format.number(diffstat.insertions)}</span> <span className="text-danger">−{format.number(diffstat.deletions)}</span>
+              </span>
+              <span className="sr-only">, {t("diffstat", { insertions: diffstat.insertions, deletions: diffstat.deletions })}</span>
+            </>
+          ) : null}
+        </>
+      ),
+      icon: FileDiff,
+      testId: "run-view-diff",
+      href: runDiffHref(run.project, run.id),
+    });
+  }
+  if (controls.rerun) actions.push({ id: "rerun", label: t("rerun"), icon: RotateCcw, testId: "run-rerun", onSelect: () => setRerunning(true) });
+  if (controls.handback === "offer") actions.push({ id: "handback", label: t("handback"), icon: Undo2, testId: "run-handback", onSelect: () => act("handback"), busy: busy("handback") });
+  if (controls.approve) actions.push({ id: "approve", label: t("approve"), icon: Check, testId: "run-approve", onSelect: () => act("approve"), busy: busy("approve") });
+  if (controls.cancel === "offer") {
+    actions.push({
+      id: "cancel",
+      label: t("cancel"),
+      icon: Square,
+      testId: "run-cancel",
+      destructive: true,
+      onSelect: () => {
+        setDialogError(null);
+        setConfirming("cancel");
+      },
+    });
+  }
+  // At most one solid control and one outline one, in the kit's order; the rest, Cancel last, in the menu.
+  const solid = actions.find((action) => action.id === "approve" || action.id === "handback") ?? null;
+  // A phone takes over from a computer: there Take over is in the menu.
+  const outline = actions.find((action) => action !== solid && ((action.id === "takeover" && !mobile) || action.id === "diff" || action.id === "rerun")) ?? null;
+  const rest = actions.filter((action) => action !== solid && action !== outline);
+  const pending = control.isPending || undefined;
+  const button = (action: Action, variant: "default" | "outline") =>
+    action.href ? (
+      <Button key={action.id} asChild variant={variant} className="max-md:h-11">
+        <Link href={action.href} data-testid={action.testId}>
+          <action.icon aria-hidden="true" />
+          {action.label}
+        </Link>
+      </Button>
+    ) : (
+      <Button key={action.id} type="button" variant={variant} className="max-md:h-11" onClick={action.onSelect} aria-disabled={pending} busy={action.busy} data-testid={action.testId}>
+        <action.icon aria-hidden="true" />
+        {action.label}
+      </Button>
+    );
+  const buttons =
+    solid || outline ? (
+      <div className="flex flex-wrap items-center gap-2" data-testid="run-actions">
+        {solid ? button(solid, "default") : null}
+        {outline ? button(outline, "outline") : null}
+      </div>
+    ) : null;
+  const menu = rest.length ? (
+    // Not modal, as the hub's other menus (user-menu.tsx): a modal menu hides the page from assistive tech while its
+    // controls stay focusable.
+    <DropdownMenu modal={false}>
+      <DropdownMenuTrigger asChild>
+        <Button type="button" variant="ghost" size="icon" aria-label={t("more")} data-testid="run-actions-menu">
+          <Ellipsis aria-hidden="true" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="min-w-48">
+        {rest.map((action, index) => (
+          <Fragment key={action.id}>
+            {action.destructive && index > 0 ? <DropdownMenuSeparator /> : null}
+            {action.href ? (
+              <DropdownMenuItem asChild>
+                <Link href={action.href} data-testid={action.testId}>
+                  <action.icon aria-hidden="true" />
+                  {action.label}
+                </Link>
+              </DropdownMenuItem>
+            ) : (
+              <DropdownMenuItem
+                variant={action.destructive ? "destructive" : "default"}
+                disabled={control.isPending}
+                onSelect={action.onSelect}
+                data-testid={action.testId}
+              >
+                <action.icon aria-hidden="true" />
+                {action.label}
+              </DropdownMenuItem>
+            )}
+          </Fragment>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  ) : null;
+
   return (
-    <div className="flex flex-wrap items-center gap-2" data-testid="run-actions">
-      {/* The kit's RunScreen order: Take over and the diff first, then what moves the run on, and Cancel last. */}
-      {controls.takeover === "offer" ? (
-        <Button
-          type="button"
-          variant="outline"
-          onClick={() => {
-            setDialogError(null);
-            setConfirming("takeover");
-          }}
-          aria-disabled={control.isPending || undefined}
-          data-testid="run-takeover"
-        >
-          <Hand aria-hidden="true" />
-          {t("takeover")}
-        </Button>
-      ) : null}
-      {run.diff_sha256 ? (
-        <Button asChild variant="outline">
-          <Link href={runDiffHref(run.project, run.id)} data-testid="run-view-diff">
-            <FileDiff aria-hidden="true" />
-            {t("diff")}
-            {diffstat ? (
-              <>
-                <span className="font-mono text-xs tabular-nums" aria-hidden="true" data-testid="run-view-diff-stat">
-                  <span className="text-success">+{format.number(diffstat.insertions)}</span>{" "}
-                  <span className="text-danger">−{format.number(diffstat.deletions)}</span>
-                </span>
-                <span className="sr-only">, {t("diffstat", { insertions: diffstat.insertions, deletions: diffstat.deletions })}</span>
-              </>
-            ) : null}
-          </Link>
-        </Button>
-      ) : null}
-      {controls.rerun ? (
-        <Button type="button" variant="outline" onClick={() => setRerunning(true)} aria-disabled={control.isPending || undefined} data-testid="run-rerun">
-          <RotateCcw aria-hidden="true" />
-          {t("rerun")}
-        </Button>
-      ) : null}
-      {controls.handback === "offer" ? (
-        <Button type="button" onClick={() => act("handback")} aria-disabled={control.isPending || undefined} busy={busy("handback")} data-testid="run-handback">
-          <Undo2 aria-hidden="true" />
-          {t("handback")}
-        </Button>
-      ) : null}
-      {controls.approve ? (
-        <Button type="button" onClick={() => act("approve")} aria-disabled={control.isPending || undefined} busy={busy("approve")} data-testid="run-approve">
-          <Check aria-hidden="true" />
-          {t("approve")}
-        </Button>
-      ) : null}
-      {controls.cancel === "offer" ? (
-        <Button
-          type="button"
-          variant="quiet-danger"
-          onClick={() => {
-            setDialogError(null);
-            setConfirming("cancel");
-          }}
-          aria-disabled={control.isPending || undefined}
-          data-testid="run-cancel"
-        >
-          <Square aria-hidden="true" />
-          {t("cancel")}
-        </Button>
-      ) : null}
+    <>
+      {children({ buttons, menu })}
       <ConfirmAction
         open={confirming === "cancel"}
         onOpenChange={(open) => setConfirming(open ? "cancel" : null)}
@@ -273,94 +347,6 @@ export function RunActions({ run, controls }: { run: Run; controls: RunControls 
         error={confirming === "takeover" ? dialogError : null}
         onConfirm={() => act("takeover")}
       />
-    </div>
+    </>
   );
-}
-
-function Note({ tone, icon: Icon, children, testId }: { tone: "info" | "warning" | "muted"; icon: LucideIcon; children: ReactNode; testId?: string }) {
-  return (
-    <p
-      className={cn(
-        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm",
-        tone === "info" && "bg-muted text-foreground",
-        tone === "warning" && "border-attention/20 bg-attention-soft text-attention",
-        tone === "muted" && "bg-card text-muted-foreground",
-      )}
-      data-testid={testId}
-    >
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span className="min-w-0 text-pretty">{children}</span>
-    </p>
-  );
-}
-
-/**
- * What the run waits for, above the stepper: the owner's open asks (cancel, takeover, handback) until the worker
- * answers them, how to reach the session while the owner holds it, and, for anyone else, whose run it is. For anyone,
- * a queued attempt after a run lost on a worker that is not steady yet: which worker it waits for, from when that
- * worker takes it if its heartbeats keep coming, and whether another worker may take it meanwhile.
- */
-export function RunNotes({ run, controls }: { run: Run; controls: RunControls }) {
-  const t = useTranslations("runs.detail.notes");
-  const format = useFormatter();
-  const when = (value: string) => format.dateTime(new Date(value), { timeStyle: "medium" });
-  const notes: ReactNode[] = [];
-  const held = (HELD_STATES as readonly string[]).includes(run.state);
-  if (held && run.cancel_requested_at) {
-    notes.push(
-      <Note key="cancel" tone="warning" icon={Ban} testId="run-note-cancel">
-        {t("cancelAsked", { time: when(run.cancel_requested_at) })}
-      </Note>,
-    );
-  }
-  if (controls.takeover === "asked" && run.takeover_requested_at) {
-    notes.push(
-      <Note key="takeover" tone="info" icon={Hand} testId="run-note-takeover">
-        {t("takeoverAsked", { time: when(run.takeover_requested_at), worker: run.worker ?? "-" })}
-      </Note>,
-    );
-  }
-  if (controls.handback === "asked" && run.handback_requested_at) {
-    notes.push(
-      <Note key="handback" tone="info" icon={Undo2} testId="run-note-handback">
-        {t("handbackAsked", { time: when(run.handback_requested_at) })}
-      </Note>,
-    );
-  }
-  if (controls.owner && run.state === "interactive") {
-    notes.push(
-      <Note key="interactive" tone="warning" icon={Hand} testId="run-note-interactive">
-        {t.rich("interactive", {
-          worker: run.worker ?? "-",
-          command: attachCommand(run.id),
-          code: (chunks) => <code className="font-mono font-medium">{chunks}</code>,
-        })}
-      </Note>,
-    );
-  }
-  const wait = run.state === "queued" ? run.steady_wait : null;
-  if (wait) {
-    const values = { attempt: run.attempt, worker: wait.worker, parent: run.parent_run_id ?? "-", seconds: STEADY_SECONDS, gap: STEADY_GAP_SECONDS };
-    notes.push(
-      <Note key="steady" tone="info" icon={HeartPulse} testId="run-note-steady">
-        {wait.steady_at ? t("steadyWait", { ...values, time: when(wait.steady_at) }) : t("steadyWaitSilent", values)}{" "}
-        {run.pinned_worker_id === wait.worker_id ? t("steadyPinned", { worker: wait.worker }) : t("steadyOthers")}
-      </Note>,
-    );
-  }
-  if (!controls.owner && !["done", "failed", "lost", "cancelled"].includes(run.state)) {
-    notes.push(
-      <Note key="owner" tone="muted" icon={ShieldAlert} testId="run-note-owner">
-        {t("notOwner", { login: run.dispatched_by })}
-      </Note>,
-    );
-  }
-  if (controls.owner && run.state === "review") {
-    notes.push(
-      <Note key="review" tone="info" icon={Info} testId="run-note-review">
-        {controls.approve ? t("review") : t("reviewNoWriter")}
-      </Note>,
-    );
-  }
-  return notes.length ? <div className="flex flex-col gap-2.5">{notes}</div> : null;
 }
