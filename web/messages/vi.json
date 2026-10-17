@@ -3027,6 +3027,23 @@
           "command": "Lệnh của plan",
           "effective": "Lệnh đã chạy",
           "output": "Output"
+        },
+        "rawLeft": "{count} sự kiện runtime không hiện ở đây: xem Raw log.",
+        "toolsFailed": "{count} lỗi",
+        "toolsLabel": "{count} lần gọi tool liên tiếp",
+        "group": {
+          "explored": "Đã xem {count} file",
+          "exploredCode": "Đã xem code",
+          "edited": "Đã sửa {count} file",
+          "tests": "{count, plural, one {Đã chạy test} other {Đã chạy test # lần}}",
+          "checks": "{count, plural, one {Đã chạy một lần kiểm tra} other {Đã chạy kiểm tra # lần}}",
+          "git": "{count, plural, one {Đã chạy git} other {Đã chạy git # lần}}",
+          "github": "{count, plural, one {Đã chạy gh} other {Đã chạy gh # lần}}",
+          "hub": "{count, plural, one {Đã báo lên hub} other {Đã báo lên hub # lần}}",
+          "commands": "{count, plural, one {Đã chạy một lệnh} other {Đã chạy # lệnh}}",
+          "tools": "Đã dùng {names}",
+          "tool": "một tool",
+          "failed": "{count} lỗi"
         }
       },
       "usage": {
@@ -3069,7 +3086,9 @@
         "count": "Xong {done}/{total} ({percent}%)",
         "failed": "Không tải được plan.",
         "none": "Plan không có bước nào.",
-        "untitled": "Bước chưa có tên"
+        "untitled": "Bước chưa có tên",
+        "doneFold": "{count} bước đã xong",
+        "todoFold": "{count} bước chưa làm"
       },
       "decision": {
         "waiting": "Đang chờ{since, select, none {} other { từ {since}}} {login} trả lời một quyết định.",
@@ -3265,7 +3284,10 @@
         "copySession": "Sao chép mã phiên",
         "approvalReview": "Không cần duyệt: review run không đổi gì",
         "approvalJudge": "Không cần duyệt: judge run không đổi gì, kết luận ghi lên thay đổi",
-        "approvalAuthor": "Không cần duyệt: agent đưa plan lên hub"
+        "approvalAuthor": "Không cần duyệt: agent đưa plan lên hub",
+        "agent": "Agent",
+        "allDetails": "Hiện mọi chi tiết",
+        "lessDetails": "Ẩn bớt chi tiết"
       },
       "result": {
         "title": "Kết quả",
@@ -3365,7 +3387,8 @@
             "approve": "Không duyệt được run #{id}",
             "rerun": "Không chạy lại được #{id}"
           }
-        }
+        },
+        "more": "Thêm thao tác với run"
       },
       "takeover": {
         "title": "Tiếp quản run #{id}",
@@ -3413,6 +3436,43 @@
         "hubSays": "Hub báo: {message}"
       },
       "chatSub": "Một lượt của @{agent} trong group chat, bước chuyền {hop}. <chatLink>Mở tin mà run trả lời</chatLink>.",
+      "header": {
+        "back": "Plan {plan}",
+        "step": "Bước {key}: {title}",
+        "progress": "Xong {done} trên {total} bước",
+        "progressLabel": "Số bước của plan đã xong",
+        "blocked": "{count} bước bị chặn",
+        "worker": "một worker",
+        "attempt": "{sentence}, lần chạy {attempt} trên {max}",
+        "state": {
+          "queued": "Đã chờ {duration}, đợi {worker}",
+          "leased": "{worker} đã nhận, đang khởi động {runtime}",
+          "running": "Đã chạy {duration} trên {worker}",
+          "verifying": "Đang kiểm tra {duration} trên {worker}",
+          "waiting": "Đã chờ câu trả lời {duration}",
+          "interactive": "Đang được giữ trong terminal {duration} trên {worker}",
+          "parked": "Đã tạm dừng {duration}",
+          "review": "Đã chờ review {duration}",
+          "done": "Xong sau {duration}",
+          "failed": "Hỏng sau {duration}",
+          "lost": "Mất sau {duration}",
+          "cancelled": "Đã huỷ sau {duration}",
+          "idle": "Đang nghỉ {duration}",
+          "ended": "Đã kết thúc sau {duration}"
+        },
+        "progressShort": "{done}/{total} bước"
+      },
+      "preview": {
+        "title": "Trace",
+        "calls": "{count} lần gọi tool",
+        "waiting": "Đang chờ sự kiện đầu tiên của run.",
+        "none": "Không có gì được ghi lại.",
+        "open": "Mở toàn bộ trace",
+        "openEmpty": "Mở trace",
+        "back": "Quay lại run #{id}",
+        "openChat": "Mở chat"
+      },
+      "detailsToggle": "Chi tiết",
       "local": {
         "sub": "Phiên Claude Code trên {machine}, tài khoản {account}{plan, select, none {} other {, plan <planLink>{plan}</planLink>{step, select, none {} other {, bước {step}}}}}",
         "title": "Phiên local",

@@ -14,6 +14,7 @@ import {
   dispatch,
   leaseCredentials,
   liveWorker,
+  openRunDetails,
   planRunUnderway,
   reportState,
   RUN_PLAN,
@@ -50,6 +51,11 @@ function shown(testId: string) {
   return async (page: Page) => {
     await expect(page.locator("#main").getByTestId(testId).first()).toBeVisible();
   };
+}
+
+/** Whether the page is as narrow as a phone's, where the run page shows its overview and opens the trace on a screen. */
+function phone(page: Page): boolean {
+  return (page.viewportSize()?.width ?? 1440) < 768;
 }
 
 async function noSidewaysScroll(page: Page, visits: Visit[]) {
@@ -155,6 +161,7 @@ test("the secrets page never scrolls sideways at 375, 768, 1024 and 1440 px", as
 });
 
 test("runs pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
+  test.setTimeout(90_000); // seven pages at four widths
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
@@ -172,10 +179,20 @@ test("runs pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ 
     { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
     { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
     {
+      // The run's page with every detail open: on a phone its overview, the trace's latest rows then the details.
       path: runPath(project, run.id),
       ready: async (page) => {
-        await shown("trace-item")(page);
+        await shown(phone(page) ? "run-trace-preview-row" : "trace-item")(page);
+        await openRunDetails(page, { all: true });
         await shown("run-lease-item")(page);
+      },
+    },
+    {
+      // On a phone the trace is a screen of its own.
+      path: runPath(project, run.id),
+      ready: async (page) => {
+        if (phone(page)) await page.locator("#main").getByTestId("run-open-trace").click();
+        await shown("trace-item")(page);
       },
     },
     { path: `${runPath(project, run.id)}?view=log`, ready: shown("log-line") },

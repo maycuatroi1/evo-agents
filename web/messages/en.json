@@ -3027,6 +3027,23 @@
           "command": "The plan's command",
           "effective": "Run as",
           "output": "Output"
+        },
+        "rawLeft": "{count, plural, one {# runtime event} other {# runtime events}} not shown: see the Raw log.",
+        "toolsFailed": "{count, plural, one {# failed} other {# failed}}",
+        "toolsLabel": "{count, plural, one {# tool call} other {# tool calls}} in a row",
+        "group": {
+          "explored": "Explored {count, plural, one {# file} other {# files}}",
+          "exploredCode": "Explored the code",
+          "edited": "Edited {count, plural, one {# file} other {# files}}",
+          "tests": "{count, plural, one {Ran tests} other {Ran tests # times}}",
+          "checks": "{count, plural, one {Ran a check} other {Ran checks # times}}",
+          "git": "{count, plural, one {Ran git} other {Ran git # times}}",
+          "github": "{count, plural, one {Ran gh} other {Ran gh # times}}",
+          "hub": "{count, plural, one {Reported to the hub} other {Reported to the hub # times}}",
+          "commands": "{count, plural, one {Ran a command} other {Ran # commands}}",
+          "tools": "Used {names}",
+          "tool": "a tool",
+          "failed": "{count} failed"
         }
       },
       "usage": {
@@ -3069,7 +3086,9 @@
         "count": "{done} of {total} done ({percent}%)",
         "failed": "The plan could not be loaded.",
         "none": "The plan has no step.",
-        "untitled": "Untitled step"
+        "untitled": "Untitled step",
+        "doneFold": "{count} done",
+        "todoFold": "{count} to do"
       },
       "decision": {
         "waiting": "Waiting{since, select, none {} other { since {since}}} for {login}'s answer to a decision.",
@@ -3265,7 +3284,10 @@
         "copySession": "Copy the session id",
         "approvalReview": "No approval: a review run changes nothing",
         "approvalJudge": "No approval: a judge run changes nothing, and its verdict goes on the change",
-        "approvalAuthor": "No approval: the agent puts the plan on the hub"
+        "approvalAuthor": "No approval: the agent puts the plan on the hub",
+        "agent": "Agent",
+        "allDetails": "Show all details",
+        "lessDetails": "Show fewer details"
       },
       "result": {
         "title": "Result",
@@ -3365,7 +3387,8 @@
             "approve": "Couldn't approve run #{id}",
             "rerun": "Couldn't rerun #{id}"
           }
-        }
+        },
+        "more": "More actions for the run"
       },
       "takeover": {
         "title": "Take over run #{id}",
@@ -3413,6 +3436,43 @@
         "hubSays": "The hub says: {message}"
       },
       "chatSub": "A turn of @{agent} in a group chat, hop {hop}. <chatLink>Open the message it answers</chatLink>.",
+      "header": {
+        "back": "Plan {plan}",
+        "step": "Step {key}: {title}",
+        "progress": "{done} of {total} steps done",
+        "progressLabel": "Steps of the plan done",
+        "blocked": "{count} blocked",
+        "worker": "a worker",
+        "attempt": "{sentence}, attempt {attempt} of {max}",
+        "state": {
+          "queued": "Queued for {duration}, waiting for {worker}",
+          "leased": "Leased by {worker}, starting {runtime}",
+          "running": "Running for {duration} on {worker}",
+          "verifying": "Verifying for {duration} on {worker}",
+          "waiting": "Waiting for an answer for {duration}",
+          "interactive": "Held in a terminal for {duration} on {worker}",
+          "parked": "Parked for {duration}",
+          "review": "Waiting for review for {duration}",
+          "done": "Done in {duration}",
+          "failed": "Failed after {duration}",
+          "lost": "Lost after {duration}",
+          "cancelled": "Cancelled after {duration}",
+          "idle": "Idle for {duration}",
+          "ended": "Ended after {duration}"
+        },
+        "progressShort": "{done}/{total} steps"
+      },
+      "preview": {
+        "title": "Trace",
+        "calls": "{count, plural, one {# tool call} other {# tool calls}}",
+        "waiting": "Waiting for the first event of the run.",
+        "none": "Nothing was recorded.",
+        "open": "Open the full trace",
+        "openEmpty": "Open the trace",
+        "back": "Back to run #{id}",
+        "openChat": "Open the chat"
+      },
+      "detailsToggle": "Details",
       "local": {
         "sub": "Claude Code session on {machine}, account {account}{plan, select, none {} other {, plan <planLink>{plan}</planLink>{step, select, none {} other {, step {step}}}}}",
         "title": "Local session",
