@@ -984,6 +984,28 @@ reached the model as about 40,000, cut in the middle (`Warning: truncated output
 the script's error. The hook therefore leaves a payload from Codex (it carries a `turn_id`) unchanged, and Codex's
 own limit, `tool_output_token_limit` in its `config.toml`, is the only knob there.
 
+**Local sessions.** The evo-hub plugin's UserPromptSubmit, PostToolUse (`local-tool`, a group of its own with no
+matcher, next to the spool's), Stop and SessionEnd hooks (`evo_agents/hub/local_sync.py`) register a Claude Code
+session of a hub project, without `EVO_RUN_ID`, as a run of kind `local` (`PUT /v1/projects/{p}/local-runs/{session}`),
+and report its state (`POST .../state`: `running` at a prompt and a tool, `idle` at Stop, `ended` at SessionEnd) and its
+log (`POST .../events`, gapless `seq`). The project is the one of the session directory, as for memories; a directory
+of none is asked once and remembered in `~/.evo/hub/local/<session>.json`. Sent: session id, directory, machine, the
+first line of the first prompt (120 characters), the account (`evo_agents/hub/local_account.py`), the agent's text
+(4,000 characters a message), and per tool call its name, input (300 characters) and result (400 characters), all
+through `redact_data` on the machine, as the digest is. The account of a Code tab session is read from
+`<data folder>/claude-code-sessions/*/*/local_*.json` (the record that holds the session id; its first `*email*` value)
+and the claude-profiles profile whose data folder it is; of a CLI session from `oauthAccount.emailAddress` of
+`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`; otherwise `unknown`. [Unverified] The record's layout was not
+checked on a Mac. `EVO_CLAUDE_DESKTOP_DIRS` overrides the data folders.
+A plan write (`evo harness step`, `hub plan step`, the MCP `plan_step`, which the proxy sends with the header
+`X-Evo-Local-Run`) names the session's run (`CLAUDE_CODE_SESSION_ID` of the tool's environment, else the newest live
+session of the directory), so the revision is recorded for the run and the run shows that plan and step; a hub that
+does not know the run gets the write again without it. `EVO_HUB_LOCAL_SYNC=0` (or `off`) turns the hooks into no-ops;
+the Stop digest and memory push are unchanged. A PostToolUse hook asks the hub at most every 2 seconds, with request
+timeouts of 1.5 s and a deadline of 6 s; events wait in the session file (500 at most) while the hub does not answer
+(the same cooldown as the digest) or refuses the session (10 minutes), and go in order afterwards. Every hook exits 0.
+[Unverified] The Codex plugin loads the same hooks.json; whether a Codex session registers a local run was not tried.
+
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
 session on a laptop gets the same memory sync, plan copies, context line and session digest as a Claude Code one.
 Codex installs the plugin from the same marketplace, with

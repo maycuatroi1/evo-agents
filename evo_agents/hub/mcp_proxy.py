@@ -46,6 +46,7 @@ from evo_agents.hub.client import CONNECTIONS, Credentials, HubError, Unreachabl
 from evo_agents.hub.mcp_tools import (
     HANDSHAKE_VERSIONS,
     INSTRUCTIONS,
+    LOCAL_RUN_HEADER,
     PROJECT_HEADER,
     PROTOCOL_HEADER,
     PROTOCOL_VERSION,
@@ -142,6 +143,9 @@ class McpClient:
         if protocol:
             headers[PROTOCOL_HEADER] = protocol
         headers.update(routing_headers(message))
+        local = self._local_run(message)
+        if local is not None:
+            headers[LOCAL_RUN_HEADER] = str(local)
         data = json.dumps(message, ensure_ascii=False).encode()
         for attempt in range(RETRIES + 1):
             try:
@@ -152,6 +156,23 @@ class McpClient:
                     raise
                 self.sleep(RETRY_DELAY * 2**attempt)
         return self._answer(status, raw)
+
+    def _local_run(self, message) -> int | None:
+        """The local run of the session that calls plan_step (``local_sync.run_for``), so the hub records the step as
+        that run's; None for any other message, for a worker's run and when the session has no local run."""
+        params = message.get("params") if isinstance(message, dict) else None
+        if self.run is not None or message.get("method") != "tools/call" or not isinstance(params, dict):
+            return None
+        if params.get("name") != "plan_step":
+            return None
+        arguments = params.get("arguments")
+        named = arguments.get("project") if isinstance(arguments, dict) else None
+        project = named if isinstance(named, str) else self.project
+        if not project:
+            return None
+        from evo_agents.hub import local_sync
+
+        return local_sync.run_for(self.url, project)
 
     def _answer(self, status: int, raw: bytes):
         try:
