@@ -21,6 +21,7 @@ from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, make_project, write
 
 SAMPLE = Path(__file__).parent / "fixtures" / "hooks" / "post_tool_kg_search.json"
+TEXT_SAMPLE = SAMPLE.with_name("post_tool_kg_context_text.json")
 TOOL = "mcp__plugin_evo-kg_evo-kg__"
 
 
@@ -40,10 +41,18 @@ def post(monkeypatch, capsys, payload) -> tuple[int, str, str]:
 
 
 def as_claude_code_sends(name: str, result: dict, session_id: str) -> dict:
-    """A PostToolUse payload shaped like the captured sample around a real server result."""
+    """A PostToolUse payload shaped like the captured sample around a real server result: the content blocks of what
+    kg serve sends an MCP client, with their _meta."""
     payload = sample()
     payload["session_id"] = session_id
     payload["tool_name"] = TOOL + name
+    payload["tool_response"] = json.loads(json.dumps(serve.for_model(result)["content"]))
+    return payload
+
+
+def as_claude_code_sends_data(name: str, result: dict, session_id: str) -> dict:
+    """The same around a result that kept its structuredContent, which Claude Code sends as a JSON string."""
+    payload = as_claude_code_sends(name, result, session_id)
     payload["tool_response"] = json.dumps(result["structuredContent"], ensure_ascii=False, separators=(",", ":"))
     return payload
 
@@ -68,6 +77,19 @@ def test_post_tool_reads_the_captured_sample(fake_project, kg_env, monkeypatch, 
     assert record["results_read"] == 2
     assert record["session_id"] == payload["session_id"] and record["last_updated"]
     assert sessions.session_path(payload["session_id"]).name == payload["session_id"] + ".json"
+
+
+def test_post_tool_reads_the_captured_sample_of_a_text_result(kg_env, monkeypatch, capsys, unbound):
+    # Captured from Claude Code 2.1.296 calling kg serve's kg_context: content blocks, the labels in _meta.
+    payload = json.loads(TEXT_SAMPLE.read_text(encoding="utf-8"))
+    (block,) = payload["tool_response"]
+    read = block["_meta"][sessions.READ_META]
+    assert post(monkeypatch, capsys, payload) == (0, "", "")
+    record = sessions.read_session(payload["session_id"])
+    assert (record["level"], record["location"], record["integrity"]) == tuple(
+        read["label"][key] for key in ("level", "location", "integrity")
+    )
+    assert record["projects"] == read["label"]["projects"] and record["results_read"] == read["results_read"] > 0
 
 
 def built(tmp_path, home):
@@ -100,9 +122,12 @@ def test_post_tool_joins_across_calls(tmp_path, kg_env, monkeypatch, capsys, unb
     assert second["level"] == "customer"
     assert second["results_read"] == first["results_read"] + len(symbols["structuredContent"]["results"])
 
-    # A later public read never lowers the label.
+    # A later public read never lowers the label, nor does one from a server that sent its structuredContent.
     assert post(monkeypatch, capsys, as_claude_code_sends("kg_search", plans, sid))[0] == 0
-    assert sessions.read_session(sid)["level"] == "customer"
+    assert post(monkeypatch, capsys, as_claude_code_sends_data("kg_search", plans, sid))[0] == 0
+    third = sessions.read_session(sid)
+    assert third["level"] == "customer"
+    assert third["results_read"] == second["results_read"] + 2 * len(plans["structuredContent"]["results"])
 
 
 def test_post_tool_counts_what_a_truncated_result_reveals(tmp_path, kg_env, monkeypatch, capsys, unbound):
@@ -116,7 +141,8 @@ def test_post_tool_counts_what_a_truncated_result_reveals(tmp_path, kg_env, monk
     sid = "truncated-session"
     assert post(monkeypatch, capsys, as_claude_code_sends("kg_node", card, sid))[0] == 0
     record = sessions.read_session(sid)
-    assert record["level"] == "customer" and record["results_read"] == 0
+    counted = card["content"][0]["_meta"][sessions.READ_META]["results_read"]
+    assert record["level"] == "customer" and record["results_read"] == counted > 0  # counted before the cut
 
     status = session.call("kg_status", {})  # reveals no element: nothing to record
     assert "label" not in status["structuredContent"]
