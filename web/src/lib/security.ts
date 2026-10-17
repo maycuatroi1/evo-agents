@@ -7,6 +7,10 @@
  * connect-src 'self' covers the terminal's websocket too: CSP Level 3 matches ws: and wss: of the page's own host
  * and port under 'self' (Chromium and Firefox; e2e/terminal.spec.ts checks both).
  *
+ * frame-src 'self' lets a page frame the pages of isolated plugins, which the hub serves from the same origin under
+ * /v1/plugin-ui/ with a CSP of their own whose `sandbox` keeps their origin opaque (components/plugins/plugin-frame.tsx);
+ * no other origin is ever framed, and every page of the web refuses to be framed itself (frame-ancestors 'none').
+ *
  * Styles allow 'unsafe-inline' because React renders `style` attributes (the sidebar's width variables, Radix
  * positioning) and a nonce cannot cover attributes; no untrusted markup is ever rendered as HTML, so the remaining
  * risk is style injection only.
@@ -43,7 +47,7 @@ export function contentSecurityPolicy({ nonce, dev = false, https = false }: Csp
     ["base-uri", "'self'"],
     ["form-action", "'self'"],
     ["frame-ancestors", "'none'"],
-    ["frame-src", "'none'"],
+    ["frame-src", "'self'"],
     ["worker-src", "'self'", "blob:"],
     ["manifest-src", "'self'"],
   ];

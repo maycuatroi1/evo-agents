@@ -54,7 +54,8 @@
     "agents": "Agents",
     "chats": "Chats",
     "curatorProposals": "Proposals",
-    "curatorCharter": "Charter"
+    "curatorCharter": "Charter",
+    "plugins": "Plugins"
   },
   "projectSwitcher": {
     "label": "Projects",
@@ -522,6 +523,7 @@
       "members": "Members",
       "tokens": "Tokens",
       "audit": "Audit",
+      "plugins": "Plugins",
       "diagnostics": "Diagnostics",
       "branding": "Branding",
       "features": "Features"
@@ -4698,6 +4700,304 @@
       "retrying": "Trying again",
       "latest": "Jump to the latest",
       "now": "Run #{id} is now {state}."
+    }
+  },
+  "plugins": {
+    "upgrade": "{version} available",
+    "fromImage": "Comes with the hub",
+    "state": {
+      "available": "Available",
+      "installed": "Installed",
+      "disabled": "Turned off",
+      "enabled": "Enabled",
+      "notEnabled": "Not enabled"
+    },
+    "tier": {
+      "isolated": "Isolated",
+      "core": "Core",
+      "isolatedHint": "Runs outside the hub's processes and reaches the hub only with what a project grants it",
+      "coreHint": "Runs inside the hub's processes, from a publisher the operator lists as a core publisher"
+    },
+    "permissions": {
+      "none": "It asks for no permission.",
+      "new": "New",
+      "text": {
+        "runs:read": "Read the project's runs, their events and their outcomes",
+        "runs:dispatch": "Dispatch runs in the project",
+        "chats:read": "Read the project's group chats",
+        "chats:write": "Post messages in the project's group chats",
+        "plans:read": "Read the project's plans",
+        "memories:read": "Read the project's memories",
+        "notifications:send": "Send notifications to the project's members"
+      }
+    },
+    "points": {
+      "nothing": "It adds nothing to the hub yet.",
+      "pages": "{count, plural, one {# page} other {# pages}}",
+      "routes": "{count, plural, one {# route} other {# routes}}",
+      "mcp_tools": "{count, plural, one {# MCP tool} other {# MCP tools}}",
+      "jobs": "{count, plural, one {# job} other {# jobs}}",
+      "events": "{count, plural, one {# event subscription} other {# event subscriptions}}",
+      "channels": "{count, plural, one {# notification channel} other {# notification channels}}",
+      "tables": "{count, plural, one {# table} other {# tables}}",
+      "agent_packs": "{count, plural, one {# agent pack} other {# agent packs}}",
+      "agent_types": "{count, plural, one {# agent type} other {# agent types}}",
+      "runtimes": "{count, plural, one {# runtime} other {# runtimes}}",
+      "environments": "{count, plural, one {# environment} other {# environments}}",
+      "kg_connectors": "{count, plural, one {# graph connector} other {# graph connectors}}"
+    },
+    "errors": {
+      "forbidden": "You don't have the role this change needs.",
+      "conflict": "The plugin changed meanwhile. The page shows it as the hub holds it now."
+    },
+    "actions": {
+      "install": "Install",
+      "installVersion": "Install {version}",
+      "installing": "Installing",
+      "installed": "Installed {name} {version}",
+      "installFailed": "Couldn't install {name}",
+      "upgradeTo": "Upgrade to {version}",
+      "upgradeTitle": "Upgrade {name} to {version}?",
+      "upgradeDescription": "The hub moves it from {from} to {to} after checking the new bundle's signature. Projects that enabled it keep what they granted; a permission the new version adds waits until each project's admin grants it.",
+      "upgradeConfirm": "Upgrade",
+      "upgrading": "Upgrading",
+      "upgraded": "Upgraded {name} to {version}",
+      "remove": "Remove",
+      "removeTitle": "Remove {name}?",
+      "removeDescription": "Every project loses its pages, routes, tools and jobs at once. Each project's grant and config stay, and every version stays in the store, so installing it again brings it back as it was.",
+      "removeConfirm": "Remove plugin",
+      "removing": "Removing",
+      "removed": "Removed {name}",
+      "cancel": "Cancel",
+      "openPlugin": "Open plugin"
+    },
+    "admin": {
+      "title": "Plugins",
+      "count": "{count, plural, one {# plugin} other {# plugins}}",
+      "caption": "Plugins in the hub's store",
+      "columns": {
+        "plugin": "Plugin",
+        "publisher": "Publisher",
+        "tier": "Tier",
+        "version": "Version",
+        "state": "State",
+        "actions": "Actions"
+      },
+      "latest": "Latest {version}",
+      "untrusted": "a publisher the operator no longer trusts",
+      "emptyTitle": "No plugin in the store yet",
+      "emptyDescription": "A plugin is a bundle its publisher signs. A hub admin publishes it with the CLI, then installs it here, and each project's admin enables it.",
+      "publishCommand": "evo-agents hub plugin publish <bundle>",
+      "publishers": {
+        "title": "Trusted publishers",
+        "description": "The hub accepts bundles these publishers sign, and no other. The operator lists them in EVO_HUB_PLUGIN_PUBLISHERS.",
+        "none": "No publisher is trusted, so no bundle can be published. The operator lists publishers in EVO_HUB_PLUGIN_PUBLISHERS.",
+        "core": "Core",
+        "coreHint": "May publish core plugins, which run in the hub's processes (EVO_HUB_PLUGIN_CORE_PUBLISHERS)"
+      }
+    },
+    "detail": {
+      "publishedBy": "Published by {publisher}",
+      "turnedOff": "Turned off by the hub: {reason}",
+      "aboutTitle": "About",
+      "asksFor": "What it asks of a project that enables it",
+      "contributes": "What it adds",
+      "configTitle": "Config of the hub",
+      "configDescription": "The hub's own layer, below every project's: a project's value wins over this one.",
+      "detailsTitle": "Details",
+      "publisher": "Publisher",
+      "installed": "Installed",
+      "installedBy": "By {login}, <when></when>",
+      "theImage": "the hub's image",
+      "notInstalled": "Not installed",
+      "latestVersion": "Latest version",
+      "inStoreSince": "In the store since",
+      "turnedOffAt": "Turned off"
+    },
+    "versions": {
+      "title": "Versions",
+      "caption": "Versions of {name}, the newest first",
+      "columns": {
+        "version": "Version",
+        "runs": "On this hub",
+        "signedBy": "Signed by",
+        "published": "Published",
+        "actions": "Actions"
+      },
+      "installed": "Installed",
+      "runsHere": "Runs here",
+      "doesNotRun": "Does not run here",
+      "kinds": {
+        "ed25519": "Publisher's key",
+        "sigstore": "CI workflow (Sigstore)",
+        "image": "The hub's image"
+      },
+      "theImage": "the hub's image"
+    },
+    "backend": {
+      "title": "Backend",
+      "description": "The plugin's own process, outside the hub, as the plugin host last reported it.",
+      "state": "State",
+      "notReported": "Not reported yet",
+      "states": {
+        "placing": "Installing",
+        "starting": "Starting",
+        "running": "Running",
+        "backoff": "Waiting to restart"
+      },
+      "restarts": "Restarts",
+      "isolation": "Isolation",
+      "startedAt": "Started",
+      "retryAt": "Restarts",
+      "error": "Last failure"
+    },
+    "config": {
+      "required": "Required",
+      "notSetHere": "Not set here",
+      "on": "On",
+      "off": "Off",
+      "defaultPlaceholder": "Default: {value}",
+      "listPlaceholder": "One a line",
+      "secretSet": "Secret set",
+      "secretNotSet": "Secret not set here",
+      "secretCleared": "Cleared on save",
+      "replace": "Replace",
+      "give": "Set a value",
+      "clear": "Clear",
+      "keep": "Keep as it is",
+      "noFields": "This plugin takes no config.",
+      "layerEmpty": "This layer sets nothing: the plugin's defaults and the layers below apply.",
+      "save": "Save",
+      "saving": "Saving",
+      "discard": "Discard changes",
+      "saved": "Saved version {version} of the config",
+      "conflict": "Someone changed this config meanwhile. Reload the page to see their version, then save again.",
+      "problems": {
+        "integer": "A whole number.",
+        "number": "A number.",
+        "json": "Valid JSON.",
+        "choice": "One of the choices.",
+        "pattern": "It doesn't have the form this field takes.",
+        "secretEmpty": "Type the secret, or keep it as it is.",
+        "minimum": "At least {limit}.",
+        "maximum": "At most {limit}.",
+        "minLength": "At least {limit} characters.",
+        "maxLength": "At most {limit} characters."
+      },
+      "history": {
+        "title": "History",
+        "description": "Every version of this layer, the newest first. Rolling back writes an older version again as the next one.",
+        "empty": "Never written: the plugin's defaults and the layers below apply.",
+        "version": "Version {version}",
+        "current": "Current",
+        "rolledBack": "Copy of version {version}",
+        "by": "By {login}, <when></when>",
+        "sets": "Sets {fields}",
+        "setsNothing": "Sets nothing",
+        "rollback": "Roll back to version {version}",
+        "rolledBackTo": "Rolled back to version {version}",
+        "rollbackFailed": "Couldn't roll back to version {version}"
+      }
+    },
+    "effective": {
+      "title": "What the plugin gets",
+      "description": "The config of the project's runs that name no agent: each field from the highest layer that sets it.",
+      "empty": "No field is set by any layer.",
+      "secret": "Secret, set",
+      "layerVersion": "{layer} v{version}",
+      "layers": {
+        "default": "Default",
+        "instance": "Hub",
+        "project": "Project",
+        "agent": "Agent",
+        "run": "Run"
+      },
+      "digest": "Digest"
+    },
+    "consent": {
+      "title": "Enable {name} in {project}?",
+      "regrantTitle": "Grant what {name} asks for now?",
+      "description": "{name} {version} from {publisher} asks to do this in the project. Enabling it grants all of it.",
+      "asks": "It asks to",
+      "pages": "It adds to the project's menu",
+      "note": "An admin of the project can disable it at any time; its config and data stay for when it is enabled again.",
+      "grant": "Grant and enable",
+      "regrant": "Grant",
+      "granting": "Granting",
+      "cancel": "Cancel",
+      "enabled": "Enabled {name} in {project}",
+      "granted": "Granted what {name} asks for",
+      "turnedOff": "The hub has turned this plugin off. A hub admin upgrades it first.",
+      "openPlugin": "Open plugin"
+    },
+    "project": {
+      "title": "Plugins",
+      "metaTitle": "Plugins of {project}",
+      "caption": "Plugins of project {project}",
+      "enabledCount": "{count} of {total} enabled",
+      "readOnly": "Only an admin of the project enables, disables and configures its plugins.",
+      "emptyTitle": "No plugin is installed on the hub",
+      "emptyDescription": "Plugins add pages, tools and channels to a project. A hub admin installs them (Administration, Plugins); an admin of the project then enables the ones it needs.",
+      "columns": {
+        "plugin": "Plugin",
+        "tier": "Tier",
+        "version": "Version",
+        "pages": "Pages",
+        "state": "State",
+        "actions": "Actions"
+      },
+      "noPages": "None",
+      "pending": "{count, plural, one {Asks for # more} other {Asks for # more}}",
+      "enable": "Enable",
+      "review": "{count, plural, one {Review # new permission} other {Review # new permissions}}",
+      "disable": "Disable",
+      "disableTitle": "Disable {name} in {project}?",
+      "disableDescription": "Its pages, routes, tools and jobs stop answering in this project at once, and what the project granted it goes. Its config and its data stay for when it is enabled again.",
+      "disableConfirm": "Disable plugin",
+      "disabling": "Disabling",
+      "disabled": "Disabled {name} in {project}",
+      "cancel": "Cancel",
+      "versionFrom": "Version {version} from {publisher}",
+      "turnedOff": "Turned off by the hub: {reason}",
+      "aboutTitle": "About",
+      "asksFor": "It asks to",
+      "granted": "The project granted it to",
+      "pagesTitle": "Its pages",
+      "configTitle": "Config of the project",
+      "configDescription": "The project's layer, over the hub's: what it sets here wins for this project's runs and pages.",
+      "configWhenEnabled": "Its config can be set once the project enables it.",
+      "detailsTitle": "Details",
+      "publisher": "Publisher",
+      "versionLabel": "Version",
+      "enabledAt": "Enabled",
+      "grantedAt": "Granted",
+      "by": "By {login}, <when></when>"
+    },
+    "page": {
+      "metaTitle": "{page} | {plugin} | {project}",
+      "fromPlugin": "{name} {version}",
+      "sandboxed": "Sandboxed",
+      "sandboxedHint": "The page runs in a sandbox: it cannot read the hub's cookies or this page, and it reads only what the project granted its plugin, with your access.",
+      "mayRead": "It may read: {granted}.",
+      "nothing": "nothing of the project",
+      "missingTitle": "No such page",
+      "missingDescription": "The plugin is not enabled in this project, or it has no such page."
+    },
+    "frame": {
+      "title": "{page}, a page of the plugin {plugin}"
+    },
+    "notes": {
+      "metaTitle": "Notes | {project}",
+      "tag": "Core plugin",
+      "listLabel": "Notes of {project}",
+      "emptyTitle": "No notes yet",
+      "emptyDescription": "Notes keep short lines for the whole project. Add the first one.",
+      "by": "By {login}",
+      "newNote": "New note",
+      "hint": "At most {max} characters.",
+      "add": "Add note",
+      "adding": "Adding",
+      "added": "Note added"
     }
   }
 }

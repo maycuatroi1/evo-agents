@@ -15,6 +15,7 @@ import {
   MonitorPlay,
   MoonStar,
   Network,
+  Puzzle,
   Server,
   Shield,
   Sparkles,
@@ -26,7 +27,8 @@ import { browserApi } from "@/lib/api/browser";
 import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
 
 /**
- * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas; the hub-wide areas
+ * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas, then the pages
+ * its enabled plugins add (shell/plugin-nav.tsx) before its Plugins; the hub-wide areas
  * (chats, workers, secrets, accounts, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
  * a hub-wide area one entry to HUB_NAV, and one label under `nav` in messages/vi.json and messages/en.json. Icons follow
  * the Iconography table of web/DESIGN.md. An item that names a `feature` leaves the sidebar and the palette while a
@@ -46,6 +48,7 @@ export type NavLabel =
   | "memories"
   | "skills"
   | "kg"
+  | "plugins"
   | "workers"
   | "myMemories"
   | "globalSkills"
@@ -97,6 +100,7 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "memories", icon: BookOpen, segment: "memories" },
   { label: "skills", icon: Sparkles, segment: "skills" },
   { label: "kg", icon: Network, segment: "kg", feature: "kg" },
+  { label: "plugins", icon: Puzzle, segment: "plugins" },
 ];
 
 export const HUB_NAV: readonly HubNavItem[] = [
