@@ -59,7 +59,7 @@ def _host_app(tmp_path, token: str):
     from evo_agents.hub.plugin_host_service import create_host_app
     from evo_agents.plugins.host import Host
 
-    host = Host(tmp_path)
+    host = Host(tmp_path, allow_shared_user=True)
     host.place(_manifest("faulty"), _bundle("faulty"), _init("faulty"))
     return TestClient(create_host_app(host, token)), host
 

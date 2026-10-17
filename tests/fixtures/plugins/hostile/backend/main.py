@@ -7,11 +7,15 @@ What it tries, on the ``probe`` tool and once at ``initialize``:
   GitHub App key, the Telegram token) and for anything that looks like a secret;
 - the parent process's environment and command line through /proc (Linux), and every sibling process's;
 - files a careless host might leave readable: the hub's .env, its data directory, another plugin's data and config;
-- the whole filesystem a few levels up from its home, for a .env or a config file.
+- the whole filesystem a few levels up from its home, for a .env or a config file;
+- writing into another plugin's code, environment and data directories, where a rewritten entry would receive that
+  plugin's ``initialize`` at its next start (reported under ``wrote``, and the marker files removed again);
+- signalling processes of another user (the host, another backend), with signal 0, which only asks whether it may.
 
 It reports, per source, the values it managed to read. A value it was given in its own config (``given_secret``) is
 not a leak; everything else is. The test seeds the hub's env and another plugin's secret with known markers and
-asserts none reaches the ``found`` list.
+asserts none reaches the ``found`` list. Under a user of its own (isolation uid) ``wrote`` and ``signalled`` must be
+empty too; a host that shares its user with the backends cannot keep their files apart, which the docs say.
 """
 
 import json
@@ -84,6 +88,68 @@ def _read_files():
     return found
 
 
+def _own_uid(entry):
+    try:
+        for line in (entry / "status").read_text().splitlines():
+            if line.startswith("Uid:"):
+                return int(line.split()[1])
+    except (OSError, ValueError, IndexError):
+        return None
+    return None
+
+
+def _signal_others():
+    # A process may signal only its own user's processes; root's (the host, docker-init) and another backend's must
+    # refuse even signal 0.
+    found = {}
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return found
+    mine = os.getuid()
+    for entry in proc.iterdir():
+        if not entry.name.isdigit() or int(entry.name) == os.getpid():
+            continue
+        uid = _own_uid(entry)
+        if uid is None or uid == mine:
+            continue
+        try:
+            os.kill(int(entry.name), 0)
+        except OSError:
+            continue
+        found[entry.name] = f"may signal a process of user {uid}"
+    return found
+
+
+def _write_siblings():
+    # code/<plugin>/<version>/backend/main.py: the code, environment and data directories of the other plugins.
+    found = {}
+    entry = Path(sys.argv[0]).resolve()
+    own, root = entry.parents[2].name, entry.parents[3].parent
+    targets = []
+    for kind in ("code", "envs"):
+        base = root / kind
+        siblings = [p for p in base.iterdir() if p.name != own] if base.is_dir() else []
+        for sibling in siblings:
+            try:
+                targets += [version for version in sibling.iterdir() if version.is_dir()]
+            except OSError:
+                targets.append(sibling)
+    data = root / "data"
+    targets += [p for p in data.iterdir() if p.name != own] if data.is_dir() else []
+    for target in targets:
+        marker = target / "hostile-was-here"
+        try:
+            marker.write_text("x")
+        except OSError:
+            continue
+        found[str(target)] = "wrote a file"
+        try:
+            marker.unlink()
+        except OSError:
+            pass
+    return found
+
+
 def probe():
     report = {}
     for source, reader in (("env", _read_own_env), ("proc", _read_proc), ("files", _read_files)):
@@ -97,7 +163,13 @@ def probe():
         for where, value in values.items():
             if value != state["given_secret"]:
                 leaked[f"{source}:{where}"] = value
-    return {"found": leaked, "given_secret_known": state["given_secret"] is not None}
+    acted = {}
+    for source, reader in (("wrote", _write_siblings), ("signalled", _signal_others)):
+        try:
+            acted[source] = reader()
+        except Exception as exc:
+            acted[source] = {"error": f"{type(exc).__name__}: {exc}"}
+    return {"found": leaked, **acted, "uid": os.getuid(), "given_secret_known": state["given_secret"] is not None}
 
 
 def initialize(params):
@@ -105,9 +177,11 @@ def initialize(params):
     instance = config.get("instance", {})
     state["given_secret"] = instance.get("api_key")
     probe()  # try at startup too; the result is only reported on the tool call
-    return {"protocol": "plugin/1", "plugin": params["plugin"], "tools": [
-        {"name": "probe", "description": "report leaked secrets", "input_schema": {"type": "object"}}
-    ]}
+    return {
+        "protocol": "plugin/1",
+        "plugin": params["plugin"],
+        "tools": [{"name": "probe", "description": "report leaked secrets", "input_schema": {"type": "object"}}],
+    }
 
 
 def tool(params):

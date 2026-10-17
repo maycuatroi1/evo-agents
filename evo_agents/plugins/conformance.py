@@ -7,7 +7,8 @@ Checks, in order:
 - ``bundle``: the directory packs into a bundle (``evo_agents.plugins.bundle.pack``);
 - ``backend``: an isolated plugin that contributes to a point it serves from a backend (routes, MCP tools, jobs,
   events, channels) declares one, and the files it names are in the bundle;
-- ``environment``: its virtual environment builds as the plugin host builds it, in a directory of its own;
+- ``environment``: its virtual environment builds as the plugin host builds it, in a directory of its own, its
+  requirements only ``name==version --hash=sha256:...`` lines installed from the wheels in the bundle;
 - ``initialize``: started with the host's command and an environment built from nothing, it answers ``initialize``
   within the timeout, naming plugin/1, its id and its version, and lists exactly the MCP tools the manifest
   contributes, each with an input schema;
@@ -250,8 +251,8 @@ def run_conformance(directory: str | Path, *, timeout: float = DEFAULT_TIMEOUT) 
         where = placement(root, manifest.id, manifest.version)
         try:
             extract(bundle.data, where.code)
-            build_env(where, manifest.backend.get("requirements"))
             prepare_data(where, None)
+            build_env(where, manifest.backend.get("requirements"))
         except PlacementError as exc:
             report.add("environment", [str(exc)])
             return report
