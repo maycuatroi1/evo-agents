@@ -3531,6 +3531,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugin-publishers": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Publishers
+         * @description The publishers an operator of this hub trusts, in the order EVO_HUB_PLUGIN_PUBLISHERS names them.
+         */
+        get: operations["publishers_v1_plugin_publishers_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/plugins": {
         parameters: {
             query?: never;
@@ -8494,6 +8514,18 @@ export interface components {
         Plugin: {
             /** Name */
             name: string;
+            /**
+             * Title
+             * @description the name its manifest gives it (the installed version's, else the latest's)
+             */
+            title: string;
+            /** Description */
+            description: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "isolated" | "core";
             /** Publisher */
             publisher: string;
             /**
@@ -8611,6 +8643,18 @@ export interface components {
         PluginDetail: {
             /** Name */
             name: string;
+            /**
+             * Title
+             * @description the name its manifest gives it (the installed version's, else the latest's)
+             */
+            title: string;
+            /** Description */
+            description: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "isolated" | "core";
             /** Publisher */
             publisher: string;
             /**
@@ -8670,6 +8714,41 @@ export interface components {
              */
             version?: string | null;
         };
+        /**
+         * PluginPage
+         * @description A page a plugin adds to a project's part of the web.
+         */
+        PluginPage: {
+            /** Name */
+            name: string;
+            /**
+             * Title
+             * @description its name in the project's menu and above the page
+             */
+            title: string;
+            /** Description */
+            description: string;
+            /**
+             * Icon
+             * @description the icon of its menu item, a name from the hub's set
+             */
+            icon: string;
+            /**
+             * Menu
+             * @description whether the project's menu lists it
+             */
+            menu: boolean;
+            /**
+             * Native
+             * @description a page of the hub's web itself (a core plugin's); false for a framed page
+             */
+            native: boolean;
+            /**
+             * Url
+             * @description what the web frames for an isolated plugin's page, a ticket inside it: only in a project that enabled the plugin, null otherwise and for a native page
+             */
+            url: string | null;
+        };
         /** PluginPermission */
         PluginPermission: {
             /** Name */
@@ -8712,6 +8791,21 @@ export interface components {
              */
             created: boolean;
             version: components["schemas"]["PluginVersion"];
+        };
+        /** PluginPublisher */
+        PluginPublisher: {
+            /** Id */
+            id: string;
+            /**
+             * Identities
+             * @description what signs for it: sigstore:<workflow> for a CI workflow, ed25519:<key id> for a key
+             */
+            identities: string[];
+            /**
+             * Core
+             * @description whether its plugins may be core plugins, which run in the hub's processes
+             */
+            core: boolean;
         };
         /** PluginVersion */
         PluginVersion: {
@@ -8878,6 +8972,18 @@ export interface components {
         ProjectPlugin: {
             /** Name */
             name: string;
+            /**
+             * Title
+             * @description the name its manifest gives it
+             */
+            title: string;
+            /** Description */
+            description: string;
+            /**
+             * Tier
+             * @enum {string}
+             */
+            tier: "isolated" | "core";
             /** Publisher */
             publisher: string;
             /**
@@ -8917,6 +9023,11 @@ export interface components {
             config_schema: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Pages
+             * @description the pages it adds to the project's part of the web
+             */
+            pages: components["schemas"]["PluginPage"][];
             /** Enabled By */
             enabled_by: string | null;
             /** Enabled At */
@@ -25088,6 +25199,44 @@ export interface operations {
             };
             /** @description Service Unavailable */
             503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    publishers_v1_plugin_publishers_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PluginPublisher"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
                 headers: {
                     [name: string]: unknown;
                 };

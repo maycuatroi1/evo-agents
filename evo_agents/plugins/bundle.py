@@ -12,8 +12,9 @@ directories beside it, which the extension points read.
 trusted: a gzip-compressed tar of at most MAX_BUNDLE bytes that decompresses to at most MAX_UNPACKED, at most
 MAX_FILES entries, only regular files and directories, every path relative and made of parts that are neither empty,
 ``.`` nor ``..``, without backslashes or control characters, unique even ignoring case, no file where another entry
-needs a directory, and a manifest that ``evo_agents.plugins.manifest`` reads. The signature is never inside the bundle:
-it signs the bundle's bytes and travels beside them (``evo_agents.plugins.signing``).
+needs a directory, and a manifest that ``evo_agents.plugins.manifest`` reads whose pages' entries the bundle holds. The
+signature is never inside the bundle: it signs the bundle's bytes and travels beside them
+(``evo_agents.plugins.signing``).
 
 Standard library only.
 """
@@ -127,13 +128,19 @@ def _check_paths(files: list[str], directories: Iterable[str] = ()) -> None:
 
 
 def _manifest_of(files: Iterable[Entry]) -> Manifest:
+    files = list(files)
     top = next((entry for entry in files if entry.path == MANIFEST_FILE), None)
     if top is None:
         raise BundleError(f"the bundle has no {MANIFEST_FILE} at its top")
     try:
-        return read_manifest(top.data)
+        manifest = read_manifest(top.data)
     except ManifestError as exc:
         raise BundleError(f"{MANIFEST_FILE} is not a plugin manifest: {exc}") from None
+    held = {entry.path for entry in files}
+    for page in manifest.pages():
+        if "entry" in page and page["entry"] not in held:
+            raise BundleError(f"page {page['name']} names {page['entry']}, which the bundle does not hold")
+    return manifest
 
 
 # Packing

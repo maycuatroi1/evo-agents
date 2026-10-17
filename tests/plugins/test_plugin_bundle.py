@@ -125,3 +125,15 @@ def test_plugin_bundle_reading_is_bounded_in_bytes_and_in_entries(monkeypatch):
 def test_plugin_bundle_written_by_compress_reads_back(tmp_path):
     packed = pack(write_plugin(tmp_path / "plugin"))
     assert compress(read_bundle(packed.data).files) == packed.data
+
+
+def test_plugin_bundle_holds_the_entry_of_each_page_it_names(tmp_path):
+    page = {"name": "board", "entry": "pages/board.html"}
+    data = manifest(contributes={"pages": [page]})
+    held = pack(write_plugin(tmp_path / "held", data, {"pages/board.html": "<p>board</p>\n", "pages/app.js": "1;\n"}))
+    assert [entry.path for entry in read_bundle(held.data).files][-2:] == ["pages/app.js", "pages/board.html"]
+    with pytest.raises(BundleError, match="page board names pages/board.html, which the bundle does not hold"):
+        pack(write_plugin(tmp_path / "missing", data, {"pages/index.html": "<p>other</p>\n"}))
+    missing = compress([plugin_bundle.Entry(MANIFEST, False, json.dumps(data).encode())])
+    with pytest.raises(BundleError, match="which the bundle does not hold"):
+        read_bundle(missing)

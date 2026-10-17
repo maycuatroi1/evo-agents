@@ -14,6 +14,9 @@ of members' channel, named as the hub names those (``CHANNEL_KIND``). Only a cor
 each one's name starts with the plugin's table prefix (``table_prefix``): its id with ``_`` for ``-``, then ``_``. The
 tables come from the hub's own chain of migrations, never from the plugin at run time.
 
+A page (``pages``) of an isolated plugin names its HTML file in the bundle under ``pages/`` (``entry``), which the web
+shows in a sandboxed iframe; a core plugin's page is native, a page of the hub's web itself, and names no entry.
+
 The schema file is read where the package installs it, next to the harness schemas, without importing
 ``evo_agents.harness``. Standard library only, besides ``evo_agents.schema``.
 """
@@ -113,18 +116,22 @@ class Manifest:
         """The contribution named ``name`` to extension point ``point``, or None."""
         return next((item for item in self.contributions(point) if item["name"] == name), None)
 
+    def pages(self) -> tuple[dict, ...]:
+        """The pages the plugin contributes to the hub's web, in the manifest's order."""
+        return self.contributions("pages")
+
     def tables(self) -> tuple[str, ...]:
         """The tables a core plugin owns, which the hub's migrations create."""
         return tuple(item["name"] for item in self.contributions("tables"))
 
     def per_project(self) -> bool:
         """Whether a project enables the plugin for anything: it asks for a permission, takes a config, or contributes
-        an MCP tool, a job, an event or a route under /v1/x/<id>/<project>. A core plugin that does none of that
+        an MCP tool, a job, an event, a page or a route under /v1/x/<id>/<project>. A core plugin that does none of that
         (Telegram: a channel of members and routes of its own) runs wherever it is installed, and the hub's store
         does not list it."""
         if self.tier == "isolated" or self.permissions or self.config:
             return True
-        if any(self.contributions(point) for point in ("mcp_tools", "jobs", "events")):
+        if any(self.contributions(point) for point in ("mcp_tools", "jobs", "events", "pages")):
             return True
         return any("prefix" not in item for item in self.contributions("routes"))
 
@@ -172,6 +179,26 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return [f"{where}: table {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
     if core and point == "channels" and (not re.fullmatch(CHANNEL_KIND, item["name"]) or item["name"] == "web"):
         return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not web"]
+    if point == "pages":
+        return _page_problems(where, item, core)
+    return []
+
+
+def _page_problems(where: str, item: dict, core: bool) -> list[str]:
+    """What is wrong with page ``item``: a core plugin's page is native and names no entry; an isolated plugin's
+    names its HTML file, inside the bundle's pages/."""
+    entry = item.get("entry")
+    if core:
+        if entry is None:
+            return []
+        return [
+            f"{where}.entry: a core plugin's page is native, a page of the hub's web; only an isolated plugin's names "
+            "an entry"
+        ]
+    if entry is None:
+        return [f"{where}: an isolated plugin's page names its entry, an HTML file of its bundle under pages/"]
+    if any(part in ("", ".", "..") for part in entry.split("/")):
+        return [f"{where}.entry: {entry!r} must be a path inside the bundle's pages/, without empty, . or .. parts"]
     return []
 
 

@@ -1,6 +1,7 @@
 """notes, a core plugin of the tests (criterion a22 of hub-agent-plugins): a table of its own, notes_entries, which a
 revision appended to the hub's chain of migrations creates (``core_notes_migrations``); routes under
-/v1/x/notes/<project>/ that read and write it; an MCP tool that counts its rows; a subscription to the steps of plans.
+/v1/x/notes/<project>/ that read and write it; an MCP tool that counts its rows; a subscription to the steps of plans;
+a native page, entries, which the web's end-to-end build carries (web/src/components/plugin-notes).
 
 The tests install it as an entry point of group evo_agents.plugins (``installed``) and append its revision to the
 hub's migrations (``migrations``), so the hub they start migrates the table and records the plugin in its store.
@@ -52,6 +53,7 @@ MANIFEST = {
         ],
         "events": [{"name": "steps", "on": ["plan.step"], "python": f"{HERE}:on_step"}],
         "tables": [{"name": "notes_entries", "title": "The notes of each project"}],
+        "pages": [{"name": "entries", "title": "Notes", "icon": "notebook-pen"}],
     },
 }
 MISSING_TABLE = {

@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "publisher": "acme",
   "name": "Sample",
-  "description": "The sample isolated plugin of the evo-agents tests: one contribution to each point a backend serves.",
+  "description": "The sample isolated plugin of the evo-agents tests: one contribution to each point a backend serves, and a page.",
   "engines": {"evo-agents": ">=0.16"},
   "plugin_api": 1,
   "permissions": ["runs:read"],
@@ -20,6 +20,7 @@
     "mcp_tools": [{"name": "echo", "title": "Echo"}],
     "jobs": [{"name": "tick"}],
     "events": [{"name": "run-changed"}],
-    "channels": [{"name": "log"}]
+    "channels": [{"name": "log"}],
+    "pages": [{"name": "board", "title": "Sample board", "icon": "kanban", "entry": "pages/index.html"}]
   }
 }

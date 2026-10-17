@@ -9,7 +9,9 @@ design, the models and the queries).
 - POST /v1/plugins/{name}/install, /upgrade and /remove: install a version (the newest that runs by default), move
   the installed one to a newer version, remove it;
 - GET and POST /v1/plugins/{name}/config, GET .../config/versions and POST .../config/rollback: the hub's own layer
-  (instance) of the config of an installed plugin, below every project's (``evo_agents.hub.server.plugin_configs``).
+  (instance) of the config of an installed plugin, below every project's (``evo_agents.hub.server.plugin_configs``);
+- GET /v1/plugin-publishers: the publishers whose signatures the hub accepts (EVO_HUB_PLUGIN_PUBLISHERS), each with
+  the workflows and keys that sign for it, and whether its plugins may be core plugins (EVO_HUB_PLUGIN_CORE_PUBLISHERS).
 
 Writes are audited as plugin.publish, plugin.install, plugin.upgrade and plugin.remove, naming
 ``plugin:<name>@<version>``, and plugin.config. ``evo-agents hub plugin publish|list|show|install|upgrade|remove``
@@ -23,6 +25,7 @@ import logging
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, HTTPException, Path, Request
+from pydantic import BaseModel, Field
 
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
@@ -79,6 +82,30 @@ router = APIRouter(
     dependencies=[Depends(admin)],
     responses={401: {"model": ErrorBody}, 403: {"model": ErrorBody}},
 )
+publishers_router = APIRouter(
+    prefix="/v1/plugin-publishers",
+    tags=["plugins"],
+    dependencies=[Depends(admin)],
+    responses={401: {"model": ErrorBody}, 403: {"model": ErrorBody}},
+)
+
+
+class PluginPublisher(BaseModel):
+    id: str
+    identities: list[str] = Field(
+        description="what signs for it: sigstore:<workflow> for a CI workflow, ed25519:<key id> for a key"
+    )
+    core: bool = Field(description="whether its plugins may be core plugins, which run in the hub's processes")
+
+
+@publishers_router.get("", response_model=list[PluginPublisher])
+async def publishers(request: Request) -> list[PluginPublisher]:
+    """The publishers an operator of this hub trusts, in the order EVO_HUB_PLUGIN_PUBLISHERS names them."""
+    config = request.app.state.config
+    return [
+        PluginPublisher(id=item.id, identities=item.identities(), core=item.id in config.plugin_core_publishers)
+        for item in config.plugin_publishers
+    ]
 
 
 @router.get("", response_model=list[Plugin])
