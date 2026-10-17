@@ -1,14 +1,20 @@
 """A plugin backend that crashes or hangs on command, to test the host's timeout and backoff. Standard library only.
 
-The ``crash`` tool ends the process at once, ``hang`` never answers, ``ok`` answers. ``initialize``, ``ping`` and
+The ``crash`` tool ends the process at once, ``hang`` never answers, ``ok`` answers, ``orphan`` starts a process
+that leaves the backend's process group and session (setsid) and answers its pid, and ``limits`` answers the
+resource limits the backend runs with, ``token`` the hub token ``initialize`` gave it. ``initialize``, ``ping`` and
 ``shutdown`` behave. Each live start writes its pid to the file $EVO_FAULTY_PIDFILE when set, so a test can see the
 host started a fresh process after a crash.
 """
 
 import json
 import os
+import subprocess
 import sys
 import time
+
+TOOLS = ("crash", "hang", "ok", "orphan", "limits", "token")
+state = {"token": None}
 
 
 def _record_pid():
@@ -25,13 +31,37 @@ def tool(params):
     if name == "hang":
         while True:
             time.sleep(3600)
+    if name == "orphan":
+        child = subprocess.Popen(
+            [sys.executable, "-c", "import time; time.sleep(3600)"],
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
+        return {"content": [{"type": "text", "text": str(child.pid)}]}
+    if name == "limits":
+        import resource
+
+        names = ("CORE", "NOFILE", "AS", "NPROC")
+        limits = {n.lower(): resource.getrlimit(getattr(resource, "RLIMIT_" + n))[0] for n in names}
+        return {"content": [{"type": "text", "text": json.dumps(limits)}]}
+    if name == "token":
+        return {"content": [{"type": "text", "text": str(state["token"])}]}
     return {"content": [{"type": "text", "text": "ok"}]}
 
 
+def initialize(params):
+    state["token"] = params["hub"]["token"]
+    return {
+        "protocol": "plugin/1",
+        "plugin": params["plugin"],
+        "tools": [{"name": n, "input_schema": {"type": "object"}} for n in TOOLS],
+    }
+
+
 HANDLERS = {
-    "initialize": lambda params: {"protocol": "plugin/1", "plugin": params["plugin"],
-                                  "tools": [{"name": n, "input_schema": {"type": "object"}}
-                                            for n in ("crash", "hang", "ok")]},
+    "initialize": initialize,
     "ping": lambda params: {},
     "shutdown": lambda params: {},
     "tool": tool,
