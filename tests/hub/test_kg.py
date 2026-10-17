@@ -57,6 +57,7 @@ from evo_agents.kg.build import build_project
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
+from evo_agents.kg.sessions import READ_META
 from evo_agents.kg.sync import sync_project
 
 PROJECT = "alpha"
@@ -1151,20 +1152,27 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         }
         served_hub = mcp(["kg", "serve", "--backend", "hub", "--project", PROJECT], env, hello, tools, status, search)
         assert [t["name"] for t in served_hub[1]["result"]["tools"]] == [t["name"] for t in serve.TOOLS]
-        assert served_hub[2]["result"]["structuredContent"]["backend"] == "hub"
+
+        def shown(reply: dict) -> dict:
+            """The text block an agent's client gets: never a structuredContent, which Claude Code would show."""
+            assert "structuredContent" not in reply["result"], reply
+            (block,) = reply["result"]["content"]
+            return block
+
+        on_the_hub = f"project {PROJECT} on the hub: build"
+        assert on_the_hub in shown(served_hub[2])["text"]
         served_local = mcp(
             ["kg", "serve", "--backend", "local", "--project", harness], env, hello, tools, status, search
         )
-        assert "backend" not in served_local[2]["result"]["structuredContent"]
-        assert (
-            served_hub[3]["result"]["structuredContent"]["results"]
-            == served_local[3]["result"]["structuredContent"]["results"]
-        )
+        assert on_the_hub not in shown(served_local[2])["text"]
+        hub_found, local_found = shown(served_hub[3]), shown(served_local[3])
+        assert hub_found["text"].splitlines()[1:] == local_found["text"].splitlines()[1:]  # the first names the build
+        assert hub_found["_meta"] == local_found["_meta"] and hub_found["_meta"][READ_META]["results_read"]
         auto = mcp(["kg", "serve", "--project", harness], env, status)  # signed in, and the hub has a graph
-        assert auto[0]["result"]["structuredContent"]["backend"] == "hub"
+        assert on_the_hub in shown(auto[0])["text"]
         signed_out = pg.clean_env(HOME=str(tmp_path / "nobody"), EVO_KG_HOME=str(laptop.home))
         auto = mcp(["kg", "serve", "--project", harness], signed_out, status)
-        assert "backend" not in auto[0]["result"]["structuredContent"]
+        assert on_the_hub not in shown(auto[0])["text"]
 
         # --all pushes what the hub takes and says why it skipped the rest
         zeta = Machine(tmp_path, "zeta", project="zeta")
@@ -1181,7 +1189,7 @@ def test_the_cli_pushes_builds_and_reads_through_hub_serve(hub_db, tmp_path, s3)
         down = mcp(["kg", "serve", "--backend", "hub", "--project", PROJECT], env, search)
         assert down[0]["result"]["isError"] and served.url in down[0]["result"]["content"][0]["text"]
         auto = mcp(["kg", "serve", "--project", harness], env, status)  # the hub does not answer: local
-        assert "backend" not in auto[0]["result"]["structuredContent"]
+        assert on_the_hub not in shown(auto[0])["text"]
     for secret in (s3.secret_access_key, s3.access_key_id):
         assert secret not in served.log()
 
