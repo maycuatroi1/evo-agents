@@ -1127,12 +1127,18 @@ An isolated plugin carries a backend: a program the hub runs outside the api and
 protocol, in the **plugin host**, `evo-agents hub plugin-host`. The host is a service of its own, built from the same
 image (the `plugins` service of the compose file), that holds none of the hub's variables: not `EVO_HUB_DSN`, not
 `EVO_HUB_SECRETS_KEY`, not the blob store keys. It is given the hub's URL, the shared secret
-`EVO_HUB_PLUGIN_HOST_TOKEN` and a data directory, pulls the installed isolated plugins from the api, and runs each
-backend in a process of its own built from nothing, under a user of its own when it runs as root. The api reaches the
-host at `EVO_HUB_PLUGIN_HOST_URL` with the same shared secret; without both variables the api runs no backend. A
-backend that crashes or hangs makes the call fail within its timeout, and the host restarts it with a backoff; a hub
-admin reads each backend's state at `GET /v1/plugins/{name}/backend`. The protocol, the sandbox and how an author
-checks a plugin with `evo-agents plugin test` are in `docs/plugins.md`.
+`EVO_HUB_PLUGIN_HOST_TOKEN` and a data directory, pulls the installed isolated plugins from the api's routes under
+`/internal/plugin-host/` (outside `/v1`, so the reverse proxy never forwards them), and runs each backend in a process
+of its own built from nothing, under a user of its own: the service runs as root with only SETUID, SETGID, CHOWN and
+KILL, its volume at `/plugins`, and a host that is not root starts no backend. The api reaches the host at
+`EVO_HUB_PLUGIN_HOST_URL` with the same shared secret, which must be at least 32 random characters and never a value
+an example showed; without both variables the api runs no backend and the service idles. The hub mints a backend's
+token at each start and revokes a plugin's tokens when it is removed or turned off. A backend that crashes or hangs
+makes the call fail within its timeout, and the host restarts it with a backoff; a hub admin reads each backend's
+state at `GET /v1/plugins/{name}/backend`. The compose file caps the service with `EVO_HUB_PLUGINS_CPUS`,
+`EVO_HUB_PLUGINS_MEMORY` and `EVO_HUB_PLUGINS_PIDS`. The protocol, the sandbox, the requirements a backend may name
+(hashed wheels in its bundle) and how an author checks a plugin with `evo-agents plugin test` are in
+`docs/plugins.md`.
 
 ### Plugins in a project
 
@@ -1381,9 +1387,10 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_PLUGIN_PUBLISHERS` | api | the publishers whose signed plugin bundles the hub accepts: comma-separated `ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml` (a GitHub Actions workflow that signs keyless with Sigstore) or `ID=ed25519:KEY` (a public key, 32 bytes in base64) entries, several for one id; unset trusts nobody and every bundle is refused (section Plugins) |
 | `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
 | `EVO_HUB_PLUGIN_HOST_URL` | api, worker | where the api reaches the plugin host, such as `http://evo-agents-hub-plugins:8090`; with the token below, both or the api runs no isolated backend (section Isolated backends) |
-| `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 characters; the `plugins` service takes it too |
+| `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
+| `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `512` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |
