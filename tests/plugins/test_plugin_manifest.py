@@ -160,3 +160,39 @@ def test_plugin_manifest_schema_agrees_with_jsonschema(data, problems):
     jsonschema = pytest.importorskip("jsonschema")
     found = list(jsonschema.Draft202012Validator(schema()).iter_errors(data))
     assert bool(found) == bool(problems), [error.message for error in found]
+
+
+# The extension points: their versions, the tables of a core plugin, and the keys of each point
+
+
+def test_plugin_points_each_have_a_version_and_the_schema_names_the_kinds_of_events():
+    from evo_agents.plugins import compat
+    from evo_agents.plugins.protocol import EVENT_KINDS
+
+    assert EXTENSION_POINTS == tuple(compat.POINT_VERSIONS) and all(compat.POINT_VERSIONS.values())
+    defs = schema()["$defs"]
+    assert defs["event"]["properties"]["on"]["items"]["enum"] == list(EVENT_KINDS)
+    assert all("api" in defs[point]["properties"] for point in ("contribution", "route", "mcp_tool", "job", "event"))
+    later = manifest(contributes={"jobs": [{"name": "tick", "api": 2}]})
+    assert "version 2 of that extension point" in compat.problem(later["engines"], 1, contributes=later["contributes"])
+
+
+def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_only_in_core():
+    from evo_agents.plugins.manifest import table_prefix
+
+    core = manifest(id="srs-docs", tier="core", permissions=None, config=None, contributes={})
+    owned = read_manifest({**core, "contributes": {"tables": [{"name": "srs_docs_items"}]}})
+    assert table_prefix("srs-docs") == "srs_docs_" and owned.tables() == ("srs_docs_items",)
+    assert not owned.per_project()  # tables alone: nothing a project enables
+    cases = [
+        ({**core, "contributes": {"tables": [{"name": "docs"}]}}, "must start with srs_docs_"),
+        ({**core, "tier": "isolated", "contributes": {"tables": [{"name": "srs_docs_x"}]}}, "only a core plugin"),
+        (manifest(contributes={"routes": [{"name": "hello", "prefix": "/v1"}]}), "only a core plugin's route"),
+        ({**core, "contributes": {"channels": [{"name": "web", "python": "m:C"}]}}, "kind of members' channel"),
+    ]
+    for data, problem in cases:
+        with pytest.raises(ManifestError, match=problem):
+            read_manifest(data)
+    kept = read_manifest({**core, "contributes": {"routes": [{"name": "me", "python": "m:r", "prefix": ""}]}})
+    assert not kept.per_project()
+    assert read_manifest({**core, "contributes": {"routes": [{"name": "docs", "python": "m:r"}]}}).per_project()

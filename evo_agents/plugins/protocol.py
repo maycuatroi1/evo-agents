@@ -17,7 +17,10 @@ Methods, each with the schema of its params and of its result (``PARAMS``, ``RES
 - ``route``, ``tool``, ``job``, ``event``, ``channel``: one call to a contribution to the extension point of the same
   name in ``POINT_METHODS`` (an HTTP route under /v1/x/<plugin>/, an MCP tool, a periodic job, an event, a channel of
   notifications), naming the contribution and the project. Their params are open objects, so a later minor version
-  adds keys without a new major;
+  adds keys without a new major. A ``job`` names the projects that enable the plugin (``projects``); an ``event``
+  names its kind (one of EVENT_KINDS) and an ``event`` or ``channel`` the hub's id of the delivery (``delivery``),
+  which stays the same when the hub delivers it again: the hub delivers at least once, so a backend that must act
+  once keeps the ids it has seen;
 - ``shutdown``: an empty object back, then the backend exits; the host kills it when it does not.
 
 Errors are JSON-RPC's: -32700 for a line that is not JSON, -32600 for a message that is not a request, -32601 for a
@@ -41,6 +44,7 @@ MAX_LINE = 4 * 1024 * 1024  # bytes of one message, its newline included
 PARSE_ERROR, INVALID_REQUEST, METHOD_NOT_FOUND, INVALID_PARAMS, INTERNAL_ERROR = -32700, -32600, -32601, -32602, -32603
 POINT_METHODS = {"routes": "route", "mcp_tools": "tool", "jobs": "job", "events": "event", "channels": "channel"}
 BACKEND_POINTS = tuple(POINT_METHODS)  # the extension points an isolated plugin serves from its backend
+EVENT_KINDS = ("run.state", "chat.message", "plan.step")  # what an events contribution may take (``on``)
 NAME = {"type": "string", "pattern": r"^[a-z][a-z0-9_-]{0,62}$"}
 PROJECT = {"type": "string", "minLength": 1, "maxLength": 100}
 CALLER = {
@@ -109,16 +113,31 @@ PARAMS: dict[str, dict] = {
         "required": ["tool", "arguments", "caller"],
         "properties": {"tool": NAME, "arguments": _OBJECT, "caller": CALLER},
     },
-    "job": {"type": "object", "required": ["job"], "properties": {"job": NAME}},
+    "job": {
+        "type": "object",
+        "required": ["job"],
+        "properties": {"job": NAME, "projects": {"type": "array", "items": PROJECT}},
+    },
     "event": {
         "type": "object",
         "required": ["event", "project", "payload"],
-        "properties": {"event": NAME, "project": PROJECT, "payload": _OBJECT},
+        "properties": {
+            "event": NAME,
+            "project": PROJECT,
+            "payload": _OBJECT,
+            "kind": {"enum": list(EVENT_KINDS)},
+            "delivery": {"type": "integer", "minimum": 1},
+        },
     },
     "channel": {
         "type": "object",
         "required": ["channel", "project", "notification"],
-        "properties": {"channel": NAME, "project": PROJECT, "notification": _OBJECT},
+        "properties": {
+            "channel": NAME,
+            "project": PROJECT,
+            "notification": _OBJECT,
+            "delivery": {"type": "integer", "minimum": 1},
+        },
     },
 }
 RESULTS: dict[str, dict] = {
