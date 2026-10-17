@@ -979,7 +979,9 @@ Shared pieces built on them:
   to the first tab. Each part keeps its place in the tree in every mode, so the session, and a connected terminal,
   stays mounted when the width crosses 768 px. The head's controls wrap under its line when the width leaves them no
   room, and the menu is not modal (as the user menu), so the page stays in reach of assistive tech while it is open. Take over shows the Terminal tab and focuses it (on a phone, on the trace screen); `?view=` picks the tab at
-  every width. Anyone but the run's owner reads only. Notes say what the run waits for: the owner's open asks, how to
+  every width. Anyone but the run's owner reads only. A local run (a member's own Claude Code session the hub watches)
+  has no controls, notes or phases: its head says its machine, account, plan and step, and Details holds its own
+  details (`local-run-details.tsx`) instead of a worker run's. Notes say what the run waits for: the owner's open asks, how to
   reach a session the owner holds, whose run it is for anyone else, and, for anyone, a queued attempt whose run before
   it was lost on a worker that is not steady yet (`steady_wait`): which worker, from when it takes the attempt if its
   heartbeats keep coming, and whether another worker may take it meanwhile. That one is neutral with `HeartPulse`,
