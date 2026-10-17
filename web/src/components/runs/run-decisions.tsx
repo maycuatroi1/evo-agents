@@ -45,7 +45,8 @@ export function RunDecisions({
   const t = useTranslations("runs.detail.decision");
   const format = useFormatter();
   const ids = useId();
-  const active = run.kind === "plan" && isActiveState(run.state);
+  // A local session asks through the same decisions; it takes the answer at its next turn, so idle still has them open.
+  const active = (run.kind === "plan" && isActiveState(run.state)) || (run.kind === "local" && run.state !== "ended");
   const decisions = useQuery({
     ...openDecisionsQuery(browserApi, run.project, run.id),
     enabled: active,
@@ -64,7 +65,11 @@ export function RunDecisions({
   const since = run.state === "waiting" ? run.waiting_since : run.state === "parked" ? run.parked_at : null;
   const when = since ? format.dateTime(new Date(since), { dateStyle: "medium", timeStyle: "short" }) : "none";
   const why =
-    run.state === "parked" ? (owner ? "parkedYou" : "parked") : run.state === "waiting" ? (owner ? "waitingYou" : "waiting") : owner ? "openYou" : "open";
+    run.kind === "local"
+      ? owner
+        ? "localYou"
+        : "local"
+      : run.state === "parked" ? (owner ? "parkedYou" : "parked") : run.state === "waiting" ? (owner ? "waitingYou" : "waiting") : owner ? "openYou" : "open";
   const title =
     open.length === 0 && settledHere.length > 0 ? t("titleAnswered") : owner ? t("titleYou") : t("titleOther", { login: run.dispatched_by });
   const first = open[0] ?? null;

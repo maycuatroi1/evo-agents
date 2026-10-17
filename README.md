@@ -184,7 +184,7 @@ claude plugin install evo-hub@evo-agents
 ```
 
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
-hub's `/mcp`), a `using-agent-hub` skill, and three hooks. Its tools are the seven `kg_*` tools and `memory_search`,
+hub's `/mcp`), a `using-agent-hub` skill, and six hooks. Its tools are the seven `kg_*` tools and `memory_search`,
 `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `skill_list`, `hub_projects` and
 `run_tool_stats`. In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
@@ -193,7 +193,7 @@ plan to a new session or a subagent, give it `plan_handoff` (or `evo-agents hub 
 than your history: the plan's goal, each step done with its commits and `Decision:` lines, and the steps left, within a
 token budget.
 
-Hooks (`evo-agents hub hook session-start|stop|post-tool-use`, same pins and `|| true` as evo-kg):
+Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-tool|session-end`, same pins and `|| true` as evo-kg):
 
 - SessionStart pulls the hub's memories of the session directory into Claude Code's memory directory, writes the
   plan copies of its harness (no commit; a copy edited by hand is left as it is and named), counts the skills
@@ -210,7 +210,22 @@ Hooks (`evo-agents hub hook session-start|stop|post-tool-use`, same pins and `||
   to `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
   tail, its size and the file's path instead.
 
-All three exit 0 whatever happens and give up after a few seconds. SessionStart and Stop print at most one line without
+- UserPromptSubmit, a second PostToolUse hook (`local-tool`), Stop and SessionEnd put a local Claude Code session
+  of a hub project on the hub as a run of kind `local` (shown as local in the runs list): `running` while the agent
+  works, `idle` while it waits for you, `ended` at session end, with its last activity, the plan and step it marks
+  (`evo harness step`, `hub plan step` and `plan_step` name the run), and a live log. The log holds the agent's words,
+  and each tool's name, its input (300 characters) and its result (400 characters), with every string that looks like a
+  secret replaced on the machine first (the digest's redaction). The run also carries the session id, directory,
+  machine, the first line of your first prompt (120 characters), and the Claude account: for the Code tab of Claude
+  Desktop the email of the session record plus the claude-profiles profile name, for the CLI `oauthAccount.emailAddress`
+  of the Claude Code configuration, else `unknown`. `EVO_HUB_LOCAL_SYNC=0` turns all of this off (Stop still pushes the
+  digest and the memories). A session outside a hub project, and the agent of a worker run (`EVO_RUN_ID`), sends
+  nothing. When the hub does not answer, events wait in `~/.evo/hub/local/<session>.json` (500 at most, kept 7 days)
+  and a later hook sends them. [Unverified] The layout of Desktop's session record and of `profiles.json` follows
+  claude-profiles' README and was not checked on a Mac; `EVO_CLAUDE_DESKTOP_DIRS` (`name=path`, separated like PATH)
+  names the data folders when the defaults miss, and a record that cannot be read gives `unknown`.
+
+All of them exit 0 whatever happens and give up after a few seconds. SessionStart and Stop print at most one line without
 tokens or memory text and send nothing when the machine is not signed in; PostToolUse prints the shortened result or
 nothing.
 

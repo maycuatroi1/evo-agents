@@ -43,6 +43,11 @@ Stop prints nothing when all went well. A conflict, which a person has to merge,
 any other failure is one line on stderr, the first one met, which Claude Code shows in its transcript view, so a hub
 that is down does not interrupt every turn. Standard library and PyYAML only, like the rest of the client.
 
+A session of a hub project is also a run of kind local on the hub (``evo_agents.hub.local_sync``): UserPromptSubmit
+registers it and reports running, a second PostToolUse hook adds the agent's words and the tool that ran to its log,
+Stop (here) sends the last words and reports idle before it pushes memories, SessionEnd reports ended.
+EVO_HUB_LOCAL_SYNC=0 turns that off and leaves everything above as it was; a worker run never registers one.
+
 PostToolUse (``evo_agents.hub.spool``) writes a tool result longer than its threshold to a file under
 ~/.evo/tool-output and hands the model its head, its tail and the file's path instead, by the same rules.
 """
@@ -404,6 +409,7 @@ def stop(payload: dict, outcome: Outcome) -> None:
     nothing in a worker run, whose SessionStart line says so."""
     if worker_run() is not None:
         return
+    _local_stop(payload)
     try:
         credentials = load_credentials()
     except NotSignedIn:
@@ -416,6 +422,13 @@ def stop(payload: dict, outcome: Outcome) -> None:
     state = HookState(hub_dir())
     _push_memories(hub, credentials.login, where, state, outcome)
     _push_digests(hub, credentials.login, payload, where, state, outcome)
+
+
+def _local_stop(payload: dict) -> None:
+    """The session's share of Stop on the hub, as a local run: its last words, and idle (``local_sync``)."""
+    from evo_agents.hub import local_sync
+
+    local_sync.on_stop(payload)
 
 
 def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome: Outcome) -> None:
@@ -582,6 +595,30 @@ def cmd_hook_post_tool_use(args) -> int:
     return run(args)
 
 
+def cmd_hook_user_prompt(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_user_prompt(args)
+
+
+def cmd_hook_local_tool(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_local_tool(args)
+
+
+def cmd_hook_local_ask(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_local_ask(args)
+
+
+def cmd_hook_session_end(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_session_end(args)
+
+
 def register_hooks(hsub) -> None:
     hook = hsub.add_parser("hook", help="Claude Code hook entry points of the evo-hub plugin; they always exit 0")
     ksub = hook.add_subparsers(dest="hook_name", required=True)
@@ -600,3 +637,18 @@ def register_hooks(hsub) -> None:
         help="write a tool result longer than EVO_SPOOL_THRESHOLD characters to a file under ~/.evo/tool-output and "
         "give the model its head, its tail and the file's path instead",
     ).set_defaults(func=cmd_hook_post_tool_use)
+    ksub.add_parser(
+        "user-prompt",
+        help="register the session as a local run of its hub project at its first turn and report it running "
+        "(EVO_HUB_LOCAL_SYNC=0 turns it off)",
+    ).set_defaults(func=cmd_hook_user_prompt)
+    ksub.add_parser(
+        "local-tool",
+        help="put the agent's words and the tool that ran, redacted, in the log of the session's local run",
+    ).set_defaults(func=cmd_hook_local_tool)
+    ksub.add_parser("session-end", help="report the session's local run ended").set_defaults(func=cmd_hook_session_end)
+    ksub.add_parser(
+        "local-ask",
+        help="put the questions of an AskUserQuestion dialog about to open to the hub as decisions of the session's "
+        "local run, so the member can answer them there too; it does not wait",
+    ).set_defaults(func=cmd_hook_local_ask)

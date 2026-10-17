@@ -24,6 +24,7 @@ import { whoamiQuery } from "@/lib/queries";
 
 import { AgentTrace, type TraceContext } from "./agent-trace";
 import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge } from "./badges";
+import { LocalRunKindBadge, localAccount } from "@/components/local-run";
 import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
 import type { RunMove } from "./log-model";
@@ -34,6 +35,7 @@ import { RunComposer } from "./run-composer";
 import { RunAccounts } from "./run-accounts";
 import { RunCredentials } from "./run-credentials";
 import { RunDecisions } from "./run-decisions";
+import { LocalRunDetails } from "./local-run-details";
 import { RunDetails, RunResult } from "./run-facts";
 import { RunLogCard, SESSION_TABS, type SessionTab } from "./run-log";
 import { runControls } from "./run-model";
@@ -153,6 +155,7 @@ function RunPage({ run }: { run: Run }) {
   }, [authoring, events, queryClient, run.project, run.id]);
 
   const plan = run.kind === "plan";
+  const local = run.kind === "local";
   const active = isActiveState(run.state);
   // The same query as the decisions' column (one request): "Asked you" links to the card of a decision still open.
   const decisions = useQuery({ ...openDecisionsQuery(browserApi, run.project, run.id), enabled: (plan || authoring) && active, refetchInterval: LIVE_REFRESH_MS });
@@ -227,9 +230,11 @@ function RunPage({ run }: { run: Run }) {
           </>
         }
         status={<StatusBadge kind="run" status={run.state} size="lg" />}
-        tags={plan ? <PlanRunKindBadge /> : review ? <ReviewRunKindBadge /> : authoring ? <AuthorRunKindBadge /> : run.kind === "chat" ? <ChatRunKindBadge /> : null}
+        tags={local ? <LocalRunKindBadge /> : plan ? <PlanRunKindBadge /> : review ? <ReviewRunKindBadge /> : authoring ? <AuthorRunKindBadge /> : run.kind === "chat" ? <ChatRunKindBadge /> : null}
         sub={
-          run.kind === "chat"
+          local
+            ? t.rich("local.sub", { machine: run.machine ?? "", account: localAccount(run), plan: run.plan_id || "none", step: run.step_key || "none", planLink })
+            : run.kind === "chat"
             ? t.rich("chatSub", {
                 agent: run.profile ?? run.project,
                 hop: run.hop ?? 1,
@@ -280,10 +285,10 @@ function RunPage({ run }: { run: Run }) {
                 ),
               })
         }
-        actions={<RunActions run={run} controls={controls} />}
+        actions={local ? undefined : <RunActions run={run} controls={controls} />}
       />
-      <RunNotes run={run} controls={controls} />
-      <RunTimeline run={run} moves={log.moves} />
+      {local ? null : <RunNotes run={run} controls={controls} />}
+      {local ? null : <RunTimeline run={run} moves={log.moves} />}
       {/* The kit's run screen. From xl, two regions that scroll on their own, side by side and as tall as each other:
           the session (an author run's Chat, Trace, Raw log, Terminal) on the left, filling the window down to its bottom gutter, and the side
           column (the decision a plan run waits on, Details, Usage, the plan's steps, the Result, Credentials) on the
@@ -302,15 +307,33 @@ function RunPage({ run }: { run: Run }) {
           className="relative flex min-w-0 flex-col gap-4 xl:col-start-2 xl:row-start-1 xl:-m-1 xl:overflow-y-auto xl:overscroll-contain xl:p-1 xl:focus-visible:outline-offset-[-2px]"
           data-testid="run-aside"
         >
-          {plan ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} /> : null}
+          {plan || local ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} /> : null}
           <div className="grid min-w-0 items-start gap-4 md:grid-cols-2 xl:grid-cols-1" data-testid="run-side">
-            <RunDetails run={run} viewer={viewer} />
-            <UsageMeter run={run} events={log.events} />
+            {local ? (
+              <LocalRunDetails
+                run={run}
+                plan={
+                  run.plan_id ? (
+                    <Link href={planHref(run.project, run.plan_id)} className="font-mono text-xs text-brand underline-offset-4 hover:underline">
+                      {run.plan_id}
+                    </Link>
+                  ) : null
+                }
+                step={
+                  run.plan_id && run.step_key ? (
+                    <Link href={stepHref(run.project, run.plan_id, run.step_key)} className="font-mono text-xs text-brand underline-offset-4 hover:underline">
+                      {run.step_key}
+                    </Link>
+                  ) : null
+                }
+              />
+            ) : <RunDetails run={run} viewer={viewer} />}
+            {local ? null : <UsageMeter run={run} events={log.events} />}
             {plan && run.session_per_step ? <RunSessions run={run} /> : null}
             {plan ? <RunPlanSteps run={run} /> : null}
-            <RunResult run={run} />
-            {controls.owner ? <RunAccounts run={run} /> : null}
-            {controls.owner ? <RunCredentials run={run} /> : null}
+            {local ? null : <RunResult run={run} />}
+            {controls.owner && !local ? <RunAccounts run={run} /> : null}
+            {controls.owner && !local ? <RunCredentials run={run} /> : null}
           </div>
         </section>
         <div id={logId} className="flex min-w-0 scroll-mt-16 flex-col xl:col-start-1 xl:row-start-1 xl:min-h-0 xl:scroll-mt-19">
