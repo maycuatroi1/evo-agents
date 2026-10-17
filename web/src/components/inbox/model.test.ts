@@ -134,6 +134,9 @@ describe("answers", () => {
     expect(answerAccess(open, "octo")).toBe("answer");
     expect(answerAccess({ ...open, run_state: "parked" }, "octo")).toBe("answer");
     expect(answerAccess({ ...open, run_state: "queued" }, "octo")).toBe("answer");
+    // A local session whose turn ended takes the answer at its next turn; one that ended takes none.
+    expect(answerAccess({ ...open, run_state: "idle" }, "octo")).toBe("answer");
+    expect(answerAccess({ ...open, run_state: "ended" }, "octo")).toBe("runGone");
     expect(answerAccess(open, "mona")).toBe("notOwner");
     expect(answerAccess(open, null)).toBe("notOwner");
     expect(answerAccess({ ...open, run_state: "review" }, "octo")).toBe("runGone");

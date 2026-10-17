@@ -36,6 +36,7 @@ import {
   uploadDiff,
   workerInbox,
 } from "./support/runs";
+import { localAsk, localEvents, localState, registerLocal } from "./support/local";
 import { putSecretByApi, recordResponses, runCredentialsOf, secretValue } from "./support/secrets";
 import { toast } from "./support/toast";
 
@@ -904,4 +905,40 @@ test.describe("in Vietnamese", () => {
     await expect(main(page).getByRole("tab", { name: "Log thô" })).toBeVisible();
     await expect(main(page).getByTestId("run-composer")).toContainText("Nhắn cho agent");
   });
+});
+
+test("a local session's run page shows its machine, account, plan, step, log and question, and none of a worker run's controls", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  await seedRunPlan(me, project);
+  const { run } = await registerLocal(me, project, "7c1d2e3f-0000-4000-8000-000000000a01", { profile: "work", machine: "laptop-binh" });
+  await localState(me, project, run.id, { state: "running", plan_id: RUN_PLAN, step_key: "2" });
+  await localEvents(me, project, run.id, [say("Reading the queue module.")]);
+  const decision = await localAsk(me, project, run.id, "Fix the failing queue test or skip it?");
+
+  await open(page, runPath(project, run.id));
+  const view = main(page);
+  await expect(view.getByTestId("run-detail")).toHaveAttribute("data-kind", "local");
+  await expect(view.getByTestId("run-kind")).toHaveText("Local session");
+  await expect(view.getByTestId("run-state").first()).toHaveText("Waiting for decision");
+  await expect(view.getByTestId("run-machine")).toHaveText("laptop-binh");
+  await expect(view.getByTestId("run-account")).toHaveText(`${me.login}@example.com`);
+  await expect(view.getByTestId("run-claude-profile")).toHaveText("work");
+  await expect(view.getByTestId("run-local-plan")).toHaveText(RUN_PLAN);
+  await expect(view.getByTestId("run-local-step")).toHaveText("2");
+  await expect(view.getByTestId("run-last-activity")).not.toHaveText("None");
+  await expect(traceOf(page).getByTestId("trace-message")).toHaveText("Reading the queue module.");
+
+  // What the session asked is the kit's decision card, with the answer form for its owner.
+  const card = view.locator(`#run-decision-${decision}`);
+  await expect(card.getByRole("heading", { level: 3, name: "Fix the failing queue test or skip it?" })).toBeVisible();
+  await card.getByRole("radio", { name: /Fix the test/ }).check();
+  await card.getByTestId("decision-send").click();
+  await expect(card.getByTestId("decision-answer-option")).toContainText("Fix the test");
+
+  // No worker, no lease and no control of the hub over the session.
+  for (const id of ["run-cancel", "run-takeover", "run-handback", "run-approve", "run-rerun", "run-composer", "run-tab-terminal", "run-worker"]) {
+    await expect(view.getByTestId(id)).toHaveCount(0);
+  }
+  await expect(view.getByTestId("run-local-note")).toContainText("The hub only shows it");
 });
