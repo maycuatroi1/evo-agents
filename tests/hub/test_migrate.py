@@ -82,6 +82,7 @@ TABLES |= pg.CHAT_TABLES  # migration 0031
 TABLES |= pg.PLUGIN_TABLES  # migration 0033
 TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0034
 TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0035
+TABLES |= pg.SETTINGS_TABLES  # migration 0036
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -156,8 +157,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_seven_tables(hub_db):
-    assert len(TABLES) == 67  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_sixty_eight_tables(hub_db):
+    assert len(TABLES) == 68  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -694,6 +695,37 @@ def test_0035_keeps_plugin_tokens_and_backends_and_going_back_drops_them(hub_db)
     move_to(hub_db, "0034", down=True)
     assert not {"plugin_tokens", "plugin_backends"} & tables(hub_db)
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0035") :]
+
+
+def test_0036_keeps_the_versions_of_branding_and_feature_toggles_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0035")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0036")
+    row = {"kind": "features", "project_id": ids["project"], "version": 1, "values": {"kg": False}}
+    row["changed_by"] = ids["user"]
+    image = {"project_id": None, "size": 10, "created_by": ids["user"]}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.hub_settings).values(row))
+        conn.execute(insert(t.hub_settings).values({**row, "kind": "branding", "project_id": None, "values": {}}))
+        conn.execute(insert(t.blobs).values({**image, "sha256": "c" * 64, "kind": "branding-image"}))
+        for bad in (
+            insert(t.hub_settings).values(row),  # one row per version of a layer
+            insert(t.hub_settings).values({**row, "kind": "theme", "version": 2}),
+            insert(t.hub_settings).values({**row, "kind": "branding"}),  # the hub's alone, never a project's
+            insert(t.hub_settings).values({**row, "version": 0}),
+            insert(t.hub_settings).values({**row, "version": 2, "rolled_back_to": 2}),
+            insert(t.hub_settings).values({**row, "version": 2, "values": [1]}),
+            insert(t.blobs).values({**image, "sha256": "d" * 64, "kind": "agent-avatar"}),  # a project's kind
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation)):
+                conn.execute(bad)
+
+    move_to(hub_db, "0035", down=True)
+    assert "hub_settings" not in tables(hub_db)
+    assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.kind == "branding-image")) == []
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0036") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

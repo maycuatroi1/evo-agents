@@ -26889,6 +26889,1065 @@
             }
           }
         }
+      },
+      "/v1/branding": {
+        "get": {
+          "tags": [
+            "branding"
+          ],
+          "summary": "Show Branding",
+          "description": "The hub's branding, for the web to apply; it needs no credential.",
+          "operationId": "show_branding_v1_branding_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Branding"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/branding/{asset}": {
+        "get": {
+          "tags": [
+            "branding"
+          ],
+          "summary": "Branding Image",
+          "description": "The logo or the favicon of the branding; 404 when it is not set. It needs no credential.",
+          "operationId": "branding_image_v1_branding__asset__get",
+          "parameters": [
+            {
+              "name": "asset",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "enum": [
+                  "logo",
+                  "favicon"
+                ],
+                "type": "string",
+                "title": "Asset"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/branding": {
+        "get": {
+          "tags": [
+            "branding"
+          ],
+          "summary": "Branding Layer",
+          "description": "The current version of the branding, as a layer of fields.",
+          "operationId": "branding_layer_v1_admin_branding_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "branding"
+          ],
+          "summary": "Write Branding",
+          "description": "Write the next version of the branding: the name and the colours ``values`` sets, the fields ``unset``\nclears (logo and favicon included); refused when a colour leaves a pair under its contrast.",
+          "operationId": "write_branding_v1_admin_branding_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsWrite"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/branding/versions": {
+        "get": {
+          "tags": [
+            "branding"
+          ],
+          "summary": "Branding Versions",
+          "description": "Every version of the branding, the newest first.",
+          "operationId": "branding_versions_v1_admin_branding_versions_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SettingsLayer"
+                    },
+                    "type": "array",
+                    "title": "Response Branding Versions V1 Admin Branding Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/branding/rollback": {
+        "post": {
+          "tags": [
+            "branding"
+          ],
+          "summary": "Rollback Branding",
+          "description": "Copy an older version of the branding as its next version.",
+          "operationId": "rollback_branding_v1_admin_branding_rollback_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRollback"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/branding/{asset}": {
+        "put": {
+          "tags": [
+            "branding"
+          ],
+          "summary": "Put Branding Image",
+          "description": "Set the logo or the favicon of the branding, as its next version.",
+          "operationId": "put_branding_image_v1_admin_branding__asset__put",
+          "parameters": [
+            {
+              "name": "asset",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "enum": [
+                  "logo",
+                  "favicon"
+                ],
+                "type": "string",
+                "title": "Asset"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BrandingImage"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/features": {
+        "get": {
+          "tags": [
+            "features"
+          ],
+          "summary": "List Features",
+          "description": "The features of the hub, whether each is on for the hub, and what each project's layer sets.",
+          "operationId": "list_features_v1_features_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Features"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/features": {
+        "get": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Hub Features",
+          "description": "The current version of the hub's own layer of features.",
+          "operationId": "hub_features_v1_admin_features_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Write Hub Features",
+          "description": "Write the next version of the hub's own layer: the features ``values`` turns on or off, those ``unset``\nclears.",
+          "operationId": "write_hub_features_v1_admin_features_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsWrite"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/features/versions": {
+        "get": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Hub Feature Versions",
+          "description": "Every version of the hub's own layer of features, the newest first.",
+          "operationId": "hub_feature_versions_v1_admin_features_versions_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/SettingsLayer"
+                    },
+                    "type": "array",
+                    "title": "Response Hub Feature Versions V1 Admin Features Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/features/rollback": {
+        "post": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Rollback Hub Features",
+          "description": "Copy an older version of the hub's own layer of features as its next version.",
+          "operationId": "rollback_hub_features_v1_admin_features_rollback_post",
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRollback"
+                }
+              }
+            },
+            "required": true
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "404": {
+              "description": "Not Found",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "409": {
+              "description": "Conflict",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "422": {
+              "description": "Unprocessable Entity",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/projects/{project}/features": {
+        "get": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Project Features",
+          "description": "The current version of the project's layer of features.",
+          "operationId": "project_features_v1_admin_projects__project__features_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Write Project Features",
+          "description": "Write the next version of the project's layer: the features ``values`` turns on or off for the project, those\n``unset`` clears, which then follow the hub's own layer.",
+          "operationId": "write_project_features_v1_admin_projects__project__features_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/admin/projects/{project}/features/versions": {
+        "get": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Project Feature Versions",
+          "description": "Every version of the project's layer of features, the newest first.",
+          "operationId": "project_feature_versions_v1_admin_projects__project__features_versions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SettingsLayer"
+                    },
+                    "title": "Response Project Feature Versions V1 Admin Projects  Project  Features Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/admin/projects/{project}/features/rollback": {
+        "post": {
+          "tags": [
+            "features"
+          ],
+          "summary": "Rollback Project Features",
+          "description": "Copy an older version of the project's layer of features as its next version.",
+          "operationId": "rollback_project_features_v1_admin_projects__project__features_rollback_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SettingsRollback"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SettingsLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -28631,6 +29690,116 @@
             "sha256"
           ],
           "title": "BlobCheck"
+        },
+        "Branding": {
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "the product's name"
+            },
+            "logo_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Logo Url",
+              "description": "GET of the logo on this hub, in place of the web's mark"
+            },
+            "favicon_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Favicon Url",
+              "description": "GET of the favicon on this hub"
+            },
+            "colors": {
+              "$ref": "#/components/schemas/BrandingColors"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "the version of the branding; 0 while it was never set"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "logo_url",
+            "favicon_url",
+            "colors",
+            "version"
+          ],
+          "title": "Branding",
+          "description": "The branding as the web applies it; what is unset is null or empty, and the web keeps its own there."
+        },
+        "BrandingColors": {
+          "properties": {
+            "light": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Light",
+              "description": "token -> #rrggbb, for the light theme"
+            },
+            "dark": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Dark",
+              "description": "token -> #rrggbb, for the dark theme"
+            }
+          },
+          "type": "object",
+          "title": "BrandingColors"
+        },
+        "BrandingImage": {
+          "properties": {
+            "data": {
+              "type": "string",
+              "maxLength": 349528,
+              "minLength": 1,
+              "title": "Data",
+              "description": "the image, base64: PNG, JPEG or WebP (or ICO for the favicon), at most 262144 bytes"
+            },
+            "if_version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Version",
+              "description": "409 unless the branding is at this version now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "data"
+          ],
+          "title": "BrandingImage"
         },
         "BriefSummary": {
           "properties": {
@@ -32595,6 +33764,63 @@
             "projects"
           ],
           "title": "FailedBuildCounts"
+        },
+        "FeatureState": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "layers": {
+              "items": {
+                "type": "string",
+                "enum": [
+                  "instance",
+                  "project"
+                ]
+              },
+              "type": "array",
+              "title": "Layers",
+              "description": "where it may be set: instance, the hub's own layer; project, a project's"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "whether it is on for the hub: as the hub's own layer sets it, else on"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "layers",
+            "enabled"
+          ],
+          "title": "FeatureState"
+        },
+        "Features": {
+          "properties": {
+            "features": {
+              "items": {
+                "$ref": "#/components/schemas/FeatureState"
+              },
+              "type": "array",
+              "title": "Features"
+            },
+            "projects": {
+              "items": {
+                "$ref": "#/components/schemas/ProjectFeatures"
+              },
+              "type": "array",
+              "title": "Projects",
+              "description": "the projects whose layer sets something, among those the caller may see"
+            }
+          },
+          "type": "object",
+          "required": [
+            "features",
+            "projects"
+          ],
+          "title": "Features"
         },
         "Finding": {
           "properties": {
@@ -37921,6 +39147,28 @@
             "latest_status"
           ],
           "title": "ProjectFailedBuilds"
+        },
+        "ProjectFeatures": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "values": {
+              "additionalProperties": {
+                "type": "boolean"
+              },
+              "type": "object",
+              "title": "Values",
+              "description": "the features its layer sets; any other is as the hub has it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "values"
+          ],
+          "title": "ProjectFeatures"
         },
         "ProjectGrantCounts": {
           "properties": {
@@ -43271,6 +44519,154 @@
           ],
           "title": "SessionDigest",
           "description": "The digest of one session, as ``evo_agents.hub.digest.build`` makes it."
+        },
+        "SettingsLayer": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "branding",
+                "features"
+              ],
+              "title": "Kind"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project",
+              "description": "the project of a project's layer; null for the hub's own"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "0 while it was never written"
+            },
+            "values": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Values",
+              "description": "the fields it sets"
+            },
+            "rolled_back_to": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rolled Back To",
+              "description": "the older version this one copies, for a rollback"
+            },
+            "changed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed By"
+            },
+            "changed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "project",
+            "version",
+            "values",
+            "rolled_back_to",
+            "changed_by",
+            "changed_at"
+          ],
+          "title": "SettingsLayer",
+          "description": "One layer of a setting at one version."
+        },
+        "SettingsRollback": {
+          "properties": {
+            "version": {
+              "type": "integer",
+              "minimum": 1.0,
+              "title": "Version",
+              "description": "the older version of the layer to copy as its next one"
+            },
+            "if_version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Version",
+              "description": "409 unless the layer is at this version now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "version"
+          ],
+          "title": "SettingsRollback"
+        },
+        "SettingsWrite": {
+          "properties": {
+            "values": {
+              "additionalProperties": true,
+              "type": "object",
+              "maxProperties": 50,
+              "title": "Values",
+              "description": "field -> value"
+            },
+            "unset": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Unset",
+              "description": "fields the layer sets now"
+            },
+            "if_version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Version",
+              "description": "409 unless the layer is at this version now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "SettingsWrite",
+          "description": "The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."
         },
         "Sign": {
           "properties": {

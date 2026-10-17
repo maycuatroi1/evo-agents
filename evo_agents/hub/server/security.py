@@ -85,6 +85,9 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/web/callback",
         "/v1/worker/join",  # a pairing code is the credential
         "/v1/telegram/webhook",  # the secret token Telegram sends is the credential (evo_agents.hub.server.telegram)
+        "/v1/branding",  # the sign-in page shows the hub's branding (evo_agents.hub.server.branding)
+        "/v1/branding/logo",
+        "/v1/branding/favicon",
     }
 )
 # Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.

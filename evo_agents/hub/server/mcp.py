@@ -34,7 +34,8 @@ review run reads (the night's figures, session digests, the events of a run, dec
 and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write
 rule, revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text
 goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. A refusal of the hub
-becomes a tool error carrying its message, an unexpected failure one carrying the request id only. The log has one
+becomes a tool error carrying its message, an unexpected failure one carrying the request id only; so does a tool of
+a feature a hub admin turned off for the project (``hub_settings.require_tool``: kg_*, curator_figures). The log has one
 line per tool call with its name, project, outcome and duration, never its arguments or its result.
 """
 
@@ -86,6 +87,7 @@ from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server import (
     decisions,
     digests,
+    hub_settings,
     kg,
     memories,
     plans,
@@ -456,6 +458,9 @@ class HubMcp(MCPServer):
         if scope is not None and scope.kind == "judge" and name not in JUDGE_TOOLS:
             return _error(JUDGE_ONLY.format(tool=name))
         try:
+            await hub_settings.require_tool(
+                self.hub.state.engine, caller.user, name, arguments.get("project") or caller.project
+            )
             if name in KG_TOOL_NAMES:
                 return await self._kg(caller, name, arguments)
             tool = self._hub_tools.get(name)
