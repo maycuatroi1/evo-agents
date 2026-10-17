@@ -3614,6 +3614,262 @@
         "schema": "evo_agents__hub__server__plans__Written"
       }
     },
+    "hub plugin config": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--instance"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--effective"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--versions"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--set"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--unset"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--secret"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "layer",
+          "project",
+          "agent",
+          "version",
+          "values",
+          "secrets",
+          "rolled_back_to",
+          "changed_by",
+          "changed_at"
+        ],
+        "schema": "PluginConfigLayer",
+        "with": {
+          "--effective": {
+            "kind": "array",
+            "keys": [
+              "plugin",
+              "version",
+              "project",
+              "agent",
+              "fields",
+              "problems",
+              "digest"
+            ],
+            "schema": "EffectiveConfig"
+          },
+          "--versions": {
+            "kind": "array",
+            "keys": [
+              "plugin",
+              "layer",
+              "project",
+              "agent",
+              "version",
+              "values",
+              "secrets",
+              "rolled_back_to",
+              "changed_by",
+              "changed_at"
+            ],
+            "schema": "PluginConfigLayer"
+          },
+          "--run": {
+            "kind": "array",
+            "keys": [
+              "name",
+              "version",
+              "config_digest",
+              "recorded_at"
+            ],
+            "schema": "RunPlugin"
+          }
+        }
+      }
+    },
+    "hub plugin disable": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "publisher",
+          "version",
+          "state",
+          "disabled_reason",
+          "enabled",
+          "permissions",
+          "granted",
+          "pending",
+          "config_schema",
+          "enabled_by",
+          "enabled_at",
+          "granted_by",
+          "granted_at"
+        ],
+        "schema": "ProjectPlugin"
+      }
+    },
+    "hub plugin enable": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--yes"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "publisher",
+          "version",
+          "state",
+          "disabled_reason",
+          "enabled",
+          "permissions",
+          "granted",
+          "pending",
+          "config_schema",
+          "enabled_by",
+          "enabled_at",
+          "granted_by",
+          "granted_at"
+        ],
+        "schema": "ProjectPlugin"
+      }
+    },
     "hub plugin install": {
       "positionals": [
         {
@@ -3665,6 +3921,14 @@
       "options": [
         {
           "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
             "--json"
           ],
           "value": null,
@@ -3687,7 +3951,29 @@
           "upgrade_to",
           "created_at"
         ],
-        "schema": "Plugin"
+        "schema": "Plugin",
+        "with": {
+          "--project": {
+            "kind": "array",
+            "keys": [
+              "name",
+              "publisher",
+              "version",
+              "state",
+              "disabled_reason",
+              "enabled",
+              "permissions",
+              "granted",
+              "pending",
+              "config_schema",
+              "enabled_by",
+              "enabled_at",
+              "granted_by",
+              "granted_at"
+            ],
+            "schema": "ProjectPlugin"
+          }
+        }
       }
     },
     "hub plugin publish": {
@@ -3764,6 +4050,75 @@
           "created_at"
         ],
         "schema": "Plugin"
+      }
+    },
+    "hub plugin rollback": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--instance"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--agent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--to"
+          ],
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "plugin",
+          "layer",
+          "project",
+          "agent",
+          "version",
+          "values",
+          "secrets",
+          "rolled_back_to",
+          "changed_by",
+          "changed_at"
+        ],
+        "schema": "PluginConfigLayer"
       }
     },
     "hub plugin show": {
@@ -24779,6 +25134,1480 @@
             }
           }
         }
+      },
+      "/v1/plugins/{name}/config": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Instance Config",
+          "description": "The current version of the hub's own layer of the plugin's config.",
+          "operationId": "instance_config_v1_plugins__name__config_get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginConfigLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Write Instance Config",
+          "description": "Write the next version of the hub's own layer: the fields ``values`` sets, those ``unset`` clears.",
+          "operationId": "write_instance_config_v1_plugins__name__config_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfigWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginConfigLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/plugins/{name}/config/versions": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Instance Config Versions",
+          "description": "Every version of the hub's own layer, the newest first.",
+          "operationId": "instance_config_versions_v1_plugins__name__config_versions_get",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PluginConfigLayer"
+                    },
+                    "title": "Response Instance Config Versions V1 Plugins  Name  Config Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/plugins/{name}/config/rollback": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Rollback Instance Config",
+          "description": "Copy an older version of the hub's own layer as its next version.",
+          "operationId": "rollback_instance_config_v1_plugins__name__config_rollback_post",
+          "parameters": [
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfigRollback"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginConfigLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Plugins Of Project",
+          "description": "Every plugin installed on the hub, by name, with what it asks for and whether the project enabled it.",
+          "operationId": "plugins_of_project_v1_projects__project__plugins_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ProjectPlugin"
+                    },
+                    "title": "Response Plugins Of Project V1 Projects  Project  Plugins Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins/{name}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Plugin Of Project",
+          "description": "One installed plugin: what it asks for, each permission with what it lets it do, before an admin grants it.",
+          "operationId": "plugin_of_project_v1_projects__project__plugins__name__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectPlugin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins/{name}/enable": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Enable Plugin",
+          "description": "Enable the plugin for the project, granting exactly what its installed version asks for; or grant that again\nafter an upgrade asked for more.",
+          "operationId": "enable_plugin_v1_projects__project__plugins__name__enable_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginEnable"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectPlugin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins/{name}/disable": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Disable Plugin",
+          "description": "Disable the plugin for the project: its grants go, the versions of its config stay.",
+          "operationId": "disable_plugin_v1_projects__project__plugins__name__disable_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ProjectPlugin"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins/{name}/config": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Config Layer",
+          "description": "The current version of the project's layer of the plugin's config, or of agent profile ``agent``'s.",
+          "operationId": "config_layer_v1_projects__project__plugins__name__config_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an agent profile's handle, @ left out: its layer, not the project's",
+                "title": "Agent"
+              },
+              "description": "an agent profile's handle, @ left out: its layer, not the project's"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginConfigLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Write Config",
+          "description": "Write the layer's next version: the fields ``values`` sets, those ``unset`` clears, every other as it is.",
+          "operationId": "write_config_v1_projects__project__plugins__name__config_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an agent profile's handle, @ left out: its layer, not the project's",
+                "title": "Agent"
+              },
+              "description": "an agent profile's handle, @ left out: its layer, not the project's"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfigWrite"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginConfigLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins/{name}/config/versions": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Config Versions",
+          "description": "Every version of the layer, the newest first.",
+          "operationId": "config_versions_v1_projects__project__plugins__name__config_versions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an agent profile's handle, @ left out: its layer, not the project's",
+                "title": "Agent"
+              },
+              "description": "an agent profile's handle, @ left out: its layer, not the project's"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/PluginConfigLayer"
+                    },
+                    "title": "Response Config Versions V1 Projects  Project  Plugins  Name  Config Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins/{name}/config/rollback": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Rollback Config",
+          "description": "Copy an older version of the layer as its next version.",
+          "operationId": "rollback_config_v1_projects__project__plugins__name__config_rollback_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an agent profile's handle, @ left out: its layer, not the project's",
+                "title": "Agent"
+              },
+              "description": "an agent profile's handle, @ left out: its layer, not the project's"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PluginConfigRollback"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PluginConfigLayer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plugins/{name}/config/effective": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Effective Config",
+          "description": "The config the plugin gets in the project for runs under ``agent`` (the default profile without one) that give\nno layer of their own: each field with its value (none for a secret), the layer that set it, and the digest.",
+          "operationId": "effective_config_v1_projects__project__plugins__name__config_effective_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id, as its manifest gives it",
+                "title": "Name"
+              },
+              "description": "the plugin's id, as its manifest gives it"
+            },
+            {
+              "name": "agent",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an agent profile's handle, @ left out: its layer, not the project's",
+                "title": "Agent"
+              },
+              "description": "an agent profile's handle, @ left out: its layer, not the project's"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EffectiveConfig"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/plugins": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Plugins Of Run",
+          "description": "The plugins run ``run_id`` ran with, each with its version and the digest of its effective config, as a\nworker claimed it; empty for a run not claimed yet, or on a project with no plugin enabled.",
+          "operationId": "plugins_of_run_v1_projects__project__runs__run_id__plugins_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/RunPlugin"
+                    },
+                    "title": "Response Plugins Of Run V1 Projects  Project  Runs  Run Id  Plugins Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
       }
     },
     "components": {
@@ -28502,6 +30331,54 @@
           ],
           "title": "Committed"
         },
+        "ConfigField": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "value": {
+              "title": "Value",
+              "description": "null for a secret, whose value the hub never shows"
+            },
+            "secret": {
+              "type": "boolean",
+              "title": "Secret"
+            },
+            "layer": {
+              "type": "string",
+              "enum": [
+                "default",
+                "instance",
+                "project",
+                "agent",
+                "run"
+              ],
+              "title": "Layer",
+              "description": "the highest layer that sets it"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "that layer's version; null for the defaults and a run's own layer"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "secret",
+            "layer",
+            "version"
+          ],
+          "title": "ConfigField"
+        },
         "ConfigSaved": {
           "properties": {
             "digest": {
@@ -29704,6 +31581,25 @@
               ],
               "title": "Profile",
               "description": "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
+            },
+            "plugin_config": {
+              "anyOf": [
+                {
+                  "patternProperties": {
+                    "^[a-z][a-z0-9-]{0,62}$": {
+                      "additionalProperties": true,
+                      "type": "object"
+                    }
+                  },
+                  "type": "object",
+                  "maxProperties": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plugin Config",
+              "description": "the run's own layer of the config of plugins enabled on the project, above the agent profile's: plugin name to the plain values it sets, checked against the plugin's schema; no secret (422). Null: none"
             }
           },
           "type": "object",
@@ -29730,6 +31626,60 @@
             "value"
           ],
           "title": "DispatchFrom"
+        },
+        "EffectiveConfig": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the installed version, whose schema the layers are checked against"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "agent": {
+              "type": "string",
+              "title": "Agent",
+              "description": "the agent profile whose layer it includes"
+            },
+            "fields": {
+              "items": {
+                "$ref": "#/components/schemas/ConfigField"
+              },
+              "type": "array",
+              "title": "Fields"
+            },
+            "problems": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Problems",
+              "description": "what does not fit the schema now, such as a required field none sets"
+            },
+            "digest": {
+              "type": "string",
+              "title": "Digest",
+              "description": "sha256 of the effective config, a secret counted by its sealed value"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "version",
+            "project",
+            "agent",
+            "fields",
+            "problems",
+            "digest"
+          ],
+          "title": "EffectiveConfig",
+          "description": "The config a plugin gets in a project, for runs of an agent profile: each field from the highest layer."
         },
         "ErrorBody": {
           "properties": {
@@ -34739,6 +36689,181 @@
           ],
           "title": "Plugin"
         },
+        "PluginConfigLayer": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "layer": {
+              "type": "string",
+              "enum": [
+                "instance",
+                "project",
+                "agent"
+              ],
+              "title": "Layer"
+            },
+            "project": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Project"
+            },
+            "agent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent",
+              "description": "the handle of the agent profile of an agent layer"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version",
+              "description": "0 while it was never written"
+            },
+            "values": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Values",
+              "description": "the plain values it sets"
+            },
+            "secrets": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Secrets",
+              "description": "the secret fields it sets; the hub never shows their values"
+            },
+            "rolled_back_to": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rolled Back To",
+              "description": "the older version this one copies, for a rollback"
+            },
+            "changed_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed By"
+            },
+            "changed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Changed At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "layer",
+            "project",
+            "agent",
+            "version",
+            "values",
+            "secrets",
+            "rolled_back_to",
+            "changed_by",
+            "changed_at"
+          ],
+          "title": "PluginConfigLayer",
+          "description": "One stored layer of a plugin's config at one version."
+        },
+        "PluginConfigRollback": {
+          "properties": {
+            "version": {
+              "type": "integer",
+              "minimum": 1.0,
+              "title": "Version",
+              "description": "the older version of the layer to copy as its next one"
+            },
+            "if_version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Version",
+              "description": "409 unless the layer is at this version now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "version"
+          ],
+          "title": "PluginConfigRollback"
+        },
+        "PluginConfigWrite": {
+          "properties": {
+            "values": {
+              "additionalProperties": true,
+              "type": "object",
+              "maxProperties": 200,
+              "title": "Values",
+              "description": "field -> value; a secret field's value is a string the hub seals and never shows again"
+            },
+            "unset": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Unset",
+              "description": "fields the layer sets now"
+            },
+            "if_version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Version",
+              "description": "409 unless the layer is at this version now"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "PluginConfigWrite",
+          "description": "The next version of a layer: what ``values`` sets and ``unset`` clears; every other field stays."
+        },
         "PluginDetail": {
           "properties": {
             "name": {
@@ -34870,6 +36995,27 @@
           ],
           "title": "PluginDetail"
         },
+        "PluginEnable": {
+          "properties": {
+            "permissions": {
+              "items": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 7,
+              "title": "Permissions",
+              "description": "the grant: exactly what the installed version asks for, as GET .../plugins/{name} shows it"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "permissions"
+          ],
+          "title": "PluginEnable"
+        },
         "PluginInstallIn": {
           "properties": {
             "version": {
@@ -34888,6 +37034,30 @@
           },
           "type": "object",
           "title": "PluginInstallIn"
+        },
+        "PluginPermission": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "what it lets the plugin do in the project"
+            },
+            "granted": {
+              "type": "boolean",
+              "title": "Granted"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "text",
+            "granted"
+          ],
+          "title": "PluginPermission"
         },
         "PluginPublishIn": {
           "properties": {
@@ -35271,6 +37441,149 @@
             "readers"
           ],
           "title": "ProjectGrantCounts"
+        },
+        "ProjectPlugin": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "publisher": {
+              "type": "string",
+              "title": "Publisher"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the version installed on the hub"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "installed",
+                "disabled"
+              ],
+              "title": "State",
+              "description": "disabled: the hub turned it off, and it does nothing anywhere"
+            },
+            "disabled_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled Reason"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled"
+            },
+            "permissions": {
+              "items": {
+                "$ref": "#/components/schemas/PluginPermission"
+              },
+              "type": "array",
+              "title": "Permissions",
+              "description": "what the installed version asks for, granted or not"
+            },
+            "granted": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Granted",
+              "description": "what an admin of the project granted it; empty while not enabled"
+            },
+            "pending": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Pending",
+              "description": "asked for and not granted, after an upgrade: enable it again to grant them; what it may do is what is granted and asked for"
+            },
+            "config_schema": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Config Schema",
+              "description": "the JSON Schema of its config, secret fields marked x-secret"
+            },
+            "enabled_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled By"
+            },
+            "enabled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled At"
+            },
+            "granted_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Granted By"
+            },
+            "granted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Granted At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "publisher",
+            "version",
+            "state",
+            "disabled_reason",
+            "enabled",
+            "permissions",
+            "granted",
+            "pending",
+            "config_schema",
+            "enabled_by",
+            "enabled_at",
+            "granted_by",
+            "granted_at"
+          ],
+          "title": "ProjectPlugin",
+          "description": "An installed plugin as one project sees it: what it asks for, and whether the project enabled it."
         },
         "ProjectPruned": {
           "properties": {
@@ -38845,6 +41158,37 @@
             "offset"
           ],
           "title": "RunList"
+        },
+        "RunPlugin": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the version installed when a worker claimed the run"
+            },
+            "config_digest": {
+              "type": "string",
+              "title": "Config Digest",
+              "description": "the digest of the run's effective config then"
+            },
+            "recorded_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Recorded At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "version",
+            "config_digest",
+            "recorded_at"
+          ],
+          "title": "RunPlugin"
         },
         "RunProfile": {
           "properties": {

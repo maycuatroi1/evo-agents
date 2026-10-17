@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.plugin_configs import run_layer_of
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.run_state import move_run
 from evo_agents.hub.server.runs.models import Rerun, Run
@@ -193,7 +194,8 @@ async def approve_run(engine, user: Principal, project: str, run_id: int) -> Run
 async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Rerun | None = None) -> Run:
     """Queue the step of a run that ended again, with the same runtime, model, mode, approval, timeout and worker, at
     the plan's current revision, and the account picked by hand for it unless ``body`` picks another one or none,
-    under the agent profile of the run at the profile's version now, checked again (``profiles.rerun_choice``)."""
+    under the agent profile of the run at the profile's version now, checked again (``profiles.rerun_choice``), with
+    the run's own layer of plugin config."""
     async with engine.begin() as conn:
         access, row = await owned_run(conn, user, project, run_id, "rerun")
         check_dispatcher(access)
@@ -238,6 +240,7 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Re
             parent=run_id,
             picked=tuple(picked),
             chosen=chosen,
+            plugin_config=await run_layer_of(conn, run_id),
         )
         accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
         target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"

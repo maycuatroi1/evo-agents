@@ -682,7 +682,8 @@ def _next_attempt(run_id: int):
     """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
     from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the
-    schedule, night and caps of a run the night shift queued; and the agent profile and version it went under."""
+    schedule, night and caps of a run the night shift queued; the agent profile and version it went under; and its
+    own layer of plugin config."""
     r = tables.runs
     copied = (
         "kind",
@@ -709,6 +710,7 @@ def _next_attempt(run_id: int):
         "request",
         "profile_id",
         "profile_version",
+        "plugin_config",
         *CHAT_COLUMNS,
     )
     source = select(

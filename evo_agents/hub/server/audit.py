@@ -98,6 +98,15 @@ PLUGIN_INSTALL = "plugin.install"  # a hub admin installed a version, or install
 PLUGIN_UPGRADE = "plugin.upgrade"  # a hub admin moved the installed version to a newer one
 PLUGIN_REMOVE = "plugin.remove"  # a hub admin removed the installed version; the versions stay in the store
 PLUGIN_DISABLE = "plugin.disable"  # the hub turned off an installed version that no longer runs on its release
+# Plugins in a project (evo_agents.hub.server.plugin_grants), in that project; the target is
+# "<project>/plugin:<name>@<version>", then " permissions=<names>" for a grant.
+PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it
+PLUGIN_GRANT = "plugin.grant"  # an admin granted the permissions the installed version asks for, enabling it or after
+PLUGIN_PROJECT_DISABLE = "plugin.project-disable"  # an admin disabled it for the project: its grants went
+# A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugin_configs): "plugin:<name> config
+# instance v<n>" outside any project, "<project>/plugin:<name> config project v<n>" or "<project>/@<handle>/plugin:
+# <name> config agent v<n>" in the project, then " fields=<names>" or " rollback-to=v<n>"; never a value.
+PLUGIN_CONFIG = "plugin.config"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

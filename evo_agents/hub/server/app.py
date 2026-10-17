@@ -279,6 +279,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chats,
         credentials,
         plugins,
+        project_plugins,
         rate_limits,
         run_leases,
         secrets,
@@ -299,6 +300,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_events.stream_router,
         chat_agents.worker_router,
         plugins.router,
+        project_plugins.router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503

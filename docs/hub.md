@@ -82,7 +82,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
-| plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, for hub admins only (section Plugins) |
+| plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins` (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
@@ -1120,6 +1120,48 @@ been upgraded past the plugin's `engines`: the plugin shows `disabled` with the 
 `plugin.disable`, and every hub admin who has signed in gets the notice `plugin_disabled`. The hub serves on, and a
 failure of that check is logged without stopping the start. Upgrading the plugin to a version that runs, or installing
 one again, turns it back on.
+
+### Plugins in a project
+
+An installed plugin does nothing in a project until an admin of the project enables it there (table `project_plugins`,
+migration 0034). `GET /v1/projects/{project}/plugins/{name}` shows what the installed version asks for, each
+permission with what it lets the plugin do in the project; enabling grants exactly that list, which the request names
+back, and any other list is a 422. Once an upgrade asks for more, the plugin lists it under `pending`, and enabling it
+again grants the new list. What a plugin may do in a project is what was granted there that its installed version
+still asks for, and only while it is installed and turned on. Disabling deletes the grant; the versions of its config
+stay. Readers and writers of the project read all of this; only its admins change it.
+
+```sh
+evo-agents hub plugin list --project evo-agents                  # each installed plugin, enabled or not, what it asks for
+evo-agents hub plugin enable sandbox --project evo-agents        # prints what it asks for, then asks; --yes grants it
+evo-agents hub plugin disable sandbox --project evo-agents
+```
+
+A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
+schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the
+project (agent) and a run's own (`plugin_config` of `POST .../runs`, plain values only). A field takes its value from the
+highest layer that sets it, whole. The three stored layers keep every version (table `plugin_configs`): a write names
+the fields it sets and those it unsets, the others stay, and each write that changes something makes the next
+version; a rollback makes the next version a copy of an older one. A field the schema marks `"x-secret": true` is
+sealed with `EVO_HUB_SECRETS_KEY` (without the key, setting one is a 503) and never shown again: answers name it as
+set, and the digest of an effective config counts it by a fingerprint of its sealed value. When a worker claims a
+run, the hub records, for each plugin enabled on the run's project, the installed version and the digest of the run's
+effective config (table `run_plugins`, `GET .../runs/{id}/plugins`).
+
+```sh
+evo-agents hub plugin config sandbox --project evo-agents --set greeting=hi --set retries=2
+printf %s "$TOKEN" | evo-agents hub plugin config sandbox --project evo-agents --secret token
+evo-agents hub plugin config sandbox --project evo-agents --agent helper --set retries=4
+evo-agents hub plugin config sandbox --instance --set greeting=hello      # the hub's own layer, hub admins
+evo-agents hub plugin config sandbox --project evo-agents --versions
+evo-agents hub plugin rollback sandbox --project evo-agents --to 1
+evo-agents hub plugin config --project evo-agents --effective             # every plugin it enabled, for the default agent
+evo-agents hub plugin config --project evo-agents --run 412               # what run 412 ran with
+```
+
+Each change is audited in the project: `plugin.project-enable` and `plugin.grant` (with the permissions) when a plugin
+is enabled, `plugin.grant` when a grant changes, `plugin.project-disable`, and `plugin.config` for each new version of a
+layer, naming the fields that changed or the version a rollback copied, never a value.
 
 ## Blobs on R2
 

@@ -7,10 +7,13 @@ design, the models and the queries).
   the latest);
 - POST /v1/plugins/{name}/versions: publish the bundle committed to the blob store with its signature;
 - POST /v1/plugins/{name}/install, /upgrade and /remove: install a version (the newest that runs by default), move
-  the installed one to a newer version, remove it.
+  the installed one to a newer version, remove it;
+- GET and POST /v1/plugins/{name}/config, GET .../config/versions and POST .../config/rollback: the hub's own layer
+  (instance) of the config of an installed plugin, below every project's (``evo_agents.hub.server.plugin_configs``).
 
 Writes are audited as plugin.publish, plugin.install, plugin.upgrade and plugin.remove, naming
-``plugin:<name>@<version>``. ``evo-agents hub plugin publish|list|show|install|upgrade|remove`` is the client.
+``plugin:<name>@<version>``, and plugin.config. ``evo-agents hub plugin publish|list|show|install|upgrade|remove``
+and ``evo-agents hub plugin config|rollback --instance`` are the client.
 """
 
 from __future__ import annotations
@@ -23,6 +26,16 @@ from fastapi import APIRouter, Depends, HTTPException, Path, Request
 
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.plugin_configs import (
+    Place,
+    PluginConfigLayer,
+    PluginConfigRollback,
+    PluginConfigWrite,
+    layer_versions,
+    read_layer,
+    rollback_layer,
+    write_layer,
+)
 from evo_agents.hub.server.plugin_store import (
     PLUGIN_NAME,
     Plugin,
@@ -158,3 +171,52 @@ async def remove_plugin(request: Request, name: PluginName, user: AdminUser) -> 
         result = await plugin(conn, name, request.app.state.hub_version)
     log.info("plugin removed", extra={"plugin": name})
     return result
+
+
+# The hub's own layer of a plugin's config
+
+
+async def _installed(conn, name: str, *, lock: bool = False):
+    """(Place of the instance layer, the config schema of the installed version) of plugin ``name``; 404 when it is
+    not installed."""
+    row = await find(conn, name, lock=lock)
+    if row is None or row.installed_version is None:
+        raise HTTPException(404, f"no plugin {name} is installed on this hub: see `evo-agents hub plugin list`")
+    version = next(v for v in await version_rows(conn, row.id) if v.version == row.installed_version)
+    return Place(row.id, name, "instance"), version.manifest.get("config")
+
+
+@router.get("/{name}/config", response_model=PluginConfigLayer, responses=READ_REFUSALS)
+async def instance_config(request: Request, name: PluginName) -> PluginConfigLayer:
+    """The current version of the hub's own layer of the plugin's config."""
+    async with request.app.state.engine.begin() as conn:
+        place, _ = await _installed(conn, name)
+        return await read_layer(conn, place)
+
+
+@router.get("/{name}/config/versions", response_model=list[PluginConfigLayer], responses=READ_REFUSALS)
+async def instance_config_versions(request: Request, name: PluginName) -> list[PluginConfigLayer]:
+    """Every version of the hub's own layer, the newest first."""
+    async with request.app.state.engine.begin() as conn:
+        place, _ = await _installed(conn, name)
+        return await layer_versions(conn, place)
+
+
+@router.post("/{name}/config", response_model=PluginConfigLayer, responses=WRITE_REFUSALS)
+async def write_instance_config(
+    request: Request, name: PluginName, body: PluginConfigWrite, user: AdminUser
+) -> PluginConfigLayer:
+    """Write the next version of the hub's own layer: the fields ``values`` sets, those ``unset`` clears."""
+    async with request.app.state.engine.begin() as conn:
+        place, schema = await _installed(conn, name, lock=True)
+        return await write_layer(conn, user, place, schema, body, request.app.state.sealer)
+
+
+@router.post("/{name}/config/rollback", response_model=PluginConfigLayer, responses=WRITE_REFUSALS)
+async def rollback_instance_config(
+    request: Request, name: PluginName, body: PluginConfigRollback, user: AdminUser
+) -> PluginConfigLayer:
+    """Copy an older version of the hub's own layer as its next version."""
+    async with request.app.state.engine.begin() as conn:
+        place, _ = await _installed(conn, name, lock=True)
+        return await rollback_layer(conn, user, place, body)
