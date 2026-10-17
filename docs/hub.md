@@ -93,7 +93,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
-| telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (`docs/notifications.md`) |
+| telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
+| plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
 
@@ -1080,7 +1081,10 @@ packs, checks and places a plugin for the hub and the worker alike. An isolated 
 on a hub from its store; a core plugin runs Python in the hub's and the worker's processes and is a Python package
 installed into the image, which declares itself in the entry point group `evo_agents.plugins`. The registries of
 runtime adapters and of kg connectors read the core plugins' contributions beside their own groups
-`evo_agents.worker.adapters` and `evo_agents.kg.connectors`, which keep working and win over them.
+`evo_agents.worker.adapters` and `evo_agents.kg.connectors`, which keep working and win over them. What a plugin adds
+to the hub (channels of notifications, routes under `/v1/x/<plugin>/`, MCP tools named `<plugin>__<tool>` on `/mcp`,
+periodic jobs, events delivered at least once, and the tables of a core plugin) works only in a project that enabled
+it, and each point has a version of its own: `docs/plugins.md`, section Extension points.
 
 A publisher signs each bundle, and the operator lists the publishers the hub trusts in `EVO_HUB_PLUGIN_PUBLISHERS`
 (section Deploying). A publisher signs keyless with Sigstore from the CI workflow of its plugin repository

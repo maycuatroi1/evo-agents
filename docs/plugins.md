@@ -1,8 +1,8 @@
 # Plugins: the plugin/1 protocol and the plugin host
 
-This is the reference for the backend of an isolated plugin: the protocol it speaks, where it runs, and how its author
-checks it. The store, the manifest, signing, permissions and config are in `docs/hub.md`, section Plugins; this file is
-about what runs the code.
+This is the reference for what a plugin's code does on a hub: the extension points it contributes to, the backend of
+an isolated plugin, the protocol that backend speaks, where it runs, and how its author checks it. The store, the
+manifest, signing, permissions and config are in `docs/hub.md`, section Plugins.
 
 A plugin is core or isolated (`tier` in the manifest). A **core** plugin is a Python package in the hub's image; its
 contributions run in the api and the worker processes. An **isolated** plugin, the default, carries a **backend**: a
@@ -67,8 +67,10 @@ Methods:
   back, and lists the MCP tools the backend serves, each with an input schema.
 - **`ping`**: an empty object, while the backend serves.
 - **`route`**, **`tool`**, **`job`**, **`event`**, **`channel`**: one call to a contribution to that extension point,
-  naming the contribution and the project (step 5 wires these to the hub). Their params are open objects, so a later
-  minor version of plugin/1 adds keys without a new major.
+  naming the contribution and the project (section Extension points says when the hub makes each). Their params are
+  open objects, so a later minor version of plugin/1 adds keys without a new major: a `job` names the projects that
+  enable the plugin (`projects`), an `event` its kind (`kind`), and an `event` or a `channel` the hub's id of the
+  delivery (`delivery`), the same on every try.
 - **`shutdown`**: an empty object, then the backend exits; the host kills it if it does not.
 
 Errors are JSON-RPC's: `-32700` for a line that is not JSON, `-32600` for a message that is not a request, `-32601`
@@ -150,8 +152,9 @@ their payloads from `GET /internal/plugin-host/plugins`, which mints nothing, an
 A pull that finds nothing changed restarts nothing. Removing a plugin, or the hub turning it off, revokes its tokens at
 once, and the host stops its backend at its next pull (every 60 seconds). Minting locks the plugin's row as both of
 those do, so neither can slip between minting's read and its insert, and a token opens nothing once its plugin is not
-installed or is turned off, whatever its own row says. What a token may do on each request is the extension points'
-check (step 5).
+installed or is turned off, whatever its own row says. No route of the hub takes a plugin's token yet; when the hub calls
+a plugin, the extension points check on that call that the plugin is installed, turned on, enabled by the project and
+granted what the call needs (section Extension points).
 
 ## Crashes, hangs and restarts
 
@@ -167,6 +170,98 @@ curl -H "authorization: bearer $TOKEN" https://hub.example.org/v1/plugins/sandbo
 # {"plugin": "sandbox", "state": "running" | "starting" | "placing" | "backoff", "isolation": "uid",
 #  "pid": 1234, "restarts": 0, "error": null, "started_at": "...", "retry_at": null, "reported_at": "..."}
 ```
+
+## Extension points
+
+A plugin contributes to the hub's extension points in its manifest (`contributes`). A **core** plugin names the Python
+of each contribution (`python`, `module:attribute`), which runs in the api or the job worker; an **isolated** plugin's
+contribution runs in its backend, which the hub calls through the plugin host with the matching plugin/1 method. Both
+tiers take the same params and give the same results: the hub calls a core plugin's function as `handler(params,
+context)` with plugin/1's params and a `CoreContext` (the plugin, the hub's engine for its own tables, the config, the
+project), and checks every result against `plugin/1`'s `RESULTS` whichever tier answered, so a result the hub cannot
+use reaches no caller (`evo_agents.hub.plugin_calls`).
+
+**Every extension point has a version of its own** (`evo_agents.plugins.compat.POINT_VERSIONS`), the keys a
+contribution takes and the calls the hub makes for it. A contribution names the version it is written against with
+`api` (1 when it names none); a release that does not serve it refuses the plugin at publishing and installing as
+incompatible, and turns it off if a hub upgrade drops it. This release serves version 1 of every point:
+
+| Point | Keys of version 1 | Core | Isolated |
+| --- | --- | --- | --- |
+| `channels` | `name` | a `notifications.Channel` class for the members' channels of kind `name` | every notification of a project that enabled it and granted `notifications:send` |
+| `routes` | `name`, `methods` (isolated), `prefix` (core) | a FastAPI `APIRouter`, included under `/v1/x/<id>` | `/v1/x/<id>/<project>/<name>` and the paths below it |
+| `mcp_tools` | `name`, `description`, `input_schema` | an async function of the `tool` params | method `tool` |
+| `jobs` | `name`, `cron` | an async function of the `job` params | method `job` |
+| `events` | `name`, `on` | an async function of the `event` params | method `event` |
+| `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
+
+What a project does not enable is not there: every route, tool, job, event and channel of a plugin works in a project
+that enabled the plugin while the plugin is installed and turned on, and the hub checks it on each call, not once.
+
+- **Routes.** Every path under `/v1/x/<id>/` starts with a project, `/v1/x/<id>/<project>/...`, and answers a member
+  who holds a grant there, or 404, as for a project the caller cannot see. The hub authenticates the caller first, as
+  for any path under `/v1`. A core plugin's router is included at `/v1/x/<id>` with that check as a dependency of each
+  route; its handlers use the hub's own dependencies for the caller. An isolated plugin's route takes the methods it
+  declares (`GET` when it declares none, else 405), and the hub hands its backend the method, the path below the
+  route, the query, the body in base64 (1 MiB at most), the request headers `accept`, `accept-language`,
+  `content-type`, `if-modified-since`, `if-none-match` and `user-agent` (never the caller's credential or cookies), and
+  the caller: its login, the project and its role there. The answer is served from the hub's origin with only its
+  status, its body and the headers `cache-control`, `content-language`, `etag` and `last-modified`: a content type
+  other than JSON, plain text, CSV, a raster image or bytes becomes `application/octet-stream` with
+  `content-disposition: attachment`, and every answer carries `x-content-type-options: nosniff` and
+  `content-security-policy: default-src 'none'; frame-ancestors 'none'; sandbox`, so a backend sets no cookie and runs
+  no script on the hub's origin. A backend that is down or past 30 seconds answers 503, its error or a result plugin/1
+  does not allow 502. The proxy is not in the OpenAPI document: what a plugin's route takes is its own.
+- **MCP tools.** A plugin's tool is `<id>__<name>` on the hub's `/mcp`, after the hub's own 22. It is listed, and
+  answers, in a session whose project enabled the plugin, for a caller who holds a grant there. For the agent of a run,
+  the run's agent profile decides too: a tool axis of mode `all` lets plugins' tools through, an allowlist only those
+  of the plugins it names as `mcp:<id>`, and a judge run's agent gets none. The description and the input schema are
+  the installed version's manifest's, which its publisher signed: a backend cannot change what an agent reads about a
+  tool, only a new version that a hub admin upgrades to can. Arguments are checked against the schema before the
+  plugin sees them.
+- **Jobs.** A job runs when its `cron` (five fields, UTC; `0 * * * *` when it names none) takes the minute, while a
+  project enables its plugin, through the hub's job queue: `hub.plugin_jobs` queues one `hub.plugin_job` for it, with
+  the queueing lock `plugin-job:<id>:<name>`, so a job still waiting is not queued twice. The call names the projects
+  that enable the plugin and may take 120 seconds.
+- **Events.** A plugin enabled in a project takes the events its `on` names there (every kind when it names none) that
+  its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
+  `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it), and
+  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision). A payload
+  carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more.
+  The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
+  job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
+  the plugin answered, a failed try is tried again after 1, 2, 4 minutes and so on up to an hour, and the eighth fails
+  it; before each try the hub checks again that the project enables the plugin and grants the kind. The `delivery` id
+  stays the same on every try, so a plugin that must act once keeps the ids it has seen. Deliveries that ended are kept
+  14 days.
+- **Channels.** A core plugin's channel is a kind of members' channel, sent with the notifications' own outbox and
+  rules (`docs/notifications.md`), as Telegram's is. An isolated plugin's channel gets each notification of a project
+  that enabled it and granted `notifications:send`, through the same outbox as events, with the member, the kind, the
+  link and the words a restricted project's Telegram message carries (`Run failed`), never the title or the body; it
+  answers `delivered: false` to refuse one, which fails that delivery at once.
+
+### Core plugins
+
+A core plugin is a Python package installed beside evo-agents that names its manifest in the entry point group
+`evo_agents.plugins`. Installing it is what trusts it, and its code runs in the hub's processes. The hub reads the
+group once per process; the routers are included when the app is made. A core plugin that projects enable (it asks for
+a permission, takes a config, or contributes an MCP tool, a job, an event or a route under `/v1/x/<id>`) is recorded in
+the hub's store as it starts, as a version of signature kind `image`, published and installed by nobody, which the
+store neither installs, upgrades nor removes (409): the image does. Projects then enable it, grant it what it asks for
+and configure it like any other.
+
+**A core plugin owns tables through the hub's migrations.** It lists them under `tables`, each named with its prefix:
+its id with `_` for `-`, then `_` (`telegram_links` for telegram, `srs_docs_items` for srs-docs). Their revisions are
+in the hub's one chain of migrations, applied under the hub's lock with the rest; the plugin never creates a table at
+run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
+for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
+
+evo-ak ships its core plugins in `evo_agents.core_plugins`, declared in its own entry points, so every install has
+them, the hub's image among them. No package of evo_agents imports them (import-linter contract
+core-plugins-by-entry-point): the hub reaches them through their manifests. The first is **telegram**, the hub's
+Telegram channel (`docs/notifications.md`), which left the core as it was: its channel of kind `telegram`, its routes at
+the paths they had (the empty `prefix`: its routers carry their own under `/v1`), its table `telegram_links` from
+migration 0015. Nothing of it is per project, so no project enables it and the store does not list it.
 
 ## Writing and checking a plugin
 
