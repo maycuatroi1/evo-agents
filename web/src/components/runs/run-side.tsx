@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 import { cn } from "@/lib/utils";
 
 import type { Run, RunEvent } from "./queries";
@@ -23,8 +25,30 @@ const FLAT_SECTIONS =
  * rest, with the owner's accounts and credentials, behind "Show all details"), then usage and the result once there are
  * any. `flat` on a phone, where they are sections of the page.
  */
-export function RunSide({ run, viewer, owner, events, flat }: { run: Run; viewer: RunViewer | null; owner: boolean; events: RunEvent[]; flat: boolean }) {
+export function RunSide({
+  run,
+  viewer,
+  owner,
+  events,
+  flat,
+  details = null,
+}: {
+  run: Run;
+  viewer: RunViewer | null;
+  owner: boolean;
+  events: RunEvent[];
+  flat: boolean;
+  /** A local run's own details (LocalRunDetails) in place of the run's; such a run has no usage, result or leases. */
+  details?: ReactNode;
+}) {
   const plan = run.kind === "plan";
+  if (details) {
+    return (
+      <div className={cn("relative grid min-w-0 items-start gap-4 md:grid-cols-2 xl:grid-cols-1", flat && FLAT_SECTIONS)} data-testid="run-side">
+        {details}
+      </div>
+    );
+  }
   return (
     <div className={cn("relative grid min-w-0 items-start gap-4 md:grid-cols-2 xl:grid-cols-1", flat && FLAT_SECTIONS)} data-testid="run-side">
       {plan ? <RunPlanSteps run={run} /> : null}

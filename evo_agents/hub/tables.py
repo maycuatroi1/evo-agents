@@ -640,6 +640,13 @@ runs = Table(
     _when("finish_requested_at"),  # the owner ended the chat of an author run a worker holds (0022)
     Column("failure_cause", Text),  # why the run failed, as its worker reported it (0024)
     Column("session_per_step", Boolean, nullable=False, server_default=false()),  # a session for each step (0025)
+    # A local run, a Claude Code session on a member's machine (0033); NULL for any other kind. Its session_id is the
+    # Claude Code session id, and its worker_id stays NULL.
+    Column("machine", Text),
+    Column("cwd", Text),
+    Column("claude_email", Text),  # the Claude account that ran the session; 'unknown' when it could not be read
+    Column("claude_profile", Text),  # the claude-profiles profile, when it could be read
+    _when("last_activity_at"),
     ForeignKeyConstraint(["dispatched_by"], ["users.id"], ondelete="RESTRICT", name="runs_dispatched_by_fkey"),
     ForeignKeyConstraint(["parent_run_id"], ["runs.id"], ondelete="RESTRICT", name="runs_parent_run_id_fkey"),
     ForeignKeyConstraint(["pinned_worker_id"], ["workers.id"], ondelete="RESTRICT", name="runs_pinned_worker_id_fkey"),
@@ -681,6 +688,18 @@ Index(  # a project has one judge run active at a time (0017)
     runs.c.project_id,
     unique=True,
     postgresql_where=(runs.c.kind == "judge") & runs.c.state.in_(RUN_ACTIVE),
+)
+Index(  # a session registers once per project, however often it says so again (0033)
+    "runs_local_session_key",
+    runs.c.project_id,
+    runs.c.session_id,
+    unique=True,
+    postgresql_where=runs.c.kind == "local",
+)
+Index(  # the reaper finds the local runs that went silent (0033)
+    "runs_local_silent_idx",
+    runs.c.last_activity_at,
+    postgresql_where=(runs.c.kind == "local") & (runs.c.state != "ended"),
 )
 Index(
     "runs_claim_idx",

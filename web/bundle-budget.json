@@ -2,8 +2,8 @@
   "$comment": "First Load JS budget of each route in kB (gzip, 1 kB = 1000 bytes), checked by scripts/bundle-budget.mjs. Raising a budget or adding a route needs a reason in that route's entry; lowering one needs none.",
   "routes": {
     "/": {
-      "kB": 306.3,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 306.5,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/_not-found": {
       "kB": 209.5,
@@ -50,8 +50,8 @@
       "reason": "A group chat (agent-profiles-group-chat step 7): its messages as Markdown, live over the chat's stream, reactions, threads, the composer with its @ suggestions and the members sheet, beside the list of chats."
     },
     "/inbox": {
-      "kB": 394.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Notices of a chat lead to the Chats pages, whose shared chunks regroup with the Inbox's (agent-profiles-group-chat step 7). The sheet of a proposal shows the change accepting it made, in a card of its own (change-card.tsx: its plan, branch, pull request and the hub's reason), and accepting says what it does for each tier (accepted-proposals-move-on step 3); the change's state pill and its icons load with it (status/change-badge.tsx), not with the status map every page loads."
+      "kB": 394.8,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Notices of a chat lead to the Chats pages, whose shared chunks regroup with the Inbox's (agent-profiles-group-chat step 7). The sheet of a proposal shows the change accepting it made, in a card of its own (change-card.tsx: its plan, branch, pull request and the hub's reason), and accepting says what it does for each tier (accepted-proposals-move-on step 3); the change's state pill and its icons load with it (status/change-badge.tsx), not with the status map every page loads. Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/login": {
       "kB": 209.5,
@@ -62,12 +62,12 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/memories/[id]": {
-      "kB": 358.1,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 358.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/monitor": {
-      "kB": 312.7,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The runs list's Chat run tag and its line regroup the chunks the Monitor shares with the runs pages (agent-profiles-group-chat step 7)."
+      "kB": 313.8,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The runs list's Chat run tag and its line regroup the chunks the Monitor shares with the runs pages (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]": {
       "kB": 289,
@@ -78,16 +78,16 @@
       "reason": "The project's Agents page (agent-profiles-group-chat step 4): the list of its agents and the New agent form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/agents/[handle]": {
-      "kB": 326.6,
-      "reason": "An agent's page (agent-profiles-group-chat step 4): its permissions, versions, avatar upload, the edit form and its recent runs. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 327.6,
+      "reason": "An agent's page (agent-profiles-group-chat step 4): its permissions, versions, avatar upload, the edit form and its recent runs. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]/curator": {
       "kB": 322.6,
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The Curator's model reads a repo's web page from its origin in webBase, which its links to code and a change's branch link share (accepted-proposals-move-on step 3): 0.1 kB."
     },
     "/p/[project]/curator/charter": {
-      "kB": 331,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 331.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]/curator/proposals": {
       "kB": 328.3,
@@ -114,8 +114,8 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/memories/[id]": {
-      "kB": 358.1,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 358.2,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]/plans": {
       "kB": 325.1,
@@ -130,16 +130,16 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/plans/[planId]/steps/[stepKey]": {
-      "kB": 325.9,
-      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 326.3,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]/runs": {
-      "kB": 326.3,
-      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 327,
+      "reason": "The dispatch forms gained an Account select (claude-account-rotation step 2), and the sidebar an Accounts entry (step 4). The dispatch forms (Dispatch, Run plan, New plan) pick an agent and check what it allows (agent-profiles-group-chat step 4); the picker itself loads with the form. The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]/runs/[id]": {
-      "kB": 428.4,
-      "reason": "A step's report shows as a card in the Trace (6033862), its parser and card loaded on demand (trace-report-lazy.tsx, main 391aa3e). The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry. An author run's Chat shows its decisions as DecisionCards after the agent's message that asked them, with the count of those that wait (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). A chat run's page carries the Chat run tag and links back to the message it answers (agent-profiles-group-chat step 7)."
+      "kB": 429.3,
+      "reason": "A step's report shows as a card in the Trace (6033862), its parser and card loaded on demand (trace-report-lazy.tsx, main 391aa3e). The run page gains the card of the accounts the run took and the usage limits it failed over from (claude-account-rotation step 4), and the sidebar its Accounts entry. An author run's Chat shows its decisions as DecisionCards after the agent's message that asked them, with the count of those that wait (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). A chat run's page carries the Chat run tag and links back to the message it answers (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/p/[project]/runs/[id]/diff": {
       "kB": 293.3,
@@ -150,28 +150,28 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/p/[project]/skills/[name]": {
-      "kB": 306,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 306.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/secrets": {
-      "kB": 317.9,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 318,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/skills": {
       "kB": 305.9,
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/skills/[name]": {
-      "kB": 306,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 306.1,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     },
     "/workers": {
       "kB": 317.3,
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
     },
     "/workers/[id]": {
-      "kB": 319.8,
-      "reason": "The owner's Settings card (name, slots and labels, saved with PATCH /v1/workers/{id}) shows on the worker page as it loads. Loading it with next/dynamic took 0.5 kB off this route but made Turbopack repack shared chunks and put /admin/members/[login] 1.4 kB over, so it stays a static import. The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. Its runs list shares the run model and messages that now place an author run's decisions in its Chat (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7)."
+      "kB": 320.1,
+      "reason": "The owner's Settings card (name, slots and labels, saved with PATCH /v1/workers/{id}) shows on the worker page as it loads. Loading it with next/dynamic took 0.5 kB off this route but made Turbopack repack shared chunks and put /admin/members/[login] 1.4 kB over, so it stays a static import. The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. Its runs list shares the run model and messages that now place an author run's decisions in its Chat (author-run-decisions step 3). DataTable gains detail rows, a second row under a row across every column (account-usage-bars), and useNow moves to hooks/use-now behind a re-export in components/kg: 0.1 kB each. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs."
     }
   }
 }

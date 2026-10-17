@@ -75,6 +75,7 @@ comes back.
 | `plan_show` | a plan, or one step, as the hub holds it |
 | `plan_handoff` | a plan's goal, steps done with commits and Decision lines, and steps left, within a token budget |
 | `plan_step` | set a step's status with evidence or a note |
+| `ask_member` | ask the person a 2 to 6 option question in a session of a hub project: it reaches them on the web, in Telegram and in the Inbox, and the first answer comes back |
 | `skill_list` | the skills on the hub you can see |
 | `hub_projects` | the projects you hold a grant on, with role and sinks |
 | `run_tool_stats` | calls, failures and time per tool of one run, or of the runs of the last days |

@@ -100,9 +100,9 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 22 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 23 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
+`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
 `digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
@@ -721,6 +721,17 @@ unread and how many decisions and proposals wait for an answer (`GET /v1/me/noti
 answering a decision reads its notification too. Each of these prints the hub's answer with `--json`, `notifications
 --read` its count of read and unread.
 
+## Local runs
+
+A member's Claude Code session on their own machine shows in the hub as a run of kind `local`, with its machine, cwd,
+account (`claude_email`, `claude_profile`), state (`running`, `waiting`, `idle`, `ended`), plan and step and last
+activity (`docs/workers.md`, Local runs). It is private to that member in the run list (`hub run list --kind local
+--account EMAIL`), the run page, the log and the Monitor. It takes no slot and is never lost, retried or parked, the
+Curator ignores it, and one that stays silent for 24 hours ends. Its decisions (category `question`) notify, reach
+Telegram and the Inbox like any other, and the first answer wins, from the web, Telegram, `hub decision answer` or the
+machine's report that it was answered on the spot. hub-cli-v1 only gained `hub run list --kind --account` and the new
+states and kind in `hub run list/show`; the machine side talks HTTP.
+
 ## The Curator's review
 
 `docs/curator.md` describes the Curator as a whole: its charter, the night shift and its caps, the tiers, the three
@@ -972,6 +983,32 @@ reached the model as about 40,000, cut in the middle (`Warning: truncated output
 `updatedToolOutput`; and `decision: "block"` does replace the result, but as `Script failed` with the hook's text as
 the script's error. The hook therefore leaves a payload from Codex (it carries a `turn_id`) unchanged, and Codex's
 own limit, `tool_output_token_limit` in its `config.toml`, is the only knob there.
+
+**Local sessions.** The evo-hub plugin's UserPromptSubmit, PostToolUse (`local-tool`, a group of its own with no
+matcher, next to the spool's), Stop and SessionEnd hooks (`evo_agents/hub/local_sync.py`) register a Claude Code
+session of a hub project, without `EVO_RUN_ID`, as a run of kind `local` (`PUT /v1/projects/{p}/local-runs/{session}`),
+and report its state (`POST .../state`: `running` at a prompt and a tool, `idle` at Stop, `ended` at SessionEnd) and its
+log (`POST .../events`, gapless `seq`). The project is the one of the session directory, as for memories; a directory
+of none is asked once and remembered in `~/.evo/hub/local/<session>.json`. Sent: session id, directory, machine, the
+first line of the first prompt (120 characters), the account (`evo_agents/hub/local_account.py`), the agent's text
+(4,000 characters a message), and per tool call its name, input (300 characters) and result (400 characters), all
+through `redact_data` on the machine, as the digest is. The account of a Code tab session is read from
+`<data folder>/claude-code-sessions/*/*/local_*.json` (the record that holds the session id; its first `*email*` value)
+and the claude-profiles profile whose data folder it is; of a CLI session from `oauthAccount.emailAddress` of
+`$CLAUDE_CONFIG_DIR/.claude.json` or `~/.claude.json`; otherwise `unknown`. [Unverified] The record's layout was not
+checked on a Mac. `EVO_CLAUDE_DESKTOP_DIRS` overrides the data folders.
+A plan write (`evo harness step`, `hub plan step`, the MCP `plan_step`, which the proxy sends with the header
+`X-Evo-Local-Run`) names the session's run (`CLAUDE_CODE_SESSION_ID` of the tool's environment, else the newest live
+session of the directory), so the revision is recorded for the run and the run shows that plan and step; a hub that
+does not know the run gets the write again without it. `EVO_HUB_LOCAL_SYNC=0` (or `off`) turns the hooks into no-ops;
+the Stop digest and memory push are unchanged. A PostToolUse hook asks the hub at most every 2 seconds, with request
+timeouts of 1.5 s and a deadline of 6 s; events wait in the session file (500 at most) while the hub does not answer
+(the same cooldown as the digest) or refuses the session (10 minutes), and go in order afterwards. Every hook exits 0.
+The questions of the session reach the member too (`docs/notifications.md`, A decision of a local run): a PreToolUse
+hook on AskUserQuestion (`local-ask`, 15 s) puts each question of the dialog to the hub and does not wait, PostToolUse
+reports the answer given in the dialog, and UserPromptSubmit hands the agent the answers that came from the hub after
+it stopped waiting.
+[Unverified] The Codex plugin loads the same hooks.json; whether a Codex session registers a local run was not tried.
 
 **Codex.** The evo-hub plugin's SessionStart and Stop hooks run in a Codex session of a hub harness too, so a Codex
 session on a laptop gets the same memory sync, plan copies, context line and session digest as a Claude Code one.

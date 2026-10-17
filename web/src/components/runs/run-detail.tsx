@@ -10,6 +10,7 @@ import { type ReactNode, useCallback, useEffect, useId, useMemo, useState } from
 
 import { curatorHref } from "@/components/curator/queries";
 import { useLiveSignal } from "@/components/live/live-context";
+import { localAccount } from "@/components/local-run";
 import { planHref, stepHref } from "@/components/plans/links";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
@@ -31,6 +32,7 @@ import { RunActions } from "./run-actions";
 import { RunNotes } from "./run-notes";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
+import { LocalRunDetails } from "./local-run-details";
 import { RunDecisions } from "./run-decisions";
 import { RunHeader } from "./run-header";
 import { RunLogCard, type SessionTab } from "./run-log";
@@ -116,6 +118,7 @@ function RunPage({ run }: { run: Run }) {
   }, [authoring, events, queryClient, run.project, run.id]);
 
   const plan = run.kind === "plan";
+  const local = run.kind === "local";
   const active = isActiveState(run.state);
   // The same query as the decisions' column (one request): "Asked you" links to the card of a decision still open.
   const decisions = useQuery({ ...openDecisionsQuery(browserApi, run.project, run.id), enabled: (plan || authoring) && active, refetchInterval: LIVE_REFRESH_MS });
@@ -171,7 +174,9 @@ function RunPage({ run }: { run: Run }) {
   );
 
   const sub =
-          run.kind === "chat"
+          local
+            ? t.rich("local.sub", { machine: run.machine ?? "", account: localAccount(run), plan: run.plan_id || "none", step: run.step_key || "none", planLink })
+            : run.kind === "chat"
             ? t.rich("chatSub", {
                 agent: run.profile ?? run.project,
                 hop: run.hop ?? 1,
@@ -221,8 +226,20 @@ function RunPage({ run }: { run: Run }) {
                   </Link>
                 ),
               });
-  const decisionCard = plan ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} /> : null;
-  const side = <RunSide run={run} viewer={viewer} owner={controls.owner} events={log.events} flat={mobile} />;
+  const decisionCard = plan || local ? <RunDecisions run={run} owner={controls.owner} onTakeOver={takeOver} /> : null;
+  const stepLink = (key: string) => (
+    <Link href={stepHref(run.project, run.plan_id, key)} className="font-mono text-xs text-brand underline-offset-4 hover:underline">
+      {key}
+    </Link>
+  );
+  const localDetails = local ? (
+    <LocalRunDetails
+      run={run}
+      plan={run.plan_id ? <Link href={planHref(run.project, run.plan_id)} className="font-mono text-xs text-brand underline-offset-4 hover:underline">{run.plan_id}</Link> : null}
+      step={run.plan_id && run.step_key ? stepLink(run.step_key) : null}
+    />
+  ) : null;
+  const side = <RunSide run={run} viewer={viewer} owner={controls.owner} events={log.events} flat={mobile} details={localDetails} />;
   // The plan's steps and the run's details are there when asked for: the Details toggle at the end of the head opens
   // them beside the trace (under it below xl).
   const [details, setDetails] = useState(false);
@@ -318,8 +335,8 @@ function RunPage({ run }: { run: Run }) {
           )}
         </RunActions>
       )}
-      {screen ? null : <RunNotes run={run} controls={controls} />}
-      {!screen && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
+      {screen || local ? null : <RunNotes run={run} controls={controls} />}
+      {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
       {/* Under 768 px: the decision, the trace's latest rows, then the details as flat sections, in the page's order. */}
       {overview ? decisionCard : null}
       {overview ? <TracePreview events={log.events} active={active} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}

@@ -55,6 +55,7 @@ from evo_agents.hub.plans import (
     PlanTooLarge,
     check_body,
     step_index,
+    step_key,
     summarize,
     undone_steps,
     update_item,
@@ -143,7 +144,9 @@ class RevisionFields(BaseModel):
 
 class Revision(RevisionFields):
     run_id: int | None = Field(
-        None, description="the author run that wrote the revision, as its dispatcher (actor); null for any other write"
+        None,
+        description="the author run that wrote the revision, as its dispatcher (actor), or the local run whose session "
+        "wrote it; null for any other write",
     )
 
 
@@ -197,6 +200,13 @@ class PlanPut(BaseModel):
         None, ge=0, description="the revision being replaced; leave it out, or 0, to create the plan"
     )
     label: dict | None = Field(None, description="{level, location, integrity}; default: the project's, or the held")
+    run_id: int | None = Field(
+        None,
+        ge=1,
+        le=2**63 - 1,
+        description="the caller's own local run (kind local) whose session writes the plan: the revision records it "
+        "(Revision.run_id) and the run takes the plan; 404 for any other run",
+    )
 
 
 class PlanPatch(BaseModel):
@@ -205,6 +215,13 @@ class PlanPatch(BaseModel):
     step: int | str | None = Field(None, description="for steps, the step's id (or order) instead of an index")
     updates: dict[str, str] = Field(min_length=1, max_length=len(UPDATABLE), description=", ".join(UPDATABLE))
     if_revision: int = Field(ge=1, description="the revision the update was made against")
+    run_id: int | None = Field(
+        None,
+        ge=1,
+        le=2**63 - 1,
+        description="the caller's own local run (kind local) whose session writes the progress: the revision records "
+        "it (Revision.run_id) and the run takes the plan and the step; 404 for any other run",
+    )
 
 
 class PlanComplete(BaseModel):
@@ -712,9 +729,19 @@ async def put(request: Request, project: ProjectName, plan_id: PlanId, payload: 
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
-            return await write_plan(
-                conn, access, user, body, area=payload.area, if_revision=payload.if_revision, label=payload.label
+            local = await _local_writer(conn, access, user, payload.run_id)
+            written = await write_plan(
+                conn,
+                access,
+                user,
+                body,
+                area=payload.area,
+                if_revision=payload.if_revision,
+                label=payload.label,
+                run_id=local,
             )
+            await _local_progress(conn, local, plan_id, written.revision, None)
+            return written
     except PlanError as exc:
         return _refusal(request, exc)
 
@@ -803,6 +830,26 @@ async def write_plan(
     raise PlanError(409, f"plan {plan_id} was created and changed while this request ran; try again")
 
 
+async def _local_writer(conn, access, user, run_id: int | None) -> int | None:
+    """``run_id`` when it is a local run of the project that ``user`` owns, its row locked; None for no run; 404 for
+    any other (``local_runs.writing_run``)."""
+    if run_id is None:
+        return None
+    from evo_agents.hub.server.local_runs import writing_run  # it reads plans through this module
+
+    return await writing_run(conn, access, user, run_id)
+
+
+async def _local_progress(conn, run_id: int | None, plan_id: str, revision: int, step: str | None) -> None:
+    """Tell the local run ``run_id`` (the one ``_local_writer`` took) which plan, revision
+    and step its session wrote."""
+    if run_id is None:
+        return
+    from evo_agents.hub.server.local_runs import note_progress
+
+    await note_progress(conn, run_id, plan_id, revision, step)
+
+
 @router.patch("/{plan_id}", response_model=Written, responses=REFUSALS)
 async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload: PlanPatch, user: CurrentUser):
     """Set keys of one item, as ``evo harness step``, ``repo``, ``debt`` and ``question`` do in a file."""
@@ -814,6 +861,7 @@ async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload
         async with request.app.state.engine.begin() as conn:
             access = await project_access(conn, user, project)
             _writer(access)
+            local = await _local_writer(conn, access, user, payload.run_id)
             stored, changed, warnings = await apply_patch(
                 conn,
                 access,
@@ -824,7 +872,15 @@ async def patch(request: Request, project: ProjectName, plan_id: PlanId, payload
                 if_revision=payload.if_revision,
                 index=payload.index,
                 step=payload.step,
+                run_id=local,
             )
+            if payload.section == "steps":
+                where = payload.index if payload.step is None else step_index(stored.body, payload.step)
+                await _local_progress(
+                    conn, local, plan_id, stored.revision, step_key(stored.body["steps"][where], where)
+                )
+            else:
+                await _local_progress(conn, local, plan_id, stored.revision, None)
             return _written(access, stored, created=False, changed=changed, warnings=warnings)
     except PlanError as exc:
         return _refusal(request, exc)
@@ -841,13 +897,15 @@ async def apply_patch(
     if_revision: int,
     index: int | None = None,
     step=None,
+    run_id: int | None = None,
 ) -> tuple[Held, bool, list[Problem]]:
     """PATCH's write, in the caller's transaction, for a ``user`` whose writer role the caller checked: set
     ``updates`` on one item of ``section``, named by ``index`` or (for steps) by ``step``, when ``if_revision`` is
     the revision the hub holds. Returns the plan as held afterwards, whether it changed, and the warnings of
     ``plan_semantics``. Raises PlanError: 409 ``revision_conflict`` for another revision, 422 for an update the plan
     refuses; and HTTPException 404 for a plan ``user`` cannot see, 403 or 422 when its label refuses the push. The
-    hub's own writes of a run's step (``evo_agents.hub.server.run_state``) go through here as the dispatcher."""
+    hub's own writes of a run's step (``evo_agents.hub.server.run_state``) go through here as the dispatcher;
+    ``run_id`` is the local run whose session writes it, recorded on the revision."""
     held = await _visible(conn, access, plan_id, None, lock=True)
     label = access.push_label(held.label)
     if if_revision != held.revision:
@@ -864,7 +922,16 @@ async def apply_patch(
         return held, False, warnings
     summary = update_summary(body, section, position, old, updates)
     stored = await _store(
-        conn, access, user, held, area=held.area, label=label, body=body, summary=summary, action=PLAN_PATCH
+        conn,
+        access,
+        user,
+        held,
+        area=held.area,
+        label=label,
+        body=body,
+        summary=summary,
+        action=PLAN_PATCH,
+        run_id=run_id,
     )
     _logged(access.name, stored, "patched", user)
     return stored, True, warnings
