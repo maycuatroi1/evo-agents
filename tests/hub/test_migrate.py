@@ -81,6 +81,7 @@ TABLES |= pg.PROFILE_TABLES  # migration 0030
 TABLES |= pg.CHAT_TABLES  # migration 0031
 TABLES |= pg.PLUGIN_TABLES  # migration 0033
 TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0034
+TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0035
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -155,8 +156,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_five_tables(hub_db):
-    assert len(TABLES) == 65  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_sixty_seven_tables(hub_db):
+    assert len(TABLES) == 67  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -661,6 +662,38 @@ def test_0034_places_plugins_in_projects_and_going_back_drops_the_grants_configs
     assert not gone & tables(hub_db)
     assert query(hub_db, select(t.runs.c.id)) == [(run_id,)]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0034") :]
+
+
+def test_0035_keeps_plugin_tokens_and_backends_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0034")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+    move_to(hub_db, "0035")
+    backend = {"plugin_id": plugin_id, "version": "1.0.0", "state": "running", "isolation": "uid", "pid": 42}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.plugin_tokens).values(plugin_id=plugin_id, token_hash="a" * 64))
+        conn.execute(insert(t.plugin_backends).values(backend))
+        for bad in (
+            insert(t.plugin_tokens).values(plugin_id=plugin_id, token_hash="a" * 64),  # one row per token
+            insert(t.plugin_tokens).values(plugin_id=plugin_id, token_hash="evp_plaintext"),
+            insert(t.plugin_tokens).values(plugin_id=plugin_id + 1, token_hash="b" * 64),
+            update(t.plugin_backends).values(state="crashed"),
+            update(t.plugin_backends).values(isolation="none"),
+            update(t.plugin_backends).values(restarts=-1),
+            update(t.plugin_backends).values(error="x" * 4001),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+        conn.execute(delete(t.plugins).where(t.plugins.c.id == plugin_id))  # removing a plugin takes its rows
+        assert one(conn, select(func.count()).select_from(t.plugin_tokens)) == 0
+        assert one(conn, select(func.count()).select_from(t.plugin_backends)) == 0
+
+    move_to(hub_db, "0034", down=True)
+    assert not {"plugin_tokens", "plugin_backends"} & tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0035") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

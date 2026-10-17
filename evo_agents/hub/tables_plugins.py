@@ -19,6 +19,12 @@ deletes the row. plugin_configs holds every version of each stored layer of a pl
 its plain values and its secrets sealed (``evo_agents.hub.server.plugin_configs``). ``plugin_tables`` gives runs its
 own layer, ``plugin_config``, and run_plugins holds the version and the digest of the effective config of each plugin
 enabled on a run's project when a worker claimed it.
+
+The tables of 0035 serve the plugin host, which runs the backends of isolated plugins (``backend_tables``).
+plugin_tokens holds the SHA-256 of each token the hub gave the backend of a plugin when the host started it, and when
+it was revoked: starting the backend again revokes the plugin's older tokens. plugin_backends holds what the host last
+said of each backend it runs: the version, its state, the isolation it has, its process id, how many times it was
+started again, since when it runs, the last failure, when it is tried again, and when the host said so.
 """
 
 from __future__ import annotations
@@ -39,6 +45,9 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+
+BACKEND_STATES = ("placing", "starting", "running", "backoff")  # plugin_backends.state (0035)
+ISOLATIONS = ("uid", "process")  # plugin_backends.isolation (0035), as evo_agents.plugins.environment names them
 
 
 def _stamp(name: str) -> Column:
@@ -166,3 +175,37 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         PrimaryKeyConstraint("run_id", "plugin_id", name="run_plugins_pkey"),
     )
     return project_plugins, plugin_configs, run_plugins
+
+
+def backend_tables(metadata: MetaData) -> tuple[Table, Table]:
+    """(plugin_tokens, plugin_backends), added to ``metadata``."""
+    plugin_tokens = Table(
+        "plugin_tokens",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("token_hash", Text, nullable=False),
+        _stamp("created_at"),
+        Column("revoked_at", DateTime(timezone=True)),
+        _fkey("plugin_id", "plugins.id", "plugin_tokens", "CASCADE"),
+        PrimaryKeyConstraint("id", name="plugin_tokens_pkey"),
+        UniqueConstraint("token_hash", name="plugin_tokens_token_hash_key"),
+        Index("plugin_tokens_plugin_idx", "plugin_id"),
+    )
+    plugin_backends = Table(
+        "plugin_backends",
+        metadata,
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("version", Text, nullable=False),
+        Column("state", Text, nullable=False),
+        Column("isolation", Text, nullable=False),
+        Column("pid", Integer),
+        Column("restarts", Integer, nullable=False, server_default="0"),
+        Column("started_at", DateTime(timezone=True)),
+        Column("error", Text),
+        Column("retry_at", DateTime(timezone=True)),
+        _stamp("reported_at"),
+        _fkey("plugin_id", "plugins.id", "plugin_backends", "CASCADE"),
+        PrimaryKeyConstraint("plugin_id", name="plugin_backends_pkey"),
+    )
+    return plugin_tokens, plugin_backends

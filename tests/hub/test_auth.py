@@ -63,6 +63,7 @@ HUB_TABLES |= pg.PROFILE_TABLES  # migration 0030
 HUB_TABLES |= pg.CHAT_TABLES  # migration 0031
 HUB_TABLES |= pg.PLUGIN_TABLES  # migration 0033
 HUB_TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0034
+HUB_TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0035
 
 
 @pytest.fixture
