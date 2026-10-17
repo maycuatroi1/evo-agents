@@ -1,4 +1,4 @@
-"""Migrations: a fresh database gets the sixty-two hub tables, a second run changes nothing, processes that start
+"""Migrations: a fresh database gets the sixty-five hub tables, a second run changes nothing, processes that start
 together apply each revision once, a database at 0001 with rows in it moves to 0002, and a database the code
 cannot read is refused. Then the constraints schemas 0001 and 0002 promise. Schemas 0009 and 0010 have their checks in
 ``tests.hub.test_run_tables``, 0011 in ``tests.hub.test_sealing``, 0012 in ``tests.hub.test_curator``, 0013 in
@@ -80,6 +80,7 @@ TABLES |= pg.ACCOUNT_TABLES  # migration 0027
 TABLES |= pg.PROFILE_TABLES  # migration 0030
 TABLES |= pg.CHAT_TABLES  # migration 0031
 TABLES |= pg.PLUGIN_TABLES  # migration 0033
+TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0034
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -154,8 +155,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_two_tables(hub_db):
-    assert len(TABLES) == 62  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_sixty_five_tables(hub_db):
+    assert len(TABLES) == 65  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -611,6 +612,55 @@ def test_0033_keeps_the_plugin_store_and_going_back_drops_it_with_the_hubs_plugi
     assert query(hub_db, select(t.blobs.c.sha256).where(t.blobs.c.project_id.is_(None))) == []
     assert query(hub_db, select(t.notifications.c.id)) == []
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0033") :]
+
+
+def test_0034_places_plugins_in_projects_and_going_back_drops_the_grants_configs_and_run_records(hub_db):
+    move_to(hub_db, "0033")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugins = t.plugins
+        plugin_id = one(conn, insert(plugins).values(name="sandbox", publisher="acme").returning(plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        profile = {"project_id": ids["project"], "handle": "helper", "name": "Helper", "color": "#336699"}
+        profile |= {"permissions": {}, "created_by": ids["user"]}
+        profile_id = one(conn, insert(t.agent_profiles).values(profile).returning(t.agent_profiles.c.id))
+        run_id = one(conn, _author_run(ids))
+    move_to(hub_db, "0034")
+    configs, runs = t.plugin_configs, t.runs
+    by = {"changed_by": ids["user"], "plugin_id": plugin_id}
+    with live.connect(hub_db) as conn:
+        enabled = {"project_id": ids["project"], "plugin_id": plugin_id, "permissions": ["runs:read"]}
+        conn.execute(insert(t.project_plugins).values(enabled | {"enabled_by": ids["user"], "granted_by": ids["user"]}))
+        conn.execute(insert(configs).values(by | {"layer": "instance", "version": 1, "values": {"greeting": "hi"}}))
+        conn.execute(insert(configs).values(by | {"layer": "instance", "version": 2, "rolled_back_to": 1}))
+        conn.execute(insert(configs).values(by | {"layer": "project", "project_id": ids["project"], "version": 1}))
+        agent = {"layer": "agent", "project_id": ids["project"], "profile_id": profile_id, "version": 1}
+        conn.execute(insert(configs).values(by | agent))
+        conn.execute(update(runs).values(plugin_config={"sandbox": {"greeting": "run"}}).where(runs.c.id == run_id))
+        record = {"run_id": run_id, "plugin_id": plugin_id, "version": "1.0.0", "config_digest": "sha256:" + "a" * 64}
+        conn.execute(insert(t.run_plugins).values(record))
+        for bad in (
+            insert(t.project_plugins).values(enabled | {"permissions": ["root:all"], "enabled_by": 1, "granted_by": 1}),
+            insert(configs).values(by | {"layer": "instance", "version": 1}),  # one version 1 per layer
+            insert(configs).values(by | {"layer": "instance", "project_id": ids["project"], "version": 3}),
+            insert(configs).values(by | {"layer": "agent", "project_id": ids["project"], "version": 2}),
+            insert(configs).values(by | {"layer": "hub", "version": 1}),
+            insert(configs).values(by | {"layer": "instance", "version": 3, "rolled_back_to": 3}),
+            insert(configs).values(by | {"layer": "instance", "version": 3, "values": [1]}),
+            update(runs).values(plugin_config=[1]).where(runs.c.id == run_id),
+            insert(t.run_plugins).values(record | {"version": "9.9.9"}),
+            update(t.run_plugins).values(config_digest="md5:00"),
+        ):
+            with pytest.raises((errors.CheckViolation, errors.UniqueViolation, errors.ForeignKeyViolation)):
+                conn.execute(bad)
+
+    # Going back drops the grants, the config versions, the run's own layer and the run records; the run stays.
+    move_to(hub_db, "0033", down=True)
+    gone = {"project_plugins", "plugin_configs", "run_plugins"}
+    assert not gone & tables(hub_db)
+    assert query(hub_db, select(t.runs.c.id)) == [(run_id,)]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0034") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

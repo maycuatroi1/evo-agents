@@ -1282,4 +1282,4 @@ Index(  # a merged change has one outcome
 accounts, account_policies, run_accounts = tables_accounts.account_tables(metadata)  # accounts and their use (0027)
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
-plugins, plugin_versions = tables_plugins.plugin_tables(metadata)  # the store of plugins (0033)
+plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)

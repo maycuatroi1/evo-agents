@@ -24,6 +24,7 @@ from evo_agents.schema import errors, validate
 MANIFEST_FILE = "evo-plugin.json"
 SCHEMA_FILE = Path(__file__).resolve().parent.parent / "harness" / "schemas" / "plugin.schema.json"
 MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
+PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = (
     "channels",
@@ -47,6 +48,17 @@ PERMISSIONS = (
     "memories:read",
     "notifications:send",
 )
+# What each permission lets a plugin do on a project that enables it, as an admin of the project reads it before
+# granting it.
+PERMISSION_TEXT = {
+    "runs:read": "read the project's runs, their events and their outcomes",
+    "runs:dispatch": "dispatch runs in the project",
+    "chats:read": "read the project's group chats",
+    "chats:write": "post messages in the project's group chats",
+    "plans:read": "read the project's plans",
+    "memories:read": "read the project's memories",
+    "notifications:send": "send notifications to the project's members",
+}
 
 
 class ManifestError(ValueError):

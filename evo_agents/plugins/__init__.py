@@ -5,6 +5,8 @@
 - ``signing``: the signature beside a bundle (Sigstore keyless from the plugin repo's CI, or Ed25519 for hubs that
   cannot reach Sigstore) and the publishers an operator trusts;
 - ``compat``: whether a plugin runs on a release, by its ``engines`` range and ``plugin_api``;
+- ``config``: a plugin's config as layers (defaults, instance, project, agent profile, run), checked against its
+  schema, merged and digested;
 - ``core``: the core plugins installed as Python packages, from the entry point group ``evo_agents.plugins``.
 
 A plugin is core (Python in the hub's and the worker's processes, installed into the image or the machine) or

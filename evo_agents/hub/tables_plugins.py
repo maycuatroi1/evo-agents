@@ -11,6 +11,14 @@ of a Sigstore certificate, or the id of an Ed25519 key), who published it and wh
 
 The installed version is a version of the plugin: (id, installed_version) refers to plugin_versions, a key created
 after both tables (``use_alter``).
+
+The tables of 0034 place plugins in projects. project_plugins holds each plugin a project enabled, the permissions of
+its manifest an admin of the project granted, who enabled it and when, who granted last and when; turning it off
+deletes the row. plugin_configs holds every version of each stored layer of a plugin's config
+(``evo_agents.plugins.config``): the hub's own (instance), a project's, an agent profile's (agent), never changed,
+its plain values and its secrets sealed (``evo_agents.hub.server.plugin_configs``). ``plugin_tables`` gives runs its
+own layer, ``plugin_config``, and run_plugins holds the version and the digest of the effective config of each plugin
+enabled on a run's project when a worker claimed it.
 """
 
 from __future__ import annotations
@@ -21,6 +29,8 @@ from sqlalchemy import (
     DateTime,
     ForeignKeyConstraint,
     Identity,
+    Index,
+    Integer,
     MetaData,
     PrimaryKeyConstraint,
     Table,
@@ -28,15 +38,16 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 
 def _stamp(name: str) -> Column:
     return Column(name, DateTime(timezone=True), nullable=False, server_default=func.now())
 
 
-def plugin_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """(plugins, plugin_versions), added to ``metadata``."""
+def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table, Table]:
+    """(plugins, plugin_versions, project_plugins, plugin_configs, run_plugins), added to ``metadata``; the column of
+    a run's own layer added to ``runs``."""
     plugins = Table(
         "plugins",
         metadata,
@@ -82,4 +93,76 @@ def plugin_tables(metadata: MetaData) -> tuple[Table, Table]:
         ),
         PrimaryKeyConstraint("plugin_id", "version", name="plugin_versions_pkey"),
     )
-    return plugins, plugin_versions
+    return plugins, plugin_versions, *_project_tables(metadata, runs)
+
+
+def _fkey(column: str, target: str, table: str, ondelete: str = "RESTRICT") -> ForeignKeyConstraint:
+    return ForeignKeyConstraint([column], [target], ondelete=ondelete, name=f"{table}_{column}_fkey")
+
+
+def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table]:
+    project_plugins = Table(
+        "project_plugins",
+        metadata,
+        Column("project_id", BigInteger, nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("permissions", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("enabled_by", BigInteger, nullable=False),
+        _stamp("enabled_at"),
+        Column("granted_by", BigInteger, nullable=False),
+        _stamp("granted_at"),
+        _fkey("project_id", "projects.id", "project_plugins"),
+        _fkey("plugin_id", "plugins.id", "project_plugins", "CASCADE"),
+        _fkey("enabled_by", "users.id", "project_plugins"),
+        _fkey("granted_by", "users.id", "project_plugins"),
+        PrimaryKeyConstraint("project_id", "plugin_id", name="project_plugins_pkey"),
+        Index("project_plugins_plugin_idx", "plugin_id", "project_id"),
+    )
+    plugin_configs = Table(
+        "plugin_configs",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("layer", Text, nullable=False),
+        Column("project_id", BigInteger),
+        Column("profile_id", BigInteger),
+        Column("version", Integer, nullable=False),
+        Column("values", JSONB, nullable=False, server_default="{}"),
+        Column("secrets", JSONB, nullable=False, server_default="{}"),
+        Column("rolled_back_to", Integer),
+        Column("changed_by", BigInteger, nullable=False),
+        _stamp("changed_at"),
+        _fkey("plugin_id", "plugins.id", "plugin_configs", "CASCADE"),
+        _fkey("project_id", "projects.id", "plugin_configs"),
+        _fkey("profile_id", "agent_profiles.id", "plugin_configs"),
+        _fkey("changed_by", "users.id", "plugin_configs"),
+        PrimaryKeyConstraint("id", name="plugin_configs_pkey"),
+        UniqueConstraint(
+            "plugin_id",
+            "layer",
+            "project_id",
+            "profile_id",
+            "version",
+            name="plugin_configs_version_key",
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+    runs.append_column(Column("plugin_config", JSONB))
+    run_plugins = Table(
+        "run_plugins",
+        metadata,
+        Column("run_id", BigInteger, nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("version", Text, nullable=False),
+        Column("config_digest", Text, nullable=False),
+        _stamp("recorded_at"),
+        _fkey("run_id", "runs.id", "run_plugins", "CASCADE"),
+        ForeignKeyConstraint(
+            ["plugin_id", "version"],
+            ["plugin_versions.plugin_id", "plugin_versions.version"],
+            ondelete="RESTRICT",
+            name="run_plugins_version_fkey",
+        ),
+        PrimaryKeyConstraint("run_id", "plugin_id", name="run_plugins_pkey"),
+    )
+    return project_plugins, plugin_configs, run_plugins
