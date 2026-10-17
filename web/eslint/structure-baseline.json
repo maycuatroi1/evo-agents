@@ -11,11 +11,11 @@
     "src/components/kg/build-status.tsx": 429,
     "src/components/memories/memory-browser.tsx": 484,
     "src/components/palette/command-palette.tsx": 698,
-    "src/components/runs/agent-trace.tsx": 673,
+    "src/components/runs/agent-trace.tsx": 525,
     "src/components/runs/queries.ts": 453,
     "src/components/runs/run-chat.tsx": 456,
-    "src/components/runs/run-log.tsx": 603,
-    "src/components/runs/trace-model.ts": 551,
+    "src/components/runs/run-log.tsx": 582,
+    "src/components/runs/trace-model.ts": 548,
     "src/components/secrets/secret-dialog.tsx": 501,
     "src/components/shell/shortcuts.tsx": 524,
     "src/components/ui/sidebar.tsx": 712,
@@ -282,7 +282,6 @@
       "src/components/runs/step-runs.tsx"
     ],
     "src/components/runs/agent-trace.tsx": [
-      "src/components/kg/use-now.ts",
       "src/components/memories/markdown.tsx"
     ],
     "src/components/runs/author-run-dialog.tsx": [
@@ -340,7 +339,6 @@
       "src/components/inbox/queries.ts"
     ],
     "src/components/runs/run-detail.tsx": [
-      "src/components/curator/badges.tsx",
       "src/components/curator/queries.ts",
       "src/components/plans/links.ts",
       "src/components/workers/queries.ts"
@@ -353,8 +351,7 @@
       "src/components/workers/queries.ts"
     ],
     "src/components/runs/run-plan-steps.tsx": [
-      "src/components/plans/links.ts",
-      "src/components/plans/status.tsx"
+      "src/components/plans/links.ts"
     ],
     "src/components/runs/run-terminal.tsx": [
       "src/components/kg/use-now.ts"

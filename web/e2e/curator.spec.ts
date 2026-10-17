@@ -133,7 +133,7 @@ test("the night's review shows on the Curator's page, and its proposals filter b
 
   // The review run's own page says what it is and leads back to its proposals.
   await main(page).getByTestId("curator-last-review-run").click();
-  await expect(main(page).getByTestId("run-kind")).toHaveText("Review run");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-kind", "review");
   await expect(main(page).getByTestId("run-proposals-link")).toHaveAttribute("href", `/p/${project}/curator/proposals?run=${night.runId}`);
   await main(page).getByTestId("run-proposals-link").click();
 

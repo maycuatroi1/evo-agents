@@ -132,6 +132,9 @@ test("an author run's decisions are cards in its Chat: answered with the mouse, 
   // At 375 px the Chat and its cards fit without scrolling sideways.
   await page.setViewportSize({ width: 375, height: 812 });
   await open(page, runPath(project, run.id));
+  // On a phone the Chat is on the session's own screen, opened from the run's page.
+  await main(page).getByTestId("run-open-trace").click();
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
   await expect(main(page).getByTestId("run-chat-decision")).toHaveCount(2);
   const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect.soft(overflow, "the author run's chat at 375 px scrolls sideways").toBeLessThanOrEqual(0);
