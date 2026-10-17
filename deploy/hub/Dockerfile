@@ -1,6 +1,7 @@
 # syntax=docker/dockerfile:1.7
-# The hub's Python image: `evo-agents hub serve` (the api, the default command) and `evo-agents hub worker` (the
-# worker, same image, its own command in docker-compose.yml). Build it from the repository root:
+# The hub's Python image: `evo-agents hub serve` (the api, the default command), `evo-agents hub worker` (the worker)
+# and `evo-agents hub plugin-host` (the plugins service, as root with four capabilities, its volume at /plugins), same
+# image, their own commands in docker-compose.yml. Build it from the repository root:
 #
 #   docker build -f deploy/hub/Dockerfile -t evo-agents-hub:local .
 #
@@ -31,7 +32,8 @@ ENV PATH=/opt/venv/bin:$PATH \
     EVO_HUB_DATA_DIR=/cache
 RUN groupadd --system --gid 10001 hub \
     && useradd --system --uid 10001 --gid hub --home-dir /home/hub --create-home --shell /usr/sbin/nologin hub \
-    && install -d -o hub -g hub -m 0750 /cache
+    && install -d -o hub -g hub -m 0750 /cache \
+    && install -d -o root -g root -m 0755 /plugins
 COPY --from=build /opt/venv /opt/venv
 USER hub:hub
 WORKDIR /home/hub

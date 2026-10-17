@@ -47,6 +47,7 @@ from evo_agents.hub.blobs import BLOB_PREFIX, BlobStore, BlobStoreUnavailable, b
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.notifications import notify
+from evo_agents.hub.server.plugin_tokens import revoke_tokens
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import compat, signing
 from evo_agents.plugins.bundle import MAX_BUNDLE, BundleError, read_bundle
@@ -449,6 +450,7 @@ async def set_removed(conn: AsyncConnection, user: Principal, row) -> None:
     await conn.execute(
         update(plugins).where(plugins.c.id == row.id).values(**cleared, disabled_reason=None, disabled_at=None)
     )
+    await revoke_tokens(conn, row.id)  # its backend's token stops working now, not when the host next pulls
     target = f"plugin:{row.name}@{row.installed_version}"
     await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.PLUGIN_REMOVE, target=target)
 
@@ -481,6 +483,7 @@ async def _turn_off(conn: AsyncConnection, row, reason: str, admin_ids: list[int
         .where(plugins.c.id == row.id)
         .values(disabled_reason=reason[:MAX_REASON_CHARS], disabled_at=func.now())
     )
+    await revoke_tokens(conn, row.id)
     target = f"plugin:{row.name}@{row.installed_version}"
     await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_DISABLE, target=target)
     body = (
