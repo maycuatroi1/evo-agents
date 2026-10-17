@@ -148,8 +148,10 @@ The hub mints a backend's token when the host is about to start it, and only the
 their payloads from `GET /internal/plugin-host/plugins`, which mints nothing, and asks
 `POST /internal/plugin-host/plugins/{name}/token` just before each start, which revokes the plugin's older tokens.
 A pull that finds nothing changed restarts nothing. Removing a plugin, or the hub turning it off, revokes its tokens at
-once, and the host stops its backend at its next pull (every 60 seconds). What a token may do on each request is the
-extension points' check (step 5).
+once, and the host stops its backend at its next pull (every 60 seconds). Minting locks the plugin's row as both of
+those do, so neither can slip between minting's read and its insert, and a token opens nothing once its plugin is not
+installed or is turned off, whatever its own row says. What a token may do on each request is the extension points'
+check (step 5).
 
 ## Crashes, hangs and restarts
 
