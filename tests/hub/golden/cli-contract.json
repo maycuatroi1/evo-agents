@@ -4242,6 +4242,14 @@
           "value": "integer",
           "required": false,
           "repeatable": false
+        },
+        {
+          "flags": [
+            "--allow-shared-user"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
         }
       ],
       "json": null
@@ -26723,172 +26731,6 @@
             }
           }
         }
-      },
-      "/v1/plugin-host/plugins": {
-        "get": {
-          "tags": [
-            "plugin-host"
-          ],
-          "summary": "Host Plugins",
-          "description": "Every installed isolated plugin with a backend, for the host to run: its bundle, a fresh token and its config.",
-          "operationId": "host_plugins_v1_plugin_host_plugins_get",
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "items": {
-                      "$ref": "#/components/schemas/BackendPlugin"
-                    },
-                    "type": "array",
-                    "title": "Response Host Plugins V1 Plugin Host Plugins Get"
-                  }
-                }
-              }
-            },
-            "401": {
-              "description": "Unauthorized",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              }
-            },
-            "503": {
-              "description": "Service Unavailable",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "/v1/plugin-host/plugins/{name}/bundle": {
-        "get": {
-          "tags": [
-            "plugin-host"
-          ],
-          "summary": "Host Bundle",
-          "description": "The bytes of an installed plugin's bundle, for the host to place; 404 when it is not installed.",
-          "operationId": "host_bundle_v1_plugin_host_plugins__name__bundle_get",
-          "parameters": [
-            {
-              "name": "name",
-              "in": "path",
-              "required": true,
-              "schema": {
-                "type": "string",
-                "title": "Name"
-              }
-            }
-          ],
-          "responses": {
-            "200": {
-              "description": "Successful Response",
-              "content": {
-                "application/json": {
-                  "schema": {}
-                }
-              }
-            },
-            "401": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Unauthorized"
-            },
-            "503": {
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              },
-              "description": "Service Unavailable"
-            },
-            "422": {
-              "description": "Validation Error",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              }
-            }
-          }
-        }
-      },
-      "/v1/plugin-host/status": {
-        "post": {
-          "tags": [
-            "plugin-host"
-          ],
-          "summary": "Report Status",
-          "description": "The host reports each backend's state; the hub keeps it in plugin_backends for an admin to read.",
-          "operationId": "report_status_v1_plugin_host_status_post",
-          "requestBody": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "items": {
-                    "$ref": "#/components/schemas/BackendStatusIn"
-                  },
-                  "type": "array",
-                  "title": "Body"
-                }
-              }
-            },
-            "required": true
-          },
-          "responses": {
-            "204": {
-              "description": "Successful Response"
-            },
-            "401": {
-              "description": "Unauthorized",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              }
-            },
-            "503": {
-              "description": "Service Unavailable",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/ErrorBody"
-                  }
-                }
-              }
-            },
-            "422": {
-              "description": "Validation Error",
-              "content": {
-                "application/json": {
-                  "schema": {
-                    "$ref": "#/components/schemas/HTTPValidationError"
-                  }
-                }
-              }
-            }
-          }
-        }
       }
     },
     "components": {
@@ -28362,54 +28204,6 @@
           ],
           "title": "AvatarUpload"
         },
-        "BackendPlugin": {
-          "properties": {
-            "name": {
-              "type": "string",
-              "title": "Name"
-            },
-            "version": {
-              "type": "string",
-              "title": "Version"
-            },
-            "tier": {
-              "type": "string",
-              "title": "Tier"
-            },
-            "sha256": {
-              "type": "string",
-              "title": "Sha256",
-              "description": "the bundle's SHA-256; the host fetches it from the blob store"
-            },
-            "size": {
-              "type": "integer",
-              "title": "Size"
-            },
-            "backend": {
-              "additionalProperties": true,
-              "type": "object",
-              "title": "Backend",
-              "description": "the manifest's backend: runtime, entry, requirements"
-            },
-            "init": {
-              "additionalProperties": true,
-              "type": "object",
-              "title": "Init",
-              "description": "the initialize payload, config secrets decrypted, the fresh token included"
-            }
-          },
-          "type": "object",
-          "required": [
-            "name",
-            "version",
-            "tier",
-            "sha256",
-            "size",
-            "backend",
-            "init"
-          ],
-          "title": "BackendPlugin"
-        },
         "BackendStatus": {
           "properties": {
             "plugin": {
@@ -28533,61 +28327,6 @@
             "reported_at"
           ],
           "title": "BackendStatus"
-        },
-        "BackendStatusIn": {
-          "properties": {
-            "plugin": {
-              "type": "string",
-              "title": "Plugin"
-            },
-            "version": {
-              "type": "string",
-              "title": "Version"
-            },
-            "state": {
-              "type": "string",
-              "title": "State"
-            },
-            "isolation": {
-              "type": "string",
-              "title": "Isolation"
-            },
-            "pid": {
-              "anyOf": [
-                {
-                  "type": "integer"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Pid"
-            },
-            "restarts": {
-              "type": "integer",
-              "title": "Restarts",
-              "default": 0
-            },
-            "error": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Error"
-            }
-          },
-          "type": "object",
-          "required": [
-            "plugin",
-            "version",
-            "state",
-            "isolation"
-          ],
-          "title": "BackendStatusIn"
         },
         "Blob": {
           "properties": {

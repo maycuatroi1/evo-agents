@@ -60,8 +60,9 @@ core plugins, with Python in the hub's processes; each must be in EVO_HUB_PLUGIN
 The backends of isolated plugins run in the plugin host, ``evo-agents hub plugin-host``, a service of its own that
 holds none of the hub's variables (docs/plugins.md). EVO_HUB_PLUGIN_HOST_URL is where the api reaches it (on the
 compose network, http://evo-agents-hub-plugins:8090) and EVO_HUB_PLUGIN_HOST_TOKEN the secret the two share, at least
-32 characters, registered as a secret: the host sends it to the api's /v1/plugin-host/ routes, and the api to the
-host. Without both the api runs no backend: those routes answer 503, and so does a call to a plugin.
+32 characters and not the value an example once showed, registered as a secret: the host sends it to the api's
+/internal/plugin-host/ routes, which the reverse proxy does not forward, and the api to the host. Without both the api
+runs no backend: those routes answer 503, and so does a call to a plugin.
 """
 
 from __future__ import annotations
@@ -77,6 +78,7 @@ from urllib.parse import urlsplit
 
 from evo_agents.hub.log import dsn_password, register_secret
 from evo_agents.hub.runs import DECISION_WAIT_SECONDS, LEASE_SECONDS
+from evo_agents.plugins.host import MIN_HOST_TOKEN, host_token_problem
 from evo_agents.plugins.signing import PUBLISHER_ID, Publisher, parse_publishers
 
 # The blob store's bound (evo_agents.hub.blobs takes it from here: that module needs boto3, this one only the stdlib).
@@ -107,7 +109,7 @@ DEFAULT_GITHUB_URL = "https://github.com"
 DEFAULT_GITHUB_API_URL = "https://api.github.com"
 DEFAULT_GITHUB_TIMEOUT = 10.0  # seconds for one call to GitHub, connecting included
 MIN_SESSION_SECRET = 32  # characters; the secret keys HMAC-SHA256
-MIN_PLUGIN_HOST_TOKEN = 32  # characters of the secret the api and the plugin host share
+MIN_PLUGIN_HOST_TOKEN = MIN_HOST_TOKEN  # characters of the secret the api and the plugin host share
 PLUGIN_HOST_VARIABLES = ("EVO_HUB_PLUGIN_HOST_URL", "EVO_HUB_PLUGIN_HOST_TOKEN")
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
 S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
@@ -453,11 +455,15 @@ def _plugins(env: Mapping[str, str]) -> dict:
                 core_name, f"{core_name} names {publisher_id}, which {name} does not list: a core publisher signs too"
             )
     url_name, token_name = PLUGIN_HOST_VARIABLES
+    token = _secret(env, token_name, MIN_PLUGIN_HOST_TOKEN)
+    problem = host_token_problem(token) if token else None
+    if problem:
+        raise ConfigError(token_name, f"{token_name} {problem}")
     return {
         "plugin_publishers": publishers,
         "plugin_core_publishers": frozenset(core),
         "plugin_host_url": _url(env, url_name, None),
-        "plugin_host_token": _secret(env, token_name, MIN_PLUGIN_HOST_TOKEN),
+        "plugin_host_token": token,
     }
 
 
