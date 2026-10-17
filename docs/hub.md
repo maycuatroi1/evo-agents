@@ -1121,6 +1121,19 @@ been upgraded past the plugin's `engines`: the plugin shows `disabled` with the 
 failure of that check is logged without stopping the start. Upgrading the plugin to a version that runs, or installing
 one again, turns it back on.
 
+### Isolated backends and the plugin host
+
+An isolated plugin carries a backend: a program the hub runs outside the api and the worker, over the `plugin/1`
+protocol, in the **plugin host**, `evo-agents hub plugin-host`. The host is a service of its own, built from the same
+image (the `plugins` service of the compose file), that holds none of the hub's variables: not `EVO_HUB_DSN`, not
+`EVO_HUB_SECRETS_KEY`, not the blob store keys. It is given the hub's URL, the shared secret
+`EVO_HUB_PLUGIN_HOST_TOKEN` and a data directory, pulls the installed isolated plugins from the api, and runs each
+backend in a process of its own built from nothing, under a user of its own when it runs as root. The api reaches the
+host at `EVO_HUB_PLUGIN_HOST_URL` with the same shared secret; without both variables the api runs no backend. A
+backend that crashes or hangs makes the call fail within its timeout, and the host restarts it with a backoff; a hub
+admin reads each backend's state at `GET /v1/plugins/{name}/backend`. The protocol, the sandbox and how an author
+checks a plugin with `evo-agents plugin test` are in `docs/plugins.md`.
+
 ### Plugins in a project
 
 An installed plugin does nothing in a project until an admin of the project enables it there (table `project_plugins`,
@@ -1367,6 +1380,8 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_TELEGRAM_BOT_TOKEN`, `EVO_HUB_TELEGRAM_WEBHOOK_SECRET` | api, worker | the hub's Telegram bot, as @BotFather gives its token, and the secret Telegram sends back with each update (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`); without either the Telegram channel is off and the hub runs on (`docs/notifications.md`). `evo-agents hub admin telegram --set-webhook` then points the bot at `EVO_HUB_PUBLIC_URL/v1/telegram/webhook` |
 | `EVO_HUB_PLUGIN_PUBLISHERS` | api | the publishers whose signed plugin bundles the hub accepts: comma-separated `ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml` (a GitHub Actions workflow that signs keyless with Sigstore) or `ID=ed25519:KEY` (a public key, 32 bytes in base64) entries, several for one id; unset trusts nobody and every bundle is refused (section Plugins) |
 | `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
+| `EVO_HUB_PLUGIN_HOST_URL` | api, worker | where the api reaches the plugin host, such as `http://evo-agents-hub-plugins:8090`; with the token below, both or the api runs no isolated backend (section Isolated backends) |
+| `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 characters; the `plugins` service takes it too |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |

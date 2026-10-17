@@ -56,6 +56,12 @@ signs keyless with Sigstore) or ``ID=ed25519:KEY`` (a public key, 32 bytes in ba
 it has several workflows or keys (``evo_agents.plugins.signing.parse_publishers``). Unset, the hub trusts nobody and
 refuses every bundle. EVO_HUB_PLUGIN_CORE_PUBLISHERS lists, comma-separated, the ids among them whose plugins may be
 core plugins, with Python in the hub's processes; each must be in EVO_HUB_PLUGIN_PUBLISHERS.
+
+The backends of isolated plugins run in the plugin host, ``evo-agents hub plugin-host``, a service of its own that
+holds none of the hub's variables (docs/plugins.md). EVO_HUB_PLUGIN_HOST_URL is where the api reaches it (on the
+compose network, http://evo-agents-hub-plugins:8090) and EVO_HUB_PLUGIN_HOST_TOKEN the secret the two share, at least
+32 characters, registered as a secret: the host sends it to the api's /v1/plugin-host/ routes, and the api to the
+host. Without both the api runs no backend: those routes answer 503, and so does a call to a plugin.
 """
 
 from __future__ import annotations
@@ -101,6 +107,8 @@ DEFAULT_GITHUB_URL = "https://github.com"
 DEFAULT_GITHUB_API_URL = "https://api.github.com"
 DEFAULT_GITHUB_TIMEOUT = 10.0  # seconds for one call to GitHub, connecting included
 MIN_SESSION_SECRET = 32  # characters; the secret keys HMAC-SHA256
+MIN_PLUGIN_HOST_TOKEN = 32  # characters of the secret the api and the plugin host share
+PLUGIN_HOST_VARIABLES = ("EVO_HUB_PLUGIN_HOST_URL", "EVO_HUB_PLUGIN_HOST_TOKEN")
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
 S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
 BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")  # an S3 bucket name, as R2 accepts it
@@ -164,6 +172,8 @@ class HubConfig:
     telegram_api_url: str = DEFAULT_TELEGRAM_API_URL
     plugin_publishers: tuple[Publisher, ...] = ()  # whose signed plugin bundles the hub accepts
     plugin_core_publishers: frozenset[str] = frozenset()  # the ids among them whose plugins may be core plugins
+    plugin_host_url: str | None = None  # where the api reaches the plugin host
+    plugin_host_token: str | None = None  # the secret the api and the plugin host share; never logged or returned
 
     def __repr__(self) -> str:  # the DSNs and secrets are credentials; keep them out of tracebacks and debug output
         return f"HubConfig(data_dir={str(self.data_dir)!r}, host={self.host!r}, port={self.port})"
@@ -189,6 +199,11 @@ class HubConfig:
     def credentials_missing(self) -> list[str]:
         """The variable the hub needs to keep secrets and lease credentials; empty when it can."""
         return [] if self.secrets_key else ["EVO_HUB_SECRETS_KEY"]
+
+    def plugin_host_missing(self) -> list[str]:
+        """The EVO_HUB_PLUGIN_HOST_* variables the backends of isolated plugins still need; empty when they run."""
+        values = (self.plugin_host_url, self.plugin_host_token)
+        return [name for name, value in zip(PLUGIN_HOST_VARIABLES, values, strict=True) if not value]
 
     def telegram_missing(self) -> list[str]:
         """The EVO_HUB_TELEGRAM_* variables the Telegram channel still needs; empty when it is on."""
@@ -437,7 +452,13 @@ def _plugins(env: Mapping[str, str]) -> dict:
             raise ConfigError(
                 core_name, f"{core_name} names {publisher_id}, which {name} does not list: a core publisher signs too"
             )
-    return {"plugin_publishers": publishers, "plugin_core_publishers": frozenset(core)}
+    url_name, token_name = PLUGIN_HOST_VARIABLES
+    return {
+        "plugin_publishers": publishers,
+        "plugin_core_publishers": frozenset(core),
+        "plugin_host_url": _url(env, url_name, None),
+        "plugin_host_token": _secret(env, token_name, MIN_PLUGIN_HOST_TOKEN),
+    }
 
 
 def load_log_level(env: Mapping[str, str] | None = None) -> str:

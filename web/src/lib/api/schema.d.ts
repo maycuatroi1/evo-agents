@@ -3446,6 +3446,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/plugins/{name}/backend": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Plugin Backend
+         * @description The state of the plugin's backend as the plugin host last reported it: running, restarting, or in backoff with
+         *     its last failure, for a hub admin to read. A plugin the host has not reported on reads as such.
+         */
+        get: operations["plugin_backend_v1_plugins__name__backend_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/plugins/{name}/config": {
         parameters: {
             query?: never;
@@ -3691,6 +3712,66 @@ export interface paths {
         get: operations["plugins_of_run_v1_projects__project__runs__run_id__plugins_get"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-host/plugins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Host Plugins
+         * @description Every installed isolated plugin with a backend, for the host to run: its bundle, a fresh token and its config.
+         */
+        get: operations["host_plugins_v1_plugin_host_plugins_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-host/plugins/{name}/bundle": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Host Bundle
+         * @description The bytes of an installed plugin's bundle, for the host to place; 404 when it is not installed.
+         */
+        get: operations["host_bundle_v1_plugin_host_plugins__name__bundle_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-host/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Status
+         * @description The host reports each backend's state; the hub keeps it in plugin_backends for an admin to read.
+         */
+        post: operations["report_status_v1_plugin_host_status_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4361,6 +4442,79 @@ export interface components {
              * @description the image, base64: PNG, JPEG or WebP, at most 524288 bytes
              */
             data: string;
+        };
+        /** BackendPlugin */
+        BackendPlugin: {
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+            /** Tier */
+            tier: string;
+            /**
+             * Sha256
+             * @description the bundle's SHA-256; the host fetches it from the blob store
+             */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Backend
+             * @description the manifest's backend: runtime, entry, requirements
+             */
+            backend: {
+                [key: string]: unknown;
+            };
+            /**
+             * Init
+             * @description the initialize payload, config secrets decrypted, the fresh token included
+             */
+            init: {
+                [key: string]: unknown;
+            };
+        };
+        /** BackendStatus */
+        BackendStatus: {
+            /** Plugin */
+            plugin: string;
+            /** Version */
+            version: string | null;
+            /** State */
+            state: string | null;
+            /** Isolation */
+            isolation: string | null;
+            /** Pid */
+            pid: number | null;
+            /** Restarts */
+            restarts: number | null;
+            /** Error */
+            error: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Retry At */
+            retry_at: string | null;
+            /** Reported At */
+            reported_at: string | null;
+        };
+        /** BackendStatusIn */
+        BackendStatusIn: {
+            /** Plugin */
+            plugin: string;
+            /** Version */
+            version: string;
+            /** State */
+            state: string;
+            /** Isolation */
+            isolation: string;
+            /** Pid */
+            pid?: number | null;
+            /**
+             * Restarts
+             * @default 0
+             */
+            restarts: number;
+            /** Error */
+            error?: string | null;
         };
         /** Blob */
         Blob: {
@@ -24268,6 +24422,65 @@ export interface operations {
             };
         };
     };
+    plugin_backend_v1_plugins__name__backend_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description the plugin's id, as its manifest gives it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackendStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     instance_config_v1_plugins__name__config_get: {
         parameters: {
             query?: never;
@@ -25269,6 +25482,142 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    host_plugins_v1_plugin_host_plugins_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BackendPlugin"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    host_bundle_v1_plugin_host_plugins__name__bundle_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_status_v1_plugin_host_status_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BackendStatusIn"][];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

@@ -50,6 +50,8 @@ x-hub-environment: &hub-environment
   EVO_HUB_TELEGRAM_WEBHOOK_SECRET: ${EVO_HUB_TELEGRAM_WEBHOOK_SECRET:-}
   EVO_HUB_PLUGIN_PUBLISHERS: ${EVO_HUB_PLUGIN_PUBLISHERS:-}
   EVO_HUB_PLUGIN_CORE_PUBLISHERS: ${EVO_HUB_PLUGIN_CORE_PUBLISHERS:-}
+  EVO_HUB_PLUGIN_HOST_URL: ${EVO_HUB_PLUGIN_HOST_URL:-}
+  EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
 
 # api and worker run one image, built from one definition.
 x-hub-build: &hub-build
@@ -119,6 +121,46 @@ services:
       api:
         condition: service_healthy
 
+  # The backends of isolated plugins run here, not in api or worker. This service gets none of the hub's variables (no
+  # *hub-environment): no DSN, no EVO_HUB_SECRETS_KEY, no blob store keys. It takes only the shared secret and the
+  # api's address, pulls the installed plugins from the api, and runs each backend in a process of its own built from
+  # nothing. It runs as root with only SETUID, SETGID, CHOWN and KILL, so each backend gets a user of its own and no
+  # plugin can read another's memory or files; without those capabilities it would fall back to one user for all.
+  plugins:
+    <<: *hardening
+    image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
+    build: *hub-build
+    command: ["evo-agents", "hub", "plugin-host", "--hub-url", "http://evo-agents-hub-api:8080", "--data-dir", "/cache"]
+    restart: unless-stopped
+    user: "0:0"
+    cap_drop: [ALL]
+    cap_add: [SETUID, SETGID, CHOWN, KILL]
+    environment:
+      EVO_HUB_PLUGIN_HOST_TOKEN: ${EVO_HUB_PLUGIN_HOST_TOKEN:-}
+      EVO_HUB_PUBLIC_URL: ${EVO_HUB_PUBLIC_URL:-}
+      EVO_HUB_LOG_LEVEL: ${EVO_HUB_LOG_LEVEL:-INFO}
+      EVO_HUB_DATA_DIR: /cache
+    volumes:
+      - plugins-cache:/cache
+    networks:
+      default:
+        aliases: [evo-agents-hub-plugins]
+    expose: ["8090"]
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/live', timeout=4)"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+    stop_grace_period: 15s
+    depends_on:
+      api:
+        condition: service_healthy
+
   web:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub-web:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
@@ -148,6 +190,7 @@ services:
 volumes:
   api-cache:
   worker-cache:
+  plugins-cache:
 
 networks:
   # Where the database is: on Dokploy, the shared network its databases join. Services without a domain (the

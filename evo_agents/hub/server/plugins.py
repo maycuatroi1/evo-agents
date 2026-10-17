@@ -36,6 +36,7 @@ from evo_agents.hub.server.plugin_configs import (
     rollback_layer,
     write_layer,
 )
+from evo_agents.hub.server.plugin_host import BackendStatus, backend_status
 from evo_agents.hub.server.plugin_store import (
     PLUGIN_NAME,
     Plugin,
@@ -184,6 +185,17 @@ async def _installed(conn, name: str, *, lock: bool = False):
         raise HTTPException(404, f"no plugin {name} is installed on this hub: see `evo-agents hub plugin list`")
     version = next(v for v in await version_rows(conn, row.id) if v.version == row.installed_version)
     return Place(row.id, name, "instance"), version.manifest.get("config")
+
+
+@router.get("/{name}/backend", response_model=BackendStatus, responses=READ_REFUSALS)
+async def plugin_backend(request: Request, name: PluginName) -> BackendStatus:
+    """The state of the plugin's backend as the plugin host last reported it: running, restarting, or in backoff with
+    its last failure, for a hub admin to read. A plugin the host has not reported on reads as such."""
+    async with request.app.state.engine.begin() as conn:
+        row = await find(conn, name)
+        if row is None:
+            raise not_found(name)
+        return await backend_status(conn, row.id, name)
 
 
 @router.get("/{name}/config", response_model=PluginConfigLayer, responses=READ_REFUSALS)
