@@ -222,9 +222,12 @@ async def host_plugins(request: Request, _: HostCaller) -> list[BackendPlugin]:
 @router.post("/plugins/{name}/token", response_model=BackendToken)
 async def host_token(request: Request, name: str, _: HostCaller) -> BackendToken:
     """A fresh token for the backend of ``name`` the host is about to start, its older tokens revoked; 404 unless it
-    is an installed, turned-on isolated plugin with a backend."""
+    is an installed, turned-on isolated plugin with a backend. The plugin's row stays locked until the token is
+    written, as removing it and the hub turning it off lock it: either of those that runs at the same time waits and
+    then revokes the token, or goes first and leaves no plugin to mint one for."""
     async with request.app.state.engine.begin() as conn:
-        row = next((row for row in await _installed_isolated(conn, name) if row.manifest.get("backend")), None)
+        rows = await _installed_isolated(conn, name, lock=True)
+        row = next((row for row in rows if row.manifest.get("backend")), None)
         if row is None:
             raise not_found(name)
         return BackendToken(token=await issue_token(conn, row.id))
@@ -278,7 +281,7 @@ async def report_status(request: Request, _: HostCaller, body: list[BackendStatu
             )
 
 
-async def _installed_isolated(conn: AsyncConnection, name: str | None = None) -> list:
+async def _installed_isolated(conn: AsyncConnection, name: str | None = None, *, lock: bool = False) -> list:
     p, v = tables.plugins, tables.plugin_versions
     query = (
         select(p.c.id, p.c.name, p.c.installed_version, v.c.manifest, v.c.sha256, v.c.size, v.c.tier)
@@ -288,6 +291,8 @@ async def _installed_isolated(conn: AsyncConnection, name: str | None = None) ->
     )
     if name is not None:
         query = query.where(p.c.name == name)
+    if lock:
+        query = query.with_for_update(of=p)
     return list(await conn.execute(query))
 
 

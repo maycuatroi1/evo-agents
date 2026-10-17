@@ -5,10 +5,11 @@ SHA-256 (``plugin_tokens``, schema 0035). The hub mints one when the plugin host
 then (``issue_token``, through ``POST /internal/plugin-host/plugins/{name}/token``): minting revokes the plugin's
 older tokens, so a token lives as long as the backend it was made for, and a host that pulls the same plugins again
 gets the same payload and restarts nothing. Removing a plugin and the hub turning it off revoke its tokens at once
-(``revoke_tokens``, from ``plugin_store``), before its backend has stopped. A plugin token is not a user token: it
-never signs in, and it reaches the hub only on the routes the extension points of a plugin use (step 5), which check
-with ``plugin_of_token`` on each request. What it may do is what the plugin's installed version asks for and the
-projects that enabled it granted (``plugin_grants.project_grants``), and nothing else.
+(``revoke_tokens``, from ``plugin_store``), before its backend has stopped; minting locks the plugin's row as they do,
+and ``plugin_of_token`` takes no token of a plugin that is not installed or is turned off. A plugin token is not a user
+token: it never signs in, and it reaches the hub only on the routes the extension points of a plugin use (step 5),
+which check with ``plugin_of_token`` on each request. What it may do is what the plugin's installed version asks for
+and the projects that enabled it granted (``plugin_grants.project_grants``), and nothing else.
 
 ``backend_payload`` is what the host gives the backend in ``initialize`` (``evo_agents.plugins.protocol``), the token
 left for the host to add: the plugin's id and version, the hub's URL, the effective config of the hub's own layer
@@ -65,11 +66,22 @@ async def issue_token(conn: AsyncConnection, plugin_id: int) -> str:
 
 
 async def plugin_of_token(conn: AsyncConnection, token: str) -> int | None:
-    """The plugin id a live plugin token belongs to, or None. A malformed value never reaches a comparison here."""
+    """The plugin id a live plugin token belongs to, or None: the token not revoked, and its plugin installed and not
+    turned off, so a token that outlived its plugin's removal still opens nothing. A malformed value never reaches a
+    comparison here."""
     if not token.startswith(PLUGIN_PREFIX):
         return None
-    pt = tables.plugin_tokens
-    query = select(pt.c.plugin_id).where(pt.c.token_hash == hash_token(token), pt.c.revoked_at.is_(None))
+    pt, p = tables.plugin_tokens, tables.plugins
+    query = (
+        select(pt.c.plugin_id)
+        .join(p, p.c.id == pt.c.plugin_id)
+        .where(
+            pt.c.token_hash == hash_token(token),
+            pt.c.revoked_at.is_(None),
+            p.c.installed_version.is_not(None),
+            p.c.disabled_reason.is_(None),
+        )
+    )
     return (await conn.execute(query)).scalar_one_or_none()
 
 

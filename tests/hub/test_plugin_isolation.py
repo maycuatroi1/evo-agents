@@ -298,6 +298,61 @@ def test_plugin_token_isolation_remove_and_turn_off_revoke_it_at_once(client, hu
     assert _live(hub_db, token) == [None]
 
 
+def test_plugin_token_isolation_a_token_that_outlived_its_plugin_opens_nothing(client, hub, hub_db):
+    """The review's second L3: a token is live only while its plugin is installed and on, whatever its own row says,
+    so one minted in a race with a remove opens nothing."""
+    _give_backend(hub_db)
+    token = client.post("/internal/plugin-host/plugins/sandbox/token", headers=HOST).json()["token"]
+    p = tables.plugins
+    plugin = p.c.name == "sandbox"
+    columns = ("installed_version", "installed_by", "installed_at")
+    (row,) = live.sql(hub_db, select(*(p.c[name] for name in columns)).where(plugin))
+    installed = dict(zip(columns, row, strict=True))
+    plugin_id = _live(hub_db, token)[0]
+    assert plugin_id is not None
+
+    removed = {"installed_version": None, "installed_by": None, "installed_at": None}  # its token not revoked
+    live.sql(hub_db, update(p).where(plugin).values(removed))
+    assert _live(hub_db, token) == [None]
+    live.sql(hub_db, update(p).where(plugin).values(installed))
+    assert _live(hub_db, token) == [plugin_id]
+    live.sql(hub_db, update(tables.plugins).where(plugin).values(disabled_reason="off", disabled_at=func.now()))
+    assert _live(hub_db, token) == [None]
+
+
+def test_plugin_token_isolation_minting_waits_for_a_remove_under_way(client, hub, hub_db):
+    """The review's second L3: minting read the plugin without a lock, so a remove committing between that read and
+    the token's insert revoked the older tokens and left the new one live. Minting now waits on the plugin's row and
+    finds no installed plugin once the remove commits."""
+    from types import SimpleNamespace
+
+    from evo_agents.hub.server.plugin_store import find, set_removed
+
+    _give_backend(hub_db)
+
+    async def race():
+        engine = _engine(hub_db)
+        try:
+            async with engine.begin() as conn:
+                row = await find(conn, "sandbox", lock=True)
+                await set_removed(conn, SimpleNamespace(user_id=None, token_id=None), row)
+                post = client.post
+                minting = asyncio.ensure_future(
+                    asyncio.to_thread(post, "/internal/plugin-host/plugins/sandbox/token", headers=HOST)
+                )
+                await asyncio.sleep(1.0)
+                waited = not minting.done()
+            return waited, await minting
+        finally:
+            await engine.dispose()
+
+    waited, minted = asyncio.run(race())
+    assert waited, "minting did not wait for the remove under way"
+    assert minted.status_code == 404, minted.text
+    pt = tables.plugin_tokens
+    assert live.sql(hub_db, select(func.count()).select_from(pt).where(pt.c.revoked_at.is_(None)))[0][0] == 0
+
+
 def test_plugin_config_isolation_one_plugin_never_sees_another_secret(client, hub, hub_db):
     from evo_agents.hub.server.plugin_tokens import backend_payload
 
