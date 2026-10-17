@@ -397,8 +397,8 @@ def register_kg(hsub) -> None:
 
 class RemoteSession:
     """``Session.call`` answered by the hub: a tools/call to its /mcp for ``project`` through ``sink``
-    (``evo_agents.hub.mcp_proxy.McpClient``). A hub that cannot be reached or refuses the call gives a tool error naming
-    the hub."""
+    (``evo_agents.hub.mcp_proxy.McpClient``) that asks for the structured result too, as a local Session gives it. A
+    hub that cannot be reached or refuses the call gives a tool error naming the hub."""
 
     def __init__(self, hub: Hub, project: str, sink: str):
         self.hub = hub
@@ -407,12 +407,13 @@ class RemoteSession:
 
     def call(self, name: str, args: dict) -> dict:
         from evo_agents.hub.mcp_proxy import McpClient
-        from evo_agents.kg.serve import TOOLS, _error
+        from evo_agents.kg.serve import DATA_META, TOOLS, _error
 
         if name not in {tool["name"] for tool in TOOLS}:
             return _error(f"unknown tool {name!r}")
         try:
-            return McpClient(self.hub.url, self.hub.token, self.project, self.sink).call_tool(name, args or {})
+            client = McpClient(self.hub.url, self.hub.token, self.project, self.sink)
+            return client.call_tool(name, args or {}, {DATA_META: True})
         except HubError as exc:
             return _error(f"{exc} (hub {self.hub.url})")
 

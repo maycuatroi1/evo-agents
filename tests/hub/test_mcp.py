@@ -39,6 +39,7 @@ from evo_agents.hub import mcp_tools
 from evo_agents.hub.client import Credentials, HubError, NotSignedIn, Unreachable
 from evo_agents.hub.mcp_proxy import McpClient, Proxy, hub_project
 from evo_agents.kg import serve
+from evo_agents.kg.sessions import READ_META
 from tests.hub import live, pg
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
@@ -243,8 +244,10 @@ def request(id_, method, params=None) -> dict:
     return {"jsonrpc": "2.0", "id": id_, "method": method, **({"params": params} if params is not None else {})}
 
 
-def call(id_, tool, arguments=None) -> dict:
-    return request(id_, "tools/call", {"name": tool, "arguments": arguments or {}})
+def call(id_, tool, arguments=None, *, data=False) -> dict:
+    """A tools/call; with ``data`` it asks for the structuredContent, which an agent's client does not."""
+    meta = {"_meta": {serve.DATA_META: True}} if data else {}
+    return request(id_, "tools/call", {"name": tool, "arguments": arguments or {}, **meta})
 
 
 def test_the_proxy_streams_every_message_to_the_hub_with_the_session_headers():
@@ -648,8 +651,9 @@ def rpc(hub, member: str, message: dict, *, project=PROJECT, sink=None, path="/m
     return hub.client.post(path, json=message, headers=sent, follow_redirects=False)
 
 
-def tool(hub, member: str, name: str, arguments: dict | None = None, **options) -> dict:
-    response = rpc(hub, member, call(7, name, arguments), **options)
+def tool(hub, member: str, name: str, arguments: dict | None = None, *, data=True, **options) -> dict:
+    """The result of one tool call, with its structuredContent unless ``data`` is false (an agent's view)."""
+    response = rpc(hub, member, call(7, name, arguments, data=data), **options)
     assert response.status_code == 200, response.text
     answer = response.json()
     assert answer["id"] == 7, answer
@@ -815,6 +819,31 @@ def test_kg_tools_answer_as_kg_serve_does_on_the_same_store(hub):
     assert status["backend"] == "hub"
     assert (status["graph"]["nodes"], status["graph"]["edges"]) == (report.nodes, report.edges)
     assert status["hub_build"]["content_hash"] == report.content_hash
+
+
+@needs_pg
+def test_an_agent_gets_the_text_alone_with_the_labels_in_its_meta(hub, monkeypatch):
+    # Claude Code shows the model a result's structuredContent instead of its text: an agent's client never gets one.
+    calls = (("kg_search", {"query": "guide"}), ("kg_context", {"query": "guide"}), ("hub_projects", {}))
+    for name, arguments in calls:
+        shown = tool(hub, "dora", name, arguments, data=False)
+        full = tool(hub, "dora", name, arguments)
+        assert "structuredContent" not in shown and "structuredContent" in full, name
+        assert shown["content"] == full["content"], name
+    found = tool(hub, "dora", "kg_search", {"query": "guide"})
+    data = found["structuredContent"]
+    assert found["content"][0]["_meta"] == {
+        READ_META: {"project": PROJECT, "label": data["label"], "results_read": len(data["results"])}
+    }
+    assert "_meta" not in tool(hub, "dora", "hub_projects", data=False)["content"][0]  # reveals no graph element
+
+    monkeypatch.setattr(serve, "CAP_CHARS", 300)
+    cut = tool(hub, "dora", "kg_context", {"query": "guide", "budget_tokens": 4000}, data=False)
+    text = cut["content"][0]["text"]
+    assert "structuredContent" not in cut and cut["content"][0]["_meta"][READ_META]["project"] == PROJECT
+    handle = text.rsplit("call kg_more with handle ", 1)[1].rstrip("]")
+    more = tool(hub, "dora", "kg_more", {"handle": handle}, data=False)
+    assert "structuredContent" not in more and more["content"][0]["text"] and not more.get("isError")
 
 
 @needs_pg
@@ -1014,6 +1043,20 @@ def test_plan_step_with_the_local_run_header_records_the_revision_as_that_runs(h
     assert stored == [(1, None), (2, run), (3, None), (4, None)]
 
 
+def test_the_hub_backend_of_kg_query_asks_for_the_data():
+    from evo_agents.hub.client import Hub
+    from evo_agents.hub.kg_cli import RemoteSession
+
+    hub = FakeHub(mcp_reply)
+    try:
+        answer = RemoteSession(Hub(hub.url, TOKEN), "alpha", AGENT).call("kg_search", {"query": "x"})
+    finally:
+        hub.stop()
+    assert answer["content"][0]["text"] == "called kg_search"
+    ((_, message),) = hub.requests
+    assert message["params"] == {"name": "kg_search", "arguments": {"query": "x"}, "_meta": {serve.DATA_META: True}}
+
+
 def test_the_proxy_names_the_local_run_on_plan_step_only(tmp_path, monkeypatch):
     from evo_agents.hub import local_sync
 
@@ -1205,7 +1248,7 @@ def agent(hub, worker, run_id, message: dict, *, project=None, headers=None):
 
 
 def agent_tool(hub, worker, run_id: int, name: str, arguments: dict | None = None) -> dict:
-    response = agent(hub, worker, run_id, call(7, name, arguments))
+    response = agent(hub, worker, run_id, call(7, name, arguments, data=True))
     assert response.status_code == 200, response.text
     return response.json()["result"]
 
@@ -1521,7 +1564,8 @@ def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_twenty_three_tools
         replies = by_id([json.loads(line) for line in ran.stdout.splitlines()])
         assert sorted(replies) == [1, 2, 3, 4, 5]
         assert replies[1]["result"]["serverInfo"]["name"] == "evo-hub"
-        assert replies[2]["result"]["structuredContent"]["session_project"] == PROJECT
+        assert "structuredContent" not in replies[2]["result"]  # what an agent gets: the text alone
+        assert f"{PROJECT} (this session)" in replies[2]["result"]["content"][0]["text"]
         assert "Nothing was written on this machine" in replies[3]["result"]["content"][0]["text"]
         assert "has no graph on the hub yet" in replies[4]["result"]["content"][0]["text"]
         assert replies[5]["error"]["code"] == -32601

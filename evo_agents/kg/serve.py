@@ -4,7 +4,13 @@ Every tool reads the latest ready build and only the visible set V_o: elements w
 session's sink. Results carry ids, labels, status and evidence; free text from sources (integrity U) is
 never returned by these tools. Each result stays under about 9,000 tokens; the rest waits behind a
 handle for ``kg_more``. The structured result of a call that reveals elements names the project and the
-join of their labels, which the PostToolUse hook adds to the session label (sessions.py).
+join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
+adds to the session label (sessions.py).
+
+An MCP client gets a result's text alone (``for_model``), which is what its model reads: Claude Code 2.1.296
+shows the model a result's structuredContent instead of its text when it has one, and the JSON of the data
+runs two to three times longer than the text, past the bounds above. A client that wants the data, such as
+``kg query --json`` through the hub, asks for it with DATA_META in the call's ``_meta``.
 """
 
 from __future__ import annotations
@@ -20,12 +26,13 @@ from evo_agents import __version__
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, ProjectError, resolve_project
-from evo_agents.kg.sessions import current_session_id, read_session
+from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
+DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
@@ -209,11 +216,14 @@ class Session:
         return self._envelope(text, data)
 
     def _envelope(self, text: str, data: dict) -> dict:
+        read = {}
         if self.read is not None:
             label = {**self.policy.describe(self.read), "projects": sorted(self.read.projects)}
             data = {**data, "project": self.project.name, "label": label}
+            elements = labels_in(data)[1]
+            read = {"_meta": {READ_META: {"project": self.project.name, "label": label, "results_read": elements}}}
         if len(text) <= CAP_CHARS:
-            return {"content": [{"type": "text", "text": text}], "structuredContent": data}
+            return {"content": [{"type": "text", "text": text, **read}], "structuredContent": data}
         head, rest = text[:CAP_CHARS], text[CAP_CHARS:]
         cut = head.rfind("\n")
         if cut > CAP_CHARS // 2:
@@ -224,7 +234,7 @@ class Session:
         self.handles[handle] = (time.monotonic(), chunks)
         note = f"\n[truncated: {len(rest)} more characters; call kg_more with handle {handle}]"
         return {
-            "content": [{"type": "text", "text": head + note}],
+            "content": [{"type": "text", "text": head + note, **read}],
             "structuredContent": {
                 "truncated": True,
                 "handle": handle,
@@ -845,6 +855,19 @@ def _error(message: str) -> dict:
     return {"content": [{"type": "text", "text": f"error: {message}"}], "isError": True}
 
 
+def wants_data(meta) -> bool:
+    """Whether the ``_meta`` of a tools/call's params asks for the structured result: DATA_META true."""
+    return isinstance(meta, dict) and meta.get(DATA_META) is True
+
+
+def for_model(result: dict) -> dict:
+    """``result`` as an MCP client gets it unless it asks for the data: the text blocks alone, so the model reads the
+    text the tool wrote. Claude Code (2.1.296) shows the model a result's structuredContent in place of its text
+    when there is one, and Codex (0.153) hands the model's script the whole result; opencode (1.18) shows the text
+    either way. The labels stay in the text block's ``_meta``, which the hook gets and the model does not."""
+    return {key: value for key, value in result.items() if key != "structuredContent"}
+
+
 def make_session(project: str | None, sink: str) -> Session:
     try:
         bound = resolve_project(project)
@@ -874,6 +897,8 @@ def handle(session: Session, message: dict) -> dict | None:
     elif method == "tools/call":
         params = message.get("params") or {}
         result = session.call(params.get("name", ""), params.get("arguments") or {})
+        if not wants_data(params.get("_meta")):
+            result = for_model(result)
     else:
         return {"jsonrpc": "2.0", "id": mid, "error": {"code": -32601, "message": f"method not found: {method}"}}
     return {"jsonrpc": "2.0", "id": mid, "result": result}

@@ -31,6 +31,7 @@ from evo_agents.hub.handoff import (
 )
 from evo_agents.hub.mirror import read_plan
 from evo_agents.hub.plans import PlanProblem, step_key
+from evo_agents.kg.serve import DATA_META
 from tests.hub import live
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.test_plans import COMPLETED, PROJECT, AppHub, counts, needs_pg, registration, reversed_keys
@@ -258,7 +259,7 @@ def get_handoff(member, **params):
     return member.client.get(f"/v1/projects/{PROJECT}/plans/rollout/handoff", params=params, headers=member.headers)
 
 
-def mcp(member, arguments: dict, sink: str | None = None) -> dict:
+def mcp(member, arguments: dict, sink: str | None = None, data: bool = False) -> dict:
     headers = {
         **member.headers,
         "Accept": "application/json",
@@ -271,7 +272,7 @@ def mcp(member, arguments: dict, sink: str | None = None) -> dict:
         "jsonrpc": "2.0",
         "id": 7,
         "method": "tools/call",
-        "params": {"name": "plan_handoff", "arguments": arguments},
+        "params": {"name": "plan_handoff", "arguments": arguments, **({"_meta": {DATA_META: True}} if data else {})},
     }
     response = member.client.post("/mcp", json=message, headers=headers)
     assert response.status_code == 200, response.text
@@ -346,8 +347,10 @@ def test_the_command_and_the_mcp_tool_give_the_route_s_text(hub, monkeypatch, ca
 
         tool = mcp(reader, {"plan_id": "rollout", **arguments})
         assert not tool.get("isError"), tool
-        assert tool["content"][0]["text"] == text
-        assert "text" not in tool["structuredContent"] and tool["structuredContent"]["revision"] == 1
+        assert tool["content"] == [{"type": "text", "text": text}]  # what the agent's model reads: the text alone
+        full = mcp(reader, {"plan_id": "rollout", **arguments}, data=True)
+        assert full["content"] == tool["content"]
+        assert "text" not in full["structuredContent"] and full["structuredContent"]["revision"] == 1
 
         monkeypatch.setattr(plan_cli, "_signed_in", lambda: (Through(reader), None))
         assert run_cli(["rollout", "--project", PROJECT, *argv]) == 0

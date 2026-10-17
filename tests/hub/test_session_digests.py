@@ -222,7 +222,7 @@ def test_the_hub_keeps_the_context_figures_of_a_digest_and_digest_show_returns_t
     # The hub's MCP answers on its public URL only, which the fixture's hub has none of: the same database behind one.
     config = live.hub_config(hub.db, hub.tmp_path, github, public_url="https://hub.test")
     with TestClient(create_app(config), base_url="https://hub.test") as client:
-        message = call(7, "digest_show", {"session_id": SESSION})
+        message = call(7, "digest_show", {"session_id": SESSION}, data=True)
         headers = {**hub.headers["reader"], **MCP_HEADERS, "X-Evo-Project": PROJECT}
         answer = client.post("/mcp", json=message, headers=headers)
     assert answer.status_code == 200, answer.text
