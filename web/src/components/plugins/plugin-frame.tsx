@@ -1,12 +1,14 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
+import { type QueryClient, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocale, useTranslations } from "next-intl";
 import { useTheme } from "next-themes";
 import { useEffect, useRef, useState } from "react";
 
 import { browserApi } from "@/lib/api/browser";
-import type { PluginPage, ProjectPlugin } from "@/lib/plugin-queries";
+import { isApiError } from "@/lib/api/errors";
+import { pluginOn } from "@/lib/plugin-pages";
+import { type PluginPage, type ProjectPlugin, projectPluginQuery } from "@/lib/plugin-queries";
 import { whoamiQuery } from "@/lib/queries";
 
 import {
@@ -34,10 +36,27 @@ import { hubReader } from "./bridge-hub";
  * opaque origin can be posted to; it goes to the frame's own window, never to another.
  *
  * The URL is the one the hub signed when the page opened, set once the bridge listens; a later read of the plugins
- * does not reload the frame.
+ * does not reload the frame. What the page may call is what the project grants the plugin now: before a method that
+ * needs a permission, the bridge reads the plugin again when the last read is over GRANT_FRESH_MS old (`grantOf`), and
+ * the hub checks every call too (header X-Evo-Plugin). A read that finds the plugin off, removed or out of the viewer's
+ * reach refuses the call, and the page around the frame, which reads the same query, stops showing it.
  */
+export const GRANT_FRESH_MS = 5_000;
+
+/** What the project grants plugin `name` now, read again from the hub when the cached read is over GRANT_FRESH_MS old. */
+export async function grantOf(client: QueryClient, project: string, name: string): Promise<readonly string[]> {
+  try {
+    const plugin = await client.fetchQuery({ ...projectPluginQuery(browserApi, project, name), staleTime: GRANT_FRESH_MS });
+    return pluginOn(plugin) ? plugin.granted : [];
+  } catch (error) {
+    if (isApiError(error) && error.kind !== "network" && error.kind !== "server") return []; // removed, or no access
+    throw new BridgeError("hub_unavailable", "the hub did not answer; try again shortly");
+  }
+}
+
 export function PluginFrame({ project, plugin, page }: { project: string; plugin: ProjectPlugin; page: PluginPage }) {
   const t = useTranslations("plugins.frame");
+  const client = useQueryClient();
   const locale = useLocale();
   const { resolvedTheme } = useTheme();
   const { data: me } = useQuery(whoamiQuery(browserApi));
@@ -71,7 +90,7 @@ export function PluginFrame({ project, plugin, page }: { project: string; plugin
         methods: allowedMethods(current.granted),
       };
     };
-    const host: Host = { context, resize: setHeight, hub };
+    const host: Host = { context, resize: setHeight, granted: () => grantOf(client, project, plugin.name), hub };
     const post = (message: unknown) => element.contentWindow?.postMessage(message, "*");
 
     const onMessage = (event: MessageEvent) => {
@@ -88,7 +107,7 @@ export function PluginFrame({ project, plugin, page }: { project: string; plugin
         return;
       }
       inFlight += 1;
-      answer(request, latest.current.plugin.granted, host)
+      answer(request, host)
         .then((result) => post(reply(request.id, { result })))
         .catch((error: unknown) => post(reply(request.id, { error })))
         .finally(() => {
@@ -100,7 +119,7 @@ export function PluginFrame({ project, plugin, page }: { project: string; plugin
     // URL would run the plugin's script before the web hydrated, and its first requests would be lost.
     if (!element.getAttribute("src")) element.setAttribute("src", url.current);
     return () => window.removeEventListener("message", onMessage);
-  }, [project, plugin.name, page.name]);
+  }, [client, project, plugin.name, page.name]);
 
   useEffect(() => {
     frame.current?.contentWindow?.postMessage({ bridge: BRIDGE, event: "theme", theme }, "*");

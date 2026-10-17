@@ -178,6 +178,11 @@ test("a plugin's page opens in a sandbox from the project's menu and reaches the
   await expect(inside.locator("#parent")).toHaveText("blocked: SecurityError");
   await expect(inside.locator("#fetch")).toHaveText("blocked: TypeError");
   expect((await page.context().cookies()).some((cookie) => cookie.name === "evo_hub_session")).toBe(true);
+  // The hub checks the bridge's calls again, by the plugin they name: what the project granted it, and only that.
+  const bridged = (path: string) => page.request.get(path, { headers: { "X-Evo-Plugin": id } });
+  expect((await bridged(`/v1/projects/${project}/runs`)).status()).toBe(200);
+  expect((await bridged(`/v1/projects/${project}/plans`)).status()).toBe(403);
+  expect((await page.request.get(`/v1/projects/${project}/plans`)).status()).toBe(200);
   // Loaded whole by the server too, the page's first requests wait for the bridge rather than go unanswered.
   await page.reload();
   await expect(frameOf(page).locator("#plans")).toHaveText("refused: not_granted");
@@ -197,6 +202,7 @@ test("a plugin's page opens in a sandbox from the project's menu and reaches the
   await expect(toast(page, `Disabled Sample in ${project}`)).toBeVisible();
   await expect(page.getByTestId(`nav-plugin-${id}-${SAMPLE_PAGE.name}`)).toHaveCount(0);
   expect((await page.request.get(src)).status()).toBe(404);
+  expect((await bridged(`/v1/projects/${project}/runs`)).status()).toBe(403);
   await page.goto(pluginPagePath(project, id));
   await expect(page.getByTestId("state-not-found")).toBeVisible();
 });

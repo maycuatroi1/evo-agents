@@ -2,9 +2,12 @@
  * The bridge evo-plugin/1 between an isolated plugin's page and the hub (docs/plugins.md, Pages): the page, framed in
  * a sandbox with an opaque origin, posts requests to the web, and the web answers each one by calling the hub with the
  * viewer's own session, so the viewer's grant applies on top of the plugin's. A method opens only when the project
- * granted the plugin the permission it needs (METHODS); the rest are refused with `not_granted` and never reach the
- * hub. This module is the protocol without the DOM: what a message must be, which methods a grant opens, and what
- * each one asks of the hub (`HubReader`, which plugin-frame.tsx gives it).
+ * grants the plugin the permission it needs (METHODS) now: the web reads the plugin's grant again before such a call
+ * (`Host.granted`), and the rest are refused with `not_granted` and never reach the hub. Each call names the plugin in
+ * the header X-Evo-Plugin (PLUGIN_HEADER), and the hub checks it again against what the plugin may do in the project
+ * as it arrives (evo_agents.hub.server.plugin_bridge), so a page left open after its grant changed gets nothing more.
+ * This module is the protocol without the DOM: what a message must be, which methods a grant opens, and what each one
+ * asks of the hub (`HubReader`, which plugin-frame.tsx gives it).
  *
  * A request is `{bridge: "evo-plugin/1", id, method, params}`; the answer `{bridge, id, result}` or
  * `{bridge, id, error: {code, message, status?}}`. The web also posts `{bridge, event: "theme", theme}` when the
@@ -12,6 +15,7 @@
  */
 
 export const BRIDGE = "evo-plugin/1";
+export const PLUGIN_HEADER = "X-Evo-Plugin"; // names the plugin of every call the bridge makes to the hub
 export const MAX_PARAMS_BYTES = 64 * 1024; // what one request may carry, as JSON
 export const MAX_ROUTE_BODY_BYTES = 1024 * 1024;
 export const MAX_IN_FLIGHT = 16; // requests of one page answered at once; more wait for none and are refused
@@ -69,6 +73,8 @@ export type HubReader = {
 export type Host = {
   context: () => BridgeContext;
   resize: (height: number) => void;
+  /** What the project grants the plugin now, read again from the hub; nothing once it is not on there. */
+  granted: () => Promise<readonly string[]>;
   hub: HubReader;
 };
 
@@ -182,12 +188,15 @@ function routeCall(params: Record<string, unknown>): RouteCall {
   return { method: method as RouteMethod, path, query: query as Record<string, string>, body: params.body };
 }
 
-/** The answer to `request` from a page whose plugin holds `granted`; rejects with a BridgeError. */
-export async function answer(request: BridgeRequest, granted: readonly string[], host: Host): Promise<unknown> {
+/**
+ * The answer to `request` from a page of the plugin `host` serves; rejects with a BridgeError. A method that needs a
+ * permission asks `host.granted()` first, so it goes by the grant of now, not by the one the page opened with.
+ */
+export async function answer(request: BridgeRequest, host: Host): Promise<unknown> {
   const { method, params } = request;
   if (!isMethod(method)) throw new BridgeError("unknown_method", `${BRIDGE} has no method ${method}`);
   const needs = METHODS[method];
-  if (needs !== null && !granted.includes(needs)) {
+  if (needs !== null && !(await host.granted()).includes(needs)) {
     const project = host.context().project;
     throw new BridgeError("not_granted", `${method} needs ${needs}, which project ${project} did not grant this plugin`);
   }

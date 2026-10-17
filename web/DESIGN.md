@@ -1232,9 +1232,11 @@ Shared pieces built on them:
     bridge listens, so the plugin's first requests are never lost to a page still hydrating. The web's own CSP allows
     `frame-src 'self'` for it; the hub serves the page's files with a CSP of their own whose `sandbox` keeps the origin
     opaque. The bridge (`bridge.ts`, `bridge-hub.ts`; docs/plugins.md, Pages) answers only messages from that frame's
-    window with an opaque origin, opens the methods of the permissions the project granted, calls the hub with the
-    viewer's session, and refuses the rest with `not_granted` before the hub is asked; it posts the viewer's theme, so a
-    page can follow light and dark. A plugin's page draws itself: this file binds the frame around it, not what it holds.
+    window with an opaque origin, opens the methods of the permissions the project grants now (it reads the plugin
+    again before such a call when its last read is over `GRANT_FRESH_MS`, 5 s, old), calls the hub with the viewer's
+    session and `X-Evo-Plugin: <plugin>`, which the hub checks against the plugin's grant too, and refuses the rest with
+    `not_granted` before the hub is asked; a read that finds the plugin off takes its page away. It posts the viewer's
+    theme, so a page can follow light and dark. A plugin's page draws itself: this file binds the frame around it, not what it holds.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are
