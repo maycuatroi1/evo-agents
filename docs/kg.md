@@ -51,6 +51,9 @@ A text over about 25,000 characters ends with a handle for `kg_more`; the struct
 ## The result
 
 The structured result only gains fields: a client written for an older one reads `seeds` and `impacted` as before.
+An MCP client gets the text alone, which is what its model reads; the structured result comes from
+`evo-agents kg query kg_impact --json`, from the hub's route `POST /v1/kg/{project}/tools/kg_impact`, and to a
+`tools/call` whose `params._meta` holds `"evo-agents/data": true`.
 
 | Field | Holds |
 | --- | --- |
