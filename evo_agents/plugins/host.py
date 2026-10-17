@@ -4,7 +4,10 @@ calls it with a timeout, and starts it again with a backoff when it dies or hang
 ``Backend`` holds the plugin's name, version, bundle and the ``initialize`` payload the host gives it (its config and
 what each project granted). Starting runs in a task of its own (``kick``), so placing a bundle and installing its
 wheels, which may take minutes, never holds a call: ``call`` waits for a start at most its own timeout, then raises
-``BackendUnavailable``, and the start goes on. When the host has a hub, it asks the hub for a fresh token just before
+``BackendUnavailable``, and the start goes on. Placing runs in a thread, which cancelling the start does not end:
+``stop`` kills what runs under the plugin's user (pip) and waits for that thread, and a start waits for the one before,
+so the host never touches a plugin's directories while a process of its user runs beside it, and a start refuses to
+go on while one still does. When the host has a hub, it asks the hub for a fresh token just before
 each start (``mint``) and puts it in ``initialize``, so a token lives as long as the backend it was made for and an
 unchanged plugin is never restarted for a new one. ``call`` sends one request and, on ``BackendTimeout`` or
 ``BackendGone``, stops the backend and schedules a restart, raising ``BackendUnavailable`` so the caller answers an
@@ -56,6 +59,7 @@ BACKOFF = (1.0, 2.0, 5.0, 15.0, 30.0)  # seconds before the n-th restart
 MAX_BACKOFF = 60.0
 CALL_TIMEOUT = 30.0  # seconds one call to a backend may take
 INIT_TIMEOUT = 30.0
+KILL_INTERVAL = 0.5  # seconds between kills of a plugin's user while its placing winds down
 STATES = ("placing", "starting", "running", "backoff")
 MIN_HOST_TOKEN = 32  # characters of the secret the api and the plugin host share
 EXAMPLE_HOST_TOKENS = frozenset({"dev-only-plugin-host-secret-change-me-000000"})  # once in deploy/hub/.env.example
@@ -64,6 +68,11 @@ SHARED_USER_REFUSED = (
     "third-party code under a user it shares with the host and the other backends: run the host as root with the "
     "capabilities SETUID, SETGID, CHOWN and KILL (the plugins service of deploy/hub/docker-compose.yml), or, on a "
     "developer's machine only, start it with --allow-shared-user"
+)
+
+LINGERING = (
+    "processes of plugin {name}'s user ({uid}) are still running after the host killed them; it starts no backend "
+    "beside them"
 )
 
 Mint = Callable[[str], Awaitable[str]]  # a fresh hub token for the backend of the named plugin
@@ -135,6 +144,7 @@ class Backend:
         self.status = BackendStatus(manifest.id, manifest.version, "placing", isolation())
         self._lock = asyncio.Lock()
         self._starting: asyncio.Task | None = None
+        self._building: asyncio.Future | None = None  # placing, in a thread that a cancelled start leaves running
 
     @property
     def name(self) -> str:
@@ -152,10 +162,29 @@ class Backend:
         return owner
 
     async def _place(self, owner: Identity | None) -> None:
+        """Place the bundle, the data directory and the environment, in a thread. Cancelling the start leaves the
+        thread running to its end, so it is kept: the next start and ``stop`` wait for it."""
         self.status.state = "placing"
-        await asyncio.to_thread(extract, self.bundle, self.where.code, owner)
-        await asyncio.to_thread(prepare_data, self.where, owner)
-        await asyncio.to_thread(build_env, self.where, self.manifest.backend.get("requirements"), owner)
+        self._building = asyncio.ensure_future(asyncio.to_thread(self._place_now, owner))
+        await asyncio.shield(self._building)
+
+    def _place_now(self, owner: Identity | None) -> None:
+        extract(self.bundle, self.where.code, owner)
+        prepare_data(self.where, owner)
+        build_env(self.where, self.manifest.backend.get("requirements"), owner)
+
+    async def _built(self) -> None:
+        """Wait for a placing under way, whatever it ends with."""
+        if self._building is not None:
+            await asyncio.gather(self._building, return_exceptions=True)
+
+    async def _wind_down(self, owner: Identity | None) -> None:
+        """Wait for a placing under way to end. In isolation uid, kill what runs under the plugin's user meanwhile,
+        again until it ends, so pip, even one the placing starts after the first kill, ends now, not at its timeout."""
+        while owner is not None and self._building is not None and not self._building.done():
+            await kill_user(owner)
+            await asyncio.wait({self._building}, timeout=KILL_INTERVAL)
+        await self._built()
 
     async def _initialize_params(self) -> dict:
         """``initialize`` as the hub gave it, with a token minted for this start when the host has a hub."""
@@ -175,8 +204,9 @@ class Backend:
             await asyncio.gather(self._after, return_exceptions=True)
             self._after = None
         owner = self._owner()
-        if owner is not None:
-            await kill_user(owner)  # nothing of an earlier start lingers under the plugin's user
+        await self._built()  # the placing of a start that was cancelled, which runs on in its thread
+        if owner is not None and not await kill_user(owner):  # nothing of an earlier start lingers under its user
+            raise PlacementError(LINGERING.format(name=self.name, uid=owner.uid))
         await self._place(owner)
         params = await self._initialize_params()
         command = backend_command(self.where, self.manifest.backend["entry"], owner)
@@ -265,20 +295,22 @@ class Backend:
             raise BackendUnavailable(f"plugin {self.name} did not answer: {exc}") from None
 
     async def stop(self) -> None:
-        """Stop the backend: a start under way is cancelled, the process stopped, and in isolation uid every process
-        of the plugin's user killed, pip's included."""
+        """Stop the backend: a start under way is cancelled, what runs under the plugin's user killed (pip's install
+        included), the placing it was doing waited for, the process stopped, and in isolation uid every process of
+        the plugin's user killed again. Only then may the backend that replaces this one, under the same user, start."""
         if self._starting is not None and not self._starting.done():
             self._starting.cancel()
             await asyncio.gather(self._starting, return_exceptions=True)
+        owner = identity(self.init.get("plugin_id", 0))
+        await self._wind_down(owner)
         async with self._lock:
             if self.process is not None:
                 await self.process.stop()
                 self.status.state = "backoff"
                 self.status.pid = None
                 self.process = None
-            owner = identity(self.init.get("plugin_id", 0))
-            if owner is not None:
-                await kill_user(owner)
+            if owner is not None and not await kill_user(owner):
+                log.warning("plugin backend stopped, processes of its user remain", extra={"contribution": self.name})
 
 
 @dataclass

@@ -37,9 +37,11 @@ The host reads the requirements file before pip does and refuses it at the first
 this form: `name==version` followed by at least one `--hash=sha256:<64 hex>`. A backslash at the end of a line
 continues it and `#` starts a comment, so the output of `uv pip compile --generate-hashes` or `pip-compile
 --generate-hashes` passes as it is. Options (`-r`, `-c`, `-e`, `--index-url`, `--find-links`), paths, URLs, extras and
-markers are refused, since each of them makes pip read another file, reach the network or run a build backend. pip
-then reads a copy the host wrote, with `--no-index --find-links <wheels> --only-binary=:all: --require-hashes`, under
-the backend's own user:
+markers are refused, since each of them makes pip read another file, reach the network or run a build backend. The
+version is a PEP 440 version in its normalized form (`1.2.3`, `1.0rc1`, `2.0.post1`, `2.1.0+cpu`), and never one that
+ends like an archive (`.tar.gz`, `.zip`, `.whl` and the others pip knows): pip reads `foo==1.tar.gz` or `foo==1+x.zip`
+as a file of its current directory and builds it. pip then reads a copy the host wrote, with `--no-index --find-links
+<wheels> --only-binary=:all: --require-hashes`, under the backend's own user, in an empty directory of root's:
 
 ```text
 backend/requirements.txt    httpx==0.28.1 --hash=sha256:...   (and every dependency, pinned and hashed)
@@ -98,7 +100,9 @@ For each plugin at a version, under the host's data directory:
   plugin's group, mode 0750, so another backend cannot even list it;
 - `envs/<name>/<version>/` is its own virtual environment, built with `python -m venv --without-pip`, then filled by
   pip running under the backend's user from the bundle's wheels; afterwards the host makes root own every file pip
-  wrote (following no link), and the directory is root's with the plugin's group, mode 0750;
+  wrote (following no link), removes every link and set-id file of that user, which pip never writes, resets the
+  modes (0755 for a directory, no write but root's for a file), and the directory is root's with the plugin's group,
+  mode 0750. The marker of a directory written whole (`.evo-ready`) is created, never opened through a link;
 - `data/<name>/` is the one directory the backend writes, its `HOME` and, under `tmp`, its `TMPDIR`, owned by its user
   with mode 0700. The host has neither CAP_FOWNER nor CAP_DAC_OVERRIDE, so at each start it takes the directory back
   (chown to root), sets the modes as owner, replaces a `tmp` that is not a directory, and hands both back.
@@ -115,7 +119,10 @@ limits before any code of the plugin runs, then execs the environment's Python (
 1024 open files, 4 GiB of address space per process and 256 processes and threads for the plugin's user. Then a
 **launcher** marks the backend **not dumpable** (`prctl(PR_SET_DUMPABLE, 0)`) and runs the entry; the host marks itself
 the same way at start. Stopping a backend kills its process group and then every process of its user (`kill(-1)` from
-a process of that user, until `/proc` shows none), so a child that left the group with `setsid()` goes too.
+a process of that user, until `/proc` shows none), so a child that left the group with `setsid()` goes too. Placing
+runs in a thread that cancelling a start does not end, so stopping also kills pip and waits for that thread, and the
+backend that replaces one, under the same user, starts only then. A start that cannot kill every process of the
+plugin's user places nothing and starts nothing: it backs off.
 
 The doors a secret could leave by, and what shuts each:
 

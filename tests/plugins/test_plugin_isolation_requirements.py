@@ -2,15 +2,19 @@
 the review's C1 and L1): only ``name==version --hash=sha256:...`` lines pass, so no line can make pip run a build
 backend from a directory of the bundle, fetch from an index or a URL, or read another file (``-r /proc/1/environ``),
 and a refused line never brings the content of another file into the error an admin reads. The host refuses such a
-plugin before pip starts. No pip and no root needed."""
+plugin before pip starts, and pip runs in an empty directory. No pip and no root needed."""
 
 from __future__ import annotations
 
 import asyncio
 import json
+import os
+import stat
+from pathlib import Path
 
 import pytest
 
+from evo_agents.plugins import environment
 from evo_agents.plugins.environment import PlacementError, build_env, extract, placement, prepare_data
 from evo_agents.plugins.host import BackendUnavailable, Host
 from evo_agents.plugins.requirements import RequirementsError, normalized, parse_requirements
@@ -118,3 +122,40 @@ def test_plugin_isolation_requirements_need_the_wheels_next_to_them(tmp_path):
     prepare_data(where, None)
     with pytest.raises(PlacementError, match="no wheels/ next to it"):
         build_env(where, "backend/requirements.txt")
+
+
+@pytest.mark.parametrize(
+    "version",
+    ["1.tar.gz", "1+x.tar.gz", "1+x.zip", "1+x.whl", "1+x.tgz", "1+x.tar", "1.0-beta", "1.0.0.", "v1.0", "1.0+X"],
+)
+def test_plugin_hostile_requirements_naming_an_archive_never_reach_pip(version):
+    """The review's second L1: pip reads ``foo==1.tar.gz`` as a file of its current directory and builds it, even with
+    --only-binary and --no-index. Only a normalized PEP 440 version passes, and never one that ends like an archive."""
+    with pytest.raises(RequirementsError, match=r"only lines `name==version --hash=sha256:<64 hex>`"):
+        parse_requirements(f"evil=={version} --hash=sha256:{DIGEST}\n")
+
+
+@pytest.mark.parametrize("version", ["1.0", "2!1.0", "1.0a1", "1.0rc2", "1.0.post1", "1.0.dev3", "2.1.0+cpu.1"])
+def test_plugin_isolation_requirements_accept_every_normalized_version(version):
+    assert parse_requirements(f"ok=={version} --hash=sha256:{DIGEST}\n")[0].version == version
+
+
+def test_plugin_isolation_requirements_pip_runs_in_an_empty_directory_no_one_writes(tmp_path, monkeypatch):
+    """venv and pip run in a directory of their own that holds nothing and that only root may write, removed after,
+    so no file there can stand for a requirement."""
+    directory = wheeled_plugin(tmp_path / "wheeled")
+    where = placement(tmp_path / "root", "wheeled", "1.0.0")
+    extract(bundle("wheeled", directory), where.code)
+    prepare_data(where, None)
+    seen: list[tuple[str, Path, list[str], int]] = []
+
+    def recording(command, doing, where_, cwd, owner=None):
+        seen.append((doing, Path(cwd), os.listdir(cwd), stat.S_IMODE(os.stat(cwd).st_mode)))
+
+    monkeypatch.setattr(environment, "_run", recording)
+    build_env(where, "backend/requirements.txt")
+    assert [doing.split()[0] for doing, *_ in seen] == ["make", "install"]
+    for _, cwd, listed, mode in seen:
+        assert listed == [] and mode == 0o555
+        assert cwd.parent == where.env.parent and cwd not in (where.env, where.code, where.data)
+        assert not cwd.exists()

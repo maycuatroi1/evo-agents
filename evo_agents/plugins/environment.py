@@ -14,9 +14,12 @@ the hub, without supplementary groups (``identity``). Its code and environment a
 top directory of mode 0750 whose group is its own, so no other backend can even list them; its data directory is its
 own with mode 0700. The host has neither CAP_FOWNER nor CAP_DAC_OVERRIDE, so it changes the mode of a directory
 only while it owns it, and takes a directory back (chown to root) before it touches what is inside. pip runs under
-the backend's user too, never as root: the environment is the backend's while pip fills it and root's again after
-(``build_env``), and the requirements are a file the host wrote from the plugin's, refused unless every line names a
-hashed wheel of the bundle.
+the backend's user too, never as root, in an empty directory of root's: the environment is the backend's while pip
+fills it and root's again after (``build_env``), and the requirements are a file the host wrote from the plugin's,
+refused unless every line names a hashed wheel of the bundle. Taking the environment back removes every link and
+set-id file of the backend's user in it and resets every mode (``_take_back``), and the marker of a directory written
+whole is created, never opened through a link (``_write_ready``): pip writes neither, so one there was planted by
+another process of that user, a link aimed at a file root may write.
 
 Isolation ``process`` is what a host that is not root can give: every backend under the host's own user. Their
 environments and arguments stay apart, but not their files, their /proc entries in the moment after exec, nor the
@@ -44,6 +47,7 @@ import ctypes
 import hashlib
 import os
 import shutil
+import stat
 import subprocess
 import sys
 import tempfile
@@ -155,8 +159,20 @@ def _ready(directory: Path, stamp: str) -> bool:
         return False
 
 
+def _write_ready(filled: Path, stamp: str) -> None:
+    """Create the marker of ``filled`` and write ``stamp`` in it; PlacementError when something is there already. Never
+    through a link: O_EXCL with O_CREAT refuses any name that exists, a link included, and O_NOFOLLOW says it again."""
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0) | getattr(os, "O_CLOEXEC", 0)
+    try:
+        descriptor = os.open(filled / READY, flags, 0o444)
+    except FileExistsError:
+        raise PlacementError(f"{filled.name} holds a {READY} the host did not write; it is not used") from None
+    with os.fdopen(descriptor, "w", encoding="utf-8") as marker:
+        marker.write(stamp)
+
+
 def _replace(directory: Path, filled: Path, stamp: str) -> None:
-    (filled / READY).write_text(stamp, encoding="utf-8")
+    _write_ready(filled, stamp)
     if directory.exists():
         shutil.rmtree(directory)
     filled.rename(directory)
@@ -246,18 +262,32 @@ def _entries(tree: Path):
 
 def _give(tree: Path, owner: Identity) -> None:
     """Hand ``tree``, which the host made, to the backend's user, for pip to fill under that user. Every path is listed
-    first, while root owns them all: once a directory is the backend's (mode 0700), root may no longer list it."""
+    first, while root owns them all: once a directory is the backend's (mode 0700), root may no longer list it. The
+    environment's links (``bin/python``, ``lib64``) stay root's, so any link of that user later was not the host's."""
     for path in reversed(list(_entries(tree))):
-        os.chown(path, owner.uid, owner.gid, follow_symlinks=False)
+        if not path.is_symlink():
+            os.chown(path, owner.uid, owner.gid, follow_symlinks=False)
 
 
 def _take_back(tree: Path, owner: Identity) -> None:
     """Make root own again what the backend's user owns under ``tree``: pip's files, read-only to the backend from
-    now on. Nothing is followed and nothing of another user is touched, so a link planted in the tree changes no
-    file outside it."""
+    now on. A link of that user is removed, never followed nor made root's: pip writes none, so it was planted, and
+    root writing through it later would write a file outside the tree. So is a file with a set-id bit, which pip
+    never writes either, and which root without CAP_FOWNER may not chown (the kernel clears the bits as it does,
+    which only the owner may). A directory gets mode 0755 and a file loses any write bit but its owner's, so root
+    may walk on and the backend's user, or another, can write nothing in the tree. The walk takes a directory back
+    before it lists it, so once root owns a directory, no process of that user can change what is in it while the
+    walk goes on."""
     for path in _entries(tree):
-        if os.lstat(path).st_uid == owner.uid:
-            os.chown(path, 0, 0, follow_symlinks=False)
+        info = os.lstat(path)
+        if info.st_uid != owner.uid:
+            continue
+        directory = stat.S_ISDIR(info.st_mode)
+        if stat.S_ISLNK(info.st_mode) or (not directory and info.st_mode & (stat.S_ISUID | stat.S_ISGID)):
+            path.unlink()
+            continue
+        os.chown(path, 0, 0, follow_symlinks=False)
+        os.chmod(path, 0o755 if directory else stat.S_IMODE(info.st_mode) & 0o755)
 
 
 def read_requirements(where: Placement, requirements: str) -> tuple[str, Path]:
@@ -290,23 +320,41 @@ def build_env(where: Placement, requirements: str | None, owner: Identity | None
         return
     _mkdirs(where.env.parent)
     filled = Path(tempfile.mkdtemp(prefix=".venv-", dir=where.env.parent))
-    venv = [python, "-I", "-m", "venv", "--without-pip", "--clear", str(filled)]
-    _run(venv, f"make the environment of plugin {where.name}", where, where.env.parent)
-    if lines:
-        (filled / REQUIREMENTS_COPY).write_text(lines, encoding="utf-8")
-        target = filled / where.python.relative_to(where.env)
-        pip = [python, "-I", "-m", "pip", "--isolated", "--no-cache-dir", "--disable-pip-version-check", "--no-input"]
-        pip += ["--python", str(target), "install", "--no-index", "--find-links", str(wheels), "--only-binary=:all:"]
-        pip += ["--require-hashes", "-r", str(filled / REQUIREMENTS_COPY)]
-        if owner is not None:
-            _give(filled, owner)
-        try:
-            _run(pip, f"install the requirements of plugin {where.name}", where, where.env.parent, owner)
-        finally:
-            if owner is not None:
-                _take_back(filled, owner)
+    empty = _empty_dir(where.env.parent)
+    try:
+        venv = [python, "-I", "-m", "venv", "--without-pip", "--clear", str(filled)]
+        _run(venv, f"make the environment of plugin {where.name}", where, empty)
+        if lines:
+            _install(where, lines, wheels, filled, empty, owner, python)
+    finally:
+        empty.rmdir()
     _seal(filled, owner)
     _replace(where.env, filled, stamp)
+
+
+def _empty_dir(parent: Path) -> Path:
+    """A new directory under ``parent`` that holds nothing and that no one but root may write, for venv and pip to run
+    in: pip reads a requirement that looks like an archive's name as a file of its current directory."""
+    empty = Path(tempfile.mkdtemp(prefix=".cwd-", dir=parent))
+    empty.chmod(0o555)
+    return empty
+
+
+def _install(where: Placement, lines: str, wheels, filled: Path, cwd: Path, owner: Identity | None, python: str):
+    """pip installs ``lines``, from ``wheels`` alone, into the environment ``filled`` under ``owner``, in ``cwd``;
+    root owns the environment again afterwards, whatever pip did."""
+    (filled / REQUIREMENTS_COPY).write_text(lines, encoding="utf-8")
+    target = filled / where.python.relative_to(where.env)
+    pip = [python, "-I", "-m", "pip", "--isolated", "--no-cache-dir", "--disable-pip-version-check", "--no-input"]
+    pip += ["--python", str(target), "install", "--no-index", "--find-links", str(wheels), "--only-binary=:all:"]
+    pip += ["--require-hashes", "-r", str(filled / REQUIREMENTS_COPY)]
+    if owner is not None:
+        _give(filled, owner)
+    try:
+        _run(pip, f"install the requirements of plugin {where.name}", where, cwd, owner)
+    finally:
+        if owner is not None:
+            _take_back(filled, owner)
 
 
 def _own_dir(directory: Path, owner: Identity) -> None:
