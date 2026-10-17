@@ -6,7 +6,10 @@ manifest``) as a dict, or a function that returns one, with ``tier: core``. Its 
 ``python`` (``module:attribute``), which the process that uses the extension point imports when it needs it:
 
 - ``runtimes``: a runtime adapter of the worker, a subclass of ``evo_agents.worker.adapter.Adapter``;
-- ``kg_connectors``: a connector of the knowledge graph, a function of a ``ConnectorContext``.
+- ``kg_connectors``: a connector of the knowledge graph, a function of a ``ConnectorContext``;
+- ``channels``, ``routes``, ``mcp_tools``, ``jobs``, ``events``: the extension points of the hub, whose processes
+  read them through ``evo_agents.hub.plugin_calls`` (``docs/plugins.md``, section Extension points); ``tables``: the
+  tables of the hub's schema the plugin owns.
 
 The registries of runtime adapters (``evo_agents.worker.adapter``) and of kg connectors (``evo_agents.kg.protocol.
 runner``, ``evo_agents.harness``) read these contributions beside their own entry point groups
@@ -50,7 +53,7 @@ def _manifest(point) -> Manifest:
     manifest = read_manifest(data)
     if manifest.tier != "core":
         raise ManifestError([f"{manifest.id} is not a core plugin (tier {manifest.tier}): install it on a hub instead"])
-    problem = compat.problem(manifest.engines, manifest.plugin_api)
+    problem = compat.problem(manifest.engines, manifest.plugin_api, contributes=manifest.contributes)
     if problem is not None:
         raise ManifestError([f"{manifest.id} {manifest.version} does not run here: {problem}"])
     return manifest

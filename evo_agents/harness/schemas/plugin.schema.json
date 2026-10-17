@@ -160,7 +160,7 @@
       }
     },
     "contribution": {
-      "description": "One contribution to an extension point. Its other keys belong to that point and its version.",
+      "description": "One contribution to an extension point. Its other keys belong to that point and its version (docs/plugins.md).",
       "type": "object",
       "required": [
         "name"
@@ -182,6 +182,11 @@
           "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
           "type": "string",
           "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
         }
       }
     },
@@ -196,19 +201,19 @@
       "additionalProperties": false,
       "properties": {
         "channels": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/channels"
         },
         "routes": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/routes"
         },
         "mcp_tools": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/mcp_tools"
         },
         "jobs": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/jobs"
         },
         "events": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/events"
         },
         "pages": {
           "$ref": "#/$defs/contributions"
@@ -227,7 +232,280 @@
         },
         "kg_connectors": {
           "$ref": "#/$defs/contributions"
+        },
+        "tables": {
+          "$ref": "#/$defs/tables"
         }
+      }
+    },
+    "channel": {
+      "description": "A channel of notifications. A core plugin's python names a class of evo_agents.hub.server.notifications.Channel that sends the members' channels of the kind its name gives (as Telegram's does); an isolated plugin's backend gets each notification of a project that enabled it and granted notifications:send (method channel).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "route": {
+      "description": "An HTTP route. A core plugin's python names a FastAPI APIRouter, which the hub includes under /v1/x/<id>, each of its paths starting with the project, so the hub answers 404 in a project that did not enable the plugin; an isolated plugin's route answers /v1/x/<id>/<project>/<name> and the paths below it, through its backend (method route).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "methods": {
+          "description": "The HTTP methods the route answers; GET when left out.",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "GET",
+              "POST",
+              "PUT",
+              "PATCH",
+              "DELETE"
+            ]
+          }
+        },
+        "prefix": {
+          "description": "Core plugins only: the path the router is included under instead of /v1/x/<id>, for a plugin that kept the routes it had before it was one (Telegram's, with the empty prefix: its routers carry their own). Such routes check their callers themselves; no project enables them.",
+          "type": "string",
+          "pattern": "^(/v1(/[a-z0-9_.-]+)*)?$"
+        }
+      }
+    },
+    "mcp_tool": {
+      "description": "An MCP tool on the hub's /mcp, named <id>__<name>, listed in a project that enabled the plugin. Its description and input schema are the installed version's, never the backend's.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 2000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "input_schema": {
+          "description": "The JSON Schema of the tool's arguments, an object; {\"type\": \"object\"} when left out.",
+          "type": "object",
+          "required": [
+            "type"
+          ],
+          "properties": {
+            "type": {
+              "const": "object"
+            }
+          }
+        }
+      }
+    },
+    "job": {
+      "description": "A periodic job, run through the hub's job queue while a project enables the plugin.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "cron": {
+          "description": "When it runs, five cron fields in UTC (minute hour day month weekday); 0 * * * * (hourly) when left out.",
+          "type": "string",
+          "pattern": "^[0-9*/,-]+( [0-9*/,-]+){4}$"
+        }
+      }
+    },
+    "event": {
+      "description": "A subscription to the hub's events in the projects that enabled the plugin, delivered at least once.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "on": {
+          "description": "The events it takes; every event the plugin's grant lets it read when left out (run.state with runs:read, chat.message with chats:read, plan.step with plans:read).",
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "enum": [
+              "run.state",
+              "chat.message",
+              "plan.step"
+            ]
+          }
+        }
+      }
+    },
+    "table": {
+      "description": "A table a core plugin owns, which a migration of the hub creates: its name starts with the plugin's id, - made _, then _.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "channels": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/channel"
+      }
+    },
+    "routes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/route"
+      }
+    },
+    "mcp_tools": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/mcp_tool"
+      }
+    },
+    "jobs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/job"
+      }
+    },
+    "events": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/event"
+      }
+    },
+    "tables": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/table"
       }
     }
   }

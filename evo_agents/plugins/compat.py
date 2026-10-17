@@ -1,4 +1,5 @@
-"""Whether a plugin runs on a release of evo-agents: its ``engines`` range and its ``plugin_api``.
+"""Whether a plugin runs on a release of evo-agents: its ``engines`` range, its ``plugin_api`` and the version of
+each extension point it contributes to.
 
 ``engines["evo-agents"]`` is a list of clauses separated by commas, each an operator and a version: ``>=``, ``>``,
 ``<=``, ``<``, ``==`` (``==0.17.*`` takes every 0.17 release), ``!=`` and ``~=`` (``~=0.17.2`` is ``>=0.17.2,
@@ -6,6 +7,12 @@
 (``0.17.0rc1``, ``0.17.0.dev3``), which comes before the release it precedes, as PEP 440 orders them; missing numbers
 are zeros. As in PEP 440, ``<0.17`` leaves out the pre-releases of 0.17 too. ``plugin_api`` is the major version of
 the plugin API a plugin is written against, one of PLUGIN_API_VERSIONS.
+
+Each extension point has a version of its own (``POINT_VERSIONS``), as Backstage versions its extension points: the
+keys a contribution to the point takes and the calls the host makes for it. A contribution names the version it is
+written against with ``api`` (1 when it names none); a release that does not serve that version of the point does not
+run the plugin, so a point can change its contract in a new version while plugins written for the old one keep
+running on the releases that serve it.
 
 Plugin versions are MAJOR.MINOR.PATCH with an optional ``-pre-release``, ordered as semantic versions:
 ``plugin_version_key`` sorts them, a pre-release before its release. Standard library only.
@@ -19,6 +26,21 @@ from collections.abc import Callable
 from evo_agents import __version__
 
 PLUGIN_API_VERSIONS = (1,)  # the plugin API majors this release of evo-agents runs
+# The extension points, each with the versions of its contract this release serves (docs/plugins.md).
+POINT_VERSIONS: dict[str, tuple[int, ...]] = {
+    "channels": (1,),
+    "routes": (1,),
+    "mcp_tools": (1,),
+    "jobs": (1,),
+    "events": (1,),
+    "pages": (1,),
+    "agent_packs": (1,),
+    "agent_types": (1,),
+    "runtimes": (1,),
+    "environments": (1,),
+    "kg_connectors": (1,),
+    "tables": (1,),
+}
 PLUGIN_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]{1,40}))?")
 _RELEASE = re.compile(r"(\d+(?:\.\d+)*)(?:\.?(a|b|rc|dev)\.?(\d*))?")
 _CLAUSE = re.compile(r"(>=|<=|==|!=|~=|>|<)\s*(\d+(?:\.\d+)*(?:\.\*)?(?:\.?(?:a|b|rc|dev)\.?\d*)?)")
@@ -96,8 +118,25 @@ def satisfies(version: str, spec: str) -> bool:
     return all(clause(key) for clause in parse_spec(spec))
 
 
-def problem(engines: dict, plugin_api: int, version: str = __version__) -> str | None:
-    """Why a plugin with ``engines`` and ``plugin_api`` does not run on evo-agents ``version``, or None when it does."""
+def point_problem(contributes: dict | None, version: str = __version__) -> str | None:
+    """Why the contributions ``contributes`` (a manifest's) name a version of an extension point that evo-agents
+    ``version`` does not serve, or None."""
+    for point, items in (contributes or {}).items():
+        served = POINT_VERSIONS.get(point, ())
+        for item in items:
+            api = item.get("api", 1)
+            if api not in served:
+                listed = ", ".join(str(each) for each in served) or "none"
+                return (
+                    f"its {point} contribution {item.get('name')!r} is written for version {api} of that extension "
+                    f"point; evo-agents {version} serves version {listed}"
+                )
+    return None
+
+
+def problem(engines: dict, plugin_api: int, version: str = __version__, contributes: dict | None = None) -> str | None:
+    """Why a plugin with ``engines``, ``plugin_api`` and the contributions ``contributes`` does not run on evo-agents
+    ``version``, or None when it does."""
     if plugin_api not in PLUGIN_API_VERSIONS:
         supported = ", ".join(str(api) for api in PLUGIN_API_VERSIONS)
         return f"it is written for plugin API {plugin_api}; evo-agents {version} runs plugin API {supported}"
@@ -108,7 +147,7 @@ def problem(engines: dict, plugin_api: int, version: str = __version__) -> str |
         return f"its engines range {spec!r} does not read: {exc}"
     if not inside:
         return f"it runs on evo-agents {spec}, not on {version}"
-    return None
+    return point_problem(contributes, version)
 
 
 def plugin_version_key(text: str) -> tuple:

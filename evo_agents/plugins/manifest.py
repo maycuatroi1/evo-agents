@@ -8,6 +8,12 @@ the hub's or the worker's process) belongs to a core plugin only, and so does a 
 paths a backend names stay inside the bundle; the ``engines`` range must read (``evo_agents.plugins.compat``); the
 config's ``required`` names its own properties.
 
+A core plugin implements its contributions to the points of the hub (channels, routes, MCP tools, jobs, events) in
+Python, which each names with ``python`` (one that names none does nothing there); a channel of a core plugin is a kind
+of members' channel, named as the hub names those (``CHANNEL_KIND``). Only a core plugin owns tables (``tables``), and
+each one's name starts with the plugin's table prefix (``table_prefix``): its id with ``_`` for ``-``, then ``_``. The
+tables come from the hub's own chain of migrations, never from the plugin at run time.
+
 The schema file is read where the package installs it, next to the harness schemas, without importing
 ``evo_agents.harness``. Standard library only, besides ``evo_agents.schema``.
 """
@@ -15,11 +21,12 @@ The schema file is read where the package installs it, next to the harness schem
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from functools import cache
 from pathlib import Path
 
-from evo_agents.plugins.compat import SpecError, parse_spec
+from evo_agents.plugins.compat import POINT_VERSIONS, SpecError, parse_spec
 from evo_agents.plugins.protocol import BACKEND_POINTS
 from evo_agents.schema import errors, validate
 
@@ -28,19 +35,9 @@ SCHEMA_FILE = Path(__file__).resolve().parent.parent / "harness" / "schemas" / "
 MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
 PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
-EXTENSION_POINTS = (
-    "channels",
-    "routes",
-    "mcp_tools",
-    "jobs",
-    "events",
-    "pages",
-    "agent_packs",
-    "agent_types",
-    "runtimes",
-    "environments",
-    "kg_connectors",
-)
+EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
+CORE_ONLY_POINTS = ("tables",)  # what only a core plugin contributes
+CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notification_channels.kind), never "web"
 PERMISSIONS = (
     "runs:read",
     "runs:dispatch",
@@ -61,6 +58,12 @@ PERMISSION_TEXT = {
     "memories:read": "read the project's memories",
     "notifications:send": "send notifications to the project's members",
 }
+
+
+def table_prefix(plugin_id: str) -> str:
+    """What the name of every table plugin ``plugin_id`` owns starts with: ``telegram_`` for telegram, ``srs_docs_``
+    for srs-docs."""
+    return plugin_id.replace("-", "_") + "_"
 
 
 class ManifestError(ValueError):
@@ -106,6 +109,25 @@ class Manifest:
         """name -> ``module:attribute`` of the contributions to ``point`` that name their Python."""
         return {item["name"]: item["python"] for item in self.contributions(point) if "python" in item}
 
+    def contribution(self, point: str, name: str) -> dict | None:
+        """The contribution named ``name`` to extension point ``point``, or None."""
+        return next((item for item in self.contributions(point) if item["name"] == name), None)
+
+    def tables(self) -> tuple[str, ...]:
+        """The tables a core plugin owns, which the hub's migrations create."""
+        return tuple(item["name"] for item in self.contributions("tables"))
+
+    def per_project(self) -> bool:
+        """Whether a project enables the plugin for anything: it asks for a permission, takes a config, or contributes
+        an MCP tool, a job, an event or a route under /v1/x/<id>/<project>. A core plugin that does none of that
+        (Telegram: a channel of members and routes of its own) runs wherever it is installed, and the hub's store
+        does not list it."""
+        if self.tier == "isolated" or self.permissions or self.config:
+            return True
+        if any(self.contributions(point) for point in ("mcp_tools", "jobs", "events")):
+            return True
+        return any("prefix" not in item for item in self.contributions("routes"))
+
 
 def _semantics(data: dict) -> list[str]:
     """What the schema cannot check: unique names per point, Python in core plugins only, a range that reads, and a
@@ -117,11 +139,7 @@ def _semantics(data: dict) -> list[str]:
         for name in sorted({name for name in names if names.count(name) > 1}):
             found.append(f"contributes.{point}: {name!r} is contributed twice")
         for index, item in enumerate(items):
-            if "python" in item and not core:
-                found.append(
-                    f"contributes.{point}[{index}].python: only a core plugin runs Python in the hub's or the "
-                    "worker's process; an isolated plugin implements it in its own process"
-                )
+            found.extend(_contribution_problems(data["id"], point, index, item, core))
     found.extend(_backend_problems(data, core))
     try:
         parse_spec(data["engines"]["evo-agents"])
@@ -136,6 +154,25 @@ def _semantics(data: dict) -> list[str]:
     for permission in sorted({p for p in permissions if permissions.count(p) > 1}):
         found.append(f"permissions: {permission!r} is listed twice")
     return found
+
+
+def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, core: bool) -> list[str]:
+    """What is wrong with contribution ``item`` to ``point`` of a core (``core``) or an isolated plugin."""
+    where = f"contributes.{point}[{index}]"
+    if "python" in item and not core:
+        return [
+            f"{where}.python: only a core plugin runs Python in the hub's or the worker's process; an isolated "
+            "plugin implements it in its own process"
+        ]
+    if point in CORE_ONLY_POINTS and not core:
+        return [f"{where}: only a core plugin owns tables, which the hub's migrations create"]
+    if "prefix" in item and not (core and point == "routes"):
+        return [f"{where}.prefix: only a core plugin's route names the path its router is included under"]
+    if point == "tables" and not item["name"].startswith(table_prefix(plugin_id)):
+        return [f"{where}: table {item['name']!r} must start with {table_prefix(plugin_id)}, the plugin's prefix"]
+    if core and point == "channels" and (not re.fullmatch(CHANNEL_KIND, item["name"]) or item["name"] == "web"):
+        return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not web"]
+    return []
 
 
 def _backend_problems(data: dict, core: bool) -> list[str]:
