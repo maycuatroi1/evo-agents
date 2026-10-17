@@ -191,9 +191,11 @@ class McpClient:
         what = f": {message}" if isinstance(message, str) and message else ""
         raise HubError(f"the hub at {self.url} answered HTTP {status}{what}", status, code)
 
-    def call_tool(self, name: str, arguments: dict) -> dict:
-        """The result of one tools/call. Raises HubError when the hub gives no result."""
-        message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    def call_tool(self, name: str, arguments: dict, meta: dict | None = None) -> dict:
+        """The result of one tools/call, whose params carry ``meta`` as their ``_meta``. Raises HubError when the hub
+        gives no result."""
+        params = {"name": name, "arguments": arguments, **({"_meta": meta} if meta else {})}
+        message = {"jsonrpc": "2.0", "id": 1, "method": "tools/call", "params": params}
         answer = self.post(message, PROTOCOL_VERSION)
         result = answer.get("result") if isinstance(answer, dict) else None
         if not isinstance(result, dict) or not isinstance(result.get("content"), list):
