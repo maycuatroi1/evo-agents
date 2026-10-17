@@ -1,3 +1,4 @@
+import { useQuery } from "@tanstack/react-query";
 import {
   Activity,
   BookOpen,
@@ -14,6 +15,7 @@ import {
   MonitorPlay,
   MoonStar,
   Network,
+  Puzzle,
   Server,
   Shield,
   Sparkles,
@@ -21,11 +23,16 @@ import {
 } from "lucide-react";
 import type { Route } from "next";
 
+import { browserApi } from "@/lib/api/browser";
+import { type FeatureId, featureOn, featuresQuery } from "@/lib/hub-settings";
+
 /**
- * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas; the hub-wide areas
+ * The sidebar's links, in the kit's AppShell order: Home, Inbox and Monitor; the current project's areas, then the pages
+ * its enabled plugins add (shell/plugin-nav.tsx) before its Plugins; the hub-wide areas
  * (chats, workers, secrets, accounts, memories, skills, administration). A step that adds a project area adds one entry to PROJECT_NAV,
  * a hub-wide area one entry to HUB_NAV, and one label under `nav` in messages/vi.json and messages/en.json. Icons follow
- * the Iconography table of web/DESIGN.md.
+ * the Iconography table of web/DESIGN.md. An item that names a `feature` leaves the sidebar and the palette while a
+ * hub admin has that feature off, for the hub or for the project shown.
  */
 export type NavLabel =
   | "home"
@@ -41,6 +48,7 @@ export type NavLabel =
   | "memories"
   | "skills"
   | "kg"
+  | "plugins"
   | "workers"
   | "myMemories"
   | "globalSkills"
@@ -61,6 +69,8 @@ export type ProjectNavItem = {
   /** Path below /p/{project}; "" is the project's overview. */
   segment: string;
   count?: NavCount;
+  /** The feature a hub admin may turn off for the hub or the project, which hides the item (lib/hub-settings.ts). */
+  feature?: FeatureId;
 };
 
 export type HubNavItem = {
@@ -69,13 +79,15 @@ export type HubNavItem = {
   href: Route;
   adminOnly?: boolean;
   count?: NavCount;
+  /** The feature a hub admin may turn off for the hub, which hides the item. */
+  feature?: FeatureId;
 };
 
 /** The first group, without a label: where the visitor starts, what waits for them, and the runs they watch live. */
 export const HOME_NAV: readonly HubNavItem[] = [
   { label: "home", icon: LayoutDashboard, href: "/" },
   { label: "inbox", icon: Inbox, href: "/inbox", count: "openDecisions" },
-  { label: "monitor", icon: MonitorPlay, href: "/monitor", count: "runningRuns" },
+  { label: "monitor", icon: MonitorPlay, href: "/monitor", count: "runningRuns", feature: "monitor" },
 ];
 
 export const PROJECT_NAV: readonly ProjectNavItem[] = [
@@ -83,15 +95,16 @@ export const PROJECT_NAV: readonly ProjectNavItem[] = [
   { label: "plans", icon: ListChecks, segment: "plans" },
   { label: "runs", icon: Activity, segment: "runs", count: "activeRuns" },
   { label: "insights", icon: ChartColumn, segment: "insights" },
-  { label: "curator", icon: MoonStar, segment: "curator" },
+  { label: "curator", icon: MoonStar, segment: "curator", feature: "curator" },
   { label: "agents", icon: Bot, segment: "agents" },
   { label: "memories", icon: BookOpen, segment: "memories" },
   { label: "skills", icon: Sparkles, segment: "skills" },
-  { label: "kg", icon: Network, segment: "kg" },
+  { label: "kg", icon: Network, segment: "kg", feature: "kg" },
+  { label: "plugins", icon: Puzzle, segment: "plugins" },
 ];
 
 export const HUB_NAV: readonly HubNavItem[] = [
-  { label: "chats", icon: MessagesSquare, href: "/chats", count: "unreadChats" },
+  { label: "chats", icon: MessagesSquare, href: "/chats", count: "unreadChats", feature: "chats" },
   { label: "workers", icon: Server, href: "/workers" },
   { label: "secrets", icon: LockKeyhole, href: "/secrets" },
   { label: "accounts", icon: UserRoundCog, href: "/accounts" },
@@ -109,6 +122,15 @@ export function projectHref(project: string, segment = ""): Route {
 export function isActive(pathname: string, href: string, exact: boolean): boolean {
   if (exact || href === "/") return pathname === href;
   return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+/**
+ * Whether a nav item shows, for the sidebar and the palette: unless it names a feature a hub admin turned off, for the
+ * hub or for `project` (GET /v1/features, which the shell reads on the server). Every item shows until it answers.
+ */
+export function useNavShown(): (item: { feature?: FeatureId }, project?: string | null) => boolean {
+  const { data: features } = useQuery(featuresQuery(browserApi));
+  return (item, project) => featureOn(features, item.feature, project);
 }
 
 /** A count as a nav item shows it: up to 99, then 99+. */

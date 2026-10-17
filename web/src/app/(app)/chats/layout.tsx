@@ -8,6 +8,7 @@ import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { chatsQuery } from "@/lib/chat-queries";
+import { requireFeature } from "@/lib/hub-settings-server";
 
 export async function generateMetadata(): Promise<Metadata> {
   const t = await getTranslations("chats");
@@ -16,9 +17,11 @@ export async function generateMetadata(): Promise<Metadata> {
 
 /**
  * The Chats area: the visitor's chats, read on the server so the list renders complete, beside the page shown (no
- * chat, or one). A layout, so the list stays mounted while the visitor moves from chat to chat.
+ * chat, or one). A layout, so the list stays mounted while the visitor moves from chat to chat. A 404 while a hub
+ * admin has the chats feature off, as the API's routes for chats answer.
  */
 export default async function ChatsLayout({ children }: { children: ReactNode }) {
+  await requireFeature("chats");
   const api = await serverApi();
   const client = getQueryClient();
   const error = await prefetch(client, chatsQuery(() => api));

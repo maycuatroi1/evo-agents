@@ -42,6 +42,9 @@ CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figure
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
 CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open
 CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged changes counted again, outcome_days on
+PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron takes this minute, each queued once
+PLUGIN_JOB = "hub.plugin_job"  # one run of one plugin's job (evo_agents.hub.plugin_jobs)
+DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute: events and notifications due for plugins, retried
 
 
 def kg_lock(project: str) -> str:

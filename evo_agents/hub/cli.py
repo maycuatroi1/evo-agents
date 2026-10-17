@@ -8,9 +8,10 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
-registered by ``cli_client``, ``agent`` by ``cli_agents`` and ``chat`` by ``cli_chats``; they need nothing beyond
-the core package, so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print``
-(``contract``) need the extra for the API document; ``hub contract check`` does not.
+registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats`` and ``plugin`` by
+``cli_plugins``; they need nothing beyond the core package, so they work on a core install. ``hub openapi``
+(``openapi``) and ``hub contract print`` (``contract``) need the extra for the API document; ``hub contract check``
+does not.
 """
 
 from __future__ import annotations
@@ -112,6 +113,20 @@ def cmd_worker(args) -> int:
     return worker.main(config, args.concurrency)
 
 
+@_server_command
+def cmd_plugin_host(args) -> int:
+    try:
+        from evo_agents.hub.plugin_host_service import load_host_config, run_service
+    except ImportError as exc:
+        return _missing_extra(exc, args)
+    try:
+        config = load_host_config(args)
+    except ValueError as exc:
+        log.error(str(exc))
+        return EXIT_USAGE
+    return run_service(config)
+
+
 def _positive(value: str) -> int:
     try:
         number = int(value)
@@ -181,6 +196,23 @@ def register(sub) -> None:
     migrate.add_argument("--dsn", help=dsn_help)
     migrate.set_defaults(func=cmd_migrate)
 
+    plugin_host = hsub.add_parser(
+        "plugin-host",
+        help="run the backends of isolated plugins, apart from the hub, holding none of its secrets (hub-server extra)",
+    )
+    plugin_host.add_argument("--hub-url", help="the hub's URL to pull plugins from (default: $EVO_HUB_PUBLIC_URL)")
+    plugin_host.add_argument(
+        "--data-dir", help="where plugins are placed and run (default: $EVO_HUB_DATA_DIR/plugins or ~/.evo/plugin-host)"
+    )
+    plugin_host.add_argument("--host", default="0.0.0.0", help="interface to listen on (default: 0.0.0.0)")
+    plugin_host.add_argument("--port", type=int, help="port to listen on (default: 8090)")
+    plugin_host.add_argument(
+        "--allow-shared-user",
+        action="store_true",
+        help="not as root, run backends under this user anyway; a developer's machine only (docs/plugins.md)",
+    )
+    plugin_host.set_defaults(func=cmd_plugin_host)
+
     from evo_agents.hub.cli_client import register_client
 
     register_client(hsub)
@@ -192,6 +224,10 @@ def register(sub) -> None:
     from evo_agents.hub.cli_chats import register_chats
 
     register_chats(hsub)
+
+    from evo_agents.hub.cli_plugins import register_plugins
+
+    register_plugins(hsub)
 
     from evo_agents.hub.openapi import register as register_openapi
 

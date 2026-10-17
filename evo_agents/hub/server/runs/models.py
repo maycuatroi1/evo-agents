@@ -17,6 +17,8 @@ from evo_agents.hub.credentials import DISPATCHED_VIA, MAX_SECRET_NAME_CHARS, SE
 from evo_agents.hub.plans import PLAN_ID
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
 from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.plugins.config import MAX_LAYER_BYTES
+from evo_agents.plugins.manifest import PLUGIN_ID
 
 MAX_ID = 2**63 - 1  # bigint
 MAX_DISPATCH_STEPS = 50
@@ -43,6 +45,11 @@ ProfileHandle = Annotated[str, Field(pattern=profiles.HANDLE_PATTERN)]
 PROFILE_HELP = (
     "the agent profile the run goes under, by handle (GET /v1/projects/{p}/agents): what its runs may use; the hub "
     "refuses a dispatch its allowlists leave out (422). Null: the project's default profile, which allows everything"
+)
+PluginKey = Annotated[str, Field(pattern=PLUGIN_ID)]
+PLUGIN_CONFIG_HELP = (
+    "the run's own layer of the config of plugins enabled on the project, above the agent profile's: plugin name to "
+    "the plain values it sets, checked against the plugin's schema; no secret (422). Null: none"
 )
 ACCOUNT_HELP = (
     "one of the caller's env secrets bound to the project, by name (GET /v1/accounts): the run takes it for its "
@@ -99,6 +106,13 @@ class Dispatch(BaseModel):
     )
     account: AccountName | None = Field(None, description=ACCOUNT_HELP)
     profile: ProfileHandle | None = Field(None, description=PROFILE_HELP)
+    plugin_config: dict[PluginKey, dict[str, Any]] | None = Field(None, max_length=50, description=PLUGIN_CONFIG_HELP)
+
+    @model_validator(mode="after")
+    def _bounded_plugin_config(self) -> Dispatch:
+        if self.plugin_config and _json_bytes(self.plugin_config) > MAX_LAYER_BYTES:
+            raise ValueError(f"plugin_config is at most {MAX_LAYER_BYTES // 1024} KiB as JSON")
+        return self
 
 
 class AuthorRunDispatch(BaseModel):

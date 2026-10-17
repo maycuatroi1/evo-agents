@@ -18,9 +18,9 @@ for again. Either way the uploaded objects are deleted. An upload can be committ
 project, within 24 hours; any other id is unknown (422) and left alone. When the blob store does not answer, the answer
 is 503 and the uploads stay, so the same commit can be sent again.
 
-A request without ``project`` is about blobs the hub holds itself, outside any project: the bundles of global skills,
-which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle (GLOBAL_KINDS);
-logs and the audit trail name that holder GLOBAL.
+A request without ``project`` is about blobs the hub holds itself, outside any project: the bundles of global skills
+and of plugins, which belong to no project. Only a hub admin uploads or commits those, and only of kind skill-bundle or
+plugin-bundle (GLOBAL_KINDS); logs and the audit trail name that holder GLOBAL.
 
 ``issue_uploads`` and ``commit_uploads`` are the two halves on their own, for routes that take uploads as part of
 something larger, such as the worker's log and diff of a run (``run_events``). No route here reads a blob: a route
@@ -69,7 +69,7 @@ UPLOAD_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 413, 422, 5
 COMMIT_REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 422, 503)}
 UNAVAILABLE = "the blob store did not answer; nothing was committed and the uploads are kept, try again shortly"
 GLOBAL = "(global)"  # the hub as the holder of blobs in logs and audit rows; no project name has parentheses
-GLOBAL_KINDS = frozenset({"skill-bundle"})  # what the hub holds outside any project: the bundles of global skills
+GLOBAL_KINDS = frozenset({"skill-bundle", "plugin-bundle"})  # what the hub holds outside any project: skills, plugins
 
 Sha256 = Annotated[str, Field(pattern=r"^[0-9a-f]{64}$", description="hex SHA-256 of the bytes")]
 ProjectField = Annotated[str, Field(pattern=PROJECT_NAME)]

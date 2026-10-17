@@ -42,7 +42,7 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.harness import load_schema, plan_body, plan_digest, plan_semantics
-from evo_agents.hub import tables
+from evo_agents.hub import plugin_events, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS, build_handoff
 from evo_agents.hub.plan_diff import DEFAULT_CONTEXT, MAX_CONTEXT, plan_diff
@@ -934,6 +934,11 @@ async def apply_patch(
         run_id=run_id,
     )
     _logged(access.name, stored, "patched", user)
+    if section == "steps" and "status" in updates and old.get("status") != updates["status"]:
+        moved = {"from": old.get("status"), "to": updates["status"], "revision": stored.revision}
+        step_id = body["steps"][position].get("id")
+        step_key = None if step_id is None else str(step_id)  # as a run names its step
+        await plugin_events.emit(conn, "plan.step", access.project_id, {"plan_id": plan_id, "step": step_key, **moved})
     return stored, True, warnings
 
 

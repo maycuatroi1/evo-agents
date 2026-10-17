@@ -50,22 +50,19 @@ from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
 from evo_agents.hub.run_cli_options import (
-    REQUESTED_RUNTIMES,
     account_option,
     author_options,
+    dispatch_options,
+    list_options,
     plan_options,
     rerun_body,
     rerun_options,
     usage_error,
 )
 from evo_agents.hub.runs import (
-    APPROVALS,
     EVENT_KINDS,
     MAX_MODEL_CHARS,
-    MODES,
     RUNTIMES,
-    SHOWN_KINDS,
-    SHOWN_STATES,
     STEADY_GAP_SECONDS,
     STEADY_SECONDS,
     TERMINAL_STATES,
@@ -594,9 +591,7 @@ def _describe_local(run: dict, hub_url: str) -> list[tuple[str, str]]:
 
 
 def _describe(run: dict, hub_url: str = "") -> list[tuple[str, str]]:
-    """The fields of a run that say something, as (label, text) pairs."""
-    if run["kind"] == "local":
-        return _describe_local(run, hub_url)
+    """The fields of a run that say something, as (label, text) pairs; ``_describe_local`` says those of a local run."""
     plan_run = run["kind"] != "step"  # every other kind has repos, and no step
     lines = [("state", f"{run['state']}, attempt {run['attempt']} of {run['max_attempts']}"), *_what(run, hub_url)]
     commit = f", commit {run['commit_sha'][:12]}" if run["commit_sha"] else ""
@@ -690,7 +685,7 @@ def cmd_show(args) -> int:
         _print_json(run)
         return 0
     print(f"Run #{run['id']}")
-    lines = _describe(run, hub.url)
+    lines = (_describe_local if run["kind"] == "local" else _describe)(run, hub.url)
     width = max(len(label) for label, _ in lines)
     for label, text in lines:
         first, *rest = str(text).splitlines() or [""]
@@ -916,22 +911,7 @@ def register_runs(hsub) -> None:
     dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
     dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
     with_project(dispatch)
-    dispatch.add_argument(
-        "--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has"
-    )
-    dispatch.add_argument(
-        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
-    )
-    dispatch.add_argument(
-        "--worker", help="pin the runs to this worker of yours, by id or name (default: any of yours that can take one)"
-    )
-    dispatch.add_argument(
-        "--approval",
-        choices=APPROVALS,
-        help="default: review, which waits for `hub run approve`; auto marks the step done once every verify command "
-        "the worker runs again exits 0",
-    )
-    dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
+    dispatch_options(dispatch)
     with_model(dispatch)
     account_option(dispatch)
     json_option(dispatch, returns_array(*RUN_KEYS, schema="Run"))
@@ -965,29 +945,7 @@ def register_runs(hsub) -> None:
 
     listed = rsub.add_parser("list", help="the runs of a project, newest first, with how many are in each state")
     with_project(listed)
-    listed.add_argument(
-        "--state",
-        action="append",
-        choices=SHOWN_STATES,
-        metavar="STATE",
-        help=f"only runs in this state, one of {', '.join(SHOWN_STATES)}; repeat it for several",
-    )
-    listed.add_argument(
-        "--kind", choices=SHOWN_KINDS, metavar="KIND", help=f"only runs of this kind, one of {', '.join(SHOWN_KINDS)}"
-    )
-    listed.add_argument("--account", metavar="EMAIL", help="only local runs of this Claude account")
-    listed.add_argument("--plan", help="only runs of this plan")
-    listed.add_argument("--step", help="only runs of this step key")
-    listed.add_argument("--worker", help="only runs this worker of yours claimed, by id or name")
-    listed.add_argument("--by", metavar="LOGIN", help="only runs this member dispatched")
-    listed.add_argument(
-        "--search",
-        metavar="TEXT",
-        help="text in the title, step, plan, repo, branch, worker, login, error, machine, directory or account, or a "
-        "run number such as #12",
-    )
-    listed.add_argument("--limit", type=int, choices=range(1, 201), metavar="N", help="1 to 200 (default 50)")
-    listed.add_argument("--offset", type=int, metavar="N", help="skip this many runs, for the next page")
+    list_options(listed)
     json_option(listed, returns_object(*RUN_LIST_KEYS, schema="RunList"))
     listed.set_defaults(func=cmd_list)
 
