@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Sample board</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --fg: #0e1116;
+        --muted: #4b5362;
+        --line: #e2e5ea;
+        --card: #ffffff;
+      }
+      :root[data-theme="dark"] {
+        color-scheme: dark;
+        --fg: #e9ecf1;
+        --muted: #a4acba;
+        --line: #22262f;
+        --card: #111419;
+      }
+      body {
+        margin: 0;
+        padding: 16px;
+        background: var(--card);
+        color: var(--fg);
+        font: 14px/20px system-ui, sans-serif;
+      }
+      h1 {
+        margin: 0 0 12px;
+        font-size: 15px;
+        line-height: 22px;
+        font-weight: 600;
+      }
+      dl {
+        display: grid;
+        grid-template-columns: max-content 1fr;
+        gap: 6px 16px;
+        margin: 0;
+      }
+      dt {
+        color: var(--muted);
+      }
+      dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+        font-family: ui-monospace, monospace;
+        font-size: 13px;
+      }
+      p {
+        margin: 12px 0 0;
+        padding-top: 12px;
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Sample board</h1>
+      <dl>
+        <dt>Context</dt>
+        <dd id="context">waiting</dd>
+        <dt>Methods</dt>
+        <dd id="methods">waiting</dd>
+        <dt>Runs</dt>
+        <dd id="runs">waiting</dd>
+        <dt>Plans</dt>
+        <dd id="plans">waiting</dd>
+        <dt>Cookie</dt>
+        <dd id="cookie">waiting</dd>
+        <dt>Parent page</dt>
+        <dd id="parent">waiting</dd>
+        <dt>Direct fetch</dt>
+        <dd id="fetch">waiting</dd>
+      </dl>
+      <p>The page of the sample plugin of the evo-agents tests, in the hub's sandboxed frame.</p>
+    </main>
+    <script src="app.js"></script>
+  </body>
+</html>

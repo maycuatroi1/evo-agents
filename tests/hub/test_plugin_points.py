@@ -612,6 +612,29 @@ def test_core_plugin_disabled_answers_404_keeps_its_data_and_enabled_again_finds
     assert client.get(entries, headers=notes.owner).json() == [{"body": "first note", "author": OTHER}]
 
 
+def test_core_plugin_page_is_native_and_framed_nowhere(notes):
+    from dataclasses import replace
+
+    from evo_agents.hub.server.plugin_pages import ticket
+
+    client = notes.client
+    listed = client.get(f"/v1/projects/{PROJECT}/plugins", headers=notes.reader)
+    assert listed.status_code == 200, listed.text
+    (plugin,) = listed.json()
+    assert (plugin["name"], plugin["tier"], plugin["title"], plugin["enabled"]) == ("notes", "core", "Notes", False)
+    page = {"name": "entries", "title": "Notes", "description": "", "icon": "notebook-pen", "menu": True}
+    assert plugin["pages"] == [{**page, "native": True, "url": None}]
+
+    enable(client, notes.owner, "notes", ["plans:read"])
+    shown = client.get(f"/v1/projects/{PROJECT}/plugins/notes", headers=notes.reader).json()
+    assert shown["enabled"] and shown["pages"] == [{**page, "native": True, "url": None}]
+    # the web carries a core plugin's page itself: the hub frames none, a valid ticket included
+    secret = live.session_secret()
+    client.app.state.config = replace(client.app.state.config, session_secret=secret)
+    framed = f"/v1/plugin-ui/notes/{PROJECT}/{ticket(secret, 'notes', PROJECT)}/index.html"
+    assert client.get(framed).status_code == 404
+
+
 def test_core_plugin_mcp_failure_is_the_call_s_never_the_hub_s(notes, monkeypatch):
     client = notes.client
     enable(client, notes.owner, "notes", ["plans:read"])

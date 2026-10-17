@@ -45,6 +45,10 @@ PROJECT_PLUGIN_KEYS = (
     "enabled_at",
     "granted_by",
     "granted_at",
+    "title",
+    "description",
+    "tier",
+    "pages",
 )
 LAYER_KEYS = (
     "plugin",

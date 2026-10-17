@@ -216,7 +216,7 @@
           "$ref": "#/$defs/events"
         },
         "pages": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/pages"
         },
         "agent_packs": {
           "$ref": "#/$defs/contributions"
@@ -472,6 +472,65 @@
         }
       }
     },
+    "page": {
+      "description": "A page of the plugin on the hub's web, at /p/<project>/x/<id>/<name> in a project that enabled the plugin, with an item in the project's menu unless menu is false. An isolated plugin's page is an HTML file of its bundle under pages/ (entry), which the web shows in a sandboxed iframe with an opaque origin, under a strict CSP, talking to the hub only through the bridge evo-plugin/1 (docs/plugins.md); a core plugin's page is native, a page of the hub's web itself (web/src), and names no entry.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "description": "The page's name in the project's menu and above the page; the plugin's name when left out.",
+          "type": "string",
+          "maxLength": 60
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "entry": {
+          "description": "Isolated plugins only: the page's HTML file, a path in the bundle under pages/, such as pages/board.html. The files it loads (scripts, styles, images) are the bundle's files under pages/ too, by relative URL.",
+          "type": "string",
+          "pattern": "^pages/[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}[.]html$"
+        },
+        "icon": {
+          "description": "The icon of its menu item, a name from the hub's set (Lucide); puzzle when left out.",
+          "enum": [
+            "puzzle",
+            "file-text",
+            "list-checks",
+            "layout-dashboard",
+            "table",
+            "kanban",
+            "book-open",
+            "chart-column",
+            "calendar",
+            "clipboard-list",
+            "notebook-pen",
+            "bug",
+            "folder-kanban",
+            "message-square",
+            "gauge",
+            "shield-check",
+            "workflow",
+            "boxes"
+          ]
+        },
+        "menu": {
+          "description": "Whether the page has an item in the project's menu; true when left out. A page without one is reached by a link.",
+          "type": "boolean"
+        }
+      }
+    },
     "channels": {
       "type": "array",
       "items": {
@@ -506,6 +565,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/table"
+      }
+    },
+    "pages": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/page"
       }
     }
   }

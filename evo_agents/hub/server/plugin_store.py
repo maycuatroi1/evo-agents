@@ -98,6 +98,9 @@ class PluginVersion(BaseModel):
 
 class Plugin(BaseModel):
     name: str
+    title: str = Field(description="the name its manifest gives it (the installed version's, else the latest's)")
+    description: str
+    tier: Literal[TIERS]
     publisher: str
     state: Literal[STATES] = Field(description="available: none installed; disabled: installed, turned off")
     installed_version: str | None
@@ -271,11 +274,20 @@ def _upgrade_to(installed: str | None, versions: list[PluginVersion]) -> str | N
     return newer[0].version if newer else None
 
 
-def plugin_model(row, versions: list[PluginVersion]) -> dict:
-    """The fields of Plugin for ``row`` of the plugins query and its versions, newest first."""
+def shown_version(row, rows: list):
+    """The version row whose manifest speaks for plugin ``row``: the installed one, else the newest of ``rows``."""
+    return next((v for v in rows if v.version == row.installed_version), rows[0])
+
+
+def plugin_model(row, versions: list[PluginVersion], manifest: dict) -> dict:
+    """The fields of Plugin for ``row`` of the plugins query, its versions, newest first, and the manifest of the
+    version shown (``shown_version``)."""
     state = "available" if row.installed_version is None else "disabled" if row.disabled_reason else "installed"
     return {
         "name": row.name,
+        "title": manifest.get("name") or row.name,
+        "description": manifest.get("description") or "",
+        "tier": manifest.get("tier", "isolated"),
         "publisher": row.publisher,
         "state": state,
         "installed_version": row.installed_version,
@@ -296,9 +308,10 @@ async def list_plugins(conn: AsyncConnection, hub_version: str) -> list[Plugin]:
         by_plugin.setdefault(version.plugin_id, []).append(version)
     found = []
     for row in rows:
-        versions = [version_model(v, hub_version) for v in newest_first(by_plugin.get(row.id, []))]
-        if versions:
-            found.append(Plugin(**plugin_model(row, versions)))
+        held = newest_first(by_plugin.get(row.id, []))
+        if held:
+            versions = [version_model(v, hub_version) for v in held]
+            found.append(Plugin(**plugin_model(row, versions, shown_version(row, held).manifest)))
     return found
 
 
@@ -326,8 +339,8 @@ async def detail(conn: AsyncConnection, name: str, hub_version: str) -> PluginDe
     if not rows:
         raise not_found(name)
     versions = [version_model(v, hub_version) for v in rows]
-    shown = next((v for v in rows if v.version == row.installed_version), rows[0])
-    return PluginDetail(**plugin_model(row, versions), manifest=shown.manifest, versions=versions)
+    shown = shown_version(row, rows)
+    return PluginDetail(**plugin_model(row, versions, shown.manifest), manifest=shown.manifest, versions=versions)
 
 
 async def plugin(conn: AsyncConnection, name: str, hub_version: str) -> Plugin:

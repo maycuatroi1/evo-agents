@@ -5,7 +5,8 @@ SQLAlchemy engine on it (``evo_agents.hub.db``), the GitHub client, the blob sto
 defers to, and closes them on shutdown, the engine before the pool; a database that cannot be reached or migrated stops
 the start instead of serving errors. An R2 outage does not: health reports it and the blob routes answer 503. Every
 request gets an id and one access log line without its query string, which can carry OAuth codes. Every path under /v1
-needs a credential except the few ``security.PUBLIC_PATHS`` lists, and the routes of a feature a hub admin turned off
+needs a credential except the few ``security.PUBLIC_PATHS`` lists and the files of plugins' pages, which check a
+ticket of their own (``security.PUBLIC_PREFIXES``), and the routes of a feature a hub admin turned off
 answer 404 (``FeatureGate``, ``evo_agents.hub.server.hub_settings``). The OpenAPI document is served at /v1/openapi.json
 for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted,
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
@@ -292,6 +293,7 @@ def create_app(config: HubConfig) -> FastAPI:
         credentials,
         features,
         plugin_host,
+        plugin_ui,
         plugins,
         project_plugins,
         rate_limits,
@@ -314,7 +316,9 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_events.stream_router,
         chat_agents.worker_router,
         plugins.router,
+        plugins.publishers_router,
         project_plugins.router,
+        plugin_ui.router,
         plugin_host.router,
         branding.router,
         branding.admin_router,

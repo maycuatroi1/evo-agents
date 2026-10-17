@@ -37,9 +37,10 @@ from evo_agents.hub.plugin_calls import (  # noqa: F401 (where the routes and th
     enabled_query,
 )
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.plugin_pages import PluginPage, pages_of
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.plugins.manifest import PERMISSION_TEXT, PERMISSIONS
+from evo_agents.plugins.manifest import PERMISSION_TEXT, PERMISSIONS, TIERS
 
 log = logging.getLogger(__name__)
 
@@ -57,6 +58,9 @@ class ProjectPlugin(BaseModel):
     """An installed plugin as one project sees it: what it asks for, and whether the project enabled it."""
 
     name: str
+    title: str = Field(description="the name its manifest gives it")
+    description: str
+    tier: Literal[TIERS]
     publisher: str
     version: str = Field(description="the version installed on the hub")
     state: Literal[PROJECT_STATES] = Field(description="disabled: the hub turned it off, and it does nothing anywhere")
@@ -69,6 +73,7 @@ class ProjectPlugin(BaseModel):
         "what is granted and asked for"
     )
     config_schema: dict | None = Field(description="the JSON Schema of its config, secret fields marked x-secret")
+    pages: list[PluginPage] = Field(description="the pages it adds to the project's part of the web")
     enabled_by: str | None
     enabled_at: datetime | None
     granted_by: str | None
@@ -128,22 +133,28 @@ def _query(project_id: int):
     )
 
 
-def view(row) -> ProjectPlugin:
+def view(row, project: str, secret: str | None) -> ProjectPlugin:
+    """Plugin ``row`` of ``_query`` as project ``project`` sees it; ``secret`` signs the tickets of its pages."""
     asked = asked_for(row.manifest)
     granted = list(row.permissions or [])
+    enabled = row.enabled_id is not None
     return ProjectPlugin(
         name=row.name,
+        title=row.manifest.get("name") or row.name,
+        description=row.manifest.get("description") or "",
+        tier=row.manifest.get("tier", "isolated"),
         publisher=row.publisher,
         version=row.installed_version,
         state="disabled" if row.disabled_reason else "installed",
         disabled_reason=row.disabled_reason,
-        enabled=row.enabled_id is not None,
+        enabled=enabled,
         permissions=[
             PluginPermission(name=name, text=PERMISSION_TEXT.get(name, name), granted=name in granted) for name in asked
         ],
         granted=granted,
-        pending=[name for name in asked if row.enabled_id is not None and name not in granted],
+        pending=[name for name in asked if enabled and name not in granted],
         config_schema=row.manifest.get("config"),
+        pages=pages_of(row.manifest, row.name, project, enabled and not row.disabled_reason, secret),
         enabled_by=row.enabled_by,
         enabled_at=row.enabled_at,
         granted_by=row.granted_by,
@@ -151,8 +162,8 @@ def view(row) -> ProjectPlugin:
     )
 
 
-async def list_project_plugins(conn: AsyncConnection, access: ProjectAccess) -> list[ProjectPlugin]:
-    return [view(row) for row in await conn.execute(_query(access.project_id))]
+async def list_project_plugins(conn: AsyncConnection, access: ProjectAccess, secret: str | None) -> list[ProjectPlugin]:
+    return [view(row, access.name, secret) for row in await conn.execute(_query(access.project_id))]
 
 
 def not_installed(name: str) -> HTTPException:
@@ -172,8 +183,8 @@ async def installed_row(conn: AsyncConnection, access: ProjectAccess, name: str,
     return row
 
 
-async def project_plugin(conn: AsyncConnection, access: ProjectAccess, name: str) -> ProjectPlugin:
-    return view(await installed_row(conn, access, name))
+async def project_plugin(conn: AsyncConnection, access: ProjectAccess, name: str, secret: str | None) -> ProjectPlugin:
+    return view(await installed_row(conn, access, name), access.name, secret)
 
 
 # Changing

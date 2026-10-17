@@ -196,3 +196,23 @@ def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_onl
     kept = read_manifest({**core, "contributes": {"routes": [{"name": "me", "python": "m:r", "prefix": ""}]}})
     assert not kept.per_project()
     assert read_manifest({**core, "contributes": {"routes": [{"name": "docs", "python": "m:r"}]}}).per_project()
+
+
+def test_plugin_pages_isolated_name_an_html_entry_under_pages_and_core_ones_are_native():
+    board = {"name": "board", "title": "Board", "icon": "kanban", "entry": "pages/board.html"}
+    framed = read_manifest(manifest(contributes={"pages": [board]}))
+    assert framed.pages() == (board,) and framed.per_project()
+    core = manifest(id="srs", tier="core", permissions=None, config=None, contributes={})
+    native = read_manifest({**core, "contributes": {"pages": [{"name": "docs", "title": "SRS", "menu": False}]}})
+    assert native.pages()[0]["name"] == "docs" and native.per_project()  # a page alone: a project enables it
+    cases = [
+        (manifest(contributes={"pages": [{"name": "board"}]}), "names its entry, an HTML file of its bundle"),
+        ({**core, "contributes": {"pages": [board]}}, "a core plugin's page is native"),
+        (manifest(contributes={"pages": [{**board, "entry": "pages/a/../../x.html"}]}), "without empty, . or .."),
+        (manifest(contributes={"pages": [{**board, "entry": "web/board.html"}]}), "does not match"),
+        (manifest(contributes={"pages": [{**board, "icon": "rocket"}]}), "must be one of"),
+        (manifest(contributes={"pages": [{**board, "title": "x" * 61}]}), "longer than"),
+    ]
+    for data, problem in cases:
+        with pytest.raises(ManifestError, match=problem):
+            read_manifest(data)

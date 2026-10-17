@@ -41,6 +41,9 @@ PLUGIN_KEYS = (
     "latest_version",
     "upgrade_to",
     "created_at",
+    "title",
+    "description",
+    "tier",
 )
 DETAIL_KEYS = (*PLUGIN_KEYS, "manifest", "versions")
 PUBLISHED_KEYS = ("name", "created", "version")

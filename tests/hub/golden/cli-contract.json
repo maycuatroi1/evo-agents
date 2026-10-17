@@ -3808,7 +3808,11 @@
           "enabled_by",
           "enabled_at",
           "granted_by",
-          "granted_at"
+          "granted_at",
+          "title",
+          "description",
+          "tier",
+          "pages"
         ],
         "schema": "ProjectPlugin"
       }
@@ -3865,7 +3869,11 @@
           "enabled_by",
           "enabled_at",
           "granted_by",
-          "granted_at"
+          "granted_at",
+          "title",
+          "description",
+          "tier",
+          "pages"
         ],
         "schema": "ProjectPlugin"
       }
@@ -3911,7 +3919,10 @@
           "disabled_at",
           "latest_version",
           "upgrade_to",
-          "created_at"
+          "created_at",
+          "title",
+          "description",
+          "tier"
         ],
         "schema": "Plugin"
       }
@@ -3949,7 +3960,10 @@
           "disabled_at",
           "latest_version",
           "upgrade_to",
-          "created_at"
+          "created_at",
+          "title",
+          "description",
+          "tier"
         ],
         "schema": "Plugin",
         "with": {
@@ -3969,7 +3983,11 @@
               "enabled_by",
               "enabled_at",
               "granted_by",
-              "granted_at"
+              "granted_at",
+              "title",
+              "description",
+              "tier",
+              "pages"
             ],
             "schema": "ProjectPlugin"
           }
@@ -4047,7 +4065,10 @@
           "disabled_at",
           "latest_version",
           "upgrade_to",
-          "created_at"
+          "created_at",
+          "title",
+          "description",
+          "tier"
         ],
         "schema": "Plugin"
       }
@@ -4155,6 +4176,9 @@
           "latest_version",
           "upgrade_to",
           "created_at",
+          "title",
+          "description",
+          "tier",
           "manifest",
           "versions"
         ],
@@ -4202,7 +4226,10 @@
           "disabled_at",
           "latest_version",
           "upgrade_to",
-          "created_at"
+          "created_at",
+          "title",
+          "description",
+          "tier"
         ],
         "schema": "Plugin"
       }
@@ -25624,6 +25651,52 @@
           }
         }
       },
+      "/v1/plugin-publishers": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Publishers",
+          "description": "The publishers an operator of this hub trusts, in the order EVO_HUB_PLUGIN_PUBLISHERS names them.",
+          "operationId": "publishers_v1_plugin_publishers_get",
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "items": {
+                      "$ref": "#/components/schemas/PluginPublisher"
+                    },
+                    "type": "array",
+                    "title": "Response Publishers V1 Plugin Publishers Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/plugins": {
         "get": {
           "tags": [
@@ -38053,6 +38126,23 @@
               "type": "string",
               "title": "Name"
             },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "the name its manifest gives it (the installed version's, else the latest's)"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "isolated",
+                "core"
+              ],
+              "title": "Tier"
+            },
             "publisher": {
               "type": "string",
               "title": "Publisher"
@@ -38149,6 +38239,9 @@
           "type": "object",
           "required": [
             "name",
+            "title",
+            "description",
+            "tier",
             "publisher",
             "state",
             "installed_version",
@@ -38343,6 +38436,23 @@
               "type": "string",
               "title": "Name"
             },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "the name its manifest gives it (the installed version's, else the latest's)"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "isolated",
+                "core"
+              ],
+              "title": "Tier"
+            },
             "publisher": {
               "type": "string",
               "title": "Publisher"
@@ -38453,6 +38563,9 @@
           "type": "object",
           "required": [
             "name",
+            "title",
+            "description",
+            "tier",
             "publisher",
             "state",
             "installed_version",
@@ -38507,6 +38620,62 @@
           },
           "type": "object",
           "title": "PluginInstallIn"
+        },
+        "PluginPage": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "its name in the project's menu and above the page"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "icon": {
+              "type": "string",
+              "title": "Icon",
+              "description": "the icon of its menu item, a name from the hub's set"
+            },
+            "menu": {
+              "type": "boolean",
+              "title": "Menu",
+              "description": "whether the project's menu lists it"
+            },
+            "native": {
+              "type": "boolean",
+              "title": "Native",
+              "description": "a page of the hub's web itself (a core plugin's); false for a framed page"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "what the web frames for an isolated plugin's page, a ticket inside it: only in a project that enabled the plugin, null otherwise and for a native page"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "title",
+            "description",
+            "icon",
+            "menu",
+            "native",
+            "url"
+          ],
+          "title": "PluginPage",
+          "description": "A page a plugin adds to a project's part of the web."
         },
         "PluginPermission": {
           "properties": {
@@ -38591,6 +38760,34 @@
             "version"
           ],
           "title": "PluginPublished"
+        },
+        "PluginPublisher": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "title": "Id"
+            },
+            "identities": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Identities",
+              "description": "what signs for it: sigstore:<workflow> for a CI workflow, ed25519:<key id> for a key"
+            },
+            "core": {
+              "type": "boolean",
+              "title": "Core",
+              "description": "whether its plugins may be core plugins, which run in the hub's processes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "identities",
+            "core"
+          ],
+          "title": "PluginPublisher"
         },
         "PluginVersion": {
           "properties": {
@@ -38953,6 +39150,23 @@
               "type": "string",
               "title": "Name"
             },
+            "title": {
+              "type": "string",
+              "title": "Title",
+              "description": "the name its manifest gives it"
+            },
+            "description": {
+              "type": "string",
+              "title": "Description"
+            },
+            "tier": {
+              "type": "string",
+              "enum": [
+                "isolated",
+                "core"
+              ],
+              "title": "Tier"
+            },
             "publisher": {
               "type": "string",
               "title": "Publisher"
@@ -39023,6 +39237,14 @@
               "title": "Config Schema",
               "description": "the JSON Schema of its config, secret fields marked x-secret"
             },
+            "pages": {
+              "items": {
+                "$ref": "#/components/schemas/PluginPage"
+              },
+              "type": "array",
+              "title": "Pages",
+              "description": "the pages it adds to the project's part of the web"
+            },
             "enabled_by": {
               "anyOf": [
                 {
@@ -39073,6 +39295,9 @@
           "type": "object",
           "required": [
             "name",
+            "title",
+            "description",
+            "tier",
             "publisher",
             "version",
             "state",
@@ -39082,6 +39307,7 @@
             "granted",
             "pending",
             "config_schema",
+            "pages",
             "enabled_by",
             "enabled_at",
             "granted_by",

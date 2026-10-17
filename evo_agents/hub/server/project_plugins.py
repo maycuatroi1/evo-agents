@@ -114,18 +114,23 @@ async def _place(conn: AsyncConnection, access: ProjectAccess, plugin, handle: s
 # Enabling
 
 
+def _secret(request: Request) -> str | None:
+    """What signs the tickets of the plugins' pages (``evo_agents.hub.server.plugin_pages``)."""
+    return request.app.state.config.session_secret
+
+
 @router.get("/{project}/plugins", response_model=list[ProjectPlugin], responses=READ_REFUSALS)
 async def plugins_of_project(request: Request, project: ProjectName, user: CurrentUser) -> list[ProjectPlugin]:
     """Every plugin installed on the hub, by name, with what it asks for and whether the project enabled it."""
     async with request.app.state.engine.begin() as conn:
-        return await list_project_plugins(conn, await _reading(conn, user, project))
+        return await list_project_plugins(conn, await _reading(conn, user, project), _secret(request))
 
 
 @router.get("/{project}/plugins/{name}", response_model=ProjectPlugin, responses=READ_REFUSALS)
 async def plugin_of_project(request: Request, project: ProjectName, name: PluginName, user: CurrentUser):
     """One installed plugin: what it asks for, each permission with what it lets it do, before an admin grants it."""
     async with request.app.state.engine.begin() as conn:
-        return await project_plugin(conn, await _reading(conn, user, project), name)
+        return await project_plugin(conn, await _reading(conn, user, project), name, _secret(request))
 
 
 @router.post("/{project}/plugins/{name}/enable", response_model=ProjectPlugin, responses=WRITE_REFUSALS)
@@ -138,7 +143,7 @@ async def enable_plugin(
         access = await project_access(conn, user, project)
         check_admin(access, f"enabling plugin {name}")
         await enable(conn, user, access, name, body.permissions)
-        return await project_plugin(conn, access, name)
+        return await project_plugin(conn, access, name, _secret(request))
 
 
 @router.post("/{project}/plugins/{name}/disable", response_model=ProjectPlugin, responses=WRITE_REFUSALS)
@@ -148,7 +153,7 @@ async def disable_plugin(request: Request, project: ProjectName, name: PluginNam
         access = await project_access(conn, user, project)
         check_admin(access, f"disabling plugin {name}")
         await disable(conn, user, access, name)
-        return await project_plugin(conn, access, name)
+        return await project_plugin(conn, access, name, _secret(request))
 
 
 # Config
