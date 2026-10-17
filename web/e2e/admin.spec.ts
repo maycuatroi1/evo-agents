@@ -372,10 +372,12 @@ test("admin pages hydrate without a console error or a page error", async ({ pag
   expect(problems).toEqual([]);
 });
 
-test("admin pages never scroll sideways, from a 375 px phone to a 1440 px desktop", async ({ page, signInAs }) => {
-  await signInAs(ADMIN_ACCOUNT);
-  await machineToken(ADMIN_ACCOUNT); // a wide row in every table: a machine token next to the web sessions
-  for (const width of [375, 768, 1024, 1440]) {
+// One test per width, from a 375 px phone to a 1440 px desktop, each with its own budget: every admin page at all
+// four widths in one test passed 30 s in CI once the branding and features tabs joined ADMIN_PATHS.
+for (const width of [375, 768, 1024, 1440]) {
+  test(`admin pages never scroll sideways at ${width} px`, async ({ page, signInAs }) => {
+    await signInAs(ADMIN_ACCOUNT);
+    await machineToken(ADMIN_ACCOUNT); // a wide row in every table: a machine token next to the web sessions
     await page.setViewportSize({ width, height: 900 });
     for (const path of ADMIN_PATHS) {
       await page.goto(path);
@@ -384,8 +386,11 @@ test("admin pages never scroll sideways, from a 375 px phone to a 1440 px deskto
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect(overflow, `${path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
     }
-  }
-  // At 375 px every admin tab is in view, without scrolling the tab list.
+  });
+}
+
+test("at 375 px every admin tab is in view, without scrolling the tab list", async ({ page, signInAs }) => {
+  await signInAs(ADMIN_ACCOUNT);
   await page.setViewportSize({ width: 375, height: 812 });
   await page.goto("/admin/audit");
   for (const name of ["Tổng quan", "Thành viên", "Token", "Audit"])
