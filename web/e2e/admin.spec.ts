@@ -350,6 +350,8 @@ const ADMIN_PATHS = [
   `/admin/members/${ADMIN_ACCOUNT.login}`,
   "/admin/tokens",
   "/admin/audit",
+  "/admin/branding",
+  "/admin/features",
 ];
 
 test("admin pages hydrate without a console error or a page error", async ({ page, signInAs }) => {

@@ -6,7 +6,7 @@
   },
   "login": {
     "title": "Đăng nhập",
-    "heading": "Đăng nhập vào evo-agents hub",
+    "heading": "Đăng nhập vào {name}",
     "description": "Dùng tài khoản GitHub của bạn. Hub chỉ đọc tên đăng nhập GitHub, không lưu token GitHub.",
     "github": "Đăng nhập bằng GitHub",
     "notConfigured": "Hub này chưa bật đăng nhập web. Quản trị viên cần đặt client secret, session secret và địa chỉ công khai cho hub.",
@@ -522,7 +522,9 @@
       "members": "Thành viên",
       "tokens": "Token",
       "audit": "Audit",
-      "diagnostics": "Chẩn đoán"
+      "diagnostics": "Chẩn đoán",
+      "branding": "Nhận diện",
+      "features": "Tính năng"
     },
     "filters": {
       "apply": "Lọc",
@@ -773,6 +775,148 @@
         "plan_patch": "Sửa plan",
         "plan_complete": "Hoàn tất plan",
         "skill_publish": "Phát hành skill"
+      }
+    },
+    "branding": {
+      "title": "Nhận diện",
+      "version": "Phiên bản {version}",
+      "unset": "Chưa đặt",
+      "formTitle": "Tên và màu",
+      "formDescription": "Tên sản phẩm ở thanh bên, tiêu đề trang và trang đăng nhập, cùng màu của bốn token mà hub được đặt. Token để trống giữ màu của hệ thiết kế.",
+      "name": "Tên sản phẩm",
+      "nameHint": "Để trống: dùng tên của web, {name}.",
+      "nameInvalid": "Tối đa {max} ký tự, không xuống dòng và không có khoảng trắng ở hai đầu.",
+      "colorInvalid": "Một màu dạng #rrggbb, ví dụ #0f766e.",
+      "themes": {
+        "light": "Giao diện sáng",
+        "dark": "Giao diện tối"
+      },
+      "tokens": {
+        "brand": "Màu thương hiệu",
+        "brand-hover": "Màu thương hiệu khi trỏ chuột",
+        "brand-soft": "Nền thương hiệu nhạt",
+        "on-brand": "Chữ trên nền thương hiệu"
+      },
+      "grounds": {
+        "canvas": "nền trang",
+        "surface": "thẻ",
+        "surface-selected": "mục menu đang chọn",
+        "brand-soft": "nền thương hiệu nhạt",
+        "brand": "nền thương hiệu"
+      },
+      "picker": "{token}, {theme}: chọn màu",
+      "reset": "Đặt lại {token}, {theme}, về mặc định",
+      "defaultColor": "Mặc định {color}",
+      "checksLabel": "Độ tương phản ở {theme}",
+      "checks": {
+        "linkOnCard": "Liên kết trên thẻ",
+        "linkOnPage": "Liên kết trên nền trang",
+        "pill": "Nhãn đang chạy",
+        "navIcon": "Biểu tượng mục menu đang chọn",
+        "linkHover": "Liên kết khi trỏ chuột",
+        "onBrand": "Ký hiệu trên nền thương hiệu"
+      },
+      "pair": "({front} trên {ground})",
+      "passes": "{ratio}:1, cần {least}:1",
+      "fails": "{ratio}:1, dưới {least}:1",
+      "blockedContrast": "{count, plural, other {# cặp màu}} dưới độ tương phản cần có: đổi các màu có dấu chéo trước.",
+      "blockedInvalid": "Sửa các ô được đánh dấu ở trên trước.",
+      "save": "Lưu nhận diện",
+      "saving": "Đang lưu…",
+      "discard": "Bỏ thay đổi",
+      "saved": "Đã lưu nhận diện",
+      "savedText": "Mọi trang hiện tên và màu mới từ lần tải kế tiếp.",
+      "conflict": "Một quản trị viên hub khác vừa đổi nhận diện. Phiên bản mới nhất đang hiện; hãy đổi lại lần nữa.",
+      "fields": {
+        "name": "tên",
+        "colors": "màu",
+        "logo": "logo",
+        "favicon": "favicon"
+      },
+      "preview": {
+        "label": "Xem trước ở {theme}",
+        "light": "giao diện sáng",
+        "dark": "giao diện tối",
+        "navItem": "Knowledge graph",
+        "link": "Mở plan",
+        "hover": "Khi trỏ chuột",
+        "running": "Đang chạy"
+      },
+      "images": {
+        "title": "Logo và favicon",
+        "description": "PNG, JPEG hoặc WebP (favicon có thể là ICO), tối đa {kib} KiB, lưu trong blob store của hub.",
+        "logo": "Logo",
+        "favicon": "Favicon",
+        "logoAlt": "Logo của hub",
+        "faviconAlt": "Favicon của hub",
+        "logoDefault": "Chưa có: thanh bên và trang đăng nhập hiện biểu trưng mặc định.",
+        "faviconDefault": "Chưa có: trình duyệt hiện biểu trưng mặc định.",
+        "held": "{type}, {kib} KiB",
+        "logoUpload": "Tải logo lên",
+        "faviconUpload": "Tải favicon lên",
+        "logoReplace": "Thay logo",
+        "faviconReplace": "Thay favicon",
+        "logoRemove": "Gỡ logo",
+        "faviconRemove": "Gỡ favicon",
+        "tooBig": "Tệp lớn hơn {kib} KiB; hãy chọn tệp nhỏ hơn.",
+        "logoSaved": "Đã lưu logo",
+        "faviconSaved": "Đã lưu favicon",
+        "logoRemoved": "Đã gỡ logo",
+        "faviconRemoved": "Đã gỡ favicon",
+        "conflict": "Một quản trị viên hub khác vừa đổi nhận diện. Hãy thử lại trên phiên bản mới nhất."
+      }
+    },
+    "features": {
+      "title": "Tính năng",
+      "hubTitle": "Cho cả hub",
+      "hubDescription": "Tính năng tắt ở đây biến khỏi menu của mọi dự án, trang và API của nó trả 404, trừ khi một dự án bật lại.",
+      "projectTitle": "Cho một dự án",
+      "projectDescription": "Dự án theo hub, trừ khi nó tự bật hay tắt một tính năng. Chat và Monitor thuộc về cả hub.",
+      "project": "Dự án",
+      "noProjects": "Chưa có dự án nào được đăng ký.",
+      "names": {
+        "chats": "Chat",
+        "curator": "Curator",
+        "kg": "Knowledge graph",
+        "monitor": "Monitor"
+      },
+      "descriptions": {
+        "chats": "Group chat giữa người và agent.",
+        "curator": "Ca đêm của Curator, các đề xuất và bản tin sáng của nó.",
+        "kg": "Knowledge graph của dự án: các trang, API và các tool kg trên MCP của hub.",
+        "monitor": "Các run đang chạy ở mọi dự án, theo dõi trực tiếp."
+      },
+      "scopeHub": "Cả hub",
+      "scopeProject": "Hub hoặc dự án",
+      "on": "Bật",
+      "off": "Tắt",
+      "followOn": "Theo hub (bật)",
+      "followOff": "Theo hub (tắt)",
+      "choiceLabel": "{feature} trong {project}",
+      "save": "Lưu",
+      "saving": "Đang lưu…",
+      "discard": "Bỏ thay đổi",
+      "savedHub": "Đã lưu tính năng của hub",
+      "savedProject": "Đã lưu tính năng của {project}",
+      "conflict": "Một quản trị viên hub khác vừa đổi các tính năng này. Phiên bản mới nhất đang hiện; hãy đổi lại lần nữa.",
+      "projectGone": "Dự án này không còn được đăng ký.",
+      "setOn": "bật {feature}",
+      "setOff": "tắt {feature}"
+    },
+    "settings": {
+      "history": {
+        "title": "Lịch sử",
+        "description": "Mọi phiên bản, mới nhất trước. Lùi về một phiên bản cũ ghi lại nó thành phiên bản kế tiếp.",
+        "empty": "Chưa từng đổi: mọi thứ như web khi chưa có cài đặt.",
+        "version": "Phiên bản {version}",
+        "current": "Hiện tại",
+        "rolledBack": "Bản sao của phiên bản {version}",
+        "by": "Bởi {login}, <when></when>",
+        "rollback": "Lùi về phiên bản {version}",
+        "sets": "Đặt {fields}",
+        "setsNothing": "Không đặt gì",
+        "rolledBackTo": "Đã lùi về phiên bản {version}",
+        "rollbackFailed": "Không lùi về phiên bản {version} được"
       }
     }
   },

@@ -1245,6 +1245,33 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
       await expect(page.locator("#main").getByTestId("members-table")).toBeVisible();
     },
   },
+  {
+    // The branding as a hub with nothing set has it: the spec that sets one (branding.spec.ts) runs first and clears it.
+    name: "admin branding with its colours, their contrast, the images and the history",
+    open: async (page) => {
+      await page.goto("/admin/branding");
+      const form = page.locator("#main").getByTestId("branding-form");
+      await expect(form.getByTestId("checks-dark")).toBeVisible();
+      await form.getByTestId("branding-name").fill("Acme Agents");
+      await expect(form.getByTestId("branding-discard")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("branding-images")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("branding-history")).toBeVisible();
+    },
+  },
+  {
+    name: "admin features of the hub and of a project, a choice changed and not saved",
+    open: async (page) => {
+      const project = uniqueName("features");
+      await new HubAdmin().registerProject(project);
+      await page.goto("/admin/features");
+      const main = page.locator("#main");
+      await expect(main.getByTestId("features-form-hub")).toBeVisible();
+      await main.getByTestId("features-project-select").selectOption(project);
+      await main.getByTestId(`feature-${project}-kg-off`).click();
+      await expect(main.getByTestId(`feature-${project}-kg`)).toHaveAttribute("data-choice", "off");
+      await expect(main.getByTestId(`features-history-${project}`)).toBeVisible();
+    },
+  },
 ];
 
 for (const scheme of ["light", "dark"] as const) {

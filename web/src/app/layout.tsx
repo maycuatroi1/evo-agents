@@ -6,6 +6,8 @@ import { getLocale, getTranslations } from "next-intl/server";
 import type { ReactNode } from "react";
 
 import { Providers } from "@/components/providers";
+import { brandingCss } from "@/lib/hub-settings";
+import { serverBranding } from "@/lib/hub-settings-server";
 import { mobileHint } from "@/lib/mobile-hint";
 
 import "./globals.css";
@@ -26,12 +28,18 @@ const mono = IBM_Plex_Mono({
   display: "swap",
 });
 
+/**
+ * The title and the favicon follow the hub's branding when it sets a name or a favicon (GET /v1/branding); without
+ * one they are the web's own, public/icon.svg being the mark.
+ */
 export async function generateMetadata(): Promise<Metadata> {
-  const t = await getTranslations("app");
+  const [t, branding] = await Promise.all([getTranslations("app"), serverBranding()]);
+  const name = branding?.name ?? t("name");
   return {
-    title: { default: t("name"), template: `%s | ${t("name")}` },
+    title: { default: name, template: `%s | ${name}` },
     description: t("description"),
     robots: { index: false, follow: false },
+    icons: { icon: branding?.favicon_url ?? { url: "/icon.svg", type: "image/svg+xml" } },
   };
 }
 
@@ -47,10 +55,12 @@ export const viewport: Viewport = {
 
 export default async function RootLayout({ children }: { children: ReactNode }) {
   const locale = await getLocale();
-  const requestHeaders = await headers();
+  const [requestHeaders, branding] = await Promise.all([headers(), serverBranding()]);
   const nonce = requestHeaders.get("x-nonce") ?? undefined; // set by src/proxy.ts for every page
+  const colors = brandingCss(branding?.colors); // the branding's colours over the tokens; none without branding
   return (
     <html lang={locale} className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>{colors ? <style data-testid="hub-branding">{colors}</style> : null}</head>
       <body className="min-h-svh">
         <NextIntlClientProvider>
           <Providers nonce={nonce} mobile={mobileHint(requestHeaders)}>

@@ -6,7 +6,7 @@
   },
   "login": {
     "title": "Sign in",
-    "heading": "Sign in to evo-agents hub",
+    "heading": "Sign in to {name}",
     "description": "Use your GitHub account. The hub reads only your GitHub login and never stores a GitHub token.",
     "github": "Sign in with GitHub",
     "notConfigured": "Web sign-in is not enabled on this hub. An administrator needs to set the client secret, the session secret and the hub's public URL.",
@@ -522,7 +522,9 @@
       "members": "Members",
       "tokens": "Tokens",
       "audit": "Audit",
-      "diagnostics": "Diagnostics"
+      "diagnostics": "Diagnostics",
+      "branding": "Branding",
+      "features": "Features"
     },
     "filters": {
       "apply": "Filter",
@@ -773,6 +775,148 @@
         "plan_patch": "Edit plan",
         "plan_complete": "Complete plan",
         "skill_publish": "Publish skill"
+      }
+    },
+    "branding": {
+      "title": "Branding",
+      "version": "Version {version}",
+      "unset": "Not set",
+      "formTitle": "Name and colours",
+      "formDescription": "The product's name in the sidebar, the page titles and the sign-in page, and the colours of the four tokens a hub may set. A token left empty keeps the colour of the design system.",
+      "name": "Product name",
+      "nameHint": "Empty: the web's own name, {name}.",
+      "nameInvalid": "At most {max} characters, with no line break and no space at either end.",
+      "colorInvalid": "A colour as #rrggbb, such as #0f766e.",
+      "themes": {
+        "light": "Light theme",
+        "dark": "Dark theme"
+      },
+      "tokens": {
+        "brand": "Brand",
+        "brand-hover": "Brand under the pointer",
+        "brand-soft": "Soft brand ground",
+        "on-brand": "On brand"
+      },
+      "grounds": {
+        "canvas": "the page",
+        "surface": "a card",
+        "surface-selected": "the selected nav item",
+        "brand-soft": "the soft brand ground",
+        "brand": "the brand fill"
+      },
+      "picker": "{token}, {theme}: pick a colour",
+      "reset": "Reset {token}, {theme}, to its default",
+      "defaultColor": "Default {color}",
+      "checksLabel": "Contrast in the {theme}",
+      "checks": {
+        "linkOnCard": "Links on a card",
+        "linkOnPage": "Links on the page",
+        "pill": "The running pill",
+        "navIcon": "The selected nav icon",
+        "linkHover": "A link under the pointer",
+        "onBrand": "Glyphs on a brand fill"
+      },
+      "pair": "({front} on {ground})",
+      "passes": "{ratio}:1, needs {least}:1",
+      "fails": "{ratio}:1, under {least}:1",
+      "blockedContrast": "{count, plural, one {One pair falls} other {# pairs fall}} under the contrast it needs: change the colours marked with a cross first.",
+      "blockedInvalid": "Correct the fields marked above first.",
+      "save": "Save branding",
+      "saving": "Saving…",
+      "discard": "Discard changes",
+      "saved": "Branding saved",
+      "savedText": "Every page shows the new name and colours from its next load.",
+      "conflict": "Another hub admin changed the branding meanwhile. Its newest version is shown now; make your change again.",
+      "fields": {
+        "name": "name",
+        "colors": "colours",
+        "logo": "logo",
+        "favicon": "favicon"
+      },
+      "preview": {
+        "label": "Preview in the {theme}",
+        "light": "light theme",
+        "dark": "dark theme",
+        "navItem": "Knowledge graph",
+        "link": "Open the plan",
+        "hover": "Under the pointer",
+        "running": "Running"
+      },
+      "images": {
+        "title": "Logo and favicon",
+        "description": "PNG, JPEG or WebP (or ICO for the favicon), at most {kib} KiB, kept in the hub's blob store.",
+        "logo": "Logo",
+        "favicon": "Favicon",
+        "logoAlt": "The hub's logo",
+        "faviconAlt": "The hub's favicon",
+        "logoDefault": "None: the sidebar and the sign-in page show the mark.",
+        "faviconDefault": "None: browsers show the mark.",
+        "held": "{type}, {kib} KiB",
+        "logoUpload": "Upload logo",
+        "faviconUpload": "Upload favicon",
+        "logoReplace": "Replace logo",
+        "faviconReplace": "Replace favicon",
+        "logoRemove": "Remove logo",
+        "faviconRemove": "Remove favicon",
+        "tooBig": "The file is over {kib} KiB; pick a smaller one.",
+        "logoSaved": "Logo saved",
+        "faviconSaved": "Favicon saved",
+        "logoRemoved": "Logo removed",
+        "faviconRemoved": "Favicon removed",
+        "conflict": "Another hub admin changed the branding meanwhile. Try again on its newest version."
+      }
+    },
+    "features": {
+      "title": "Features",
+      "hubTitle": "For the whole hub",
+      "hubDescription": "A feature turned off here leaves the menus of every project, and its pages and API answer 404, unless a project turns it back on.",
+      "projectTitle": "For one project",
+      "projectDescription": "A project follows the hub unless it turns a feature on or off itself. Chats and the Monitor belong to the whole hub.",
+      "project": "Project",
+      "noProjects": "No project is registered yet.",
+      "names": {
+        "chats": "Chats",
+        "curator": "Curator",
+        "kg": "Knowledge graph",
+        "monitor": "Monitor"
+      },
+      "descriptions": {
+        "chats": "Group chats with people and agents.",
+        "curator": "The Curator's night shift, its proposals and its morning brief.",
+        "kg": "A project's knowledge graph: its pages, its API and the kg tools of the hub's MCP.",
+        "monitor": "The runs at work in every project, watched live."
+      },
+      "scopeHub": "Whole hub",
+      "scopeProject": "Hub or project",
+      "on": "On",
+      "off": "Off",
+      "followOn": "As the hub (on)",
+      "followOff": "As the hub (off)",
+      "choiceLabel": "{feature} in {project}",
+      "save": "Save",
+      "saving": "Saving…",
+      "discard": "Discard changes",
+      "savedHub": "Features of the hub saved",
+      "savedProject": "Features of {project} saved",
+      "conflict": "Another hub admin changed these features meanwhile. The newest version is shown now; make your change again.",
+      "projectGone": "This project is no longer registered.",
+      "setOn": "{feature} on",
+      "setOff": "{feature} off"
+    },
+    "settings": {
+      "history": {
+        "title": "History",
+        "description": "Every version, the newest first. Rolling back writes an older version again as the next one.",
+        "empty": "Never changed: everything is as the web has it without settings.",
+        "version": "Version {version}",
+        "current": "Current",
+        "rolledBack": "Copy of version {version}",
+        "by": "By {login}, <when></when>",
+        "rollback": "Roll back to version {version}",
+        "sets": "Sets the {fields}",
+        "setsNothing": "Sets nothing",
+        "rolledBackTo": "Rolled back to version {version}",
+        "rollbackFailed": "Could not roll back to version {version}"
       }
     }
   },

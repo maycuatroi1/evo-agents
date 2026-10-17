@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { KeyRound, LayoutDashboard, type LucideIcon, ScrollText, Users } from "lucide-react";
+import { KeyRound, LayoutDashboard, type LucideIcon, Palette, ScrollText, ToggleRight, Users } from "lucide-react";
 import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -12,7 +12,7 @@ import { browserApi } from "@/lib/api/browser";
 import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
-export type AdminSection = "overview" | "members" | "tokens" | "audit";
+export type AdminSection = "overview" | "members" | "tokens" | "audit" | "branding" | "features";
 
 /** The pages under /admin without a tab of their own: the overview links to them, and its tab stays selected. */
 export const OVERVIEW_PAGES = ["diagnostics"] as const;
@@ -23,6 +23,8 @@ export const ADMIN_SECTIONS: readonly { id: AdminSection; href: Route; icon: Luc
   { id: "members", href: "/admin/members", icon: Users },
   { id: "tokens", href: "/admin/tokens", icon: KeyRound },
   { id: "audit", href: "/admin/audit", icon: ScrollText },
+  { id: "branding", href: "/admin/branding", icon: Palette },
+  { id: "features", href: "/admin/features", icon: ToggleRight },
 ];
 
 /** Whether a tab is the page shown: the overview's for /admin and the pages it links to, the others by prefix. */

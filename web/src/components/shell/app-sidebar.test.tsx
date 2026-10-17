@@ -130,6 +130,31 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("nav-plans")).not.toHaveAttribute("aria-current");
   });
 
+  it("leaves out the areas a hub admin turned off and shows the name and logo of the hub's branding", async () => {
+    api.answers["/v1/features"] = {
+      features: [
+        { id: "chats", layers: ["instance"], enabled: false },
+        { id: "curator", layers: ["instance", "project"], enabled: false },
+        { id: "kg", layers: ["instance", "project"], enabled: true },
+        { id: "monitor", layers: ["instance"], enabled: false },
+      ],
+      projects: [{ project: "demo", values: { kg: false, curator: true } }],
+    };
+    api.answers["/v1/branding"] = {
+      name: "Acme Agents",
+      logo_url: "/v1/branding/logo?v=0123456789abcdef",
+      favicon_url: null,
+      colors: { light: {}, dark: {} },
+      version: 2,
+    };
+    setup();
+    await waitFor(() => expect(screen.queryByTestId("nav-kg")).toBeNull());
+    for (const gone of ["nav-chats", "nav-monitor"]) expect(screen.queryByTestId(gone)).toBeNull();
+    expect(screen.getByTestId("nav-curator")).toBeInTheDocument(); // the project's layer turns it back on
+    expect(screen.getByTestId("brand")).toHaveTextContent("Acme Agents");
+    expect(screen.getByTestId("hub-logo")).toHaveAttribute("src", "/v1/branding/logo?v=0123456789abcdef");
+  });
+
   it("counts open decisions in attention and active runs in running, in words for screen readers", async () => {
     setup();
     await waitFor(() => expect(screen.getByTestId("nav-inbox-count")).toHaveTextContent("2"));
