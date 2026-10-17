@@ -350,6 +350,7 @@ const ADMIN_PATHS = [
   `/admin/members/${ADMIN_ACCOUNT.login}`,
   "/admin/tokens",
   "/admin/audit",
+  "/admin/plugins",
   "/admin/branding",
   "/admin/features",
 ];
