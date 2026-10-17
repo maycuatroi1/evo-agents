@@ -60,9 +60,11 @@ A request carries one of three credentials:
   worker holds.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
-`/v1/auth/web/login`, `/v1/auth/web/callback`) and a worker's join with a pairing code (`/v1/worker/join`) answer
-without one. A route added later needs a credential unless it is added to that list in
-`evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
+`/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
+webhook (its secret header is the credential), the hub's branding, which the sign-in page shows (`GET /v1/branding`,
+`/v1/branding/logo`, `/v1/branding/favicon`), and the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
+in the path is the credential, answer without one. A route added later needs a credential unless it is added to
+`PUBLIC_PATHS` or `PUBLIC_PREFIXES` in `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
 expires, and each use moves the expiry forward. The join is public, so it is limited: 10 refused pairing codes from one
 client address within 10 minutes, and that address gets 429 with `Retry-After` (see `EVO_HUB_FORWARDED_ALLOW_IPS`
 below for the address behind a proxy).
@@ -96,6 +98,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
+| branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
+| features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
 
@@ -1230,6 +1234,55 @@ Each change is audited in the project: `plugin.project-enable` and `plugin.grant
 is enabled, `plugin.grant` when a grant changes, `plugin.project-disable`, and `plugin.config` for each new version of a
 layer, naming the fields that changed or the version a rollback copied, never a value.
 
+## Branding and features
+
+A hub admin gives the hub a brand of its own and turns off what its users do not need, from the web (Administration,
+Branding and Features) or the API. Neither needs a variable or a new image, so one image serves hubs that look and
+behave differently (`docs/hub-deployment.md`). A hub where nothing is set looks and answers as one without either.
+
+**Branding** is the product's name (60 characters at most), a logo that takes the mark's place, a favicon, and the
+colours of four tokens of `web/DESIGN.md` for each theme: `brand`, `brand-hover`, `brand-soft` and `on-brand`, and no
+other colour. A write is refused (422, naming the pair, its colours and its ratio) when the colours it leaves, each
+theme whole and an unset token at its default, miss a contrast of WCAG 2.2 AA: `brand` on `surface`, `canvas` and
+`brand-soft` at 4.5:1 and on `surface-selected` at 3:1, `brand-hover` on `surface` at 4.5:1, and `on-brand` on
+`brand` at 4.5:1. The logo and the favicon are PNG, JPEG or WebP images (the favicon may also be an ICO) of 256 KiB at
+most, sent as base64 in JSON; the hub keeps them in the blob store as blobs it holds itself (kind `branding-image`), so
+setting one needs the S3 variables. Unsetting a field brings back the web's own name, mark, favicon or colour.
+`GET /v1/branding` answers without a credential, since the sign-in page shows it.
+
+**Features** are what core declares can be turned off (`evo_agents.hub.features`):
+
+| Feature | Set for | Off means |
+| --- | --- | --- |
+| `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 |
+| `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
+| `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` answers 404 and the `kg_*` tools of `/mcp` return that error |
+| `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
+
+A feature is on until a layer turns it off. A project's layer, where it sets a feature, wins over the hub's, so a hub
+admin may turn a feature off for the whole hub and back on for one project. The 404 comes after authentication, so a
+request without a credential still gets 401, and a caller who cannot see the project gets the 404 of a project that
+does not exist. The web leaves out of its menus what is off for the project it shows, and answers 404 to its pages.
+
+Both are settings with versions, kept in `hub_settings` (migration 0037): a write names the fields it sets (`values`)
+and those it clears (`unset`), the others stay, and `if_version` makes it a 409 unless the layer is at that version
+now; a rollback makes the next version a copy of an older one. Each version is audited as `settings.branding` or
+`settings.features`. There is no command for them; a hub admin's machine token works with the API:
+
+```sh
+H="authorization: bearer $(cat ~/.evo/hub/token)"   # a hub admin's machine token, from evo-agents hub login
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/branding \
+  -d '{"values": {"name": "Acme Agents", "colors": {"light": {"brand": "#0b5cad"}, "dark": {"brand": "#6fb1ff"}}}}'
+base64 < logo.png | jq -Rs '{data: gsub("\n"; "")}' | curl -fsS -X PUT -H "$H" -H 'content-type: application/json' \
+  https://hub.example.org/v1/admin/branding/logo -d @-
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/features \
+  -d '{"values": {"chats": false, "kg": false}}'
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/projects/demo/features \
+  -d '{"values": {"kg": true}}'                                          # kg back on for demo alone
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/branding/rollback \
+  -d '{"version": 1}'
+```
+
 ## Blobs on R2
 
 Postgres holds metadata; the blob store holds bytes. The bucket stays private, and the access key the hub gets should
@@ -1397,17 +1450,22 @@ care, then run `ruff format` on it. `tests/hub/test_schema_metadata.py` checks t
 GitHub Actions (`.github/workflows/images.yml`) builds two images. A push to a branch builds both and pushes
 nothing; a `v*` tag pushes them to GHCR with the version as tag:
 
-- `ghcr.io/maycuatroi1/evo-agents-hub:<version>`, from `deploy/hub/Dockerfile`: api and worker. It runs as a non-root
-  user, serves on 8080, and its HEALTHCHECK calls `/v1/health/live`.
+- `ghcr.io/maycuatroi1/evo-agents-hub:<version>`, from `deploy/hub/Dockerfile`: api, worker and the plugin host. It
+  runs as a non-root user (the plugin host alone runs as root, section Isolated backends), serves on 8080, and its
+  HEALTHCHECK calls `/v1/health/live`.
 - `ghcr.io/maycuatroi1/evo-agents-hub-web:<version>`, from `web/Dockerfile`: the Next.js standalone server on 3000.
   `next build` fixes the `/v1` rewrite into the image, and the build argument `EVO_HUB_API_INTERNAL_URL` sets its
   target, `http://api:8080` by default. Build with `--build-arg EVO_HUB_API_INTERNAL_URL=<url>` for another address.
 
-`deploy/hub/docker-compose.yml` builds the three services from the checkout it is in and gives the images those names,
-tagged `EVO_HUB_VERSION`; `docker compose up` without `--build` pulls that release from GHCR instead. Postgres is not in it:
-point `EVO_HUB_DSN` at a database the platform manages, reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK`
-(default `dokploy-network`). The volumes `api-cache` and `worker-cache` are caches; deleting them loses nothing. Set
-the variables in the platform's environment, never in a committed file. `deploy/hub/.env.example` lists them:
+`deploy/hub/docker-compose.yml` builds the four services (api, worker, the plugin host `plugins`, and web) from the
+checkout it is in and gives the images those names, tagged `EVO_HUB_VERSION`; `docker compose up` without `--build`
+pulls that release from GHCR instead. Postgres is not in it: point `EVO_HUB_DSN` at a database the platform manages,
+reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK` (default `dokploy-network`). The volumes `api-cache` and
+`worker-cache` are caches; deleting them loses nothing. `plugins-cache` holds the code and the environments of the
+isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep state:
+deleting it loses that state. A hub for a client, from the same images with its own branding, publishers and plugins,
+is in `docs/hub-deployment.md`. Set the variables in the platform's environment, never in a committed file.
+`deploy/hub/.env.example` lists them:
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |

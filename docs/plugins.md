@@ -1,8 +1,9 @@
 # Plugins: the plugin/1 protocol and the plugin host
 
 This is the reference for what a plugin's code does on a hub: the extension points it contributes to, the backend of
-an isolated plugin, the protocol that backend speaks, where it runs, and how its author checks it. The store, the
-manifest, signing, permissions and config are in `docs/hub.md`, section Plugins.
+an isolated plugin, the protocol that backend speaks, where it runs, the permissions a plugin asks for, and how its
+author checks and signs it. The store, the manifest, signatures, enabling in a project and config are in
+`docs/hub.md`, section Plugins; a hub for a client, with its own publishers and plugins, in `docs/hub-deployment.md`.
 
 A plugin is core or isolated (`tier` in the manifest). A **core** plugin is a Python package in the hub's image; its
 contributions run in the api and the worker processes. An **isolated** plugin, the default, carries a **backend**: a
@@ -171,6 +172,26 @@ curl -H "authorization: bearer $TOKEN" https://hub.example.org/v1/plugins/sandbo
 #  "pid": 1234, "restarts": 0, "error": null, "started_at": "...", "retry_at": null, "reported_at": "..."}
 ```
 
+## Permissions
+
+A manifest lists the permissions the plugin asks for (`permissions`), from a fixed set
+(`evo_agents.plugins.manifest.PERMISSIONS`). An admin of a project reads each one in words before enabling the
+plugin, and enabling grants exactly that list (`docs/hub.md`, section Plugins in a project). What a plugin may do in a
+project is what the project granted that its installed version still asks for, checked on every call:
+
+| Permission | The admin reads | Opens in this release |
+| --- | --- | --- |
+| `runs:read` | read the project's runs, their events and their outcomes | the `run.state` events; the bridge's `runs.list` and `runs.get` |
+| `plans:read` | read the project's plans | the `plan.step` events; the bridge's `plans.list` and `plans.get` |
+| `chats:read` | read the project's group chats | the `chat.message` events |
+| `memories:read` | read the project's memories | the bridge's `memories.list` |
+| `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications |
+| `runs:dispatch` | dispatch runs in the project | nothing yet: no route of the hub takes a plugin's token |
+| `chats:write` | post messages in the project's group chats | nothing yet, for the same reason |
+
+A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
+for the callers the hub lets through (sections Extension points and Pages).
+
 ## Extension points
 
 A plugin contributes to the hub's extension points in its manifest (`contributes`). A **core** plugin names the Python
@@ -213,7 +234,7 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   `content-security-policy: default-src 'none'; frame-ancestors 'none'; sandbox`, so a backend sets no cookie and runs
   no script on the hub's origin. A backend that is down or past 30 seconds answers 503, its error or a result plugin/1
   does not allow 502. The proxy is not in the OpenAPI document: what a plugin's route takes is its own.
-- **MCP tools.** A plugin's tool is `<id>__<name>` on the hub's `/mcp`, after the hub's own 22. It is listed, and
+- **MCP tools.** A plugin's tool is `<id>__<name>` on the hub's `/mcp`, after the hub's own 23. It is listed, and
   answers, in a session whose project enabled the plugin, for a caller who holds a grant there. For the agent of a run,
   the run's agent profile decides too: a tool axis of mode `all` lets plugins' tools through, an allowlist only those
   of the plugins it names as `mcp:<id>`, and a judge run's agent gets none. The description and the input schema are
@@ -384,5 +405,54 @@ backend serves on; a line that is not JSON gets `-32700` with id null, or nothin
 but plugin/1 responses appear on stdout; and it answers `shutdown` and exits. The sample plugin
 `tests/fixtures/plugins/sample` passes every check.
 
-For signing with Sigstore from CI (the way an operator trusts without a shared key), see `docs/hub.md`, section
-Plugins; the sandbox plugin repository of step 8 is the worked example.
+### Signing in CI
+
+A publisher signs keyless in the CI of the plugin's repository: no key exists to leak, and the operator trusts a
+workflow rather than a person (`docs/hub.md`, section Plugins). A workflow that does it has two jobs:
+
+- **test** installs evo-ak, runs the plugin's own tests and `evo-agents plugin test`, packs the bundle, and passes on
+  its file name and SHA-256;
+- **sign** runs on the default branch only and is the only job with `id-token: write`. It runs none of the plugin's
+  code: it packs again (packing is deterministic), fails unless the SHA-256 is the one the test job packed, signs with
+  `python -m sigstore sign`, which writes `<bundle>.sigstore.json` beside the bundle, and keeps both as an artifact. A
+  hub admin publishes them with `evo-agents hub plugin publish <bundle>`.
+
+```yaml
+  sign:
+    needs: test
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write # the OIDC token Sigstore's Fulcio turns into this workflow's signing certificate
+    env:
+      BUNDLE: ${{ needs.test.outputs.bundle }}
+      TESTED: ${{ needs.test.outputs.sha256 }}
+    steps:
+      - uses: actions/checkout@<commit sha>
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@<commit sha> # a standalone Python, on a self-hosted runner too (below)
+      - run: uv venv --seed --python 3.12 "$RUNNER_TEMP/venv" && echo "$RUNNER_TEMP/venv/bin" >> "$GITHUB_PATH"
+      - run: python -m pip install evo-ak "sigstore>=4.5,<5" # evo-ak of a release that has `evo-agents plugin`
+      - run: mkdir dist && (cd dist && evo-agents plugin pack ../my-plugin)
+      - run: test "$(sha256sum "dist/$BUNDLE" | cut -d' ' -f1)" = "$TESTED"
+      - run: python -m sigstore sign "dist/$BUNDLE"
+      - uses: actions/upload-artifact@<commit sha>
+        with:
+          name: my-plugin-bundle
+          path: dist/
+```
+
+The operator's entry for that publisher names the workflow, `acme=sigstore:acme/my-plugin/.github/workflows/ci.yml`,
+which the workflow reads as `${GITHUB_WORKFLOW_REF%%@*}`. The hub accepts a signature from any ref of that workflow,
+so signing on the default branch alone is the workflow's own rule. Keyless signing writes the certificate to
+Sigstore's public transparency log (Rekor): the repository's name, the workflow's path, the ref, the commit and the
+run become public there, even for a private repository. A publisher that must keep those private signs with an
+Ed25519 key instead (`plugin keygen`, `plugin sign`), and the operator trusts `acme=ed25519:<public key>`.
+
+**On a self-hosted runner**, take Python from uv (`astral-sh/setup-uv`, then `uv venv --seed --python 3.12`) or
+another standalone build, not from `actions/setup-python`. The plugin host builds a backend's environment from
+nothing, so it has no `LD_LIBRARY_PATH`, and the Python that setup-python installs on a self-hosted runner finds its
+`libpython` only through that variable: `plugin test` fails at the environment check. Making the host pass the
+variable on would open the environment it builds from nothing, so the runner adapts instead.
