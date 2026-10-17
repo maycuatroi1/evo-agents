@@ -70,6 +70,10 @@ CSRF_HEADER = "X-Evo-CSRF"
 UNSAFE_METHODS = frozenset({"POST", "PUT", "PATCH", "DELETE"})
 PROTECTED_PREFIX = "/v1/"
 WORKER_PREFIX = "/v1/worker/"  # the worker daemon's routes: a worker token works there and nowhere else
+# The routes the plugin host calls (evo_agents.hub.server.plugin_host): the shared secret EVO_HUB_PLUGIN_HOST_TOKEN is
+# the credential, which every route under the prefix checks itself (host_caller), so the middleware lets them past,
+# like the Telegram webhook. A route added under this prefix without that dependency would be unauthenticated.
+PLUGIN_HOST_PREFIX = "/v1/plugin-host/"
 PUBLIC_PATHS = frozenset(
     {
         "/v1/health",
@@ -321,11 +325,8 @@ class Authenticate:
                 await WebSocketClose(code=WEBSOCKET_REFUSED, reason=reason)(scope, receive, send)
             return
         worker_route = path.startswith(WORKER_PREFIX)
-        if (
-            scope["type"] != "http"
-            or not path.startswith(PROTECTED_PREFIX)
-            or (path in PUBLIC_PATHS and not worker_route)
-        ):
+        public = path in PUBLIC_PATHS or path.startswith(PLUGIN_HOST_PREFIX)  # these routes check their own credential
+        if scope["type"] != "http" or not path.startswith(PROTECTED_PREFIX) or (public and not worker_route):
             await self.app(scope, receive, send)
             return
         request = Request(scope)

@@ -41,6 +41,7 @@ from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, web_auth
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.plugins.signing import default_sigstore
 
@@ -148,6 +149,7 @@ def create_app(config: HubConfig) -> FastAPI:
                 "curator_app_missing": config.curator_app_missing(),
                 "telegram_missing": config.telegram_missing(),
                 "plugin_publishers": [publisher.id for publisher in config.plugin_publishers],
+                "plugin_host_missing": config.plugin_host_missing(),
             },
         )
         try:
@@ -157,7 +159,7 @@ def create_app(config: HubConfig) -> FastAPI:
             await app.state.terminals.close_all()
             await app.state.listener.close()
             await app.state.github.aclose()
-            for opened in (app.state.github_app, app.state.curator_app):
+            for opened in (app.state.github_app, app.state.curator_app, app.state.plugin_host):
                 if opened is not None:
                     await opened.aclose()
             if app.state.blobs is not None:
@@ -278,6 +280,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_members,
         chats,
         credentials,
+        plugin_host,
         plugins,
         project_plugins,
         rate_limits,
@@ -301,12 +304,17 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_agents.worker_router,
         plugins.router,
         project_plugins.router,
+        plugin_host.router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
-    # The release plugins are checked against (a test starts a hub of another one), and the checker of the Sigstore
-    # signatures of their bundles.
-    app.state.hub_version, app.state.plugin_sigstore = __version__, default_sigstore()
+    # The release plugins are checked against (a test starts a hub of another one), the checker of the Sigstore
+    # signatures of their bundles, and the client to the plugin host that runs the backends of isolated plugins.
+    app.state.hub_version, app.state.plugin_sigstore, app.state.plugin_host = (
+        __version__,
+        default_sigstore(),
+        PluginHostClient(config.plugin_host_url, config.plugin_host_token),
+    )
     return app
 
 
