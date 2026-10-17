@@ -13,11 +13,13 @@ the source of truth inside the repo; the kit is the design reference behind it. 
 
 ## Style
 
-Calm graphite surfaces, one cobalt for live agent work, amber only when a person is needed, and IBM Plex for an
-engineered voice that reads the same in English and Vietnamese.
+Paper and ink, as [omelet.tech](https://omelet.tech): white paper for every page, zinc greys with no blue in them,
+rules of `#e4e4e7`, one cobalt for live agent work, amber only when a person is needed, and IBM Plex for an engineered
+voice that reads the same in English and Vietnamese.
 
-1. **Live state first.** A page that shows work in progress says whether it is current, and running work carries a
-   pulsing dot.
+1. **Say the unusual, not the usual.** Running work carries a pulsing dot in its pill, but a page does not say that it
+   is current or that a run goes as it should: the live indicator shows only when updates stopped (reconnecting,
+   offline, paused), and a run's status line only when its state needs a word (waiting, failed, lost, cancelled).
 2. **Colour is spent on state.** The primary button is ink (`action`, the `primary` of shadcn), never a colour.
    Cobalt (`brand`) means an agent is working right now; it also marks links, the focus ring, the selected tab and
    the selected nav icon. Amber (`attention`) means a person is needed. Green, red and violet mean done, failed and
@@ -47,35 +49,38 @@ Light and dark are both first-class; the hub follows the system until a person p
 
 | Kit token | Tailwind | Light | Dark | Use |
 | --- | --- | --- | --- | --- |
-| `canvas` | `background` | `#f5f6f8` | `#0a0c10` | the page behind the content |
-| `surface` | `card`, `sidebar` | `#ffffff` | `#111419` | cards, tables, the sidebar, the top bar, inputs |
-| `surface-sunken` | `muted`, `surface-sunken` | `#eef0f3` | `#0c0e12` | wells: table header, identifier chips, skeletons, disabled fields |
-| `surface-raised` | `popover`, `surface-raised` | `#ffffff` | `#181b22` | menus, dialogs, sheets, toasts; lighter than `surface` in dark |
-| `surface-hover` | `accent` | `#f0f2f5` | `#1a1e26` | hover of rows, nav items, ghost and outline buttons |
-| `surface-selected` | `sidebar-accent`, `surface-selected` | `#e9edfd` | `#1a2246` | the selected nav item, row, pressed chip, checked card |
-| `border` | `border`, `chart-grid` | `#e2e5ea` | `#22262f` | hairlines; never the only cue that something is a control |
-| `border-strong` | `border-strong` | `#d3d7de` | `#2e333d` | outline (secondary) buttons, segmented controls |
-| `border-control` | `input` | `#858c99` (3.4:1 on surface, 3.1:1 on canvas) | `#626a7a` (3.4:1, 3.2:1 on surface-raised) | edges of inputs, selects, radios and checkboxes; under 3:1 on surface-sunken, so an enabled control never sits in a well |
+| `canvas` | `background` | `#ffffff` | `#09090b` | the page: paper, the same as `surface`, so content needs no card to stand out |
+| `surface` | `card`, `sidebar` | `#ffffff` | `#09090b` | cards, tables, the sidebar, the top bar, inputs |
+| `surface-sunken` | `muted`, `surface-sunken` | `#f4f4f5` | `#18181b` | wells: table header, identifier chips, skeletons, disabled fields |
+| `surface-raised` | `popover`, `surface-raised` | `#ffffff` | `#18181b` | menus, dialogs, sheets, toasts; lighter than `surface` in dark |
+| `surface-hover` | `accent` | `#f4f4f5` | `#18181b` | hover of rows, nav items, ghost and outline buttons |
+| `surface-selected` | `sidebar-accent`, `surface-selected` | `#eef0fd` | `#1c2147` | the selected nav item, row, pressed chip, checked card |
+| `border` | `border`, `chart-grid` | `#e4e4e7` | `#27272a` | hairlines; never the only cue that something is a control |
+| `border-strong` | `border-strong` | `#d4d4d8` | `#3f3f46` | outline (secondary) buttons, segmented controls |
+| `border-control` | `input` | `#8b8b94` (3.4:1 on surface and canvas, 3.1:1 on surface-sunken) | `#71717a` (4.1:1, 3.7:1 on surface-raised) | edges of inputs, selects, radios and checkboxes |
+
+Paper lies flat: `elevation-raised` is none, so a card is its 1 px rule; menus, dialogs and toasts keep their shadows
+(`elevation-popover`, `elevation-dialog`, tinted with ink `#09090b`).
 
 **Text**
 
 | Kit token | Tailwind | Light | Dark | Use |
 | --- | --- | --- | --- | --- |
-| `fg` | `foreground` | `#0e1116` (18.9:1 on surface, 16.2:1 at the least, on surface-selected) | `#e9ecf1` (15.6:1, 13.0:1 at the least) | primary text and icons |
-| `fg-muted` | `muted-foreground` | `#4b5362` (7.7:1, 6.6:1 at the least) | `#a4acba` (8.1:1, 6.8:1 at the least) | secondary text, labels, inactive nav |
-| `fg-subtle` | `fg-subtle` | `#646c7b` (5.3:1, 4.5:1 at the least) | `#868f9e` (5.7:1, 4.7:1 at the least) | timestamps, placeholders, helper text; nothing lighter is text |
+| `fg` | `foreground` | `#09090b` (19.9:1 on surface, 17.5:1 at the least, on surface-selected) | `#fafafa` (19.1:1, 14.8:1 at the least) | primary text and icons |
+| `fg-muted` | `muted-foreground` | `#52525b` (7.7:1, 6.8:1 at the least) | `#a1a1aa` (7.8:1, 6.0:1 at the least) | secondary text, labels, inactive nav |
+| `fg-subtle` | `fg-subtle` | `#6b6b73` (5.3:1, 4.7:1 at the least) | `#8b8b94` (5.9:1, 4.6:1 at the least) | timestamps, placeholders, helper text; nothing lighter is text |
 
 **Action and brand**
 
 | Kit token | Tailwind | Light | Dark | Use |
 | --- | --- | --- | --- | --- |
-| `action` / `on-action` | `primary` / `primary-foreground` | `#0e1116` / `#ffffff` (18.9:1) | `#e9ecf1` / `#0a0c10` (16.5:1) | the primary button, one per view |
-| `action-hover` | `action-hover` | `#2a303a` (13.3:1 with on-action) | `#c9cfd9` (12.5:1) | primary button hover |
-| `brand` | `brand` | `#2f4bd8` (6.7:1 on surface, 5.8:1 on brand-soft and surface-selected) | `#8c9dff` (7.4:1, 6.2:1) | links, the selected tab underline, the selected nav icon, running |
-| `brand-hover` | `brand-hover` | `#263fba` (8.4:1) | `#a3b0ff` (9.0:1) | link hover |
+| `action` / `on-action` | `primary` / `primary-foreground` | `#09090b` / `#ffffff` (19.9:1) | `#fafafa` / `#09090b` (19.1:1) | the primary button, one per view |
+| `action-hover` | `action-hover` | `#27272a` (14.9:1 with on-action) | `#d4d4d8` (13.5:1) | primary button hover |
+| `brand` | `brand` | `#2f4bd8` (6.7:1 on surface, 5.8:1 on brand-soft and surface-selected) | `#8c9dff` (7.9:1, 6.2:1) | links, the selected tab underline, the selected nav icon, running |
+| `brand-hover` | `brand-hover` | `#263fba` (8.4:1) | `#a3b0ff` (9.7:1) | link hover |
 | `brand-soft` | `brand-soft` | `#ebeefd` | `#19204a` | ground of the running pill and brand tags |
-| `on-brand` | `on-brand` | `#ffffff` (6.7:1 on brand) | `#0a0c10` (7.8:1) | glyphs on a brand fill: the logo tile |
-| `focus-ring` | `ring` | = `brand` (6.2:1 on canvas) | = `brand` (7.8:1) | the 2 px keyboard focus outline |
+| `on-brand` | `on-brand` | `#ffffff` (6.7:1 on brand) | `#09090b` (7.9:1) | glyphs on a brand fill: the logo tile |
+| `focus-ring` | `ring` | = `brand` (6.7:1 on canvas) | = `brand` (7.9:1) | the 2 px keyboard focus outline |
 
 Cobalt is never a large fill; the logo tile is the one exception.
 
@@ -97,11 +102,11 @@ token; dots, bars and progress segments use the solid one. Ratios are text on th
 | Review | `review` / `review-soft` / `review-solid` | `#6136c2` / `#f1ecfd` (6.5:1) / `#7c4de8` | `#b9a0ff` / `#241b3e` (7.3:1) / `#9d7df6` | done, waiting to be checked: verifying, review |
 | Success | `success` / `success-soft` / `success-solid` | `#11713d` / `#e4f4ea` (5.3:1) / `#1e9e58` | `#5fd394` / `#0f2a1c` (8.2:1) / `#34b86e` | finished well, healthy: done, idle, received heartbeat |
 | Danger | `danger` / `danger-soft` / `danger-solid` (`destructive`) | `#b3261e` / `#fcebea` (5.7:1) / `#d93a2f` | `#ff8178` / `#33161a` (6.8:1) / `#ef5a4e` | failed or unreachable: failed, offline, errors, destructive buttons |
-| Neutral | `muted-foreground` / `muted` / `neutral-solid` | `#4b5362` / `#eef0f3` (6.8:1) / `#858c99` | `#a4acba` / `#0c0e12` (8.5:1) / `#6b7383` | no tone: queued, lost, cancelled, pending |
+| Neutral | `muted-foreground` / `muted` / `neutral-solid` | `#52525b` / `#f4f4f5` (7.0:1) / `#85858d` | `#a1a1aa` / `#18181b` (6.9:1) / `#71717a` | no tone: queued, lost, cancelled, pending |
 
-`on-danger` (`#ffffff` light, 4.6:1; `#0a0c10` dark, 5.8:1) is the label on a `danger-solid` fill, which darkens on
+`on-danger` (`#ffffff` light, 4.6:1; `#09090b` dark, 5.9:1) is the label on a `danger-solid` fill, which darkens on
 hover (`hover:brightness-94`) and never lightens, so the label keeps its ratio. `danger-solid` is
-a mark and a fill, not text: it falls to 4.2:1 on canvas, so error text is `text-danger`. Amber is the same idea as
+a mark and a fill, not text: error text is `text-danger`. Amber is the same idea as
 the mark's third node, the person in the loop; it is not a warning colour for anything else.
 
 **Terminal.** The log, tool output and the web terminal sit on `term-bg` in both themes. Every colour below is
@@ -516,8 +521,9 @@ Shared pieces built on them:
 - `components/live`: the kit's LiveIndicator, in the top bar beside the bell. A page registers what keeps it current:
   its main query through `useHubQuery(..., { live: true })` (or `usePagedQuery`, `useLiveQuery`), a stream through
   `useLiveSignal` (the run page's event stream, with the log's Pause; the Monitor's worst tile); a page that registered nothing shows none, and a
-  query that does not poll counts for nothing. `live-model.ts` is the state machine: Live while updates arrive (a
-  `success-solid` dot that pulses, "updated 3s ago"); Reconnecting from the first failed read (TanStack's
+  query that does not poll counts for nothing. `live-model.ts` is the state machine: Live while updates arrive, which
+  is how a page should be, so the indicator is then for screen readers only (`sr-only`, its status region still says
+  each change); Reconnecting from the first failed read (TanStack's
   `fetchFailureCount`, or an error newer than the data) or while the log reads events instead of its stream (an
   `attention-solid` dot, "retry in 4s, polling every 5s"; "stream retry in 25s, polling every 1.5s meanwhile");
   Offline after 15 seconds of failures, or at once when the browser has no network (`danger-solid`, "last update
@@ -841,8 +847,10 @@ Shared pieces built on them:
   total with a bar, the steps in progress, and links to the run and to the open decision (`/inbox?decision=ID`). The
   plan's active runs are read as the runs pages read theirs (every 5 seconds while one is active), and the plan itself
   as often while its plan run is. The plans list badges a plan whose plan run is active, linked to the run. While a
-  plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page is titled Plan run,
-  carries a Plan run badge, lists the plan's steps with their status (the one in progress `aria-current="step"`), its
+  plan run holds a plan, Run this step on its steps is locked and names the run. A plan run's page names the plan and its step in
+  progress in its head and, behind Details, lists the plan's steps grouped by status as Buildkite groups its jobs (the steps in
+  progress or blocked first, one row each with a 16 px status icon, the one in progress `aria-current="step"`, then "6
+  done" and "14 to do" as rows that open on their steps), its
   repos and branches, its model and the agent time used, and the open decisions it waits on (below); it offers no Rerun.
 - `components/runs`, author runs (`author-run.tsx`, `author-run-dialog.tsx`, `run-chat.tsx`; docs/workers.md, Author
   runs): New plan sits in the head of a project's Plans page (the primary button there, and in the empty state, where
@@ -949,45 +957,57 @@ Shared pieces built on them:
   the owner's words, whether the worker has handed it to the agent yet (read every 10 seconds until it has) and the
   run that resumed a parked one; an expired or cancelled one says what happened. Anyone but the owner reads the
   context, the options (the agent's pick tagged) and why they cannot answer. A plan run's page shows its open decisions
-  at the top of the side column from the xl breakpoint, above the log below it (`runs/run-decisions.tsx`, "Waiting for
+  above the session, or at the top of the side column once Details is open (`runs/run-decisions.tsx`, "Waiting for
   your decision" and a link to the Inbox), read every 5 seconds while the run is active; a decision answered there, or
   found answered after a 409, stays with its answer until the visitor leaves.
-- `components/runs`, a run's page (`/p/{project}/runs/{id}`), the kit's RunScreen: the page head, the `RunTimeline`,
-  then the session card (an author run's Chat, Trace, Raw log, Terminal) on the left and, in a 23 rem side column from xl, the decision while
-  a plan run waits, Details, Usage, the plan's steps, the Result and, for the run's owner, Credentials. From xl
-  (1280 px) the page is one window tall and the two are regions that scroll on their own, side by side below the
-  timeline (`run-split`): the session card fills the window down to its bottom gutter, the open tab's log, trace or
-  terminal taking what its bars and the composer leave (`fill` on `RunLogCard`, `AgentTrace`, `RunChatPanel` and
-  `RunTerminalPanel`), and the side column (`run-aside`) is exactly as tall, scrolling inside itself when its cards
-  are longer. It is a region named "About run #12" that Tab reaches from xl (`useMediaQuery`), its 4 px of padding
-  taken back by its margin so the cards' shadows and focus rings stay inside it and its last card ends level with
-  the session card. The split is at least 30 rem tall and its own size is contained, so a short window scrolls the
-  page past the head instead of squeezing the trace. Below xl the side column moves under the timeline, the decision
-  first, then the side cards (two by two from md), then the session card at its own height; the page reads in that
-  order at every width (`run-side`). Take over shows the Terminal tab, focuses its tab and scrolls the session card
-  into view; `?view=` picks the tab at every width. The head
-  is "Run #12" for every run, a plan run saying so in its Plan run tag, over the plan (in the body font) and step as
-  `brand` links with a quiet underline, so colour is not all that sets them apart from the line. A plan run names its
-  plan once, as the link, and its title after it only when the title differs from the id. The owner's controls sit in the header, each shown only when the state and the visitor's rights allow it
-  (`run-model.ts`, `runControls`), in the kit's order: Take over (a dialog with `evo-agents worker attach N` and, for
-  Claude Code, the Remote Control session `evo-run-N`), the diff with its `+12 −3` in mono `success` and `danger` once
-  the worker reported a diffstat, Rerun, Hand back, Approve, and Cancel (confirmed in a dialog) last, plus the composer
-  under the trace. Anyone but the run's owner reads only. The header puts these actions under the title until the xl
-  breakpoint (`PageHeader`'s `actions`, which take a line of their own when the title leaves no room), so they wrap
-  instead of pushing the page sideways. Between the head and the timeline, notes (`RunNotes`) say what the run waits
-  for: the owner's open asks, how to reach a session the owner holds, whose run it is for anyone else, and, for anyone,
-  a queued attempt whose run before it was lost on a worker that is not steady yet (`steady_wait`): which worker, from
-  when it takes the attempt if its heartbeats keep coming, and whether another worker may take it meanwhile. That one
-  is neutral with `HeartPulse`, since the hub waits for a machine, not for a person.
+- `components/runs`, a run's page (`/p/{project}/runs/{id}`): the trace is what the page is for, and everything else
+  waits to be asked for (the design and its sources: the harness report "Thiết kế trang run cao cấp"). The head
+  (`run-header.tsx`) is one line of 13 px over the trace, flat on the paper: the plan and its step in progress as links
+  (`fg-muted` plan, `fg` step, truncated on one line from 768 px, two lines under it), for another kind of run where it
+  comes from (the chat, the Curator, an author run's plan, a step's plan and step), the plan's progress as a 64 px bar
+  of 4 px and "6/21 steps", and the status line only when the state is not the usual one ("Waiting for an answer for
+  6m" in `attention`, "Failed after 1h 12m" in `danger`, "Queued for 2m, waiting for binhna-macbook-m4"; a running or
+  verifying run says it to screen readers only). "Run #12" is the page's `h1` for screen readers; the top bar's
+  breadcrumb shows it. At the line's end: the Details toggle (`PanelRight`, its word from 768 px), then the owner's
+  controls as `RunActions` gives them, at most one solid button (Approve, Hand back) and one outline button (Take
+  over, the diff with its `+12 −3`, Rerun), and a menu behind `Ellipsis` with the rest in the kit's order, Cancel run
+  last in `danger` behind a separator; under 768 px Take over is in the menu, as a phone does not take over a
+  terminal. The phases (`RunTimeline`, bare) show under the head only while the run waits for a worker (queued,
+  leased) or when it ended before running. Then notes (`RunNotes`, `run-notes.tsx`), the decision a plan run waits on
+  (`RunDecisions`, always shown: it needs the owner), and the session (tabs, trace, composer), flat on the page with
+  no frame: the tab bar's rule is its only line, and only the composer, an input, has an edge. From xl (1280 px) the
+  page is one window tall and the session fills it down to its bottom gutter (`fill` on `RunLogCard`, `AgentTrace`,
+  `RunChatPanel` and `RunTerminalPanel`). Details opens the side column (`run-side.tsx`, `run-aside`), 23 rem beside
+  the session from xl, with the decision at its top, then the plan's steps (`RunPlanSteps`), the essential details
+  (worker, agent and model, repos and branches) with "Show all details" for the rest and, for the owner, Accounts and
+  Credentials, then Usage, a plan run's step sessions and the Result once they have anything; it is a region named
+  "About run #12" that Tab reaches from xl (`useMediaQuery`) and scrolls inside itself. From md to xl it moves under
+  the head, its cards two by two, before the session. Under 768 px (`useIsMobile`, the server's guess first) the page
+  is the head, the decision, the trace's preview (`TracePreview`, `trace-preview.tsx`: "Trace" with the count of tool
+  calls, the latest four rows newest first, a group as what it did with its files or last command and its time, the
+  agent's words two lines at most, and "Open the full trace", "Open the chat" for an author run), then, once Details
+  is on, the side cards as flat sections. The full trace is a screen of its own (`useTraceScreen`,
+  `run-page-state.ts`): a history entry, so Back closes it, with a back button and "Run #12" over the session as tall
+  as the window; the trace is its one scroll region. A tab other than the first (the Raw log, the Terminal) and an
+  address that asks for the session (`?view=`, an author run's `?tab=chat`) open that screen too; leaving it goes back
+  to the first tab. Each part keeps its place in the tree in every mode, so the session, and a connected terminal,
+  stays mounted when the width crosses 768 px. The head's controls wrap under its line when the width leaves them no
+  room, and the menu is not modal (as the user menu), so the page stays in reach of assistive tech while it is open. Take over shows the Terminal tab and focuses it (on a phone, on the trace screen); `?view=` picks the tab at
+  every width. Anyone but the run's owner reads only. A local run (a member's own Claude Code session the hub watches)
+  has no controls, notes or phases: its head says its machine, account, plan and step, and Details holds its own
+  details (`local-run-details.tsx`) instead of a worker run's. Notes say what the run waits for: the owner's open asks, how to
+  reach a session the owner holds, whose run it is for anyone else, and, for anyone, a queued attempt whose run before
+  it was lost on a worker that is not steady yet (`steady_wait`): which worker, from when it takes the attempt if its
+  heartbeats keep coming, and whether another worker may take it meanwhile. That one is neutral with `HeartPulse`,
+  since the hub waits for a machine, not for a person.
 - `run-credentials.tsx`, the owner's Credentials card in the side column, drawn as the other side cards (`surface`,
   `shadow-raised`, a `section-title` head with a link to the Secrets page on its right, 13 px `brand` with a chevron):
   each lease the run got, its name in mono, its provider as a tag (Your secret with `KeyRound`, or GitHub App with the
   GitHub mark), the variable or the origins it answered for (each a link to the repo's page), when and to which worker
   it was issued, when it ends and when it was revoked, and its state as a pill (Out in `brand`, Expired neutral,
   Revoked outlined with `Ban`); read every 5 seconds while the run is active and again when it moves, and never a
-  value. Nobody else gets the card, as the API answers them 403. The side cards say nothing of when they fill or who
-  sees them: Usage and the Result with nothing to show are their head alone, the title and a `caption` state on the
-  right ("Nothing reported yet", "None yet"; "Nothing reported", "None" once the run ended).
+  value. Nobody else gets the card, as the API answers them 403. A side card with nothing to show is not drawn: Usage
+  before the runtime reports any, the Result before the run has one.
 - `forge.ts` and `links.tsx`, the run page's links out of the hub. A repo leads to its page on its forge, read from the
   origin the project registered (`GET /v1/projects/{project}`): https without the user, `.git` and trailing slash, SSH
   (`git@host:owner/repo.git`, `ssh://git@host[:port]/owner/repo.git`) as https on the same host. On GitHub
@@ -999,9 +1019,11 @@ Shared pieces built on them:
   its text then "(opens in a new tab)" (`aria-label`, so the text in the page stays the text); on cards it is `brand`
   with a quiet underline, on the trace's `term-bg` `term-agent` underlined. A tool row's folded argument stays text, as
   a link in a `summary` would also toggle the row; open, its Input shows the address as a link.
-- `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`): the phases left to right (top to
-  bottom under 768 px), the time from each phase to the next on the line between them, mono 11 px in `fg-muted` on
-  `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
+- `run-timeline.tsx`, the kit's RunTimeline (`timelineModel` in `run-model.ts`), under a run's head while it waits for
+  a worker: the phases left to right at every width (under 768 px the names in 12 px under the nodes, two lines at
+  most, the time each took under its name and no clock times; `bare`, flat on the page), the time from each phase to
+  the next on the line between them,
+  mono 11 px in `fg-muted` on `card`. Done phases are `fg-muted` nodes on a solid `fg-subtle` line; the current one is a `running` node with the
   live ping and a dashed line ahead, its gap counting up with `useNow`; a queued run's node is neutral and a run in
   review is `review-solid`, since neither is agent work. A waiting or parked run shows its state on the running phase
   in `attention`, "since 10:22:41", the gap "waiting 6m". A failed run stops on a `danger-solid` node at the time it
@@ -1009,11 +1031,13 @@ Shared pieces built on them:
   run that is done ends on `success-solid`. Times are local in `code-small`; each is focusable and its tooltip says
   the full date and time zone. An ordered list labelled "Phases of run #N", the current phase `aria-current="step"`,
   each phase's status in words for screen readers.
-- The session card (`run-log.tsx`) holds the tabs, all kept mounted (Radix `forceMount`) and kept in the URL
+- The session (`run-log.tsx`) holds the tabs, all kept mounted (Radix `forceMount`) and kept in the URL
   (`?view=log`, `?view=terminal`; the Trace has none), changed with `history.replaceState` so the page does not
-  navigate. What the stream is doing sits at the right end of the tab bar as the kit's live state (a dot in its tone,
-  pulsing while live, and the word in `caption` `fg-subtle`); the Raw log's line count sits in its tab and, on that tab,
-  before the stream's state. The composer shows under the Trace and the Raw log, not under the Terminal.
+  navigate. It is flat on the page: the tab bar's rule is its one line, the Raw log a `term-bg` block with 6 px
+  corners. The stream's state (`log-stream-state.tsx`) shows at the right end of the tab bar only when the stream
+  dropped (reconnecting, read by polling, failed: a dot in its tone and the word in `caption` `fg-subtle`); connecting,
+  live and ended are said to screen readers only. The Raw log's line count sits in its tab and, on that tab, at the
+  bar's end. The composer shows under the Trace and the Raw log, not under the Terminal.
 - The Trace (`agent-trace.tsx`, `trace-model.ts`), the kit's AgentTrace and the first tab, reads the same events as
   the Raw log (`useRunLog` keeps them beside its lines): consecutive `agent_message_chunk` events are one message
   (SafeMarkdown), a turn ending at anything else shown or at a `usage_update`; a message that holds a step's report (the
@@ -1026,7 +1050,9 @@ Shared pieces built on them:
   "Thought for 3.2s" (from the event before them) over the words that follow; a `tool_call` and its
   `tool_call_update` events, matched by `toolCallId` in seq order whatever order they arrived in, are one row: the
   tool's name (or its kind's for a title that is a command or a path, as Codex and opencode give), what the agent said
-  it is for, the main argument in mono (a Codex command without its `/bin/zsh -lc` wrapper), an edit's `+3 −1`, the
+  it is for, the main argument in mono (a Codex command without its `/bin/zsh -lc` wrapper, a shell command without
+  the `cd`, `export`, `source` and assignments it starts with, `shell-command.ts`, the whole command in the Input once
+  opened), an edit's `+3 −1`, the
   exit code (Codex `exitCode`, opencode `exit`, Claude Code's "Exit code 1"), the duration from the events' times, and
   a spinner with the time so far while it runs. Rows are `details`, folded, a failed one open; the output (the
   update's `content`, else its `rawOutput`) sits on `term-bg`, cut at 20 lines with "Show the full output (45 lines)",
@@ -1037,7 +1063,22 @@ Shared pieces built on them:
   `output` events and kinds the page does not know fold together, one caption line per run of them, with their JSON.
   A running run ends with the typing dots (`animate-typing`, solid under reduced motion). The trace is a `role="log"`
   region (polite) that follows the newest item unless the person scrolled up, when "Jump to the latest" shows; past
-  500 items only the ones in view render (`@tanstack/react-virtual`, measured rows).
+  500 items only the ones in view render (`@tanstack/react-virtual`, measured rows). Tool calls in a row that do the
+  same kind of work are one row (`trace-groups.ts`, `groupByIntent`, as Codex and Claude Code fold theirs), named by
+  what they did rather than by tool: Explored (reads, searches, `cat`, `sed -n`, `grep`, `ls`, `git status` and
+  `diff`; "Explored 7 files" when the calls name their files), Edited ("Edited 2 files" with the lines added and
+  removed), Ran tests (`pytest`, `vitest`, `playwright`, `pnpm test`), Ran checks (`ruff`, `mypy`, `eslint`, `tsc`,
+  `lint-imports`, `pnpm typecheck`), git, gh, the hub's CLI, other commands, other tools. A row (`GroupRow`,
+  `trace-tools.tsx`) is the work's 16 px Lucide icon, its words in 14 px (15 px under 768 px), how many failed in
+  `danger`, its files, programs or last command in mono 12 px `fg-subtle` under them, and its time from the first
+  call's start to the last call's end on the right (a clock in `running` while its last call runs, the trace's one
+  moving element, so no typing dots follow it); no tool name or clock time on the row. It opens on a hairline list of
+  its calls, each folded to its command or path and opening on its output; a failed call shows under the row, open,
+  either way, and a search that found nothing (exit 1 of `grep` or `rg`) is no failure. The runtime's bookkeeping
+  (`output` events and kinds the page does not read) neither shows nor cuts a group: one caption line says how many
+  are in the Raw log. The agent's words, a decision, a person's message, a checklist, a move and a system line cut a
+  group. Rows have no frame and no rail: a 16 px icon column and the text 10 px after it; a move or system line is a
+  caption with no time. Under 768 px a folded line takes two lines and times drop their seconds.
 - `usage-meter.tsx`, the kit's UsageMeter, and `usage-model.ts`: the tokens the runtime reported as one total, a bar of
   cache read, input, output and reasoning in `chart-5`, `chart-1`, `chart-3` and `chart-4` (each part at least 3 px),
   a row per part with its share ("under 0.1%" for a part that rounds to nothing), cache writes said under it, and the

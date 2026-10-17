@@ -179,14 +179,13 @@ describe("the Result card", () => {
     expectExternal(links[0], "https://github.com/example-org/api/pull/7", "https://github.com/example-org/api/pull/7");
   });
 
-  it("is its title and one short line while there is nothing to show", () => {
+  it("is not there while there is nothing to show", () => {
     const empty = { ...run, state: "running", commit_sha: null, verify: null, evidence: null } as unknown as Run;
     const first = show(<RunResult run={empty} />);
-    expect(screen.getByTestId("run-result-empty")).toHaveTextContent(/^Chưa có$/);
-    expect(screen.getByTestId("run-result").querySelector("dl")).toBeNull();
+    expect(screen.queryByTestId("run-result")).toBeNull();
     first.unmount();
     show(<RunResult run={{ ...empty, state: "failed" } as Run} />);
-    expect(screen.getByTestId("run-result-empty")).toHaveTextContent(/^Không có$/);
+    expect(screen.queryByTestId("run-result")).toBeNull();
   });
 });
 
@@ -230,6 +229,8 @@ describe("LinkedText and the trace", () => {
       ev("tool_call", { toolCallId: "t2", title: "WebFetch", kind: "fetch", status: "completed", rawInput: { url: "https://docs.example.org/queue" } }),
     ];
     show(<AgentTrace events={events as RunEvent[]} status="ended" context={context} />);
+    // The fetch is in a group of its own (exploring): open it to reach its line.
+    await userEvent.setup().click(screen.getAllByTestId("trace-group-toggle")[1]);
     const tools = screen.getAllByTestId("trace-tool");
     const output = within(tools[0]).getByTestId("trace-tool-output");
     expect(within(output).getAllByRole("link")).toHaveLength(1);

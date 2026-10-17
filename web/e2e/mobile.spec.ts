@@ -11,6 +11,7 @@ import {
   decisionOf,
   dispatch,
   liveWorker,
+  openRunDetails,
   planRunUnderway,
   reportState,
   runPath,
@@ -27,8 +28,9 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 /**
  * The hub on a phone (steps 14 and 15 of hub-ui-kit): a 375 x 812 screen with a phone's user agent and touch, so the
  * server renders the phone layout itself. Lists are rows that open the object's page, filters live in a sheet behind
- * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its decision and side
- * column before the trace, and a decision from the Inbox is a screen of its own with its answer in a bar at the foot.
+ * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its head, its decision and
+ * its trace's latest rows before its details and opens the full trace on a screen of its own, and a decision from the
+ * Inbox is a screen of its own with its answer in a bar at the foot.
  */
 const PHONE = { width: 375, height: 812 };
 const IPHONE_UA =
@@ -147,27 +149,93 @@ test("the runs list starts on the first screen, and its filters apply from a she
   await expect(main(page).getByTestId("run-detail")).toBeVisible();
 });
 
-test("a run's decision and side column come before its trace, and the raw log's groups are a menu", async ({ page, member }) => {
+test("a run's head, decision and latest trace rows come before its details, its full trace is a screen of its own, and the raw log's groups are a menu", async ({
+  page,
+  member,
+}) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedPlanRunPlan(me, project);
   const { live, run } = await planRunUnderway(me, project, uniqueName("phone"), { waiting: true });
-  await sendEvents(live, run.id, [say("Reading the plan."), tool("Bash", "pnpm test")]);
+  const inWorktree = (command: string) => `cd /home/me/.evo/worker/worktrees/demo && export PATH=/tmp/venv/bin:$PATH && ${command}`;
+  await sendEvents(live, run.id, [
+    say("Reading the plan."),
+    tool("Bash", "pnpm test"),
+    { kind: "output", body: { type: "system", subtype: "task_progress" } },
+    tool("Bash", inWorktree("ruff check .")),
+    tool("Bash", inWorktree("pytest -q tests/hub")),
+  ]);
 
+  // The overview: the head (the plan, its step and progress), the decision, then the trace's latest rows, newest first,
+  // each a group of calls named by what it did with its command without the setup; the session is not on this page.
   await open(page, runPath(project, run.id));
+  const head = main(page).getByTestId("run-header");
+  await expect(head.getByTestId("run-current-step")).toHaveText("Step 2: Run plan dialog");
+  await expect(head.getByTestId("run-progress-text")).toHaveText("1/4 steps");
+  await expect(head.getByTestId("run-status-line")).toContainText("Waiting for an answer for");
   const decision = main(page).getByTestId("run-decisions");
   await expect(decision.getByTestId("decision-form")).toBeVisible();
-  const trace = main(page).getByTestId("run-log");
-  await expect(main(page).getByTestId("trace-item").first()).toBeVisible();
-  const order = [decision, main(page).getByTestId("run-side"), trace];
+  const preview = main(page).getByTestId("run-trace-preview");
+  const rows = preview.getByTestId("run-trace-preview-row");
+  await expect(rows).toHaveCount(4);
+  expect(await rows.evaluateAll((items) => items.map((item) => item.getAttribute("data-type")))).toEqual(["group", "group", "group", "agent"]);
+  await expect(rows.nth(0)).toContainText("Ran tests");
+  await expect(rows.nth(0)).toContainText("pytest -q tests/hub");
+  await expect(rows.nth(1)).toContainText("Ran a check");
+  await expect(rows.nth(1)).toContainText("ruff");
+  await expect(rows.nth(2)).toContainText("Ran tests");
+  await expect(rows.nth(2)).toContainText("pnpm test");
+  await expect(rows.nth(3)).toContainText("Reading the plan.");
+  await expect(preview).not.toContainText("cd /home");
+  await expect(preview).not.toContainText("export PATH");
+  await expect(preview).toContainText("3 tool calls");
+  await expect(main(page).getByTestId("run-log")).toHaveCount(0);
+  await expect(main(page).getByTestId("trace-raw-left")).toHaveCount(0);
+  await expect(main(page).getByTestId("run-side")).toHaveCount(0);
+  const order = [head, decision, preview];
   const tops = [];
   for (const part of order) tops.push((await box(part)).y);
-  expect(tops[0], "the decision before the side column").toBeLessThan(tops[1]);
-  expect(tops[1], "the side column before the trace").toBeLessThan(tops[2]);
-  const width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(tops, "the head, the decision, then the trace's preview").toEqual([...tops].sort((a, b) => a - b));
+  let width = await page.evaluate(() => document.documentElement.scrollWidth);
   expect(width, "nothing scrolls sideways").toBeLessThanOrEqual(PHONE.width);
+  await touchSized(head.getByTestId("run-details-open"), "the Details toggle");
+  await touchSized(head.getByTestId("run-actions-menu"), "the menu of the run's actions");
+  await touchSized(preview.getByTestId("run-open-trace"), "Open the full trace");
+  await expectNoSeriousViolations(page, "run page at 375 px");
 
-  // The raw log: its groups in one menu instead of a row of chips.
+  // Details opens the side cards after the preview.
+  await openRunDetails(page);
+  const side = main(page).getByTestId("run-side");
+  await expect(side.getByTestId("run-plan-steps")).toBeVisible();
+  expect((await box(side)).y, "the side cards after the trace's preview").toBeGreaterThan((await box(preview)).y);
+
+  // Open the full trace: a screen of its own with a way back, the calls as one row per kind of work, each named once,
+  // its command without its setup, and the runtime event the trace does not read left to the Raw log.
+  await preview.getByTestId("run-open-trace").click();
+  const screen = main(page).getByTestId("run-detail");
+  await expect(screen).toHaveAttribute("data-screen", "session");
+  await expect(screen.getByRole("heading", { level: 1 })).toHaveText(`Run #${run.id}`);
+  await expect(main(page).getByTestId("run-trace-preview")).toHaveCount(0);
+  const trace = main(page).getByTestId("run-log");
+  await expect(trace.getByTestId("run-tab-trace")).toHaveAttribute("aria-selected", "true");
+  const groups = trace.getByTestId("trace-group");
+  await expect(groups).toHaveCount(3);
+  expect(await groups.evaluateAll((items) => items.map((item) => item.getAttribute("data-intent")))).toEqual(["test", "check", "test"]);
+  await expect(trace.getByTestId("trace-group-title")).toHaveText(["Ran tests", "Ran a check", "Ran tests"]);
+  await expect(trace.getByTestId("trace-group-detail")).toHaveText(["pnpm test", "ruff", "pytest -q tests/hub"]);
+  await expect(groups.last()).toHaveAttribute("data-running", "true");
+  await expect(trace.getByTestId("trace-typing")).toHaveCount(0); // the running group's clock is what moves
+  await expect(trace.getByTestId("trace-raw-left")).toContainText("1 runtime event");
+  await touchSized(groups.nth(1).getByTestId("trace-group-toggle"), "a row of the trace");
+  await groups.nth(1).getByTestId("trace-group-toggle").click();
+  await expect(groups.nth(1).getByTestId("trace-tool-arg")).toHaveText("ruff check .");
+  await touchSized(groups.nth(1).locator("summary"), "a call of a row of the trace");
+  width = await page.evaluate(() => document.documentElement.scrollWidth);
+  expect(width, "nothing scrolls sideways on the trace's screen").toBeLessThanOrEqual(PHONE.width);
+  await touchSized(main(page).getByTestId("run-screen-back"), "the way back to the run");
+  await expectNoSeriousViolations(page, "the trace's screen at 375 px");
+
+  // The raw log, a tab of the screen: its groups in one menu instead of a row of chips.
   await trace.getByTestId("run-tab-log").click();
   await expect(trace.getByTestId("log-line").first()).toBeVisible();
   await expect(trace.getByTestId("log-facets")).toHaveCount(0);
@@ -185,6 +253,17 @@ test("a run's decision and side column come before its trace, and the raw log's 
   const kinds = await trace.getByTestId("log-line").evaluateAll((lines) => lines.map((line) => line.getAttribute("data-kind")));
   expect(kinds.length).toBeGreaterThan(0);
   expect(new Set(kinds)).toEqual(new Set(["tool_call"]));
+
+  // Back, the button or the browser's, leads to the overview; the session's tab is the Trace again.
+  await main(page).getByTestId("run-screen-back").click();
+  await expect(main(page).getByTestId("run-detail")).not.toHaveAttribute("data-screen", "session");
+  await expect(main(page).getByTestId("run-trace-preview")).toBeVisible();
+  await expect(page).toHaveURL(new RegExp(`${runPath(project, run.id)}$`));
+  await main(page).getByTestId("run-open-trace").click();
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
+  await page.goBack();
+  await expect(main(page).getByTestId("run-trace-preview")).toBeVisible();
+  await expect(main(page).getByTestId("run-log")).toHaveCount(0);
 });
 
 test("every list is a list of rows that open their page", async ({ page, member }) => {

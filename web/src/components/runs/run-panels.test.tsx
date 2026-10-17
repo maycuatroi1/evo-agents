@@ -9,7 +9,7 @@ import { renderVi } from "@/test/render";
 
 import type { RunMove } from "./log-model";
 import type { Run, RunEvent } from "./queries";
-import { RunNotes } from "./run-actions";
+import { RunNotes } from "./run-notes";
 import { RunSessions } from "./run-sessions";
 import type { RunControls } from "./run-model";
 import { RunTimeline } from "./run-timeline";
@@ -58,14 +58,12 @@ describe("UsageMeter", () => {
     expect(within(card).getByTestId("run-usage-cost")).toHaveTextContent("Runtime không báo chi phí");
   });
 
-  it("is one line before the first report, and when none came", () => {
+  it("is not there before the first report, nor when none came", () => {
     const first = renderVi(<UsageMeter run={run} events={[]} />);
-    expect(screen.getByTestId("run-usage-empty")).toHaveTextContent(/^Chưa có số liệu$/);
-    expect(within(screen.getByTestId("run-usage")).queryByTestId("run-usage-rows")).toBeNull();
+    expect(screen.queryByTestId("run-usage")).toBeNull();
     first.unmount();
     renderVi(<UsageMeter run={{ ...run, state: "failed" } as Run} events={[]} />);
-    expect(screen.getByTestId("run-usage-empty")).toHaveTextContent(/^Runtime không báo số liệu$/);
-    expect(within(screen.getByTestId("run-usage")).getByRole("heading", { name: "Mức dùng" })).toBeInTheDocument();
+    expect(screen.queryByTestId("run-usage")).toBeNull();
   });
 });
 

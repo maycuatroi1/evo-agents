@@ -31,22 +31,22 @@ _CONTROL = re.compile(r"[\x00-\x1f\x7f]")
 # The tokens CHECKS reads, as web/src/app/globals.css sets them (the Colour section of web/DESIGN.md).
 DEFAULTS = {
     "light": {
-        "canvas": "#f5f6f8",
+        "canvas": "#ffffff",
         "surface": "#ffffff",
-        "surface-selected": "#e9edfd",
+        "surface-selected": "#eef0fd",
         "brand": "#2f4bd8",
         "brand-hover": "#263fba",
         "brand-soft": "#ebeefd",
         "on-brand": "#ffffff",
     },
     "dark": {
-        "canvas": "#0a0c10",
-        "surface": "#111419",
-        "surface-selected": "#1a2246",
+        "canvas": "#09090b",
+        "surface": "#09090b",
+        "surface-selected": "#1c2147",
         "brand": "#8c9dff",
         "brand-hover": "#a3b0ff",
         "brand-soft": "#19204a",
-        "on-brand": "#0a0c10",
+        "on-brand": "#09090b",
     },
 }
 

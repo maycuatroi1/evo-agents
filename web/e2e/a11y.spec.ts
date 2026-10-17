@@ -13,12 +13,15 @@ import { command, endedRuns, monitorPath, runningRuns, seedMonitorPlan } from ".
 import { ACTIVE_PLAN, EVIDENCE_STEP, open, seedPlans } from "./support/plans";
 import {
   askDecision,
+  chooseRunAction,
   claimRun,
   COMMIT,
   dispatch,
   HARNESS_REPO,
   leaseCredentials,
   liveWorker,
+  openPlanStepFolds,
+  openRunDetails,
   PLAN_RUN_PLAN,
   planRunUnderway,
   planRunWorker,
@@ -932,12 +935,17 @@ const PAGES: Entry[] = [
       const { project, run } = await seedLiveRun(me);
       await open(page, runPath(project, run.id));
       await expect(page.locator("#main").getByTestId("log-status")).toHaveAttribute("data-status", "live");
+      // The failed call open under its group's row, the row then opened on its calls.
       await expect(page.locator("#main").getByTestId("trace-tool")).toHaveAttribute("open", "");
-      await expect(page.locator("#main").getByTestId("run-usage-total")).toBeVisible();
+      await page.locator("#main").getByTestId("trace-group-toggle").click();
+      await expect(page.locator("#main").getByTestId("trace-group-toggle")).toHaveAttribute("aria-expanded", "true");
+      await expect(page.locator("#main").getByTestId("trace-raw-left")).toContainText("1 runtime event");
       await expect(page.locator("#main").getByTestId("run-composer")).toBeVisible();
       await page.locator("#main").getByTestId("trace-thought").getByText(/^Thought/).click();
-      await page.locator("#main").getByTestId("trace-raw").getByText("1 runtime event").click();
       await expectNoSeriousViolations(page, "run page, its trace");
+      await openRunDetails(page);
+      await expect(page.locator("#main").getByTestId("run-usage-total")).toBeVisible();
+      await expectNoSeriousViolations(page, "run page, its trace and its details");
       await page.locator("#main").getByRole("tab", { name: "Raw log" }).click();
       await expect(page.locator("#main").getByTestId("log-line").first()).toBeVisible();
       await page.locator("#main").getByTestId("log-search").fill("plan");
@@ -954,9 +962,16 @@ const PAGES: Entry[] = [
       await runToReview(live, run.id);
       await uploadDiff(live, run.id, `diff --git a/a.txt b/a.txt\n--- a/a.txt\n+++ b/a.txt\n@@ -1 +1 @@\n-old ${run.id}\n+new ${run.id}\n`);
       await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-approve")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("run-view-diff")).toBeVisible();
+      await openRunDetails(page);
       await expect(page.locator("#main").getByTestId("run-verify")).toBeVisible();
       await expectNoSeriousViolations(page, "run in review");
-      await page.locator("#main").getByTestId("run-cancel").click();
+      await page.locator("#main").getByTestId("run-actions-menu").click();
+      await expect(page.getByTestId("run-cancel")).toBeVisible();
+      await expectNoSeriousViolations(page, "run in review, its menu of actions");
+      await page.keyboard.press("Escape");
+      await chooseRunAction(page, "run-cancel");
       await expect(page.getByTestId("cancel-run-dialog")).toBeVisible();
       await expectNoSeriousViolations(page, "cancel run dialog");
       await page.keyboard.press("Escape");
@@ -971,6 +986,7 @@ const PAGES: Entry[] = [
       await putSecretByApi(me, "claude-oauth", { kind: "env", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: [project], value: secretValue("a11y") });
       await leaseCredentials(live, run.id);
       await open(page, runPath(project, run.id));
+      await openRunDetails(page, { all: true });
       await expect(page.locator("#main").getByTestId("run-lease-item")).toHaveCount(1);
     },
   },
@@ -980,8 +996,15 @@ const PAGES: Entry[] = [
       const { project, run } = await seedLiveRun(me);
       await page.setViewportSize({ width: 375, height: 812 });
       await open(page, runPath(project, run.id));
+      // The overview: the head, the trace's latest rows and the way to the full trace; then the trace's own screen.
+      await expect(page.locator("#main").getByTestId("run-trace-preview-row").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "run page at 375 px, its overview");
+      await openRunDetails(page);
+      await expect(page.locator("#main").getByTestId("run-side")).toBeVisible();
+      await expectNoSeriousViolations(page, "run page at 375 px, its details");
+      await page.locator("#main").getByTestId("run-open-trace").click();
+      await expect(page.locator("#main").getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
       await expect(page.locator("#main").getByTestId("trace-item").first()).toBeVisible();
-      await expect(page.locator("#main").getByTestId("run-timeline")).toBeVisible();
     },
   },
   {
@@ -1031,6 +1054,8 @@ const PAGES: Entry[] = [
       await seedPlanRunPlan(me, project);
       const { run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
       await open(page, runPath(project, run.id));
+      await openRunDetails(page);
+      await openPlanStepFolds(page.locator("#main"));
       await expect(page.locator("#main").getByTestId("run-plan-step")).toHaveCount(4);
       await expect(page.locator("#main").getByTestId("run-decision-link")).toBeVisible();
     },
@@ -1046,6 +1071,8 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("plan-run-banner")).toBeVisible();
       await expectNoSeriousViolations(page, "plan page with a plan run at 375 px");
       await open(page, runPath(project, run.id));
+      await expect(page.locator("#main").getByTestId("run-trace-preview")).toBeVisible();
+      await openRunDetails(page);
       await expect(page.locator("#main").getByTestId("run-plan-steps")).toBeVisible();
     },
   },
@@ -1120,7 +1147,8 @@ const PAGES: Entry[] = [
       const { live, run } = await planRunUnderway(me, project, uniqueName("a11y"), { waiting: true });
       await askDecision(live, run.id, "Drop the old staging bucket after the deploy?", "4");
       await open(page, runPath(project, run.id));
-      await expect(page.locator("#main").getByTestId("run-decisions").getByTestId("decision-form")).toHaveCount(2);
+      await openRunDetails(page);
+      await expect(page.locator("#main").getByTestId("run-aside").getByTestId("run-decisions").getByTestId("decision-form")).toHaveCount(2);
       await expect(page.locator("#main").getByTestId("run-decisions-count")).toBeVisible();
     },
   },

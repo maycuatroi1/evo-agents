@@ -34,28 +34,38 @@ const ev = (kind: string, body: Record<string, unknown>, second = 0) => ({
 });
 
 describe("AgentTrace", () => {
-  it("is a polite log of the run's items, its failed call open and the others folded", async () => {
+  it("is a polite log of the run's items, its calls grouped by what they did, a failed one open under its row", async () => {
     show(claudeCode.events);
     const log = screen.getByRole("log", { name: "Trace của run #12" });
     expect(log).toHaveAttribute("aria-live", "polite");
-    const tools = within(log).getAllByTestId("trace-tool");
-    expect(tools).toHaveLength(3);
-    expect(tools[0]).toHaveAttribute("open");
-    expect(tools[0]).toHaveAttribute("data-status", "failed");
-    expect(within(tools[0]).getByTestId("trace-exit")).toHaveTextContent("mã thoát 1");
-    expect(within(tools[0]).getByTestId("trace-tool-arg")).toHaveTextContent("cat missing-file.txt");
-    expect(within(tools[0]).getByTestId("trace-tool-output")).toHaveTextContent("No such file or directory");
-    expect(within(tools[0]).getByTestId("trace-duration")).toHaveTextContent("1,4 giây");
-    expect(tools[1]).not.toHaveAttribute("open");
-    expect(within(tools[1]).queryByTestId("trace-tool-output")).toBeNull();
+    const groups = within(log).getAllByTestId("trace-group");
+    expect(groups[0]).toHaveAttribute("data-intent", "explore");
 
-    // A folded row opens on its summary and shows what the call printed.
-    await userEvent.setup().click(within(tools[2]).getByTestId("trace-tool-arg"));
-    expect(tools[2]).toHaveAttribute("open");
-    expect(within(tools[2]).getByTestId("trace-tool-output")).toHaveTextContent("(Bash completed with no output)");
+    // The failed call shows open under its group's row, which counts it; the others fold into their group.
+    expect(within(groups[0]).getByTestId("trace-group-title")).toHaveTextContent("1 lỗi");
+    const failed = within(groups[0]).getByTestId("trace-tool");
+    expect(failed).toHaveAttribute("open");
+    expect(failed).toHaveAttribute("data-status", "failed");
+    expect(within(failed).getByTestId("trace-exit")).toHaveTextContent("mã thoát 1");
+    expect(within(failed).getByTestId("trace-tool-arg")).toHaveTextContent("cat missing-file.txt");
+    expect(within(failed).getByTestId("trace-tool-output")).toHaveTextContent("No such file or directory");
+    expect(within(failed).getByTestId("trace-duration")).toHaveTextContent("1,4 giây");
 
-    // The runtime's events no adapter reads are folded raw, the agent's words are shown, moves are said.
-    expect(within(log).getAllByTestId("trace-raw")[0]).toHaveTextContent("system hook_response, system init");
+    // A group opens on its row, a line per call; a line opens on what the call printed.
+    const run = groups.find((group) => group.getAttribute("data-intent") === "run" && group.textContent?.includes("selftest.txt"))!;
+    expect(within(run).queryAllByTestId("trace-tool")).toHaveLength(0);
+    const user = userEvent.setup();
+    await user.click(within(run).getByTestId("trace-group-toggle"));
+    const line = within(run).getAllByTestId("trace-tool").find((tool) => tool.textContent?.includes("selftest.txt"))!;
+    expect(line).not.toHaveAttribute("open");
+    await user.click(within(line).getByTestId("trace-tool-arg"));
+    expect(line).toHaveAttribute("open");
+    expect(within(line).getByTestId("trace-tool-output")).toHaveTextContent("(Bash completed with no output)");
+
+    // The runtime's events no adapter reads are left to the Raw log behind one line; the agent's words are shown, moves
+    // are said.
+    expect(within(log).queryByTestId("trace-raw")).toBeNull();
+    expect(within(log).getByTestId("trace-raw-left")).toHaveTextContent("Raw log");
     expect(within(log).getAllByTestId("trace-message").map((node) => node.textContent)).toEqual(["STARTED", expect.stringContaining("selftest.txt")]);
     expect(log).toHaveTextContent("running > verifying");
     expect(screen.queryByTestId("trace-typing")).toBeNull();

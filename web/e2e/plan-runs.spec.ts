@@ -9,6 +9,8 @@ import {
   dispatch,
   HARNESS_REPO,
   MODELS,
+  openPlanStepFolds,
+  openRunDetails,
   PLAN_RUN_BRANCH,
   PLAN_RUN_PLAN,
   PLAN_RUN_TITLES,
@@ -166,15 +168,25 @@ test("a writer runs a plan from its page, and the page follows the run until it 
   // The run's page says it is a plan run, with its plan's steps, repos and model.
   await open(page, runPath(project, run.id));
   await expect(main(page).getByRole("heading", { level: 1 })).toHaveText(`Run #${run.id}`);
-  await expect(main(page).getByTestId("run-kind")).toHaveText("Plan run");
-  await expect(main(page).getByTestId("run-state").first()).toHaveText("Waiting for decision");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-kind", "plan");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-state", "waiting");
+  await expect(main(page).getByTestId("run-plan-link")).toHaveText(PLAN_RUN_PLAN);
+  await expect(main(page).getByTestId("run-current-step")).toHaveText(`Step 2: ${PLAN_RUN_TITLES["2"]}`);
+  await expect(main(page).getByTestId("run-progress-text")).toHaveText("1/4 steps");
+  await expect(main(page).getByTestId("run-status-line")).toContainText("Waiting for an answer for");
+  await openRunDetails(page);
   await expect(main(page).getByTestId("run-model")).toHaveText(MODELS[0]);
   await expect(main(page).getByTestId("run-repos").locator("li")).toHaveText([`${REPO}on ${PLAN_RUN_BRANCH}`, `${HARNESS_REPO}on main`]);
+  // The step in progress first, then the folds of the steps done and to do.
+  await expect(main(page).getByTestId("run-plan-steps-done-toggle")).toHaveText("1 done");
+  await expect(main(page).getByTestId("run-plan-steps-todo-toggle")).toHaveText("2 to do");
   const steps = main(page).getByTestId("run-plan-step");
+  await expect(steps).toHaveCount(1);
+  await expect(steps.nth(0)).toHaveAttribute("data-status", "in_progress");
+  await expect(steps.nth(0)).toHaveAttribute("aria-current", "step");
+  await openPlanStepFolds(main(page));
   await expect(steps).toHaveCount(4);
-  await expect(steps.nth(0)).toHaveAttribute("data-status", "done");
-  await expect(steps.nth(1)).toHaveAttribute("data-status", "in_progress");
-  await expect(steps.nth(1)).toHaveAttribute("aria-current", "step");
+  expect(await steps.evaluateAll((rows) => rows.map((row) => row.getAttribute("data-status")))).toEqual(["in_progress", "done", "pending", "pending"]);
   await expect(main(page).getByTestId("run-plan-steps-count")).toHaveText("1 of 4 done (25%)");
   await expect(main(page).getByTestId("run-decision-link")).toHaveAttribute("href", `/inbox?decision=${decision}`);
   await expect(main(page).getByTestId("run-rerun")).toHaveCount(0);
@@ -235,6 +247,8 @@ test("plan run pages never scroll sideways at 375, 768 and 1024 px", async ({ pa
       [runPath(project, run.id), "run-plan-steps"],
     ] as const) {
       await open(page, path);
+      // The run's steps and details are behind Details.
+      if (path === runPath(project, run.id)) await openRunDetails(page, { all: true });
       await expect(main(page).getByTestId(ready).first()).toBeVisible();
       const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
       expect.soft(overflow, `${path} at ${width} px scrolls sideways`).toBeLessThanOrEqual(0);
