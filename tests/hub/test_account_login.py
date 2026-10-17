@@ -68,7 +68,7 @@ if style == "none":
     sys.exit(1)
 done = "\x1b[2K" + row("\x1b[32m✓ Long-lived authentication token created successfully!\x1b[39m") + "\r\n"
 done += row("Your OAuth token (valid for 1 year):")
-width = cols - 2 if style == "box" else len(token)
+width = cols - 1 if style == "box" else len(token)
 text = "".join(f"\x1b[2G\x1b[33m{{token[at : at + width]}}\x1b[39m\r\n" for at in range(0, len(token), width))
 cut = text.index("sk-a") + 4
 show(done + text[:cut])
@@ -183,12 +183,14 @@ def drawn(*rows: str, col: int = 2) -> str:
     return out
 
 
-@pytest.mark.parametrize("style", ["box", "margin", "redrawn", "one row"])
+@pytest.mark.parametrize("style", ["box to the margin", "box", "margin", "redrawn", "one row"])
 def test_the_token_is_read_off_the_screen_joined_where_it_wrapped(style):
     token = oauth_token()
     head = drawn("✓ Long-lived authentication token created successfully!", "", "Your OAuth token (valid for 1 year):")
     tail = "\r\r\n" + drawn("Store this token securely. You won't be able to see it again.")
-    if style == "box":  # the box wraps it at column 79, short of the margin
+    if style == "box to the margin":  # Claude Code 2.1.296: from column 1 up to the margin, the next part at column 1
+        body = "".join(f"\x1b[2G\x1b[38;5;220m{token[at : at + 79]}\x1b[39m\r\r\n" for at in range(0, len(token), 79))
+    elif style == "box":  # the box wraps it at column 79, short of the margin
         body = "".join(f"\x1b[2G\x1b[33m{token[at : at + 78]}\x1b[39m\r\r\n" for at in range(0, len(token), 78))
     elif style == "margin":  # one write the terminal wraps at the margin
         body = f"\x1b[2G\x1b[33m{token}\x1b[39m\r\r\n"
@@ -209,8 +211,9 @@ def test_the_token_is_read_off_the_screen_joined_where_it_wrapped(style):
         drawn("Sign-in was cancelled."),
         drawn("Your OAuth token (valid for 1 year):") + "\x1b[2Gsk-ant-oat01-abcdefghij…\r\r\n",
         drawn("Your OAuth token (valid for 1 year):") + "\x1b[2Gsk-ant-short\r\r\n",
+        drawn("Your OAuth token (valid for 1 year):") + f"\x1b[2Gsk-ant-oat01-{'a' * 66}\r\r\n\x1b[5G{'b' * 29}\r\r\n",
     ],
-    ids=["no token", "cut short", "not a token"],
+    ids=["no token", "cut short", "not a token", "next part out of place"],
 )
 def test_a_screen_without_a_whole_token_gives_none(screen_text):
     screen = Screen(80, 24)
