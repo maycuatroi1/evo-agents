@@ -9008,12 +9008,12 @@ export interface components {
             permissions: components["schemas"]["PluginPermission"][];
             /**
              * Granted
-             * @description what an admin of the project granted it; empty while not enabled
+             * @description what it may do in the project: what an admin of the project granted it that the installed version still asks for, in force while state is installed; empty while not enabled
              */
             granted: string[];
             /**
              * Pending
-             * @description asked for and not granted, after an upgrade: enable it again to grant them; what it may do is what is granted and asked for
+             * @description asked for and not granted, after an upgrade asked for more: enable it again to grant them
              */
             pending: string[];
             /**

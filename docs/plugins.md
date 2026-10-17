@@ -291,11 +291,13 @@ images and fonts from the bundle's `pages/` by relative URL, and may write them 
   the page around it, and its own requests carry no session. It cannot open popups or navigate the hub's page.
 - **The files.** `GET /v1/plugin-ui/<id>/<project>/<expires>.<mac>/<file>` serves the files of the installed version's
   `pages/` (HTML, JavaScript, CSS, JSON, text, SVG, PNG, JPEG, GIF, WebP, icons and web fonts; anything else is a 404).
-  The frame sends no cookie, so the path's ticket is the credential: an HMAC of the plugin, the project and the expiry
-  under the hub's session secret, handed out in `pages[].url` of `GET /v1/projects/{p}/plugins` to the project's
-  members, and the same for an hour so a page read twice frames one URL; it lasts 12 hours past that hour. Each file
-  is checked again as it is served (installed, turned on, enabled in that project), and anything else, a wrong or old
-  ticket included, is the same 404. Every file answers with
+  The frame sends no cookie, so the path's ticket is the credential: an HMAC of the plugin, the project, the SHA-256 of
+  the installed bundle and the expiry under the hub's session secret (with the purpose `plugin-ui`, as the hub's other
+  signed values), handed out in `pages[].url` of `GET /v1/projects/{p}/plugins` to the project's members, and the same
+  for an hour so a page read twice frames one URL; it lasts 12 hours past that hour, and only while that bundle is
+  installed: after an upgrade the tickets of the version before serve nothing. Each file is checked again as it is
+  served (installed, turned on, enabled in that project), and anything else, a wrong or old ticket included, is the
+  same 404. Every file answers with
   `default-src 'none'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:;
   font-src 'self'; media-src 'self'; connect-src 'none'; form-action 'none'; base-uri 'none'; object-src 'none';
   frame-src 'none'; worker-src 'none'; frame-ancestors 'self'; sandbox allow-scripts allow-forms`, `nosniff` and no
@@ -306,8 +308,14 @@ images and fonts from the bundle's `pages/` by relative URL, and may write them 
   (params 64 KiB at most as JSON); the answer is `{"bridge", "id", "result"}` or `{"bridge", "id", "error": {"code",
   "message", "status"}}`, posted to the frame's window only. The web answers only messages from the frame's own window
   with an opaque origin, 16 at a time, and posts `{"bridge", "event": "theme", "theme": "light" | "dark"}` when the
-  viewer's theme changes. A method opens only when the project granted the plugin the permission it needs; the others
-  are refused with `not_granted` and never reach the hub:
+  viewer's theme changes. A method opens only when the project grants the plugin the permission it needs now: before
+  such a call the web reads the plugin's grant again when its last read is over 5 seconds old, and refuses the call
+  with `not_granted`, never reaching the hub, once the plugin lacks it or is no longer on in the project. Every call
+  the bridge makes names the plugin in the header `X-Evo-Plugin`, and the hub checks it again as it arrives
+  (`evo_agents.hub.server.plugin_bridge`): such a call reaches only the reads below and the plugin's own routes, and a
+  read only while the plugin is installed, turned on, enabled in the project, with the permission in what the project
+  granted that the installed version still asks for; anything else is a 403, which the page gets as `hub_refused`. A
+  page left open after its plugin was disabled, removed, turned off or upgraded to ask for less gets nothing more:
 
   | Method | Needs | Params | Result |
   | --- | --- | --- | --- |

@@ -631,7 +631,8 @@ def test_core_plugin_page_is_native_and_framed_nowhere(notes):
     # the web carries a core plugin's page itself: the hub frames none, a valid ticket included
     secret = live.session_secret()
     client.app.state.config = replace(client.app.state.config, session_secret=secret)
-    framed = f"/v1/plugin-ui/notes/{PROJECT}/{ticket(secret, 'notes', PROJECT)}/index.html"
+    (version,) = client.get("/v1/plugins/notes", headers=notes.admin).json()["versions"]
+    framed = f"/v1/plugin-ui/notes/{PROJECT}/{ticket(secret, 'notes', PROJECT, version['sha256'])}/index.html"
     assert client.get(framed).status_code == 404
 
 

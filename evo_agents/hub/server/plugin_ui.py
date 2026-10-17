@@ -4,7 +4,8 @@
 
 ``path`` is a file of the installed version's bundle under ``pages/``; ``evo_agents.hub.server.plugin_pages`` makes the
 URL and its ticket, the credential of these public paths (``security.PUBLIC_PREFIXES``), since a frame with an opaque
-origin sends no cookie of the hub.
+origin sends no cookie of the hub. A ticket of the wrong shape or run out is refused before the database is asked; its
+HMAC is checked against the bundle installed now, so a ticket made before an upgrade frames nothing.
 
 Each file answers with a CSP whose ``sandbox`` keeps the opaque origin even when the URL is opened on its own,
 ``connect-src 'none'`` so the page fetches nothing itself, only the page's own files (``'self'``) and inline code,
@@ -26,7 +27,7 @@ from sqlalchemy import select
 from evo_agents.hub import tables
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import blob_store
-from evo_agents.hub.server.plugin_pages import PAGES_DIR, UI_PREFIX, ticket_ok
+from evo_agents.hub.server.plugin_pages import PAGES_DIR, UI_PREFIX, ticket_live, ticket_ok
 from evo_agents.hub.server.plugin_store import IMAGE, PLUGIN_NAME, fetch_bundle
 from evo_agents.plugins.bundle import read_bundle
 
@@ -138,12 +139,14 @@ async def ui_file(request: Request, plugin: PluginName, project: ProjectName, ti
     """A file of an isolated plugin's pages, for the sandboxed frame of the web; 404 for anything else."""
     secret = request.app.state.config.session_secret
     suffix = path[path.rfind(".") :].lower() if "." in path.rsplit("/", 1)[-1] else ""
-    if not ticket_ok(secret, plugin, project, ticket) or suffix not in UI_TYPES:
+    if not secret or not ticket_live(ticket) or suffix not in UI_TYPES:  # before the database is asked
         raise HTTPException(404, NO_PAGE)
     query = _enabled_version().where(tables.plugins.c.name == plugin, tables.projects.c.name == project)
     async with request.app.state.engine.begin() as conn:
         row = (await conn.execute(query)).first()
     if row is None or row.tier != "isolated" or row.signature_kind == IMAGE:
+        raise HTTPException(404, NO_PAGE)
+    if not ticket_ok(secret, plugin, project, row.sha256, ticket):  # made for the bundle installed now
         raise HTTPException(404, NO_PAGE)
     data = (await bundle_pages(request, row.sha256, row.size)).get(path)
     if data is None:

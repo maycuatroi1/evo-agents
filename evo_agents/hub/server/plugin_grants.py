@@ -10,7 +10,9 @@ project's row and its grants with it; the versions of the plugin's config stay, 
 
 What a plugin may do in a project (``grants``, ``project_grants``) is what was granted there that its installed version
 still asks for, and only while it is installed and turned on: a removed plugin, or one the hub turned off, keeps its
-rows and gets nothing.
+rows and gets nothing. ``granted`` of the API says the same (``plugin_calls.effective_grant``), so the web and its
+bridge go by what the hub checks: an upgrade that asks for less leaves the rest of the row in the table, not in the
+grant.
 
 Each change is audited in the project: plugin.project-enable then plugin.grant when a plugin is enabled, plugin.grant
 alone when a grant changes, plugin.project-disable; the target is ``<project>/plugin:<name>@<version>``, a grant's
@@ -67,10 +69,12 @@ class ProjectPlugin(BaseModel):
     disabled_reason: str | None
     enabled: bool
     permissions: list[PluginPermission] = Field(description="what the installed version asks for, granted or not")
-    granted: list[str] = Field(description="what an admin of the project granted it; empty while not enabled")
+    granted: list[str] = Field(
+        description="what it may do in the project: what an admin of the project granted it that the installed version "
+        "still asks for, in force while state is installed; empty while not enabled"
+    )
     pending: list[str] = Field(
-        description="asked for and not granted, after an upgrade: enable it again to grant them; what it may do is "
-        "what is granted and asked for"
+        description="asked for and not granted, after an upgrade asked for more: enable it again to grant them"
     )
     config_schema: dict | None = Field(description="the JSON Schema of its config, secret fields marked x-secret")
     pages: list[PluginPage] = Field(description="the pages it adds to the project's part of the web")
@@ -118,6 +122,7 @@ def _query(project_id: int):
             p.c.installed_version,
             p.c.disabled_reason,
             v.c.manifest,
+            v.c.sha256,
             pp.c.plugin_id.label("enabled_id"),
             pp.c.permissions,
             enabler.c.login.label("enabled_by"),
@@ -136,8 +141,8 @@ def _query(project_id: int):
 def view(row, project: str, secret: str | None) -> ProjectPlugin:
     """Plugin ``row`` of ``_query`` as project ``project`` sees it; ``secret`` signs the tickets of its pages."""
     asked = asked_for(row.manifest)
-    granted = list(row.permissions or [])
     enabled = row.enabled_id is not None
+    granted = list(effective_grant(row)) if enabled else []  # an upgrade that asks for less narrows it
     return ProjectPlugin(
         name=row.name,
         title=row.manifest.get("name") or row.name,
@@ -154,7 +159,7 @@ def view(row, project: str, secret: str | None) -> ProjectPlugin:
         granted=granted,
         pending=[name for name in asked if enabled and name not in granted],
         config_schema=row.manifest.get("config"),
-        pages=pages_of(row.manifest, row.name, project, enabled and not row.disabled_reason, secret),
+        pages=pages_of(row.manifest, row.name, project, row.sha256, enabled and not row.disabled_reason, secret),
         enabled_by=row.enabled_by,
         enabled_at=row.enabled_at,
         granted_by=row.granted_by,

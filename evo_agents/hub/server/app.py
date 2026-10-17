@@ -31,7 +31,7 @@ import time
 import uuid
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import Depends, FastAPI
 from starlette.datastructures import MutableHeaders
 
 from evo_agents import __version__
@@ -46,6 +46,7 @@ from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, 
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
+from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.plugins.signing import default_sigstore
@@ -180,6 +181,7 @@ def create_app(config: HubConfig) -> FastAPI:
         docs_url=None,
         redoc_url=None,
         lifespan=lifespan,
+        dependencies=[Depends(bridge_gate)],  # a plugin's page, through the web's bridge, gets what it was granted
     )
     app.state.config = config
     app.add_middleware(FeatureGate)  # added first, so it runs after Authenticate and sees the caller

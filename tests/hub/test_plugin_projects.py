@@ -218,7 +218,12 @@ def test_plugin_enable_again_grants_what_an_upgrade_asks_for_and_a_turned_off_pl
     enabled(client, hub["owner"])
     install(hub_db, "1.1.0", permissions=["runs:read", "plans:read"])
     plugin = client.get(path("sandbox"), headers=hub["other"]).json()
-    assert (plugin["version"], plugin["granted"], plugin["pending"]) == ("1.1.0", ASKED, ["plans:read"])
+    # what it may do is what was granted that 1.1.0 still asks for: chats:write stays in the table, not in the grant
+    assert (plugin["version"], plugin["granted"], plugin["pending"]) == ("1.1.0", ["runs:read"], ["plans:read"])
+    assert [(item["name"], item["granted"]) for item in plugin["permissions"]] == [
+        ("runs:read", True),
+        ("plans:read", False),
+    ]
     assert grants_of(hub_db) == {PROJECT: ("runs:read",)}  # granted and still asked for
 
     regranted = enabled(client, hub["owner"], ["runs:read", "plans:read"])
