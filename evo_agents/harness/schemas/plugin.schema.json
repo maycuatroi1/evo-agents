@@ -87,9 +87,38 @@
     },
     "contributes": {
       "$ref": "#/$defs/contributes"
+    },
+    "backend": {
+      "$ref": "#/$defs/backend"
     }
   },
   "$defs": {
+    "backend": {
+      "description": "The backend of an isolated plugin: a Python program that the hub's plugin host runs outside the hub's processes, in a virtual environment of its own, speaking the protocol plugin/1 on its stdin and stdout (docs/plugins.md). An isolated plugin serves its routes, MCP tools, jobs, events and channels from it.",
+      "type": "object",
+      "required": [
+        "entry"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "runtime": {
+          "description": "python, the only runtime of plugin API 1: the host runs entry with a Python of its own release.",
+          "enum": [
+            "python"
+          ]
+        },
+        "entry": {
+          "description": "The program, a path in the bundle such as backend/main.py.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}[.]py$"
+        },
+        "requirements": {
+          "description": "A pip requirements file in the bundle, such as backend/requirements.txt: the host installs it into the plugin's environment, wheels only.",
+          "type": "string",
+          "pattern": "^[A-Za-z0-9_][A-Za-z0-9_./-]{0,200}[.]txt$"
+        }
+      }
+    },
     "config": {
       "description": "A JSON Schema of the plugin's config, an object. A property with \"x-secret\": true holds a secret: the hub stores it sealed and never shows it again.",
       "type": "object",

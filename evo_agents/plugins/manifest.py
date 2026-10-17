@@ -4,8 +4,9 @@
 ``read_manifest`` takes the manifest as JSON bytes or as an object already parsed and gives a ``Manifest``, or raises
 ManifestError listing every problem: the schema's, then what a schema cannot say. Contributions to one extension
 point have distinct names; a contribution's ``python`` (``module:attribute`` of the code that implements it, run in
-the hub's or the worker's process) belongs to a core plugin only; the ``engines`` range must read
-(``evo_agents.plugins.compat``); the config's ``required`` names its own properties.
+the hub's or the worker's process) belongs to a core plugin only, and so does a ``backend`` to an isolated one; the
+paths a backend names stay inside the bundle; the ``engines`` range must read (``evo_agents.plugins.compat``); the
+config's ``required`` names its own properties.
 
 The schema file is read where the package installs it, next to the harness schemas, without importing
 ``evo_agents.harness``. Standard library only, besides ``evo_agents.schema``.
@@ -19,6 +20,7 @@ from functools import cache
 from pathlib import Path
 
 from evo_agents.plugins.compat import SpecError, parse_spec
+from evo_agents.plugins.protocol import BACKEND_POINTS
 from evo_agents.schema import errors, validate
 
 MANIFEST_FILE = "evo-plugin.json"
@@ -89,11 +91,16 @@ class Manifest:
     permissions: tuple[str, ...]
     config: dict | None
     contributes: dict[str, tuple[dict, ...]]
+    backend: dict | None
     data: dict = field(repr=False, compare=False)
 
     def contributions(self, point: str) -> tuple[dict, ...]:
         """What the plugin contributes to extension point ``point``, in the manifest's order."""
         return self.contributes.get(point, ())
+
+    def serves(self) -> tuple[str, ...]:
+        """The extension points an isolated plugin serves from its backend, in BACKEND_POINTS' order."""
+        return tuple(point for point in BACKEND_POINTS if self.contributions(point)) if self.tier == "isolated" else ()
 
     def python_refs(self, point: str) -> dict[str, str]:
         """name -> ``module:attribute`` of the contributions to ``point`` that name their Python."""
@@ -115,6 +122,7 @@ def _semantics(data: dict) -> list[str]:
                     f"contributes.{point}[{index}].python: only a core plugin runs Python in the hub's or the "
                     "worker's process; an isolated plugin implements it in its own process"
                 )
+    found.extend(_backend_problems(data, core))
     try:
         parse_spec(data["engines"]["evo-agents"])
     except SpecError as exc:
@@ -127,6 +135,23 @@ def _semantics(data: dict) -> list[str]:
     permissions = data.get("permissions") or []
     for permission in sorted({p for p in permissions if permissions.count(p) > 1}):
         found.append(f"permissions: {permission!r} is listed twice")
+    return found
+
+
+def _backend_problems(data: dict, core: bool) -> list[str]:
+    backend = data.get("backend")
+    if backend is None:
+        return []
+    if core:
+        return [
+            "backend: a core plugin runs Python in the hub's and the worker's processes; only an isolated one "
+            "has a backend"
+        ]
+    found = []
+    for key in ("entry", "requirements"):
+        path = backend.get(key)
+        if path is not None and any(part in ("", ".", "..") for part in path.split("/")):
+            found.append(f"backend.{key}: {path!r} must be a path inside the bundle, without empty, . or .. parts")
     return found
 
 
@@ -166,5 +191,6 @@ def read_manifest(source: bytes | str | dict) -> Manifest:
         permissions=tuple(data.get("permissions") or ()),
         config=data.get("config"),
         contributes=contributes,
+        backend=data.get("backend"),
         data=data,
     )

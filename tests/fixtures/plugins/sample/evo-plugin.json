@@ -1,0 +1,25 @@
+{
+  "id": "sample",
+  "version": "1.0.0",
+  "publisher": "acme",
+  "name": "Sample",
+  "description": "The sample isolated plugin of the evo-agents tests: one contribution to each point a backend serves.",
+  "engines": {"evo-agents": ">=0.16"},
+  "plugin_api": 1,
+  "permissions": ["runs:read"],
+  "config": {
+    "type": "object",
+    "properties": {
+      "greeting": {"type": "string", "title": "Greeting", "default": "hello", "maxLength": 40},
+      "api_key": {"type": "string", "title": "API key", "x-secret": true}
+    }
+  },
+  "backend": {"runtime": "python", "entry": "backend/main.py"},
+  "contributes": {
+    "routes": [{"name": "hello", "title": "Hello"}],
+    "mcp_tools": [{"name": "echo", "title": "Echo"}],
+    "jobs": [{"name": "tick"}],
+    "events": [{"name": "run-changed"}],
+    "channels": [{"name": "log"}]
+  }
+}

@@ -79,6 +79,8 @@ CHAT_TABLES = frozenset({"chats", "chat_members", "chat_messages", "chat_mention
 PLUGIN_TABLES = frozenset({"plugins", "plugin_versions"})
 # migration 0034: the plugins projects enabled, the versions of their config layers, and the plugins of a run
 PLUGIN_PROJECT_TABLES = frozenset({"project_plugins", "plugin_configs", "run_plugins"})
+# migration 0035: the tokens of plugin backends and what the plugin host says of each backend
+PLUGIN_BACKEND_TABLES = frozenset({"plugin_tokens", "plugin_backends"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
