@@ -219,6 +219,9 @@ type ControlRun = Pick<Run, "kind" | "state" | "dispatched_by" | "cancel_request
  */
 export function runControls(run: ControlRun, viewer: RunViewer | null): RunControls {
   if (!viewer || viewer.login !== run.dispatched_by) return NO_CONTROLS;
+  // A local run is the member's own Claude Code session: the hub only watches it and asks its decisions. No worker holds
+  // it, so none of the worker run's controls (cancel, take over, hand back, approve, rerun, message) applies.
+  if (run.kind === "local") return { ...NO_CONTROLS, owner: true };
   const state = run.state;
   const writer = viewer.role === "writer" || viewer.role === "admin";
   const terminal = isTerminalState(state);

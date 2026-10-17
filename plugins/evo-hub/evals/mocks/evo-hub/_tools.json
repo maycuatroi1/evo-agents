@@ -445,6 +445,78 @@
       }
     },
     {
+      "name": "ask_member",
+      "description": "Ask the person who runs this session a question that has 2 to 6 options, in a session of a project on the hub: it reaches them as a decision in the Inbox, Telegram, the web and the run's page, and they can answer on any of them or on this machine with `evo-agents hub decision answer`. The first answer wins and comes back here with the words they wrote. It waits about 20 seconds; with no answer it says so, and you call it again with decision_id to wait longer or go on, and a late answer reaches you with the person's next message. Outside a hub project's session it is refused: use AskUserQuestion.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 2000
+          },
+          "options": {
+            "type": "array",
+            "minItems": 2,
+            "maxItems": 6,
+            "items": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "type": "string",
+                  "pattern": "^[A-Za-z0-9_-]{1,32}$",
+                  "description": "default: 1, 2, .."
+                },
+                "label": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 200
+                },
+                "description": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 1000
+                }
+              },
+              "required": [
+                "label"
+              ],
+              "additionalProperties": false
+            }
+          },
+          "recommended": {
+            "type": "string",
+            "description": "the key or the label of the option you recommend"
+          },
+          "context": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 16000,
+            "description": "markdown"
+          },
+          "step": {
+            "type": [
+              "string",
+              "integer"
+            ],
+            "description": "the step's id, as in the plan"
+          },
+          "decision_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "wait for the answer of a decision you asked before; leave out question and options"
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "skill_list",
       "description": "The skills on the hub you can see, global and of your projects, each with its latest version.",
       "inputSchema": {

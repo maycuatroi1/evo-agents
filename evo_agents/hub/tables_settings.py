@@ -1,4 +1,4 @@
-"""The table of the hub's own settings (0036), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its
+"""The table of the hub's own settings (0037), which ``evo_agents.hub.tables`` adds to its metadata and exposes as its
 own attribute (``tables.hub_settings``): queries name it there.
 
 hub_settings holds every version of each layer of a setting a hub admin changes, never changed: its kind (branding,
@@ -25,7 +25,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import JSONB
 
-KINDS = ("branding", "features")  # hub_settings.kind (0036)
+KINDS = ("branding", "features")  # hub_settings.kind (0037)
 
 
 def settings_table(metadata: MetaData) -> Table:

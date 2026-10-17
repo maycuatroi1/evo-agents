@@ -17,10 +17,11 @@ checks, and says whether the change passes, without reading the Builder's transc
 skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A ``chat`` run is one turn
 of an agent someone mentioned in a group chat, which answers in the thread, may change code on a branch ``chat/<run>``
 and ends done with its turn; a reply in the thread starts the next turn as a new run in the same session
-(``evo_agents.hub.chat_runs``). A worker takes a kind of run
-only once its heartbeat says its daemon runs that kind (``run_kinds``): a daemon older than the review run reads every
-run as a step or plan run. Likewise it takes a plan run with a session per step only once its heartbeat lists
-SESSION_PER_STEP among its ``features``, since an older daemon would run it in one session.
+(``evo_agents.hub.chat_runs``). A ``local`` run is a Claude Code session on a member's own machine, which no worker runs
+and the hub only watches and asks decisions for (LOCAL_STATES; ``evo_agents.hub.server.local_runs``). A worker takes a
+kind of run only once its heartbeat says its daemon runs that kind (``run_kinds``): a daemon older than the review
+run reads every run as a step or plan run. Likewise it takes a plan run with a session per step only once its
+heartbeat lists SESSION_PER_STEP among its ``features``, since an older daemon would run it in one session.
 A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
@@ -110,8 +111,12 @@ MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
-# plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat
+# plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; a Claude
+# Code session on a member's own machine, which no worker runs (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker
+# runs are in it, and the kinds of run a daemon announces and a claim hands out)
 RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat")
+LOCAL_KIND = "local"
+SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
 CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
@@ -145,6 +150,18 @@ HELD_STATES = ("leased", "running", "interactive", "verifying", "waiting")  # a 
 ACTIVE_STATES = ("queued", *HELD_STATES, "review", "parked")  # at most one run of a step, or plan run of a plan
 TERMINAL_STATES = ("done", "failed", "lost", "cancelled")
 RUN_STATES = ACTIVE_STATES + TERMINAL_STATES
+# A ``local`` run (``evo_agents.hub.server.local_runs``) is a Claude Code session on a member's machine, which the
+# hub only watches: no worker holds it, so it has no lease, no slot and no attempts, and the moves above are not its
+# own. Its state is the session's: running (a turn is under way), waiting (the agent asked a decision and waits for
+# it), idle (the turn ended, the person has the word) or ended (the session is over, or went silent for
+# LOCAL_SILENT_SECONDS).
+# ``running`` and ``waiting`` are states of RUN_STATES; idle and ended are only a local run's, and ended is final
+# until the session registers again.
+LOCAL_STATES = ("running", "waiting", "idle", "ended")
+LOCAL_ONLY_STATES = ("idle", "ended")
+SHOWN_STATES = RUN_STATES + LOCAL_ONLY_STATES  # every state a run may be shown in, local runs included
+LOCAL_SILENT_SECONDS = 24 * 3600  # a local run that sent nothing for this long is ended; the session may register again
+MAX_LOCAL_FIELD = 500  # a local run's machine, cwd and account, one line each
 # The time a run spends in these counts toward its timeout; waiting for an answer, parked, queued and review do not.
 CLOCK_STATES = ("leased", "running", "interactive", "verifying")
 TAKEOVER_STATES = ("leased", "running")  # the owner may ask for a takeover while the agent is not driven by a person
@@ -192,6 +209,8 @@ DECISION_CATEGORY_TEXT = {
     "architecture": "an architectural choice the plan leaves open",
     "scope": "a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers",
 }
+LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that is none of DECISION_CATEGORIES
+LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it
@@ -652,11 +671,16 @@ def _plan_rules() -> list[str]:
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
+        "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
+        "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
+        "what the owner must do, with a way around the block among the options when there is one, and end your "
+        "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
         _PUSH_RULE,
-        f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because every step is done or because you cannot "
-        f'go on, write {RESULT_FILE} as a JSON object whose "summary" says which steps you finished, what you '
-        "decided yourself, and what is left and why. The worker runs no verify command at the end of a plan run: "
-        "`evo-agents worker step` ran each step's.",
+        f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
+        "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
+        f'owner\'s answer tells you to; then write {RESULT_FILE} as a JSON object whose "summary" says which steps '
+        "you finished, what you decided yourself, and what is left and why. The worker runs no verify command at "
+        "the end of a plan run: `evo-agents worker step` ran each step's.",
     ]
 
 

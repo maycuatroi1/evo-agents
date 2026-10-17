@@ -1,7 +1,7 @@
 """The tokens the hub gives the backend of an isolated plugin, and the payload the plugin host starts it with.
 
 A plugin token is ``evp_`` and 32 random bytes in base64url, like the hub's other tokens; Postgres keeps only its
-SHA-256 (``plugin_tokens``, schema 0035). The hub mints one when the plugin host is about to start a backend, and only
+SHA-256 (``plugin_tokens``, schema 0036). The hub mints one when the plugin host is about to start a backend, and only
 then (``issue_token``, through ``POST /internal/plugin-host/plugins/{name}/token``): minting revokes the plugin's
 older tokens, so a token lives as long as the backend it was made for, and a host that pulls the same plugins again
 gets the same payload and restarts nothing. Removing a plugin and the hub turning it off revoke its tokens at once

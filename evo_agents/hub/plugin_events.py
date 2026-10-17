@@ -49,8 +49,8 @@ from evo_agents.plugins.protocol import EVENT_KINDS
 log = logging.getLogger(__name__)
 
 NOTIFICATION = "notification"
-KINDS = (*EVENT_KINDS, NOTIFICATION)  # plugin_deliveries.kind (0037)
-STATES = ("pending", "delivered", "failed")  # plugin_deliveries.state (0037)
+KINDS = (*EVENT_KINDS, NOTIFICATION)  # plugin_deliveries.kind (0038)
+STATES = ("pending", "delivered", "failed")  # plugin_deliveries.state (0038)
 PERMISSION = {
     "run.state": "runs:read",
     "chat.message": "chats:read",

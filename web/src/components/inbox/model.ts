@@ -168,15 +168,16 @@ export function answerBody(option: string | null, text: string): { option?: stri
 
 /**
  * Whether the visitor may answer a decision, and if not why: only its run's owner answers, only while it is open, and
- * only while its run is queued or held by a worker (an agent may still read the answer) or parked (the answer resumes
- * it). The API decides again on every answer.
+ * only while its run is queued or held by a worker (an agent may still read the answer), parked (the answer resumes
+ * it) or, for a local session, idle (it takes the answer at its next turn). The API decides again on every answer.
  */
 export type AnswerAccess = "answer" | "notOwner" | "closed" | "runGone";
 
 export function answerAccess(decision: Pick<Decision, "state" | "owner" | "run_state">, login: string | null): AnswerAccess {
   if (decision.state !== "open") return "closed";
   if (login === null || login !== decision.owner) return "notOwner";
-  if (decision.run_state !== "parked" && !(MESSAGE_STATES as readonly string[]).includes(decision.run_state)) return "runGone";
+  // idle: a local session whose turn ended; it takes the answer at its next turn.
+  if (decision.run_state !== "parked" && decision.run_state !== "idle" && !(MESSAGE_STATES as readonly string[]).includes(decision.run_state)) return "runGone";
   return "answer";
 }
 

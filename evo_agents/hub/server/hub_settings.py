@@ -1,6 +1,6 @@
 """The hub's own settings that a hub admin changes (criterion a11 of plan hub-agent-plugins): the branding of the hub
 (``evo_agents.hub.branding``) and which features are on (``evo_agents.hub.features``), for the hub and for a project.
-Table hub_settings, schema 0036.
+Table hub_settings, schema 0037.
 
 Each setting is a layer of fields, versioned as a plugin's config is (``evo_agents.hub.server.plugin_configs``): a
 write names the fields it sets and those it unsets, the others stay as the current version has them, and each write

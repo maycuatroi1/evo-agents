@@ -64,11 +64,11 @@ log = logging.getLogger(__name__)
 STATES = ("available", "installed", "disabled")
 NOTICE = "plugin_disabled"  # evo_agents.hub.runs.NOTICE_KINDS
 ADMIN_PAGE = "/admin/plugins"
-MAX_REASON_CHARS = 2000  # plugins.disabled_reason (0033)
+MAX_REASON_CHARS = 2000  # plugins.disabled_reason (0034)
 PLUGIN_NAME = PLUGIN_ID  # a manifest's id
 VERSION = r"^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-[0-9A-Za-z.-]{1,40})?$"  # compat.PLUGIN_VERSION
 UNAVAILABLE = "the blob store did not answer; nothing changed, try again shortly"
-IMAGE = "image"  # plugin_versions.signature_kind of a core plugin that comes with the hub's image (0037)
+IMAGE = "image"  # plugin_versions.signature_kind of a core plugin that comes with the hub's image (0038)
 FROM_IMAGE = (
     "plugin {name} is a core plugin of the hub's image: it is installed, upgraded and removed with the image, not "
     "through the store; nothing changed"

@@ -41,6 +41,8 @@ const ZERO: StateCounts = {
   failed: 0,
   lost: 0,
   cancelled: 0,
+  idle: 0,
+  ended: 0,
 };
 
 function run(overrides: Partial<Run> = {}): Run {
@@ -122,25 +124,30 @@ const params = (text: string) => new URLSearchParams(text);
 
 describe("filters", () => {
   it("reads the facet, search and page from the URL, ignoring what the API would refuse", () => {
-    expect(readFilters(params("state=active&q=%20queue%20&page=3"))).toEqual({ facet: "active", q: "queue", page: 3 });
-    expect(readFilters(params("state=running&page=0"))).toEqual({ facet: null, q: "", page: 1 });
+    expect(readFilters(params("state=active&q=%20queue%20&page=3"))).toEqual({ facet: "active", kind: null, account: "", q: "queue", page: 3 });
+    expect(readFilters(params("kind=local&account=%20Ana@Example.com%20&kind=x"))).toMatchObject({ kind: "local", account: "Ana@Example.com" });
+    expect(readFilters(params("kind=plan")).kind).toBeNull();
+    expect(readFilters(params("state=running&page=0"))).toEqual({ facet: null, kind: null, account: "", q: "", page: 1 });
     expect(readFilters(params(`q=${"x".repeat(300)}&page=1.5`)).q).toHaveLength(200);
     expect(readFilters(params("page=999999")).page).toBe(1);
   });
 
   it("writes only what is set, and pages from 2 on", () => {
-    expect(filtersSearch({ facet: null, q: "", page: 1 })).toBe("");
-    expect(filtersSearch({ facet: "ended", q: "lab ws", page: 2 })).toBe("?state=ended&q=lab+ws&page=2");
+    expect(filtersSearch({ facet: null, kind: null, account: "", q: "", page: 1 })).toBe("");
+    expect(filtersSearch({ facet: "ended", kind: null, account: "", q: "lab ws", page: 2 })).toBe("?state=ended&q=lab+ws&page=2");
+    expect(filtersSearch({ facet: null, kind: "local", account: "a@b.c", q: "", page: 1 })).toBe("?kind=local&account=a%40b.c");
   });
 
   it("asks the API for the states of the facet, one page at a time", () => {
-    expect(listQuery({ facet: "ended", q: "x", page: 3 })).toEqual({
-      states: ["failed", "lost", "cancelled"],
+    expect(listQuery({ facet: "ended", kind: "local", account: "a@b.c", q: "x", page: 3 })).toEqual({
+      states: ["failed", "lost", "cancelled", "ended"],
+      kind: "local",
+      account: "a@b.c",
       q: "x",
       limit: 50,
       offset: 100,
     });
-    expect(listQuery({ facet: null, q: "", page: 1 }).states).toEqual([]);
+    expect(listQuery({ facet: null, kind: null, account: "", q: "", page: 1 }).states).toEqual([]);
   });
 
   it("counts a facet from the counts of its states", () => {

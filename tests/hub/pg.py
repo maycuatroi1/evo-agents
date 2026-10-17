@@ -75,15 +75,15 @@ ACCOUNT_TABLES = frozenset({"accounts", "account_policies", "run_accounts"})
 PROFILE_TABLES = frozenset({"agent_profiles", "agent_profile_versions"})
 # migration 0031: group chats, their members, messages, mentions, reactions and events
 CHAT_TABLES = frozenset({"chats", "chat_members", "chat_messages", "chat_mentions", "chat_reactions", "chat_events"})
-# migration 0033: the store of plugins and their versions
+# migration 0034: the store of plugins and their versions
 PLUGIN_TABLES = frozenset({"plugins", "plugin_versions"})
-# migration 0034: the plugins projects enabled, the versions of their config layers, and the plugins of a run
+# migration 0035: the plugins projects enabled, the versions of their config layers, and the plugins of a run
 PLUGIN_PROJECT_TABLES = frozenset({"project_plugins", "plugin_configs", "run_plugins"})
-# migration 0035: the tokens of plugin backends and what the plugin host says of each backend
+# migration 0036: the tokens of plugin backends and what the plugin host says of each backend
 PLUGIN_BACKEND_TABLES = frozenset({"plugin_tokens", "plugin_backends"})
-# migration 0036: the versions of the hub's own settings, its branding and which features are on
+# migration 0037: the versions of the hub's own settings, its branding and which features are on
 SETTINGS_TABLES = frozenset({"hub_settings"})
-# migration 0037: the outbox of the events and notifications the hub delivers to plugins
+# migration 0038: the outbox of the events and notifications the hub delivers to plugins
 PLUGIN_POINT_TABLES = frozenset({"plugin_deliveries"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

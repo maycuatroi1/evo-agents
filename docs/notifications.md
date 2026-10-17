@@ -85,6 +85,30 @@ decision that is no longer open gets 409. The answer goes into the run's inbox a
 id, and the heartbeat hands it to the agent like any message of the owner's (`docs/workers.md`, The inbox). The audit
 row `decision.answer` names the decision and the option, never the text.
 
+### A decision of a local run
+
+A local run (`docs/workers.md`, Local runs) asks decisions of category `question`, with options and no plan needed. Only
+the member who owns the session sees, is notified of and answers it (404 for anyone else). It has no deadline to park
+at (`parks_at` is empty); it is `expired` when the session ends silent and `cancelled` when the session ends. The first
+answer wins, from the web, Telegram, `hub decision answer` or the machine's report; a later one gets 409.
+
+The agent of a local session asks in two ways, and both end in the same decision:
+
+- The `ask_member` tool of the hub's MCP (`question`, 2 to 6 `options` with a `key` (default 1, 2, ..), `label` and
+  `description`, `recommended` as a key or a label, `context`, `step`): the run turns `waiting`, the member is told on
+  the web, Telegram and the Inbox, and the call holds up to 20 s (`ASK_WAIT_SECONDS`, inside the proxy's 120 s) for the
+  first answer, which comes back with the words the member wrote. With none it says so and the agent calls it again
+  with `decision_id` to wait longer, or goes on. A session that is not a hub project's, or has `EVO_HUB_LOCAL_SYNC=0`,
+  gets a refusal and uses AskUserQuestion as before.
+- AskUserQuestion: the `local-ask` PreToolUse hook puts each question of the dialog (4 at most, options 2 to 6, keyed
+  1, 2, ..) to the hub and returns at once, so the dialog opens without delay. An answer given in the dialog is reported
+  by PostToolUse (`.../decisions/{id}/answered`) and closes the decision everywhere; a hub answer that came first
+  closes the dialog's report with a 409, which the machine leaves alone. This route cannot fill a dialog already open
+  (a non-goal: a Desktop dialog is not woken), so the hub's answer reaches the session as below.
+
+An answer that comes after the session stopped waiting stays in the run's inbox; the UserPromptSubmit hook gives it to
+the agent as `additionalContext` of the person's next message and acknowledges it with the next one.
+
 ## Notices
 
 A notice needs no answer (`NOTICE_KINDS`):

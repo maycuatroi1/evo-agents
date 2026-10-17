@@ -2004,6 +2004,156 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/local-runs/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Register
+         * @description Register the Claude Code session ``session_id`` of the caller's machine, or say again that it is there: the
+         *     run of that session, new (201) or the caller's own (200), whose machine, directory, account and title are the ones
+         *     given and which runs again when it had ended.
+         */
+        put: operations["register_v1_projects__project__local_runs__session_id__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/state": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report State
+         * @description Report the state of the session, the plan and step it works on, and its title; every call is a sign of life.
+         *     An ended run takes nothing but the PUT that registers the session again (409).
+         */
+        post: operations["report_state_v1_projects__project__local_runs__run_id__state_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/decisions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask
+         * @description Ask the member a decision and notify them: the run waits while one is open. 409 for a run that ended and past
+         *     the open decisions a run may hold.
+         */
+        post: operations["ask_v1_projects__project__local_runs__run_id__decisions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/decisions/{decision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Take Decision
+         * @description The decision as it is now: once it is answered, the answer is in it (``answer_option``, ``answer_text``), and
+         *     the machine has taken it. With ``wait_s`` the request waits for the answer (long-poll) and holds no connection
+         *     of the database meanwhile; ask again when it comes back open.
+         */
+        get: operations["take_decision_v1_projects__project__local_runs__run_id__decisions__decision_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/decisions/{decision_id}/answered": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answered On The Spot
+         * @description Report that the person answered decision ``decision_id`` in the session itself: an answer like any other, so
+         *     the first of the web, Telegram, ``hub decision answer`` and this wins, and a later one gets 409 with who got
+         *     there first. Nothing goes to the session's inbox: it has the answer.
+         */
+        post: operations["answered_on_the_spot_v1_projects__project__local_runs__run_id__decisions__decision_id__answered_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/inbox": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Take Inbox
+         * @description Mark the messages up to ``ack`` delivered, and hand out the ones that still wait: the answers to the run's
+         *     decisions, as a worker's inbox hands them to its agent.
+         */
+        post: operations["take_inbox_v1_projects__project__local_runs__run_id__inbox_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/local-runs/{run_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Post Events
+         * @description Store the events of the batch that follow the ones stored, and say up to where the machine's spool may go: as
+         *     the worker's POST /v1/worker/runs/{id}/events does.
+         */
+        post: operations["post_events_v1_projects__project__local_runs__run_id__events_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/notifications": {
         parameters: {
             query?: never;
@@ -5982,7 +6132,7 @@ export interface components {
              * Run State
              * @enum {string}
              */
-            run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
             /**
              * Plan Id
              * @description the run's plan when its agent asked; null for an author run that had put no plan yet
@@ -5997,7 +6147,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
             /** Question */
             question: string;
             /**
@@ -7264,6 +7414,84 @@ export interface components {
              */
             status: "ok";
         };
+        /** LocalDecisionAsk */
+        LocalDecisionAsk: {
+            /**
+             * Category
+             * @description a question of the person fits 'question'
+             * @default question
+             * @enum {string}
+             */
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
+            /** Question */
+            question: string;
+            /**
+             * Context
+             * @description markdown, at most 16 KiB of UTF-8
+             */
+            context?: string | null;
+            /** Options */
+            options: components["schemas"]["OptionIn"][];
+            /**
+             * Recommended
+             * @description the key of the option the agent recommends
+             */
+            recommended?: string | null;
+            /**
+             * Step Key
+             * @description the step of the plan it is about
+             */
+            step_key?: string | null;
+        };
+        /** LocalRegister */
+        LocalRegister: {
+            /**
+             * Machine
+             * @description the machine's name
+             */
+            machine: string;
+            /**
+             * Cwd
+             * @description the session's working directory
+             */
+            cwd: string;
+            /**
+             * Claude Email
+             * @description the Claude account the session runs as; 'unknown' when the machine could not read it
+             * @default unknown
+             */
+            claude_email: string;
+            /**
+             * Claude Profile
+             * @description the claude-profiles profile, when known
+             */
+            claude_profile?: string | null;
+            /**
+             * Title
+             * @description what the session is about; the machine and directory when left out
+             */
+            title?: string | null;
+        };
+        /** LocalState */
+        LocalState: {
+            /**
+             * State
+             * @description running: a turn is under way; waiting: the agent waits for a decision; idle: the turn ended and the person has the word; ended: the session is over
+             */
+            state?: ("running" | "waiting" | "idle" | "ended") | null;
+            /**
+             * Plan Id
+             * @description the plan the session works on, as the hub holds it
+             */
+            plan_id?: string | null;
+            /**
+             * Step Key
+             * @description the step of that plan it works on
+             */
+            step_key?: string | null;
+            /** Title */
+            title?: string | null;
+        };
         /** MemberCounts */
         MemberCounts: {
             /**
@@ -7841,7 +8069,7 @@ export interface components {
             done_by_day: components["schemas"]["DayCount"][];
             /**
              * Active Runs
-             * @description at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued: those whose agent works first, then waiting, parked and queued, the newest first within each
+             * @description at most 20 runs in leased, running, interactive, verifying, waiting, parked, queued, idle: those whose agent works first, then waiting, parked and queued, the newest first within each
              */
             active_runs: components["schemas"]["OverviewRun"][];
             /**
@@ -7961,10 +8189,10 @@ export interface components {
              * Run State
              * @enum {string}
              */
-            run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            run_state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
             /**
              * Plan Id
-             * @description the run's plan when its agent asked; null for an author run that had put no plan yet
+             * @description the run's plan when its agent asked; null for an author run that had put no plan yet, and a local run on none
              */
             plan_id: string | null;
             /** Plan Title */
@@ -7978,7 +8206,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
             /** Question */
             question: string;
             /**
@@ -8042,7 +8270,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -8066,7 +8294,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
             /**
              * Dispatched By
              * @description the login of the member who dispatched it, its owner
@@ -8119,6 +8347,31 @@ export interface components {
              * @description why the run failed, was lost or ended
              */
             error: string | null;
+            /**
+             * Machine
+             * @description the machine of a local run's session; null for any other run
+             */
+            machine?: string | null;
+            /**
+             * Cwd
+             * @description the session's working directory; null for any other run
+             */
+            cwd?: string | null;
+            /**
+             * Claude Email
+             * @description the Claude account of a local run; null for any other run
+             */
+            claude_email?: string | null;
+            /**
+             * Claude Profile
+             * @description the claude-profiles profile of a local run, when known
+             */
+            claude_profile?: string | null;
+            /**
+             * Last Activity At
+             * @description the last sign of life of a local run's session
+             */
+            last_activity_at?: string | null;
         };
         /** Page */
         Page: {
@@ -8404,6 +8657,11 @@ export interface components {
              * @description the revision the update was made against
              */
             if_revision: number;
+            /**
+             * Run Id
+             * @description the caller's own local run (kind local) whose session writes the progress: the revision records it (Revision.run_id) and the run takes the plan and the step; 404 for any other run
+             */
+            run_id?: number | null;
         };
         /** PlanPut */
         PlanPut: {
@@ -8431,6 +8689,11 @@ export interface components {
             label?: {
                 [key: string]: unknown;
             } | null;
+            /**
+             * Run Id
+             * @description the caller's own local run (kind local) whose session writes the plan: the revision records it (Revision.run_id) and the run takes the plan; 404 for any other run
+             */
+            run_id?: number | null;
         };
         /** PlanRunDispatch */
         PlanRunDispatch: {
@@ -9765,7 +10028,7 @@ export interface components {
             created_at: string;
             /**
              * Run Id
-             * @description the author run that wrote the revision, as its dispatcher (actor); null for any other write
+             * @description the author run that wrote the revision, as its dispatcher (actor), or the local run whose session wrote it; null for any other write
              */
             run_id?: number | null;
         };
@@ -9867,10 +10130,10 @@ export interface components {
             id: number;
             /**
              * Kind
-             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan
+             * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "local";
             /** Project */
             project: string;
             /**
@@ -9964,9 +10227,10 @@ export interface components {
             resume_of_run_id: number | null;
             /**
              * State
+             * @description idle and ended are a local run's alone: the turn ended and the person has the word; the session is over, or went silent for a day
              * @enum {string}
              */
-            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
             /** Lease Expires At */
             lease_expires_at: string | null;
             /** Session Id */
@@ -10102,6 +10366,31 @@ export interface components {
              * @description a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most 3); null for any other run
              */
             hop?: number | null;
+            /**
+             * Machine
+             * @description a local run's machine, as its hub login names it; null otherwise
+             */
+            machine?: string | null;
+            /**
+             * Cwd
+             * @description the directory a local run's session works in; null otherwise
+             */
+            cwd?: string | null;
+            /**
+             * Claude Email
+             * @description the Claude account that ran a local run's session, or unknown; null for any other run
+             */
+            claude_email?: string | null;
+            /**
+             * Claude Profile
+             * @description the claude-profiles profile of a local run, when it was read
+             */
+            claude_profile?: string | null;
+            /**
+             * Last Activity At
+             * @description the last time a local run's session said anything; null for any other run
+             */
+            last_activity_at?: string | null;
         };
         /** RunAccount */
         RunAccount: {
@@ -10440,7 +10729,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled";
+            state: "queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended";
             /**
              * Last Seq
              * @description the seq of the run's latest event
@@ -11563,6 +11852,16 @@ export interface components {
              * @default 0
              */
             cancelled: number;
+            /**
+             * Idle
+             * @default 0
+             */
+            idle: number;
+            /**
+             * Ended
+             * @default 0
+             */
+            ended: number;
         };
         /** StateReport */
         StateReport: {
@@ -17159,14 +17458,18 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description any of these states; repeat it */
-                state?: ("queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled")[];
+                state?: ("queued" | "leased" | "running" | "interactive" | "verifying" | "waiting" | "review" | "parked" | "done" | "failed" | "lost" | "cancelled" | "idle" | "ended")[];
                 plan_id?: string | null;
                 /** @description a step key */
                 step?: string | null;
                 worker_id?: number | null;
                 /** @description a login */
                 dispatched_by?: string | null;
-                /** @description text in the title, step, plan, repo, branch, worker, login or error, or a run number */
+                /** @description only runs of this kind */
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "local") | null;
+                /** @description only local runs of this Claude account */
+                account?: string | null;
+                /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
                 q?: string | null;
                 limit?: number;
                 offset?: number;
@@ -19463,6 +19766,530 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    register_v1_projects__project__local_runs__session_id__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the Claude session id */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalRegister"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description the session was not registered yet */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    report_state_v1_projects__project__local_runs__run_id__state_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalState"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Run"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    ask_v1_projects__project__local_runs__run_id__decisions_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LocalDecisionAsk"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    take_decision_v1_projects__project__local_runs__run_id__decisions__decision_id__get: {
+        parameters: {
+            query?: {
+                /** @description hold the request up to this many seconds while the decision is open; 0 answers at once */
+                wait_s?: number;
+            };
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+                decision_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    answered_on_the_spot_v1_projects__project__local_runs__run_id__decisions__decision_id__answered_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+                decision_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnswerIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Decision"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    take_inbox_v1_projects__project__local_runs__run_id__inbox_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["InboxAck"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Inbox"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    post_events_v1_projects__project__local_runs__run_id__events_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["EventBatch"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventsAck"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };

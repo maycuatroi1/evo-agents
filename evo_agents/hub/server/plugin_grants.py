@@ -1,5 +1,5 @@
 """Plugins in projects: which installed plugin a project enabled, and which permissions of its manifest an admin of
-the project granted it (table project_plugins, schema 0034).
+the project granted it (table project_plugins, schema 0035).
 
 An admin of the project reads, before granting, what the installed version of a plugin asks for, each permission with
 what it lets the plugin do (``evo_agents.plugins.manifest.PERMISSION_TEXT``), and enables the plugin by granting
