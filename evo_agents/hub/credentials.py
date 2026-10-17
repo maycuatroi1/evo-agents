@@ -43,6 +43,9 @@ DENIED_ENV_PREFIXES = ("EVO_", "GIT_", "LD_", "DYLD_", "PYTHON")
 GITHUB_HOST = "github.com"
 GITHUB_PERMISSIONS = {"contents": "write", "metadata": "read"}  # all an installation token of a run may do
 GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the token of a review run may do: read
+# Asked as well for a run that writes, when the workers' App holds it on the installation: GitHub refuses a push that
+# creates or updates a file of .github/workflows without it, whatever the pusher may do. Never for the Curator's App.
+GITHUB_WORKFLOW_PERMISSIONS = {"workflows": "write"}
 READ_ONLY_KINDS = ("review", "judge", "author")  # the kinds of run whose GitHub token reads only (runs.RUN_KINDS)
 
 

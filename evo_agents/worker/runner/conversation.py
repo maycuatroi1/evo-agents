@@ -44,7 +44,8 @@ if TYPE_CHECKING:
 ANSWER_PROMPT = (
     "The owner of this plan run wrote while your turn was over; a message that answers a decision names it. Go on "
     "with the plan in this session from where you stopped: read the plan as the hub holds it now with "
-    "`evo-agents worker plan` first."
+    "`evo-agents worker plan` first. When what the answer let you try still fails, ask again with what you found "
+    "rather than ending the run: a turn that ends with no decision open ends it."
 )
 # And when a run parked while it waited for its owner goes on, as a new run, in the same session and worktrees.
 RESUME_PROMPT = (
