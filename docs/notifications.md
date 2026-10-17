@@ -212,9 +212,11 @@ they hold a grant on.
 
 ## Telegram
 
-`evo_agents/hub/telegram.py` holds the model (link codes, button data, what may reach a chat, the messages) and
-`evo_agents/hub/server/telegram.py` the Bot API client, the channel's class, the webhook and the routes. The hub calls
-the Bot API with httpx; no bot library.
+Telegram is a core plugin that evo-ak ships, `telegram` (`docs/plugins.md`, section Core plugins): the hub finds it
+in the entry point group `evo_agents.plugins` and reaches it through its manifest only. `evo_agents/hub/telegram.py`
+holds the model (link codes, button data, what may reach a chat, the messages), which the group chats share, and
+`evo_agents/core_plugins/telegram/server.py` the Bot API client, the channel's class, the webhook and the routes, at
+the paths they had before Telegram was a plugin. The hub calls the Bot API with httpx; no bot library.
 
 ### One bot of the hub
 
