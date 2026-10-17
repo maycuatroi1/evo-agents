@@ -328,7 +328,7 @@ def notices(db) -> list[tuple]:
 
 @needs_pg
 def test_plugin_compat_at_start_turns_off_what_no_longer_runs_and_tells_the_hub_admins(hub_db, tmp_path, s3):
-    with started(hub_db, tmp_path, s3) as hub:
+    with started(hub_db, tmp_path, s3, hub_version="0.16.1") as hub:  # a hub the plugin runs on
         old = bundle_of(tmp_path / "old", engines={"evo-agents": ">=0.16, <0.17"})
         assert publish(hub, old, ed25519_signature(old.data)).status_code == 200
         assert act(hub, "sandbox", "install").status_code == 200
