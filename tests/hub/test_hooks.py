@@ -383,8 +383,12 @@ def plugin_hooks() -> dict:
 
 def test_hooks_json_runs_session_start_and_stop_with_more_time_than_their_budget():
     found = plugin_hooks()
-    # PostToolUse: tests/hub/test_spool.py; the others: tests/hub/test_local_sync.py
-    assert sorted(found) == ["PostToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]
+    # PostToolUse: tests/hub/test_spool.py; the others: tests/hub/test_local_sync.py and test_local_ask.py
+    assert sorted(found) == ["PostToolUse", "PreToolUse", "SessionEnd", "SessionStart", "Stop", "UserPromptSubmit"]
+    (ask,) = found["PreToolUse"]
+    assert ask["matcher"] == "AskUserQuestion"
+    assert ask["hooks"][0]["command"].endswith(" evo-agents hub hook local-ask || true")
+    assert ask["hooks"][0]["timeout"] >= local_sync.BUDGET["ask"] + 5
     (start,) = found["SessionStart"]
     assert start["matcher"] == "startup|resume|clear"
     (stop,) = found["Stop"]

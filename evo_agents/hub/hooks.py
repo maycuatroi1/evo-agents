@@ -607,6 +607,12 @@ def cmd_hook_local_tool(args) -> int:
     return local_sync.cmd_hook_local_tool(args)
 
 
+def cmd_hook_local_ask(args) -> int:
+    from evo_agents.hub import local_sync
+
+    return local_sync.cmd_hook_local_ask(args)
+
+
 def cmd_hook_session_end(args) -> int:
     from evo_agents.hub import local_sync
 
@@ -641,3 +647,8 @@ def register_hooks(hsub) -> None:
         help="put the agent's words and the tool that ran, redacted, in the log of the session's local run",
     ).set_defaults(func=cmd_hook_local_tool)
     ksub.add_parser("session-end", help="report the session's local run ended").set_defaults(func=cmd_hook_session_end)
+    ksub.add_parser(
+        "local-ask",
+        help="put the questions of an AskUserQuestion dialog about to open to the hub as decisions of the session's "
+        "local run, so the member can answer them there too; it does not wait",
+    ).set_defaults(func=cmd_hook_local_ask)

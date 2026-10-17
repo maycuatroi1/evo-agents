@@ -39,7 +39,7 @@
           {
             "type": "command",
             "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.16.1 evo-agents hub hook local-tool || true",
-            "timeout": 12
+            "timeout": 15
           }
         ]
       }
@@ -62,6 +62,18 @@
             "type": "command",
             "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.16.1 evo-agents hub hook session-end || true",
             "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PreToolUse": [
+      {
+        "matcher": "AskUserQuestion",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "command -v uvx >/dev/null 2>&1 && uvx --offline --from evo-ak==0.16.1 evo-agents hub hook local-ask || true",
+            "timeout": 15
           }
         ]
       }

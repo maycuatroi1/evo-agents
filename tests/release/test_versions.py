@@ -27,7 +27,7 @@ SINK = "claude-code@anthropic"
 # Per plugin: the MCP server's command after `evo-agents`, the hook command after `evo-agents`, and how many hooks.
 EXPECTED = {
     "evo-kg": (["kg", "serve", "--sink", SINK], "kg hook ", 5),
-    "evo-hub": (["hub", "mcp", "--sink", SINK], "hub hook ", 6),
+    "evo-hub": (["hub", "mcp", "--sink", SINK], "hub hook ", 7),
 }
 NAMES = sorted(EXPECTED)
 

@@ -10,7 +10,15 @@ current:
   the log of the run, redacted here as the digest is (``evo_agents.hub.redact``, this machine's hub token among the
   values replaced);
 - ``stop`` (the Stop hook of ``evo_agents.hub.hooks`` calls ``on_stop``): the last words, then ``idle``;
-- ``session-end`` (SessionEnd): ``ended``.
+- ``session-end`` (SessionEnd): ``ended``;
+- ``local-ask`` (PreToolUse of AskUserQuestion): each question of the dialog is put to the hub as a decision of the
+  run (category ``question``, its options keyed 1, 2, ..), so the member can answer it on the web, in Telegram or
+  with ``hub decision answer`` too; the hook does not wait, so the dialog opens at once. When the person answers in
+  the dialog, ``local-tool`` (PostToolUse of AskUserQuestion) reports it (``.../decisions/<id>/answered``): the first
+  answer wins on the hub, and a later one gets 409, which is left alone;
+- an answer that came from the hub after the session stopped waiting (or while the dialog was open) is in the run's
+  inbox, and ``user-prompt`` hands it to the agent as ``additionalContext`` of the person's next message and
+  acknowledges it with the next one. The ``ask_member`` MCP tool of the hub holds for an answer itself.
 
 Every hook registers a session it does not know yet, so a Claude that fires only some of these events still shows its
 sessions; a hub that never sees SessionEnd ends a run silent for 24 hours. The plan and step of the run are the hub's
@@ -88,9 +96,24 @@ LIMITS = {
     "tool": (1.5, 3.0),
     "stop": (2.5, 6.0),
     "session-end": (2.0, 3.0),
+    "ask": (3.0, 8.0),
+    "tool-ask": (3.0, 6.0),  # PostToolUse of AskUserQuestion: it reports the answers of the dialog
 }
-BUDGET = {"user-prompt": 12.0, "tool": 6.0, "session-end": 4.0}  # of the commands that are a hook of their own
-STATES = {"user-prompt": "running", "tool": "running", "stop": "idle", "session-end": "ended"}
+BUDGET = {
+    "user-prompt": 12.0,
+    "tool": 8.0,
+    "session-end": 4.0,
+    "ask": 10.0,
+}  # of the commands that are a hook of their own
+STATES = {"user-prompt": "running", "tool": "running", "stop": "idle", "session-end": "ended", "ask": "running"}
+ASK_TOOL = "AskUserQuestion"
+MAX_QUESTIONS = 4  # questions of one dialog put to the hub
+MAX_ASKS = 5  # dialogs whose answers are still awaited, kept in the session's file
+NOTE_CHARS = 4000  # what the inbox hands the agent at one message of the person
+QUESTION_CHARS = 2000
+LABEL_CHARS = 200
+DESCRIPTION_CHARS = 1000
+OPTIONS = (2, 6)
 
 
 def enabled(env: Mapping[str, str] | None = None) -> bool:
@@ -372,7 +395,17 @@ class Late(Exception):
 class Delivery:
     """One hook's talk with the hub for one session."""
 
-    def __init__(self, hub: Hub, login: str, rec: dict, sid: str, where: Path, hook: str, state: hooks.HookState):
+    def __init__(
+        self,
+        hub: Hub,
+        login: str,
+        rec: dict,
+        sid: str,
+        where: Path,
+        hook: str,
+        state: hooks.HookState,
+        payload: dict | None = None,
+    ):
         self.hub, self.login, self.rec, self.sid, self.where, self.hook, self.state = (
             hub,
             login,
@@ -382,7 +415,9 @@ class Delivery:
             hook,
             state,
         )
-        self.deadline = time.monotonic() + LIMITS[hook][1]
+        self.payload = payload or {}
+        self.notes: list[str] = []
+        self.deadline = time.monotonic() + LIMITS[limit_key(hook, self.payload)][1]
 
     def call(self, method: str, path: str, body: dict | None = None):
         if time.monotonic() > self.deadline:
@@ -446,6 +481,103 @@ class Delivery:
             rec["events"] = [e for e in events if e["seq"] > ack]
             rec["flushed"] = _now()
 
+    def ask(self) -> None:
+        """Put the questions of the AskUserQuestion dialog about to open to the hub, as decisions of the run."""
+        from evo_agents.hub.redact import redact
+
+        rec = self.rec
+        data = self.payload.get("tool_input")
+        questions = data.get("questions") if isinstance(data, dict) else None
+        if not isinstance(questions, list):
+            return
+        entries = []
+        for q in questions[:MAX_QUESTIONS]:
+            options = q.get("options") if isinstance(q, dict) else None
+            if not isinstance(q.get("question"), str) or not isinstance(options, list):
+                continue
+            keys, sent = {}, []
+            for n, option in enumerate(options[: OPTIONS[1]], start=1):
+                label = " ".join(str(option.get("label") if isinstance(option, dict) else option).split())
+                if not label:
+                    continue
+                shown = {"key": str(n), "label": _cut(redact(label), LABEL_CHARS)}
+                if isinstance(option, dict) and isinstance(option.get("description"), str) and option["description"]:
+                    shown["description"] = _cut(redact(option["description"]), DESCRIPTION_CHARS)
+                keys[label] = shown["key"]
+                sent.append(shown)
+            if len(sent) < OPTIONS[0]:
+                continue
+            body = {
+                "category": "question",
+                "question": _cut(redact(q["question"]).strip(), QUESTION_CHARS),
+                "options": sent,
+            }
+            header = q.get("header")
+            multi = "Several options may be picked in the session. " if q.get("multiSelect") else ""
+            if multi or isinstance(header, str) and header.strip():
+                body["context"] = _cut(multi + (redact(header) if isinstance(header, str) else ""), 1000).strip()
+            try:
+                view = self.call("POST", f"{self.base()}/{rec['run_id']}/decisions", body)
+            except HubError as exc:
+                if isinstance(exc, Unreachable) or exc.status not in (404, 409, 422):
+                    raise
+                continue  # the hub will not take this question: the dialog still opens
+            entries.append({"decision": int(view["id"]), "question": q["question"], "keys": keys})
+            rec["sent"] = "waiting"
+        if entries:
+            asks = rec.setdefault("asks", {})
+            asks[str(self.payload.get("tool_use_id") or "last")] = entries
+            for stale in list(asks)[:-MAX_ASKS]:
+                del asks[stale]
+
+    def answered(self) -> None:
+        """The dialog was answered in the session: report each answer to the decision it was put as."""
+        rec = self.rec
+        asks = rec.get("asks") or {}
+        key = str(self.payload.get("tool_use_id") or "last")
+        entries = asks.get(key) or (asks.get("last") if key != "last" else None) or []
+        response = self.payload.get("tool_response")
+        given = response.get("answers") if isinstance(response, dict) else None
+        given = given if isinstance(given, dict) else {}
+        for entry in entries:
+            said = given.get(entry["question"])
+            body = {"text": "answered in the session"}
+            if isinstance(said, str) and said.strip():
+                from evo_agents.hub.redact import redact
+
+                body = {"text": _cut(redact(said.strip()), 1000)}
+                if said in entry["keys"]:
+                    body = {"option": entry["keys"][said]}
+            try:
+                self.call("POST", f"{self.base()}/{rec['run_id']}/decisions/{entry['decision']}/answered", body)
+            except HubError as exc:
+                if isinstance(exc, Unreachable) or exc.status not in (404, 409, 422):
+                    raise  # kept in the file: the next hook tells the hub
+        for name in [k for k, v in asks.items() if v is entries]:
+            del asks[name]
+        if entries:
+            rec["sent"] = "running"
+
+    def inbox(self) -> None:
+        """What the member answered on the hub since the agent last heard: for the agent, at the person's message."""
+        rec = self.rec
+        ack = rec.get("inbox_ack")
+        try:
+            answer = self.call(
+                "POST", f"{self.base()}/{rec['run_id']}/inbox", {"ack": ack} if isinstance(ack, int) else None
+            )
+        except HubError as exc:
+            if isinstance(exc, Unreachable) or exc.status not in (404, 405):
+                raise
+            return  # a hub that has no inbox for local runs: nothing to hand over
+        messages = answer.get("messages") if isinstance(answer, dict) else None
+        for message in messages or []:
+            if isinstance(message, dict) and isinstance(message.get("text"), str) and message["text"].strip():
+                by = message.get("sent_by")
+                self.notes.append(f"{by + ': ' if isinstance(by, str) and by else ''}{message['text'].strip()}")
+                if isinstance(message.get("id"), int):
+                    rec["inbox_ack"] = max(message["id"], rec.get("inbox_ack") or 0)
+
     def run(self, title: str | None, wanted: str, due: bool) -> None:
         rec = self.rec
         if not rec["resolved"]:
@@ -464,6 +596,17 @@ class Delivery:
             self.state_post(wanted)
         if wanted != "ended" and due:
             self.flush()
+        if self.hook == "ask":
+            self.ask()
+        elif self.hook == "tool" and self.payload.get("tool_name") == ASK_TOOL:
+            self.answered()
+        elif self.hook == "user-prompt":
+            self.inbox()
+
+
+def limit_key(hook: str, payload: dict) -> str:
+    """The row of LIMITS a hook runs under: PostToolUse of the AskUserQuestion dialog has more to say than any other."""
+    return "tool-ask" if hook == "tool" and payload.get("tool_name") == ASK_TOOL else hook
 
 
 def _absolute(value) -> str | None:
@@ -480,13 +623,13 @@ def _title(payload: dict) -> str | None:
     return _cut(line, TITLE_CHARS) if line else None
 
 
-def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = None) -> None:
+def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = None) -> list[str]:
     """The work of one hook of the session in ``payload`` against ``hub``; the caller keeps exceptions from the
-    session."""
+    session. The answers the member gave on the hub, for the agent (user-prompt only), else an empty list."""
     now = _now() if now is None else now
     session_id = payload.get("session_id")
     if not isinstance(session_id, str) or not digest.SESSION_ID.fullmatch(session_id):
-        return
+        return []
     where = hooks.session_dir(payload)
     cwd = _absolute(payload.get("cwd")) or str(where)
     store = Store(session_id, hub.url)
@@ -494,11 +637,12 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
     if (rec is None and hook in ("stop", "session-end")) or (
         rec is not None and rec["resolved"] and rec["project"] is None
     ):
-        return
-    wait = LOCK_WAIT_TOOL if hook == "tool" else LOCK_WAIT
+        return []
+    asking = limit_key(hook, payload) == "tool-ask"
+    wait = LOCK_WAIT_TOOL if hook == "tool" and not asking else LOCK_WAIT
     with locked(store.lock, wait) as got:
         if not got:
-            return
+            return []
         rec = store.load() or store.fresh(cwd)
         events = []
         transcript = _absolute(payload.get("transcript_path"))
@@ -517,18 +661,18 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         store.save(rec)
     refused = rec.get("refused_at")
     if isinstance(refused, int | float) and 0 <= now - refused < REFUSAL_COOLDOWN:
-        return
+        return []
     state = hooks.HookState(hub_dir())
     if state.down_since(hub.url, now) is not None:
-        return
-    due = hook != "tool" or now - float(rec.get("flushed") or 0) >= FLUSH_EVERY
+        return []
+    due = hook != "tool" or asking or now - float(rec.get("flushed") or 0) >= FLUSH_EVERY
     if not due and rec["sent"] == STATES[hook]:
-        return
-    with locked(store.lock, 0.0 if hook == "tool" else wait) as got:
+        return []
+    with locked(store.lock, 0.0 if hook == "tool" and not asking else wait) as got:
         if not got:
-            return
+            return []
         rec = store.load() or rec
-        delivery = Delivery(hub, login, rec, session_id, where, hook, state)
+        delivery = Delivery(hub, login, rec, session_id, where, hook, state, payload)
         try:
             delivery.run(title, STATES[hook], due)
             rec["refused_at"] = None
@@ -541,21 +685,33 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
             rec["refused_at"] = now
         finally:
             store.save(rec)
+    return delivery.notes if hook == "user-prompt" else []
 
 
-def hook_run(hook: str, payload: dict) -> None:
+def hook_run(hook: str, payload: dict) -> list[str]:
     """``sync`` with the credentials of this machine; nothing when sync is off, nobody is signed in, or the hub URL is
-    refused. Raises nothing but OutOfTime."""
+    refused. Returns what ``sync`` does. Raises nothing but OutOfTime."""
     if not enabled():
-        return
+        return []
     try:
         credentials = load_credentials()
     except HubError:  # not signed in, or a file that cannot be read: nothing to send
-        return
+        return []
     try:
-        sync(hook, payload, Hub(credentials.url, credentials.token, timeout=LIMITS[hook][0]), credentials.login)
+        timeout = LIMITS[limit_key(hook, payload)][0]
+        return sync(hook, payload, Hub(credentials.url, credentials.token, timeout=timeout), credentials.login)
     except Exception:
-        return  # the session goes on; what waits stays in its file
+        return []  # the session goes on; what waits stays in its file
+
+
+def _context(notes: list[str]) -> str:
+    """What the agent is told at the person's next message about answers the member gave on the hub."""
+    lines = "\n".join(f"- {note}" for note in notes)
+    text = (
+        "evo-hub: the member answered, on the hub, a question this session asked and stopped waiting for. "
+        f"Take it into account:\n{lines}"
+    )
+    return _cut(text, NOTE_CHARS)
 
 
 def on_stop(payload: dict) -> None:
@@ -567,7 +723,16 @@ def _command(hook: str) -> Callable:
     def command(args) -> int:
         try:
             with hooks.budget(BUDGET[hook]):
-                hook_run(hook, hooks.read_payload())
+                notes = hook_run(hook, hooks.read_payload())
+                if notes:
+                    out = {
+                        "hookSpecificOutput": {
+                            "hookEventName": "UserPromptSubmit",
+                            "additionalContext": _context(notes),
+                        }
+                    }
+                    sys.stdout.write(json.dumps(out, ensure_ascii=False) + "\n")
+                    sys.stdout.flush()
         except hooks.OutOfTime:
             pass
         except BaseException as exc:  # a hook never fails the session
@@ -581,3 +746,4 @@ def _command(hook: str) -> Callable:
 cmd_hook_user_prompt = _command("user-prompt")
 cmd_hook_local_tool = _command("tool")
 cmd_hook_session_end = _command("session-end")
+cmd_hook_local_ask = _command("ask")
