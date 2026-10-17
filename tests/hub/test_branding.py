@@ -31,10 +31,10 @@ def test_the_default_tokens_have_the_contrast_design_md_measures():
         ("light", "brand", "brand-soft"): 5.8,
         ("light", "brand-hover", "surface"): 8.4,
         ("light", "on-brand", "brand"): 6.7,
-        ("dark", "brand", "surface"): 7.4,
+        ("dark", "brand", "surface"): 7.9,
         ("dark", "brand", "brand-soft"): 6.2,
-        ("dark", "brand-hover", "surface"): 9.0,
-        ("dark", "on-brand", "brand"): 7.8,
+        ("dark", "brand-hover", "surface"): 9.7,
+        ("dark", "on-brand", "brand"): 7.9,
     }
     for (theme, front, ground), ratio in ratios.items():
         tokens = branding.DEFAULTS[theme]

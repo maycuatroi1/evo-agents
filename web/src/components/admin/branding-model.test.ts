@@ -12,8 +12,8 @@ function layer(values: Record<string, unknown>, version = 3): SettingsLayer {
 describe("the contrast rules of the hub", () => {
   it("measures the defaults as web/DESIGN.md and evo_agents.hub.branding do", () => {
     expect(shownRatio(contrast("#2f4bd8", "#ffffff"))).toBe("6.73");
-    expect(shownRatio(contrast("#8c9dff", "#111419"))).toBe("7.36");
-    expect(shownRatio(contrast("#0a0c10", "#8c9dff"))).toBe("7.81");
+    expect(shownRatio(contrast("#8c9dff", "#09090b"))).toBe("7.94");
+    expect(shownRatio(contrast("#09090b", "#8c9dff"))).toBe("7.94");
     expect(contrast("#000000", "#ffffff")).toBeCloseTo(21);
     expect(checkColors({ light: {}, dark: {} }).every((result) => result.passes)).toBe(true);
   });

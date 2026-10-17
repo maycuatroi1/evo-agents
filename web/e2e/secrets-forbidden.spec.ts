@@ -3,7 +3,7 @@ import type { Page } from "@playwright/test";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, type Account, bearerClient, type HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
-import { claimRun, dispatch, leaseCredentials, liveWorker, runPath, seedRunPlan, startRun } from "./support/runs";
+import { claimRun, dispatch, leaseCredentials, liveWorker, openRunDetails, runPath, seedRunPlan, startRun } from "./support/runs";
 import { putSecretByApi, runCredentialsOf, secretsOf, secretValue } from "./support/secrets";
 import { csrfHeader, registerWorker } from "./support/workers";
 
@@ -139,6 +139,7 @@ test("a hub admin sees only their own secrets and not the credentials of another
   expect(await page.content()).not.toContain(name);
 
   await open(page, runPath(project, run.id));
+  await openRunDetails(page, { all: true });
   await expect(main(page).getByTestId("run-details")).toBeVisible();
   await expect(main(page).getByTestId("run-credentials")).toHaveCount(0);
   const leases = await page.request.get(`/v1/projects/${project}/runs/${run.id}/credentials`);

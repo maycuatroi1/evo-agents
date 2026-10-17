@@ -18,27 +18,27 @@ export type GroundToken = Ground | "brand-soft" | "brand";
 /** As web/src/app/globals.css sets them; evo_agents.hub.branding.DEFAULTS holds the same. */
 export const DEFAULTS: Record<Theme, Record<PaletteToken, string>> = {
   light: {
-    canvas: "#f5f6f8",
+    canvas: "#ffffff",
     surface: "#ffffff",
-    "surface-selected": "#e9edfd",
+    "surface-selected": "#eef0fd",
     brand: "#2f4bd8",
     "brand-hover": "#263fba",
     "brand-soft": "#ebeefd",
     "on-brand": "#ffffff",
   },
   dark: {
-    canvas: "#0a0c10",
-    surface: "#111419",
-    "surface-selected": "#1a2246",
+    canvas: "#09090b",
+    surface: "#09090b",
+    "surface-selected": "#1c2147",
     brand: "#8c9dff",
     "brand-hover": "#a3b0ff",
     "brand-soft": "#19204a",
-    "on-brand": "#0a0c10",
+    "on-brand": "#09090b",
   },
 };
 
 /** The ink of each theme (`--fg` of globals.css), which the preview writes its neutral text in. */
-export const INK: Record<Theme, string> = { light: "#0e1116", dark: "#e9ecf1" };
+export const INK: Record<Theme, string> = { light: "#09090b", dark: "#fafafa" };
 
 export type CheckId = "linkOnCard" | "linkOnPage" | "pill" | "navIcon" | "linkHover" | "onBrand";
 

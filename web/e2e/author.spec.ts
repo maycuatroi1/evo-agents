@@ -15,7 +15,7 @@ import {
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
-import { dispatch, liveWorker, MODELS, RUN_PLAN, runPath, runPlanBody, runsOf, seedRunPlan } from "./support/runs";
+import { dispatch, liveWorker, MODELS, openRunDetails, RUN_PLAN, runPath, runPlanBody, runsOf, seedRunPlan } from "./support/runs";
 import { toast } from "./support/toast";
 
 /**
@@ -104,7 +104,7 @@ test("a writer starts New plan, answers the agent in the run's chat, follows the
 
   // The run's page opens on its Chat: the request first, and the agent not started yet.
   const chat = main(page).getByTestId("run-chat");
-  await expect(main(page).getByTestId("run-kind")).toHaveText("Author run");
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-kind", "author");
   await expect(main(page).getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
   await expect(chat.getByTestId("run-chat-request")).toContainText("Keep the CLI as it is.");
   await expect(chat.getByTestId("run-chat-status")).toHaveText("Agent is working");
@@ -246,7 +246,10 @@ test("a reader is offered neither New plan nor Revise with agent, and reads a wr
   await axeBoth(page, "a writer's chat as a reader reads it");
 });
 
-test("the Chat is a tab of the session region beside the side column from 1280 px, and above it below", async ({ page, member }) => {
+test("the Chat is a tab of the session region, beside the side column from 1280 px, under it from 768 px, and on a screen of its own on a phone", async ({
+  page,
+  member,
+}) => {
   test.setTimeout(120_000);
   await ensureAuthorSkill();
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
@@ -256,9 +259,8 @@ test("the Chat is a tab of the session region beside the side column from 1280 p
   await startAuthor(live, run.id);
   await agentAsks(live, run.id, QUESTION);
 
-  const split = main(page).getByTestId("run-split");
-  const session = split.getByTestId("run-log");
-  const aside = split.getByRole("region", { name: `About run #${run.id}` });
+  const session = main(page).getByTestId("run-log");
+  const aside = main(page).getByRole("region", { name: `About run #${run.id}` });
   const chat = session.getByTestId("run-chat");
   for (const size of [
     { width: 375, height: 812 },
@@ -269,11 +271,34 @@ test("the Chat is a tab of the session region beside the side column from 1280 p
     await page.setViewportSize(size);
     // The notice's link: ?tab=chat opens the Chat, the first tab of an author run, among the session's tabs.
     await open(page, `${runPath(project, run.id)}?tab=chat`);
+    if (size.width < 768) {
+      // On a phone the session, the Chat first, is a screen of its own, which the notice's link opens at once; leaving
+      // it shows the page: the head, the trace's latest rows with "Open the chat" and, asked for, the details.
+      await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
+      await expect(chat.getByTestId("run-chat-agent")).toBeVisible();
+      await main(page).getByTestId("run-screen-back").click();
+      await expect(main(page).getByTestId("run-trace-preview")).toBeVisible();
+      await expect(session).toHaveCount(0);
+      await openRunDetails(page);
+      await expect(main(page).getByTestId("run-side")).toBeVisible();
+      await expect(main(page).getByTestId("run-side").getByTestId("run-chat")).toHaveCount(0);
+      await expect(main(page).getByTestId("run-open-trace")).toHaveText("Open the chat");
+      await main(page).getByTestId("run-open-trace").click();
+      await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
+    } else {
+      await openRunDetails(page);
+    }
     await expect(chat.getByTestId("run-chat-agent")).toBeVisible();
     await expect(session.getByRole("tab", { name: "Chat" })).toHaveAttribute("aria-selected", "true");
     await expect(session.getByRole("tab").first()).toHaveAttribute("data-testid", "run-tab-chat");
     await expect(session.getByTestId("run-tab-trace")).toBeVisible();
     await expect(session.getByTestId("run-tab-log")).toBeVisible();
+    if (size.width < 768) {
+      await expect(main(page).getByTestId("run-side")).toHaveCount(0);
+      const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+      expect.soft(overflow, `the author run's session screen at ${size.width} px scrolls sideways`).toBeLessThanOrEqual(0);
+      continue;
+    }
     await expect(aside).toBeVisible();
     await expect(aside.getByTestId("run-side")).toBeVisible();
     await expect(aside.getByTestId("run-chat")).toHaveCount(0);
@@ -321,7 +346,8 @@ test("the author pages fit from 375 to 1440 px without scrolling sideways, and a
   for (const width of [375, 768, 1024, 1440]) {
     await page.setViewportSize({ width, height: 900 });
     for (const [path, ready] of [
-      [runPath(project, run.id), "run-chat-agent"],
+      // On a phone the run's page shows the trace's latest rows; its Chat is on the session's screen.
+      [runPath(project, run.id), width < 768 ? "run-trace-preview" : "run-chat-agent"],
       ["/", "author-waiting-item"],
       [`/p/${project}/plans`, "plans-table-active"],
     ] as const) {
@@ -343,7 +369,11 @@ test("the author pages fit from 375 to 1440 px without scrolling sideways, and a
   }
   await page.setViewportSize({ width: 375, height: 812 });
   await open(page, runPath(project, run.id));
+  await main(page).getByTestId("run-open-trace").click();
+  await expect(main(page).getByTestId("run-detail")).toHaveAttribute("data-screen", "session");
   await expect(main(page).getByTestId("run-chat-agent")).toBeVisible();
+  const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect.soft(overflow, "the chat's screen at 375 px scrolls sideways").toBeLessThanOrEqual(0);
   await axeBoth(page, "the chat at 375 px");
 
   // A step run's page is as it was: no Chat tab, the Trace first, and the composer for its owner.

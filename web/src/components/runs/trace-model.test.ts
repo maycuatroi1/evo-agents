@@ -15,7 +15,6 @@ import {
   toolArgument,
   type TraceEvent,
   type TraceItem,
-  unwrapShell,
 } from "./trace-model";
 
 /**
@@ -233,9 +232,6 @@ describe("tool rows", () => {
     expect(toolArgument({ changes: [{ path: "a.ts" }, { path: "b.ts" }] })).toBe("a.ts, b.ts");
     expect(toolArgument({ todos: [] })).toBeNull();
     expect(toolArgument(null)).toBeNull();
-    expect(unwrapShell("/bin/zsh -lc 'ls -a'")).toBe("ls -a");
-    expect(unwrapShell(`bash -c "echo 'x'"`)).toBe("echo 'x'");
-    expect(unwrapShell("ls -a")).toBe("ls -a");
   });
 
   it("counts an edit's lines from Claude Code's, opencode's and Codex's input, or ACP's diff content", () => {
