@@ -990,8 +990,11 @@ test("a local session's run page shows its machine, account, plan, step, log and
   await open(page, runPath(project, run.id));
   const view = main(page);
   await expect(view.getByTestId("run-detail")).toHaveAttribute("data-kind", "local");
-  await expect(view.getByTestId("run-kind")).toHaveText("Local session");
-  await expect(view.getByTestId("run-state").first()).toHaveText("Waiting for decision");
+  await expect(view.getByTestId("run-detail")).toHaveAttribute("data-state", "waiting");
+  // The head says where the session runs and what it waits for; its details are behind Details.
+  await expect(view.getByTestId("run-header")).toContainText("laptop-binh");
+  await expect(view.getByTestId("run-status-line")).toContainText("Waiting for an answer");
+  await openRunDetails(page);
   await expect(view.getByTestId("run-machine")).toHaveText("laptop-binh");
   await expect(view.getByTestId("run-account")).toHaveText(`${me.login}@example.com`);
   await expect(view.getByTestId("run-claude-profile")).toHaveText("work");
