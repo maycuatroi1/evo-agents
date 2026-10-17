@@ -311,3 +311,75 @@ def test_plugin_isolation_a_backend_that_does_not_start_backs_off(plugin_root):
         assert backend.status.error and backend.status.retry_at is not None
 
     asyncio.run(run())
+
+
+# A placing that a stop cancels, and what another process of the plugin's user may plant meanwhile
+
+
+def test_plugin_isolation_ready_marker_is_never_written_through_a_link(tmp_path):
+    """The review's second L2: a link planted where the host writes a directory's marker would have made root write
+    the marker into the file it points to. The marker is created, never opened through a link."""
+    victim = tmp_path / "victim"
+    victim.write_text("intact")
+    filled = tmp_path / ".venv-planted"
+    filled.mkdir()
+    (filled / environment.READY).symlink_to(victim)
+    with pytest.raises(environment.PlacementError, match="did not write"):
+        environment._replace(tmp_path / "env", filled, "stamp")
+    assert victim.read_text() == "intact" and not (tmp_path / "env").exists()
+
+
+def test_plugin_crash_stop_waits_for_the_placing_it_cancels(plugin_root, monkeypatch):
+    """Cancelling a start left its placing running in its thread, writing into the plugin's directories after stop
+    returned and while the backend that replaces it, under the same user, started. stop now waits for it."""
+    real, started, finished = host_module.build_env, [], []
+
+    def slow_build(*args, **kwargs):
+        started.append(time.monotonic())
+        time.sleep(1.5)
+        real(*args, **kwargs)
+        finished.append(time.monotonic())
+
+    monkeypatch.setattr(host_module, "build_env", slow_build)
+
+    async def run() -> Backend:
+        host = shared(plugin_root)
+        backend = host.place(manifest("faulty"), bundle("faulty"), init("faulty", 12))
+        backend.kick()
+        while not started:
+            await asyncio.sleep(0.05)
+        await backend.stop()
+        assert finished, "stop returned while the placing it cancelled still ran"
+        await host.stop_all()
+        return backend
+
+    backend = asyncio.run(run())
+    assert backend.process is None and backend._building.done()
+
+
+def test_plugin_isolation_start_refused_while_processes_of_its_user_linger(plugin_root, monkeypatch):
+    """A start killed what lingered under the plugin's user and went on whatever the kill said. It now refuses to place
+    anything or start a backend beside a process of that user."""
+    user = environment.UID_BASE + 13
+    kills = []
+
+    async def cannot_kill(owner) -> bool:
+        kills.append(owner.uid)
+        return False
+
+    monkeypatch.setattr(host_module, "identity", lambda plugin_id: environment.Identity(user, user))
+    monkeypatch.setattr(host_module, "kill_user", cannot_kill)
+
+    async def run() -> Backend:
+        host = Host(plugin_root)
+        backend = host.place(manifest("sample"), bundle("sample"), init("sample", 13))
+        with pytest.raises(BackendUnavailable):
+            await backend.call("ping", {}, timeout=20)
+        await host.stop_all()
+        return backend
+
+    backend = asyncio.run(run())
+    assert backend.status.state == "backoff"
+    assert backend.status.error == host_module.LINGERING.format(name="sample", uid=user)
+    assert kills and set(kills) == {user}
+    assert backend.process is None and not backend.where.code.exists()  # nothing was placed
