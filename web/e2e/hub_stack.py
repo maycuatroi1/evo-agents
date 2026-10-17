@@ -50,6 +50,13 @@ answers what the hub did with it. GET /telegram/sent lists the messages the bot 
 The hub seals secrets with an EVO_HUB_SECRETS_KEY of its own, made for each start, and has no GitHub App: a run gets
 the owner's secrets as leases, and a repo on github.com that no git secret covers is missing with that reason.
 
+The plugin specs need a plugin to publish and the tests' core plugin. The hub trusts the publisher acme with the
+Ed25519 key of the Python tests (``tests.plugins.samples``), and POST /plugins/bundle {id, version} packs the sample
+plugin of tests/fixtures/plugins/sample under that id and version and signs it with that key, answering the bundle as
+base64 with its SHA-256 and the signature, which a spec publishes and installs through the real API. The hub runs
+through e2e/hub_serve.py, which puts the core plugin notes (tests/hub/core_notes.py) in its image: its table in the
+chain of migrations and its native page, which the web's end-to-end build carries.
+
 Environment: EVO_HUB_TEST_DSN (required, a superuser DSN), E2E_API_PORT (18324), E2E_STACK_PORT (18325),
 E2E_WEB_ORIGIN (http://localhost:3324, the hub's public URL), E2E_ADMIN_LOGIN (e2e-admin).
 """
@@ -87,6 +94,7 @@ from tests.hub.fake_telegram import SECRET_HEADER as TELEGRAM_SECRET_HEADER  # n
 from tests.hub.fake_telegram import TOKEN as TELEGRAM_TOKEN  # noqa: E402
 from tests.hub.fake_telegram import FakeTelegram, private_chat, text_update  # noqa: E402
 from tests.hub.s3 import fake_s3  # noqa: E402
+from tests.plugins.samples import ed25519_publishers  # noqa: E402
 
 LOGIN_COOKIE = "fake_github_login"
 STATE_DIR = Path(__file__).resolve().parent / ".stack"
@@ -184,6 +192,30 @@ def skill_bundle(body: dict) -> dict:
             (directory / path).write_text(str(content), encoding="utf-8")
         bundle = pack(directory)
     return {"data": base64.b64encode(bundle.data).decode(), "sha256": bundle.sha256, "size": bundle.size}
+
+
+def plugin_bundle(body: dict) -> dict:
+    """The sample plugin of tests/fixtures/plugins/sample as plugin ``id`` at ``version``, packed as `evo-agents plugin
+    pack` packs it and signed with the key of publisher acme, which this hub trusts."""
+    import shutil
+
+    from evo_agents.plugins.bundle import pack
+    from tests.plugins.samples import ed25519_signature
+
+    with tempfile.TemporaryDirectory(prefix="e2e-plugin-") as root:
+        directory = Path(root) / "plugin"
+        shutil.copytree(ROOT / "tests" / "fixtures" / "plugins" / "sample", directory)
+        manifest_path = directory / "evo-plugin.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest.update({key: str(body[key]) for key in ("id", "version", "name") if body.get(key)})
+        manifest_path.write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+        bundle = pack(directory)
+    return {
+        "data": base64.b64encode(bundle.data).decode(),
+        "sha256": bundle.sha256,
+        "size": len(bundle.data),
+        "signature": ed25519_signature(bundle.data),
+    }
 
 
 def stamp_heartbeat(dsn: str, body: dict) -> dict:
@@ -514,6 +546,11 @@ def control_server(
                 self._reply(200, {"token": token})
             elif self.path == "/skills/bundle":
                 self._reply(200, skill_bundle(body))
+            elif self.path == "/plugins/bundle":
+                try:
+                    self._reply(200, plugin_bundle(body))
+                except Exception as exc:  # the test shows what failed
+                    self._reply(500, {"error": f"{type(exc).__name__}: {exc}"})
             elif self.path == "/workers/heartbeat":
                 try:
                     self._reply(200, stamp_heartbeat(dsn, body))
@@ -618,9 +655,11 @@ def main() -> int:
             EVO_HUB_TELEGRAM_BOT_TOKEN=TELEGRAM_TOKEN,
             EVO_HUB_TELEGRAM_WEBHOOK_SECRET=TELEGRAM_SECRET,
             EVO_HUB_TELEGRAM_API_URL=f"http://127.0.0.1:{telegram_server.server_address[1]}",
+            EVO_HUB_PLUGIN_PUBLISHERS=ed25519_publishers(),  # acme, with the key of the Python tests
             **s3.env(),
         )
-        command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(api_port)]
+        launcher = str(Path(__file__).resolve().parent / "hub_serve.py")  # the hub, with the core plugin notes
+        command = [sys.executable, launcher, "--host", "127.0.0.1", "--port", str(api_port)]
         with open(log_path, "w", encoding="utf-8") as log_file:
             proc = subprocess.Popen(command, cwd=ROOT, env=env, stdout=log_file, stderr=subprocess.STDOUT)
         api_url = f"http://127.0.0.1:{api_port}"

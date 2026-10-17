@@ -86,6 +86,7 @@ export default defineConfig({
             PORT: String(WEB_PORT),
             HOSTNAME: "localhost",
             NEXT_TELEMETRY_DISABLED: "1",
+            EVO_WEB_FIXTURES: "1", // the routes of the tests' fixtures, such as the core plugin notes' page
           },
           timeout: 300_000,
           gracefulShutdown: { signal: "SIGTERM", timeout: 10_000 },

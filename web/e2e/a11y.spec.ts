@@ -35,6 +35,7 @@ import {
   tool,
   uploadDiff,
 } from "./support/runs";
+import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { packSkill, publishSkill } from "./support/skills";
 import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
@@ -1152,6 +1153,76 @@ const PAGES: Entry[] = [
       await expect(page.getByRole("dialog")).toBeVisible();
     },
   },
+  {
+    name: "project plugins with one enabled, then the consent of another",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      const [on, off] = [await installedSample("a11y-on"), await installedSample("a11y-off")];
+      await enablePlugin(me, project, on);
+      await open(page, `/p/${project}/plugins`);
+      const table = page.locator("#main").getByTestId("project-plugins-table");
+      await expect(table.locator(`[data-plugin-link="${on}"]`)).toBeVisible();
+      await expectNoSeriousViolations(page, "project plugins");
+      await table.locator("tr", { has: page.locator(`[data-plugin-link="${off}"]`) }).getByTestId("plugin-enable").click();
+      await expect(page.getByTestId("plugin-consent")).toBeVisible();
+    },
+  },
+  {
+    name: "a plugin of a project with its config form, what it gets and its history",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      const id = await installedSample("a11y-config");
+      await enablePlugin(me, project, id);
+      await open(page, `/p/${project}/plugins/${id}`);
+      const form = page.locator("#main").getByTestId("project-config-form");
+      await form.getByTestId("config-field-greeting").fill("hi");
+      await form.getByTestId("project-config-form-save").click();
+      await expect(page.locator("#main").getByTestId("project-config-history-version")).toHaveCount(1);
+      await form.getByTestId("config-secret-api_key-replace").click();
+      await expect(page.locator("#main").getByTestId("plugin-effective-config")).toContainText("hi");
+    },
+  },
+  {
+    name: "a plugin's page in its sandboxed frame",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      const id = await installedSample("a11y-frame");
+      await enablePlugin(me, project, id);
+      await open(page, pluginPagePath(project, id));
+      await expect(page.frameLocator('[data-testid="plugin-frame"]').locator("#plans")).toHaveText("refused: not_granted");
+    },
+  },
+  {
+    name: "the native page of the core plugin notes",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await enablePlugin(me, project, "notes", ["plans:read"]);
+      await open(page, `/p/${project}/x/notes/entries`);
+      await expect(page.locator("#main").getByTestId("notes-empty")).toBeVisible();
+      await page.locator("#main").getByTestId("notes-form").getByRole("textbox").fill("Ship on Friday");
+      await page.locator("#main").getByTestId("notes-add").click();
+      await expect(page.locator("#main").getByTestId("notes-list")).toContainText("Ship on Friday");
+    },
+  },
+  {
+    name: "plugins on a small screen",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      const id = await installedSample("a11y-phone");
+      await enablePlugin(me, project, id);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, `/p/${project}/plugins`);
+      await expect(page.locator("#main").getByTestId("project-plugins-table")).toHaveAttribute("data-layout", "list");
+      await expectNoSeriousViolations(page, "project plugins at 375 px");
+      await open(page, pluginPagePath(project, id));
+      await expect(page.frameLocator('[data-testid="plugin-frame"]').locator("#runs")).toHaveText(/^allowed/);
+    },
+  },
 ];
 
 /** The admin area, opened by the stack's hub admin; each entry waits for its content (step 25). */
@@ -1270,6 +1341,30 @@ const ADMIN_PAGES: { name: string; open: (page: Page) => Promise<void> }[] = [
       await main.getByTestId(`feature-${project}-kg-off`).click();
       await expect(main.getByTestId(`feature-${project}-kg`)).toHaveAttribute("data-choice", "off");
       await expect(main.getByTestId(`features-history-${project}`)).toBeVisible();
+    },
+  },
+  {
+    name: "admin plugins with the store and the publishers the hub trusts",
+    open: async (page) => {
+      await installedSample("a11y-store");
+      await page.goto("/admin/plugins");
+      await expect(page.locator("#main").getByTestId("plugins-table")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("plugin-publishers")).toContainText("acme");
+    },
+  },
+  {
+    name: "admin plugin page with its versions, an upgrade waiting and the hub's config, then the upgrade dialog",
+    open: async (page) => {
+      const id = uniqueName("a11y-detail");
+      await publishSample(id, "1.0.0");
+      await installPlugin(id);
+      await publishSample(id, "1.1.0");
+      await page.goto(`/admin/plugins/${id}`);
+      await expect(page.locator("#main").getByTestId("plugin-versions-table").locator("tbody tr")).toHaveCount(2);
+      await expect(page.locator("#main").getByTestId("instance-config-form")).toBeVisible();
+      await expectNoSeriousViolations(page, "admin plugin page");
+      await page.locator("#main").getByTestId("plugin-upgrade-open").click();
+      await expect(page.getByTestId("plugin-upgrade-dialog")).toBeVisible();
     },
   },
 ];
