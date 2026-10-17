@@ -107,6 +107,11 @@ PLUGIN_PROJECT_DISABLE = "plugin.project-disable"  # an admin disabled it for th
 # instance v<n>" outside any project, "<project>/plugin:<name> config project v<n>" or "<project>/@<handle>/plugin:
 # <name> config agent v<n>" in the project, then " fields=<names>" or " rollback-to=v<n>"; never a value.
 PLUGIN_CONFIG = "plugin.config"
+# A new version of a layer of the hub's own settings (evo_agents.hub.server.hub_settings): "branding v<n>" or
+# "features v<n>" for the hub's, "<project>/features v<n>" in the project, then " fields=<names>" or
+# " rollback-to=v<n>"; never a value.
+SETTINGS_BRANDING = "settings.branding"
+SETTINGS_FEATURES = "settings.features"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

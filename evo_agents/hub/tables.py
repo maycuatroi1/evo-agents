@@ -1,6 +1,7 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (with columns of runs and leases),
-``tables_chats`` (with columns of runs) and ``tables_plugins`` describe accounts, profiles, chats and plugins.
+``tables_chats`` (with columns of runs), ``tables_plugins`` and ``tables_settings`` describe accounts, profiles, chats,
+plugins and the hub's own settings.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -36,7 +37,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
-from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles
+from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles, tables_settings
 from evo_agents.hub.tables_chats import chat_tables
 
 metadata = MetaData()
@@ -574,11 +575,7 @@ Index(
     unique=True,
     postgresql_where=worker_pairings.c.used_at.is_(None),
 )
-Index(
-    "worker_pairings_owner_idx",
-    worker_pairings.c.owner_id,
-    postgresql_where=worker_pairings.c.used_at.is_(None),
-)
+Index("worker_pairings_owner_idx", worker_pairings.c.owner_id, postgresql_where=worker_pairings.c.used_at.is_(None))
 
 runs = Table(
     "runs",
@@ -1283,3 +1280,4 @@ agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends = tables_plugins.backend_tables(metadata)  # the plugin host (0035)
+hub_settings = tables_settings.settings_table(metadata)  # the hub's own settings: branding and features (0036)

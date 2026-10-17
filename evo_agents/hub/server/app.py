@@ -5,7 +5,8 @@ SQLAlchemy engine on it (``evo_agents.hub.db``), the GitHub client, the blob sto
 defers to, and closes them on shutdown, the engine before the pool; a database that cannot be reached or migrated stops
 the start instead of serving errors. An R2 outage does not: health reports it and the blob routes answer 503. Every
 request gets an id and one access log line without its query string, which can carry OAuth codes. Every path under /v1
-needs a credential except the few ``security.PUBLIC_PATHS`` lists. The OpenAPI document is served at /v1/openapi.json
+needs a credential except the few ``security.PUBLIC_PATHS`` lists, and the routes of a feature a hub admin turned off
+answer 404 (``FeatureGate``, ``evo_agents.hub.server.hub_settings``). The OpenAPI document is served at /v1/openapi.json
 for the web client's generated types. /mcp is the MCP endpoint (``evo_agents.hub.server.mcp``): its SDK app is mounted,
 so the lifespan runs its session manager. The only websockets are the two ends of a run's web terminal
 (``evo_agents.hub.server.terminal``), which check their own credential. ``app.state.sealer`` seals the members' secrets
@@ -41,6 +42,7 @@ from evo_agents.hub.migrate import migrate
 from evo_agents.hub.server import admin, auth, blobs, errors, health, projects, tokens, web_auth
 from evo_agents.hub.server.github import GitHub
 from evo_agents.hub.server.github_app import GitHubApp
+from evo_agents.hub.server.hub_settings import FeatureGate
 from evo_agents.hub.server.plugin_host import PluginHostClient
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.plugins.signing import default_sigstore
@@ -177,15 +179,23 @@ def create_app(config: HubConfig) -> FastAPI:
         lifespan=lifespan,
     )
     app.state.config = config
+    app.add_middleware(FeatureGate)  # added first, so it runs after Authenticate and sees the caller
     app.add_middleware(Authenticate)
     from evo_agents.hub.server import mcp
 
     app.state.mcp = mcp.mount(app, config)  # McpGate runs before Authenticate, which leaves /mcp alone
     app.add_middleware(RequestContext)  # added last, so it runs first: refusals get a request id and an access line
     errors.install(app)
-    for routes in (health.router, auth.router, web_auth.router, tokens.router, admin.router, projects.router):
+    for routes in (
+        health.router,
+        auth.router,
+        web_auth.router,
+        tokens.router,
+        admin.router,
+        projects.router,
+        blobs.router,
+    ):
         app.include_router(routes)
-    app.include_router(blobs.router)
 
     from evo_agents.hub.server import plans
 
@@ -276,10 +286,12 @@ def create_app(config: HubConfig) -> FastAPI:
         account_views,
         accounts,
         agent_profiles,
+        branding,
         chat_agents,
         chat_members,
         chats,
         credentials,
+        features,
         plugin_host,
         plugins,
         project_plugins,
@@ -305,6 +317,10 @@ def create_app(config: HubConfig) -> FastAPI:
         plugins.router,
         project_plugins.router,
         plugin_host.router,
+        branding.router,
+        branding.admin_router,
+        features.router,
+        features.admin_router,
     ):
         app.include_router(routes)
     app.state.sealer = Sealer.from_config(config)  # None without EVO_HUB_SECRETS_KEY: the secret routes answer 503
