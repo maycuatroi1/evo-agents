@@ -545,7 +545,7 @@ def answer_message(decision_id: int, category: str, question: str, option: dict 
     return runs.clip("\n".join(lines), runs.MAX_MESSAGE_BYTES)
 
 
-def _answer_target(
+def answer_target(
     project: str, plan_id: str | None, key: str | None, decision_id: int, run_id: int, option, kind: str = "author"
 ) -> str:
     step = "" if key is None else f"#{key}"
@@ -702,7 +702,7 @@ async def answer_decision(
     message_id = (await conn.execute(left)).scalar_one()
     event = {"text": text, "from": user.login, "message_id": message_id, "decision_id": decision_id}
     await write_user_message(conn, inbox_run, event)
-    target = _answer_target(project, plan_id, key, decision_id, run_id, body.option, kind)
+    target = answer_target(project, plan_id, key, decision_id, run_id, body.option, kind)
     if inbox_run != run_id:
         target += f" resumed as run:{inbox_run}"
     if via is not None:
