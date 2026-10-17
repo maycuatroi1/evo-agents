@@ -206,6 +206,11 @@ def register(sub) -> None:
     )
     plugin_host.add_argument("--host", default="0.0.0.0", help="interface to listen on (default: 0.0.0.0)")
     plugin_host.add_argument("--port", type=int, help="port to listen on (default: 8090)")
+    plugin_host.add_argument(
+        "--allow-shared-user",
+        action="store_true",
+        help="not as root, run backends under this user anyway; a developer's machine only (docs/plugins.md)",
+    )
     plugin_host.set_defaults(func=cmd_plugin_host)
 
     from evo_agents.hub.cli_client import register_client

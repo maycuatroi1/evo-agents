@@ -1,17 +1,21 @@
 """The tokens the hub gives the backend of an isolated plugin, and the payload the plugin host starts it with.
 
 A plugin token is ``evp_`` and 32 random bytes in base64url, like the hub's other tokens; Postgres keeps only its
-SHA-256 (``plugin_tokens``, schema 0035). The hub mints one when the plugin host starts or reloads a backend, and
-revokes the plugin's older ones, so a token outlives the backend it was made for no longer than until the next start.
-A plugin token is not a user token: it never signs in, and it reaches the hub only on the routes the extension points
-of a plugin use (step 5). What it may do is what the plugin's installed version asks for and the projects that enabled
-it granted (``plugin_grants.project_grants``), and nothing else.
+SHA-256 (``plugin_tokens``, schema 0035). The hub mints one when the plugin host is about to start a backend, and only
+then (``issue_token``, through ``POST /internal/plugin-host/plugins/{name}/token``): minting revokes the plugin's
+older tokens, so a token lives as long as the backend it was made for, and a host that pulls the same plugins again
+gets the same payload and restarts nothing. Removing a plugin and the hub turning it off revoke its tokens at once
+(``revoke_tokens``, from ``plugin_store``), before its backend has stopped. A plugin token is not a user token: it
+never signs in, and it reaches the hub only on the routes the extension points of a plugin use (step 5), which check
+with ``plugin_of_token`` on each request. What it may do is what the plugin's installed version asks for and the
+projects that enabled it granted (``plugin_grants.project_grants``), and nothing else.
 
-``backend_payload`` is what the host gives the backend in ``initialize`` (``evo_agents.plugins.protocol``): the plugin's
-id and version, the hub's URL and the fresh token, the effective config of the hub's own layer (``instance``) and of
-each project that enabled it (``projects``), with the secret fields decrypted here, where the key is, and never
-anywhere near another plugin, and what each project granted (``grants``). A hub without EVO_HUB_SECRETS_KEY leaves a
-secret field out and says so in ``missing_secrets``, rather than handing the backend a value it cannot open.
+``backend_payload`` is what the host gives the backend in ``initialize`` (``evo_agents.plugins.protocol``), the token
+left for the host to add: the plugin's id and version, the hub's URL, the effective config of the hub's own layer
+(``instance``) and of each project that enabled it (``projects``), with the secret fields decrypted here, where the key
+is, and never anywhere near another plugin, and what each project granted (``grants``). A hub without
+EVO_HUB_SECRETS_KEY leaves a secret field out and says so in ``missing_secrets``, rather than handing the backend a
+value it cannot open.
 
 Only the plugin host reads these, over the shared secret (``evo_agents.hub.server.plugin_host``); a member never does.
 """
@@ -42,13 +46,19 @@ def new_plugin_token() -> str:
     return PLUGIN_PREFIX + b64(secrets.token_bytes(TOKEN_BYTES))
 
 
-async def issue_token(conn: AsyncConnection, plugin_id: int) -> str:
-    """A fresh token for the backend of plugin ``plugin_id``, the plugin's older tokens revoked; the plaintext, which
-    the hub never stores and never shows again."""
+async def revoke_tokens(conn: AsyncConnection, plugin_id: int) -> None:
+    """Revoke every live token of plugin ``plugin_id``: when it is removed or turned off, and before a new one."""
     pt = tables.plugin_tokens
     await conn.execute(
         update(pt).where(pt.c.plugin_id == plugin_id, pt.c.revoked_at.is_(None)).values(revoked_at=func.now())
     )
+
+
+async def issue_token(conn: AsyncConnection, plugin_id: int) -> str:
+    """A fresh token for the backend of plugin ``plugin_id``, the plugin's older tokens revoked; the plaintext, which
+    the hub never stores and never shows again."""
+    pt = tables.plugin_tokens
+    await revoke_tokens(conn, plugin_id)
     token = new_plugin_token()
     await conn.execute(insert(pt).values(plugin_id=plugin_id, token_hash=hash_token(token)))
     return token
@@ -63,9 +73,10 @@ async def plugin_of_token(conn: AsyncConnection, token: str) -> int | None:
     return (await conn.execute(query)).scalar_one_or_none()
 
 
-async def backend_payload(conn: AsyncConnection, sealer: Sealer | None, hub_url: str, token: str, plugin_row) -> dict:
+async def backend_payload(conn: AsyncConnection, sealer: Sealer | None, hub_url: str, plugin_row) -> dict:
     """The ``initialize`` payload for the backend of ``plugin_row`` (a row of ``plugin_grants.enabled_query`` form or
-    of plugin_store): its config by layer with secrets decrypted, the grants of each project, and ``token``."""
+    of plugin_store): its config by layer with secrets decrypted and the grants of each project. The host adds the
+    token it gets at the backend's start under ``hub``."""
     manifest = plugin_row.manifest
     schema = manifest.get("config")
     instance, instance_missing = await _layer_config(conn, sealer, plugin_row.id, plugin_row.name, schema, None)
@@ -81,7 +92,7 @@ async def backend_payload(conn: AsyncConnection, sealer: Sealer | None, hub_url:
         "protocol": "plugin/1",
         "plugin": {"id": plugin_row.name, "version": _version(plugin_row)},
         "plugin_id": plugin_row.id,
-        "hub": {"url": hub_url, "token": token, "version": manifest["version"]},
+        "hub": {"url": hub_url, "version": manifest["version"]},
         "config": {"instance": instance, "projects": projects},
         "grants": {project: list(permissions) for project, permissions in grants.items()},
         "permissions": asked_for(manifest),
