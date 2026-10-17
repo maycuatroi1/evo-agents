@@ -1154,8 +1154,10 @@ migration 0034). `GET /v1/projects/{project}/plugins/{name}` shows what the inst
 permission with what it lets the plugin do in the project; enabling grants exactly that list, which the request names
 back, and any other list is a 422. Once an upgrade asks for more, the plugin lists it under `pending`, and enabling it
 again grants the new list. What a plugin may do in a project is what was granted there that its installed version
-still asks for, and only while it is installed and turned on. Disabling deletes the grant; the versions of its config
-stay. Readers and writers of the project read all of this; only its admins change it. The web does the same on the
+still asks for, and only while it is installed and turned on; `granted` says that grant, so an upgrade that asks for
+less narrows it at once. Disabling deletes the grant; the versions of its config stay. A call the web's bridge makes
+for a plugin's page carries `X-Evo-Plugin: <plugin>`, and the hub refuses it with 403 unless the plugin may make it
+now (docs/plugins.md, Pages). Readers and writers of the project read all of this; only its admins change it. The web does the same on the
 project's Plugins page: Enable opens the consent, which lists every permission in words and the pages the plugin adds,
 and grants exactly that list; a plugin's page there holds the form of the project's layer of its config.
 
