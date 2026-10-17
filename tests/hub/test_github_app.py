@@ -22,7 +22,7 @@ from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
 from evo_agents.hub.config import ConfigError, HubConfig
-from evo_agents.hub.credentials import GITHUB_PERMISSIONS
+from evo_agents.hub.credentials import GITHUB_PERMISSIONS, GITHUB_READ_PERMISSIONS
 from evo_agents.hub.log import JsonFormatter
 from evo_agents.hub.server import github_app
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
@@ -169,6 +169,32 @@ def test_a_repo_the_app_is_not_installed_on_gets_a_clear_reason(fake, app_key):
     assert [token.repositories for token in result.tokens] == [("evo-agents",)]
     assert [json.loads(r.body)["repositories"] for r in calls(fake, "/app/installations/")] == [["evo-agents"]]
     assert with_app(config(fake, app_key), lambda app: app.installation(THEIRS, "lumen-identity")) is None
+
+
+def test_a_token_that_writes_asks_workflows_where_the_workers_app_holds_it(fake, app_key):
+    """Run #80: a plan run's push of a change to .github/workflows was refused, because the hub never asked for
+    ``workflows`` even once the App held it. Asked where the installation holds it, never where it does not, never for
+    a token that only reads, and never for the Curator's App."""
+    held = {**GITHUB_PERMISSIONS, "workflows": "write"}
+    with_workflows = fake.install(OWNER, "evo-agents", permissions=held)
+    fake.install(THEIRS, "lumen-identity")
+    fake.collaborate(THEIRS, "lumen-identity", Account(OWNER, OWNER_ID), "write")
+    result = tokens(config(fake, app_key), [(OWNER, "evo-agents"), (THEIRS, "lumen-identity")])
+
+    assert result.missing == {}
+    granted = {token.installation.account: token.permissions for token in result.tokens}
+    assert granted == {OWNER: held, THEIRS: GITHUB_PERMISSIONS}
+    only_reads = [(OWNER, "evo-agents")], PUSHER, GITHUB_READ_PERMISSIONS
+    read = with_app(config(fake, app_key), lambda app: app.tokens(*only_reads))
+    assert [token.permissions for token in read.tokens] == [GITHUB_READ_PERMISSIONS]
+
+    installation = Installation(with_workflows, OWNER, tuple(held.items()))
+
+    async def curator_asks(app):
+        return app.run_permissions(installation, None)
+
+    curator_config = config(fake, app_key, curator_app_id="77", curator_app_private_key=app_key[0])
+    assert with_app(curator_config, curator_asks, curator=True) == GITHUB_PERMISSIONS
 
 
 # Whose token it is

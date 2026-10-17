@@ -662,11 +662,16 @@ def _plan_rules() -> list[str]:
         "the decision's id. Go on with the work that does not depend on the answer; when none is left, end your "
         "turn. The answer comes back in this session as a message naming the decision's id, and the time you wait "
         "does not count toward the run's timeout.",
+        "- A step blocked by what only the owner can change (a permission of the GitHub App, a credential, an "
+        "account, access to a service, a push the remote refuses) is a scope decision, not a stop: ask it, naming "
+        "what the owner must do, with a way around the block among the options when there is one, and end your "
+        "turn. When the answer did not lift the block, ask again with what you found; never end the run on it.",
         _PUSH_RULE,
-        f"- Keep {RESULT_DIR}/ out of your commits. When you stop, because every step is done or because you cannot "
-        f'go on, write {RESULT_FILE} as a JSON object whose "summary" says which steps you finished, what you '
-        "decided yourself, and what is left and why. The worker runs no verify command at the end of a plan run: "
-        "`evo-agents worker step` ran each step's.",
+        f"- Keep {RESULT_DIR}/ out of your commits. A turn that ends with no decision open ends the run: the worker "
+        "pushes what you committed and lets the session go. So stop only when every step is done, or when the "
+        f'owner\'s answer tells you to; then write {RESULT_FILE} as a JSON object whose "summary" says which steps '
+        "you finished, what you decided yourself, and what is left and why. The worker runs no verify command at "
+        "the end of a plan run: `evo-agents worker step` ran each step's.",
     ]
 
 
