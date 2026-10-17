@@ -3,8 +3,10 @@
 - the environment a backend runs with is built from nothing, so none of the host's variables reach it, the hub's DSN,
   secrets key and S3 keys among them;
 - a hostile backend, run with the hub's variables set in the host and a sibling plugin's secret in its config, reads
-  none of them: not from its own environment, not from the host's or a sibling's /proc on Linux, not from any file;
-  under a user of its own it also writes into no other plugin's directories and signals no other user's process;
+  none of them: not from its own environment, not from a sibling backend's /proc on Linux, not from any file; under a
+  user of its own it also reads no /proc of the host or of any other process, writes into no other plugin's
+  directories and signals no other user's process (under the host's shared user, the host's /proc and that of the
+  user's other processes stay readable, as docs/plugins.md says);
 - the ``initialize`` payload of one plugin carries only that plugin's config, never another's;
 - when the host runs as root, each backend gets a user and group of its own (isolation ``uid``); a host that is not
   root refuses to run a backend under the user it shares with the others, unless told it is a developer's machine;
@@ -86,22 +88,35 @@ def test_plugin_hostile_backend_reads_no_hub_or_sibling_secret(plugin_root, monk
     for name, value in HUB_SECRETS.items():
         monkeypatch.setenv(name, value)
 
-    async def run() -> dict:
+    async def run() -> tuple[dict, set[str]]:
         host = shared(plugin_root)
         # A sibling plugin holds a secret in its config; the hostile one must not reach it.
         sibling = host.place(manifest("sample"), bundle("sample"), init("sample", 2, {"api_key": SIBLING_SECRET}))
         await sibling.call("ping", {}, timeout=20)
         hostile = host.place(manifest("hostile"), bundle("hostile"), init("hostile", 3, {"api_key": "its-own"}))
         try:
-            return json.loads(text(await hostile.call("tool", tool("probe"), 20)))
+            report = json.loads(text(await hostile.call("tool", tool("probe"), 20)))
+            return report, {str(sibling.process.pid), str(hostile.process.pid)}
         finally:
             await host.stop_all()
 
-    report = asyncio.run(run())
-    assert report["found"] == {}, report["found"]
+    report, backends = asyncio.run(run())
+    found = report["found"]
     if isolation() == "uid":  # a user of its own: no other plugin's files, no other user's processes
+        assert found == {}, found
         assert report["wrote"] == {} and report["signalled"] == {}, report
         assert report["uid"] == environment.UID_BASE + 3
+        return
+
+    # Isolation process (a developer's machine) shares the host's user, so the /proc of the host and of every other
+    # process of that user is readable, as docs/plugins.md says; on CI that is the test runner and its xdist workers.
+    # What it still promises: nothing in the backend's own environment, no secret in a file, no backend's /proc (each
+    # is not dumpable), and a plugin's config in no process's environment or command line.
+    def readable(where: str) -> bool:  # proc:<pid>/<leaf> of a process of the user that is no backend
+        return where.startswith("proc:") and where.removeprefix("proc:").split("/")[0] not in backends
+
+    assert {where: value for where, value in found.items() if not readable(where)} == {}, found
+    assert not [where for where, value in found.items() if SIBLING_SECRET in value], found
 
 
 # One plugin's config never reaches another
