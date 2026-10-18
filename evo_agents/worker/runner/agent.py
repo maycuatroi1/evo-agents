@@ -20,6 +20,11 @@ authenticate goes on the same way, else fails with cause account_auth.
 A run of a plugin's runtime (``<plugin>/<name>``) starts its agent through the adapter of ACP made from the declaration
 its claim carries (``acp.adapter_class``), and fails with cause credentials before the agent starts when a variable the
 declaration names is set neither by the run's leases nor in the daemon's environment (``Adapter.environment_refusal``).
+
+The agent runs where the run's environment says (``environment``, from the claim's ``environment``,
+``evo_agents.worker.environments``): on the host, or in a container of a plugin's environment, which the run's log
+says once and agent.json names, so the next daemon removes what is left of its containers after one that died. A run
+in a container is never handed to a person in a terminal UI, which runs on the host.
 """
 
 from __future__ import annotations
@@ -30,7 +35,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import interactive, orphans
+from evo_agents.worker import environments, interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
@@ -70,8 +75,23 @@ class Agent:
         self.environment_noted: set[str] = set()  # the lines of environment_notes written already
         self.terminal = Terminal(run, self)
         self.limits = Limits(run)  # the usage limit of the agent's account, and the move to another one
+        self._environment = None  # where the agent runs (``environment``), read from the claim once
 
     # The runtime
+
+    @property
+    def environment(self) -> environments.Environment:
+        """Where the run's agent runs, from its claim: the host, or a container of a plugin's environment; ValueError
+        when the claim names one this worker does not read, which the preflight reports."""
+        if self._environment is None:
+            run = self.run
+            self._environment = environments.for_run(
+                run.spec,
+                home_dir=run.daemon.home.run_dir(run.id) / environments.HOME_DIR,
+                worker=environments.worker_label(run.daemon.home.root),
+                base=run.daemon.env,
+            )
+        return self._environment
 
     def runtime_class(self):
         """The adapter class of the run's runtime, a plugin's made from the declaration of the claim; RunFailed when
@@ -126,6 +146,10 @@ class Agent:
         cls = cls or run.daemon.adapters.get(run.runtime)
         if cls is None or not getattr(cls, "interactive", False):
             return f"its {run.runtime} adapter cannot hand the session to a terminal"
+        found = run.spec.get("environment")
+        if found is not None:
+            name = found.get("environment") if isinstance(found, dict) else None
+            return f"its agent runs in a container of environment {name or 'of a plugin'}"
         profile = profiles.Profile.of(run.spec)
         if profile is not None and profile.applies:
             return f"agent profile {profile.label} limits the session, and the terminal UI does not apply it"
@@ -240,12 +264,14 @@ class Agent:
             leased=run.credentials.withheld,
             spent_usd=run.watchdog.spent_usd,
             spent_seconds=run.watchdog.spent_before + run.agent_seconds(),
+            environment=self.environment,
         )
 
     def note_environment(self, cls, context: RunContext) -> None:
         """What the runtime leaves out of the agent's environment because of the run's leases
-        (``Adapter.environment_notes``), each line once a run."""
-        for line in cls.environment_notes(context):
+        (``Adapter.environment_notes``), and where the agent runs when not on the host, each line once a run."""
+        where = context.environment.note()
+        for line in [*([where] if where else []), *cls.environment_notes(context)]:
             if line not in self.environment_noted:
                 self.environment_noted.add(line)
                 self.run.note(line)
@@ -340,6 +366,9 @@ class Agent:
         run = self.run
         agent = await asyncio.to_thread(orphans.describe, pid)
         agent.update({"runtime": run.runtime, "phase": self.phase})
+        environment = self.environment
+        if environment.container:  # what the next daemon removes after one that died
+            agent["containers"] = {"worker": environment.worker, "run": run.id, "environment": environment.name}
         try:
             run.daemon.home.save_agent(run.id, agent)
         except OSError as exc:

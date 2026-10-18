@@ -71,7 +71,6 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
-    which,
     with_peak,
 )
 
@@ -304,13 +303,15 @@ class CodexAdapter(QueueAdapter):
     async def _open(self) -> None:
         from openai_codex import ApprovalMode, CodexConfig, Sandbox
 
-        program = which(self.binary, self.context.env)
+        environment = self.context.environment
+        program = environment.program(self.binary, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-codex-"))
         self.pid_file = self._dir / "pid"
         worktree = str(self.context.worktree)
+        command = environment.command(program, APP_SERVER, context=self.context, directory=self._dir)
         self.config = CodexConfig(
             codex_bin=program,
-            launch_args_override=tuple(new_session_argv(self.pid_file, program, *APP_SERVER)),
+            launch_args_override=tuple(new_session_argv(self.pid_file, *command)),
             cwd=worktree,
             env=dict(self.context.env),
         )

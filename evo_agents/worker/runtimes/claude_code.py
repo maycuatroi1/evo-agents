@@ -133,7 +133,6 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
-    which,
     with_peak,
     write_launcher,
 )
@@ -689,11 +688,13 @@ class ClaudeCodeAdapter(QueueAdapter):
         yield {}  # an async generator
 
     async def _open(self) -> None:
-        program = which(self.binary, self.context.env)
+        environment = self.context.environment
+        program = environment.program(self.binary, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-claude-"))
         self.pid_file = self._dir / "pid"
         unset = (API_KEY,) if drops_api_key(self.context) else ()  # the SDK passes on the daemon's own
-        self.options = self.build_options(str(write_launcher(self._dir, program, unset=unset)))
+        command = environment.command(program, context=self.context, directory=self._dir)
+        self.options = self.build_options(str(write_launcher(self._dir, *command, unset=unset)))
         self._client = self.make_client(self.options)
         self._input_open = True
         await self._client.connect(prompt=self._input())
