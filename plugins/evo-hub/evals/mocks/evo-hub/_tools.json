@@ -406,7 +406,8 @@
               "done",
               "in_progress",
               "pending",
-              "blocked"
+              "blocked",
+              "descoped"
             ]
           },
           "evidence": {
