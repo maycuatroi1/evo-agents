@@ -225,7 +225,7 @@
           "$ref": "#/$defs/contributions"
         },
         "runtimes": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/runtimes"
         },
         "environments": {
           "$ref": "#/$defs/contributions"
@@ -531,6 +531,76 @@
         }
       }
     },
+    "runtime": {
+      "description": "A runtime of agents. Its acp names the command of an agent that speaks the Agent Client Protocol on its stdin and stdout, which a worker whose owner accepted the plugin runs through the core adapter of ACP: the hub registers it as <id>/<name> in the projects that enabled the plugin, and a run asks for it by that name. A core plugin's python names instead a subclass of evo_agents.worker.adapter.Adapter in the worker's process, the adapter of the runtime its name gives (one of claude-code, opencode and codex). A runtime names one of acp and python.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "acp": {
+          "description": "The ACP agent: the program, found on the worker's PATH unless it is an absolute path, and its arguments.",
+          "type": "object",
+          "required": [
+            "command"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "description": "The program and its arguments, such as [\"gemini\", \"--experimental-acp\"]: at most 32 items.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+              }
+            }
+          }
+        },
+        "models": {
+          "description": "The models the agent offers, as a run's model names them, which the hub suggests for a dispatch and the worker reports: at most 200. A run's model reaches the agent through its ACP config option of category model.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+          }
+        },
+        "secrets": {
+          "description": "The environment variables the agent needs, each a secret such as GEMINI_API_KEY, which the run's leases or the worker's own environment give it: at most 20. A run whose agent would lack one fails before its agent starts, with cause credentials.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]{0,63}$"
+          }
+        }
+      }
+    },
     "channels": {
       "type": "array",
       "items": {
@@ -571,6 +641,12 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/page"
+      }
+    },
+    "runtimes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runtime"
       }
     }
   }
