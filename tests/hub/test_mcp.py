@@ -1904,7 +1904,8 @@ def big_digest(cwd: str = "/work/alpha") -> dict:
 
 
 def test_fit_digest_leaves_out_the_last_items_of_the_longest_lists_until_the_text_fits():
-    from evo_agents.hub.server.mcp import TEXT_CHARS, digest_json, fit_digest
+    # mcp_text, not mcp: this test needs no database, and mcp imports what needs the hub-server extra (psycopg)
+    from evo_agents.hub.server.mcp_text import TEXT_CHARS, digest_json, fit_digest
 
     body = big_digest()
     assert len(digest_json(body)) > 4 * TEXT_CHARS
