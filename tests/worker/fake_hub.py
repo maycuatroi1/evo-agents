@@ -723,11 +723,13 @@ class FakeHub:
 
     async def _decision(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)
-        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in ("plan", "author"):
-            raise _refusal(404, f"run {run_id} is not held by this worker, or not a plan run or an author run")
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] not in runs.RESUME_KINDS:
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a plan, author or chat run")
         body = await request.json()
-        if body.get("category") not in runs.DECISION_CATEGORIES:
-            return _error(422, "invalid", "not a decision category")
+        if body.get("category") not in runs.ASKED_DECISION_CATEGORIES or (run["spec"]["kind"] == "chat") != (
+            body.get("category") == runs.CHAT_DECISION_CATEGORY
+        ):
+            return _error(422, "invalid", "not a decision category of this kind of run")
         if not 2 <= len(body.get("options") or []) <= 6:
             return _error(422, "invalid", "2 to 6 options")
         decision_id = next(self._decision_ids)

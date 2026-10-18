@@ -6605,7 +6605,8 @@
             "external_send",
             "spend_money",
             "architecture",
-            "scope"
+            "scope",
+            "triage"
           ]
         },
         {
@@ -18083,7 +18084,7 @@
             "worker protocol"
           ],
           "summary": "Ask",
-          "description": "Ask the owner of a plan run or an author run this worker holds a decision, and notify them.",
+          "description": "Ask the owner of a plan run, an author run or a chat run this worker holds a decision, and notify them.",
           "operationId": "ask_v1_worker_runs__run_id__decisions_post",
           "parameters": [
             {
@@ -33900,7 +33901,8 @@
                 "spend_money",
                 "architecture",
                 "scope",
-                "question"
+                "question",
+                "triage"
               ],
               "title": "Category"
             },
@@ -34066,7 +34068,8 @@
                 "external_send",
                 "spend_money",
                 "architecture",
-                "scope"
+                "scope",
+                "triage"
               ],
               "title": "Category",
               "description": "the agent asks only about these"
@@ -38678,7 +38681,8 @@
                 "spend_money",
                 "architecture",
                 "scope",
-                "question"
+                "question",
+                "triage"
               ],
               "title": "Category"
             },

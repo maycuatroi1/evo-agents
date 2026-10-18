@@ -36,6 +36,8 @@ same session, and the run is ``running`` again. A run that waited DECISION_WAIT_
 it go and frees the slot, and keeps the agent's session and the worktrees. An answer then queues a new plan run on the
 same worker that goes on in that session (the run it resumes is ``done``), and a run parked PARKED_DAYS is
 ``cancelled``. Neither waiting nor parked counts toward the run's timeout: ``run_seconds`` counts only CLOCK_STATES.
+A chat run's agent asks its owner decisions of CHAT_DECISION_CATEGORY too, and the run waits for the answers as a
+plan run does, but is parked after CHAT_DECISION_WAIT_SECONDS; a chat run that asked none ends done with its turn.
 An author run waits the same way after each turn of its agent, for its owner's reply in the run's chat
 (``evo_agents.hub.author``), is parked and resumed the same way (RESUME_KINDS), and ends ``done`` when its owner ends
 the chat (the control ``finish``). On a daemon that lists AUTHOR_DECISIONS among its ``features``, an author run's
@@ -126,8 +128,10 @@ SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a ne
 AUTHOR_DECISIONS = "author_decisions"
 # a daemon whose adapters apply a run's agent profile (evo_agents.hub.profiles): tool, skill and model, instructions
 AGENT_PROFILES = "agent_profiles"
+# a daemon whose chat run's agent asks decisions (`evo-agents worker ask`), waits for the answers and is parked
+CHAT_DECISIONS = "chat_decisions"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
-WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES)
+WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES, CHAT_DECISIONS)
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
@@ -141,10 +145,13 @@ CONTROLS = ("cancel", "takeover", "handback", "terminal_open", "park", "finish",
 
 DECISION_WAIT_SECONDS = 24 * 3600  # a run waiting this long for its owner's answer is parked
 PARKED_DAYS = 7  # a run parked this long is cancelled, and its open decisions expire
-RESUME_KINDS = ("plan", "author")  # the kinds of run that wait for their owner, are parked and resumed
-# the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id): a chat run never
-# waits, its next turn is a new run (``evo_agents.hub.chat_runs``)
-SESSION_KINDS = (*RESUME_KINDS, "chat")
+# a chat run waits only for the answer to a decision its agent asked (category CHAT_DECISION_CATEGORY): the hub parks
+# it after CHAT_DECISION_WAIT_SECONDS, not DECISION_WAIT_SECONDS, so a worker's slot is not held for long
+CHAT_DECISION_WAIT_SECONDS = 10 * 60
+RESUME_KINDS = ("plan", "author", "chat")  # the kinds of run that wait for their owner, are parked and resumed
+# the kinds whose run may go on in the session and worktrees of an earlier one (resume_of_run_id); a chat run that
+# waits for nothing ends done with its turn, and its next turn is a new run too (``evo_agents.hub.chat_runs``)
+SESSION_KINDS = RESUME_KINDS
 PLAN_TIMEOUT_CHOICES = (2, 4, 8, 24)  # hours of agent time a plan run may take; waiting and parked do not count
 
 HELD_STATES = ("leased", "running", "interactive", "verifying", "waiting")  # a worker holds the run, extends its lease
@@ -212,6 +219,9 @@ DECISION_CATEGORY_TEXT = {
 }
 LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that is none of DECISION_CATEGORIES
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
+CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
+ASKED_DECISION_CATEGORIES = (*DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a worker's run may ask
+SHOWN_DECISION_CATEGORIES = (*LOCAL_DECISION_CATEGORIES, CHAT_DECISION_CATEGORY)  # what a decision may be shown as
 DECISION_STATES = ("open", "answered", "expired", "cancelled")
 DECISION_OPTIONS = (2, 6)  # the fewest and the most options a decision offers
 OPTION_KEY = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,31}$"  # the key of an option, as `worker ask --option KEY=LABEL` gives it

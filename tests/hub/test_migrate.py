@@ -842,6 +842,22 @@ def test_0039_keeps_triage_threads_and_a_project_switch_and_going_back_drops_the
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0039") :]
 
 
+def test_0040_lets_a_decision_be_of_category_triage_and_going_back_deletes_those(hub_db):
+    move_to(hub_db, "0039")
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        run_id = one(conn, _author_run(ids))
+        with pytest.raises(errors.CheckViolation):
+            conn.execute(_decision_row(ids, run_id, "p").values(category="triage"))
+    move_to(hub_db, "0040")
+    with live.connect(hub_db) as conn:
+        conn.execute(_decision_row(ids, run_id, "p").values(category="triage"))
+        kept = one(conn, _decision_row(ids, run_id, "p"))
+    move_to(hub_db, "0039", down=True)
+    assert query(hub_db, select(hub_tables.decisions.c.id)) == [(kept,)]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0040") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

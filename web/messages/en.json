@@ -3987,7 +3987,8 @@
       "spend_money": "Spend money",
       "architecture": "Architecture",
       "scope": "Scope",
-      "question": "Question"
+      "question": "Question",
+      "triage": "Failed run"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",

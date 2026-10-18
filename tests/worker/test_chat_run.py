@@ -244,3 +244,38 @@ def test_the_chat_commands_refuse_outside_a_run_and_in_a_review_run(machine, mon
 
     with_daemon(machine, body)
     assert runs.SESSION_KINDS == ("plan", "author", "chat")
+
+
+def test_a_chat_runs_agent_asks_a_triage_decision_waits_for_the_answer_and_goes_on_in_its_session(machine):  # noqa: F811
+    ask = {
+        "cli": [
+            "ask",
+            "--category",
+            runs.CHAT_DECISION_CATEGORY,
+            "--question",
+            "Retry the flaky test or skip it?",
+            "--option",
+            "retry=Retry",
+            "--option",
+            "skip=Skip",
+            "--recommended",
+            "retry",
+        ]
+    }
+    machine.scenarios({"chat": [ask, {"say": "I asked you in decision #1."}], "chat/2": [{"say": "Retrying it."}]})
+
+    async def body(hub, daemon):
+        assert runs.CHAT_DECISIONS in runs.WORKER_FEATURES
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(run_id)
+        assert runs.CHAT_DECISIONS in hub.last_heartbeat["features"]
+        assert (hub.decisions[1]["run_id"], hub.decisions[1]["category"]) == (run_id, "triage")
+        assert hub.answer(1, "retry") == run_id
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert chat_posts(hub, run_id) == ["I asked you in decision #1.", "Retrying it."]
+        assert hub.moves(run_id) == ["leased", "running", "waiting", "running", "verifying", "done"]
+
+    with_daemon(machine, body)
+    first, second = machine.starts()
+    assert second["resume"] == first["session"], "the answer goes on in the agent's session"
+    assert "Chosen option: retry." in second["prompt"]

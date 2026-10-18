@@ -813,7 +813,7 @@ def _option(text: str) -> dict:
 
 @_worker_command
 def cmd_ask(args) -> int:
-    agent = _agent_run("ask", ("plan", "author"))
+    agent = _agent_run("ask", runs.RESUME_KINDS)
     options = [_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
@@ -1170,7 +1170,7 @@ def register(sub) -> None:
     ask = wsub.add_parser(
         "ask", help="inside a plan run or an author run: ask the run's owner a decision; prints its id"
     )
-    ask.add_argument("--category", required=True, choices=runs.DECISION_CATEGORIES, help="what kind of decision")
+    ask.add_argument("--category", required=True, choices=runs.ASKED_DECISION_CATEGORIES, help="what kind of decision")
     ask.add_argument("--question", required=True, help="the question, in a sentence or two")
     ask.add_argument("--context-file", help="a markdown file of context for the owner, at most 16 KiB (- for stdin)")
     ask.add_argument(

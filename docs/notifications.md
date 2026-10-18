@@ -15,7 +15,7 @@ Inbox come in the same release.
 
 | Term | What it is | Table |
 | --- | --- | --- |
-| decision | a question the agent of a plan run or an author run asks its owner, with 2 to 6 options, open until it is answered, expires or is cancelled | `decisions` |
+| decision | a question the agent of a plan run, an author run or a chat run asks its owner, with 2 to 6 options, open until it is answered, expires or is cancelled | `decisions` |
 | notice | something the owner should know and need not answer, such as a push to a default branch | none of its own: it is a notification of kind `notice` |
 | notification | one decision or notice for one member, read or not | `notifications` |
 | channel | a place where a member gets notifications: the web, later Telegram | `notification_channels` |
@@ -78,6 +78,20 @@ author run resumes only once none of its decisions is open, or on a reply in its
 it was parked reach the agent in the first turn of the run that resumes it. When the run ends (End chat, cancel,
 fail), its decisions still open are `cancelled`. The answer goes to the run's inbox but is no message of its chat: on
 the web the decision's card in the run's Chat tab shows it.
+
+### A decision of a chat run
+
+The agent of a chat run asks its owner decisions of the one category `triage`, with the bounds of a plan run's
+(2 to 6 options), on a worker whose daemon lists `chat_decisions` in its heartbeat's `features`; every other category
+is 422 for a chat run, and `triage` is 422 for any other run. A turn that ends with a decision it asked still open
+leaves the run `waiting`, which keeps its slot and its lease; a chat run with no decision ends after its turn as
+before. The answer goes to the run's inbox and starts the next turn in the same session, once none of the run's
+decisions is open or the owner writes in the thread. The reaper parks a waiting chat run after 10 minutes
+(`CHAT_DECISION_WAIT_SECONDS`, not the 24 hours of a plan run, so a slot is not held for a day); an answer or a reply
+in the thread then queues a chat run pinned to the same worker that goes on in the same session, worktrees and branch
+(`resume_of_run_id` names the parked run, which is `done`), with the decisions still open and the unread inbox moved to
+it. When the run ends otherwise, its open decisions are `cancelled`. The Inbox, the web and Telegram answer such a
+decision through the same route as any other (migration 0040 allows the category).
 
 Only the run's owner answers, through the web or with a machine token of their own: another member gets 403,
 someone without a grant on the project 404, and the worker's own token 403, so the agent cannot answer itself. A
@@ -199,7 +213,7 @@ For the worker holding a plan run (or, for `decisions`, an author run), with its
 
 | Route | Body | Answer |
 | --- | --- | --- |
-| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above, a step the plan does not have, or a step of an author run that has put no plan; 409 when the run has 20 decisions open |
+| `POST /v1/worker/runs/{id}/decisions` | `category`, `question` (at most 2,000 characters), `context` (markdown, at most 16 KiB), `options` (2 to 6 of `{key, label, description}`, keys unique), `recommended` (a key), `step_key` (a step of the plan) | 201, the decision; 422 for a category not listed above (a chat run's is `triage` alone), a step the plan does not have, or a step of an author run that has put no plan; 409 when the run has 20 decisions open |
 | `POST /v1/worker/runs/{id}/notices` | `kind` (of `NOTICE_KINDS`), `title` (one line, at most 200 characters), `body` (at most 16 KiB), `repo` (one of the run's repos), `branch`, `commits` (at most 100) | 201, the notification |
 
 A decision leaves a `system` event in the run's log, and so does a notice. The hub sends `plan_finished` itself when a

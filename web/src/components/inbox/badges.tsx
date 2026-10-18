@@ -38,6 +38,8 @@ export const CATEGORY_ICON: Record<DecisionCategory, LucideIcon> = {
   scope: Target,
   // What the agent of a local Claude Code session asks that is none of the above.
   question: MessageCircleQuestionMark,
+  // What the agent of a chat run asks while it triages a failed run.
+  triage: MessageSquare,
 };
 
 export function DecisionCategoryBadge({ category, className }: { category: DecisionCategory; className?: string }) {
