@@ -51,7 +51,9 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
   this one died can stop an agent it left (``evo_agents.worker.orphans``).
 - stdin is the message channel or ``/dev/null``, never a pipe left open by accident: some runtimes wait for its EOF.
 - ``context.env`` is the environment of the agent; it has no hub token. ``context.leased`` names the variables of it
-  that the run's leases set; ``environment_notes`` says what the runtime leaves out of it because of them.
+  that the run's leases set; ``environment_notes`` says what the runtime leaves out of it because of them, and
+  ``environment_refusal`` why the agent cannot start without what it lacks (a variable a plugin's runtime needs),
+  which fails the run before its agent starts.
 - A run under an agent profile (``context.run["profile"]``, ``evo_agents.hub.profiles``) that limits tool, skill or
   model, or has instructions, gets them in the session (``evo_agents.worker.runtimes.profiles``). Before any of the
   run's work the daemon asks ``profile_refusal`` whether the adapter can: one that cannot fails the run, with the
@@ -62,7 +64,12 @@ Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package s
 core plugins contribute (the entry points of the group ``evo_agents.plugins``, ``evo_agents.plugins.core``), in the
 entry points of the group ``evo_agents.worker.adapters``, and in ``EVO_WORKER_ADAPTERS`` (``runtime=module:Class``
 separated by commas), each later source winning: tests and development point a runtime at an adapter of their own
-that way. A runtime with no adapter is reported as unavailable, with the reason. Standard library only.
+that way. A runtime with no adapter is reported as unavailable, with the reason.
+
+The runtimes plugins declare (``<plugin>/<name>``, an ACP agent's command, ``evo_agents.plugins.runtimes``) are no
+entry of these registries: the daemon gets their declarations from the hub, for the plugins its owner accepted, makes
+each one's adapter with ``evo_agents.worker.runtimes.acp.adapter_class``, and reports them with ``detect_adapters``
+beside the core's; a run of one is started with the declaration its claim carries. Standard library only.
 """
 
 from __future__ import annotations
@@ -269,6 +276,13 @@ class Adapter(abc.ABC):
         )
 
     @classmethod
+    def environment_refusal(cls, context: RunContext) -> str | None:
+        """Why the agent of this run cannot start with ``context.env``, in a sentence for the run's error: a variable
+        it needs that neither the run's leases nor the worker's environment set; None when it can. The daemon asks
+        before each start of the agent, and fails the run with cause credentials."""
+        return None
+
+    @classmethod
     def login_refusal(cls, context: RunContext) -> str | None:
         """Why the runtime may not start the agent of this run with the login this machine has, in a sentence for the
         run's error; None when it may. The daemon asks before each start of the agent, off its event loop. Claude Code
@@ -410,6 +424,23 @@ def _models_of(cls: type[Adapter], runtime: str) -> tuple[str, ...] | None:
     return tuple(models) if models else None
 
 
+def _detected(cls: type[Adapter], runtime: str) -> Detection:
+    """``cls.detect()``, with the models its ``models`` lists when the runtime is available."""
+    try:
+        detection = cls.detect()
+    except Exception as exc:  # an adapter's bug must not stop the heartbeat
+        log.warning("runtime detection failed", extra={"runtime": runtime}, exc_info=True)
+        detection = Detection(False, None, f"detecting it failed: {type(exc).__name__}")
+    if detection.available:
+        detection = replace(detection, models=_models_of(cls, runtime))
+    return detection
+
+
+def detect_adapters(adapters: Mapping[str, type[Adapter]]) -> dict[str, dict]:
+    """The heartbeat's report of each runtime of ``adapters`` (the runtimes of plugins), by name."""
+    return {runtime: _detected(cls, runtime).report() for runtime, cls in adapters.items()}
+
+
 def detect_runtimes(adapters: Mapping[str, type[Adapter]], *, path: str | None = None) -> dict[str, dict]:
     """The heartbeat's ``runtimes``: each of the three, from its adapter's ``detect`` when it has one, with the models
     its ``models`` lists when the runtime is available; a runtime without an adapter is unavailable even when its
@@ -418,13 +449,7 @@ def detect_runtimes(adapters: Mapping[str, type[Adapter]], *, path: str | None =
     for runtime in runs.RUNTIMES:
         cls = adapters.get(runtime)
         if cls is not None:
-            try:
-                detection = cls.detect()
-            except Exception as exc:  # an adapter's bug must not stop the heartbeat
-                log.warning("runtime detection failed", extra={"runtime": runtime}, exc_info=True)
-                detection = Detection(False, None, f"detecting it failed: {type(exc).__name__}")
-            if detection.available:
-                detection = replace(detection, models=_models_of(cls, runtime))
+            detection = _detected(cls, runtime)
         else:
             binary = BINARIES[runtime]
             probe = probe_binary(binary, path=path)
