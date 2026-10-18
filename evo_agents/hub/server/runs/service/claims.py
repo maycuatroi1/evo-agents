@@ -143,7 +143,7 @@ def _claimable(
     runtimes: list[str],
     pairs: list[tuple[int, str]],
     *,
-    plugin_runtimes: list[str] = (),
+    offered: tuple[str, ...] = (),
     plan_runs: bool,
     web_only: bool,
     review_runs: bool = False,
@@ -154,20 +154,20 @@ def _claimable(
     steady: bool = True,
     profile_gate=None,
 ):
-    """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
-    owner, in ``projects``, pinned to no other worker, asking for any runtime (when it has one of the core) or one of
-    ``runtimes`` or ``plugin_runtimes``, of a repo it has a checkout of (``pairs`` of project id and repo), and, while
-    the worker is not ``steady``, not the next attempt of a run it lost (``lost_here``). A run of one step needs a
-    checkout of its repo, and a plan run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later
-    (``plan_runs``); a review run one of every repo in its repos and a daemon that says it runs review runs
+    """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its owner,
+    in ``projects``, pinned to no other worker, asking for any runtime (when it has one of the core) or one of
+    ``runtimes`` or ``offered`` (runtimes of plugins), of a repo it has a checkout of (``pairs`` of project id and
+    repo), and, while the worker is not ``steady``, not the next attempt of a run it lost (``lost_here``). A run of one
+    step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT
+    or later (``plan_runs``); a review run one of every repo in its repos and a daemon that says it runs review runs
     (``review_runs``), and a judge run likewise (``judge_runs``); an author run one of its first repo, the project's
-    harness, and a daemon that says it runs author runs (``author_runs``): the worker leaves out the other repos it
-    has no checkout of. A chat run is pinned
-    to the worker the hub picked for it and needs a daemon that says it runs chat runs (``chat_runs``). A plan run
-    with a session per step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs
-    dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011 included;
-    and it takes only the runs whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``). Each row is
-    the run's id, the runtime it asked for, its kind, its profile's runtime axis and its project's id."""
+    harness, and a daemon that says it runs author runs (``author_runs``): the worker leaves out the other repos it has
+    no checkout of. A chat run is pinned to the worker the hub picked for it and needs a daemon that says it runs chat
+    runs (``chat_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``). A
+    worker set to take runs dispatched from the web only (``web_only``) passes over the others, those dispatched before
+    schema 0011 included; and it takes only the runs whose agent profile lets it (``profile_gate``,
+    ``profiles.claim_clause``). Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis
+    and its project's id."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -183,7 +183,7 @@ def _claimable(
     every_repo = ~exists().select_from(needed).where(~has_needed)
     own_repo = exists().where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == r.c.repo)
     harness = exists().where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == r.c.repos[0]["repo"].astext)
-    asked = [r.c.runtime.in_([*runtimes, *plugin_runtimes])]
+    asked = [r.c.runtime.in_([*runtimes, *offered])]
     if runtimes:  # any takes a runtime of the core, never a plugin's
         asked.append(r.c.runtime == "any")
     query = select(r.c.id, r.c.runtime, r.c.kind, runtime_rule(), r.c.project_id).where(
@@ -328,7 +328,7 @@ async def _try_claim(
             list(served),
             runtimes,
             pairs,
-            plugin_runtimes=offered,
+            offered=tuple(offered),
             plan_runs=runs.takes_plan_runs(version),
             web_only=dispatch_from == "web",
             review_runs="review" in (kinds or ()),
