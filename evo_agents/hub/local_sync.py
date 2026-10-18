@@ -15,7 +15,8 @@ current:
   run (category ``question``, its options keyed 1, 2, ..), so the member can answer it on the web, in Telegram or
   with ``hub decision answer`` too; the hook does not wait, so the dialog opens at once. When the person answers in
   the dialog, ``local-tool`` (PostToolUse of AskUserQuestion) reports it (``.../decisions/<id>/answered``): the first
-  answer wins on the hub, and a later one gets 409, which is left alone;
+  answer wins on the hub, and a later one gets 409, which is left alone. An answer the hook cannot report waits in the
+  session's file for the next hook that reaches the hub;
 - an answer that came from the hub after the session stopped waiting (or while the dialog was open) is in the run's
   inbox, and ``user-prompt`` hands it to the agent as ``additionalContext`` of the person's next message and
   acknowledges it with the next one. The ``ask_member`` MCP tool of the hub holds for an answer itself.
@@ -30,8 +31,9 @@ position in the transcript and the events that wait for the hub (at most MAX_PEN
 are redacted before they are written there. The files of sessions untouched for KEEP_DAYS are deleted when a session
 registers.
 
-It never fails or holds a session, as every hook of the plugin: the exit status is 0 whatever happens; a hub that does
-not answer is left alone for ``hooks.COOLDOWN`` seconds while events wait on disk for a later hook; one that refused
+It never fails or holds a session, as every hook of the plugin: the exit status is 0 whatever happens; a hub that did
+not answer one hook of the machine is left alone for COOLDOWN seconds (a dialog's questions and answers try it anyway)
+while events wait on disk for a later hook; one that refused
 the session is left alone for REFUSAL_COOLDOWN; a hook past its deadline sends nothing more; PostToolUse asks the hub at
 most once every FLUSH_EVERY seconds and waits LOCK_WAIT_TOOL for the session's file at most, so a tool call costs a
 file write and, now and then, one short request. A session outside a hub project sends nothing: its first hook asks
@@ -87,6 +89,9 @@ INPUT_CHARS = 300  # characters of a tool's input in the log
 OUTPUT_CHARS = 400  # and of its result
 TITLE_CHARS = 120
 REFUSAL_COOLDOWN = 600.0  # seconds a hub that refused the session is left alone
+# Seconds the sync of a local session leaves a hub that did not answer alone, whichever hook of the machine found it so;
+# Stop and SessionStart wait hooks.COOLDOWN. A dialog's questions and answers do not wait at all.
+COOLDOWN = 15.0
 PLAN_FALLBACK_SECONDS = 12 * 3600  # run_for without a session id takes the newest session of the directory this young
 LOCK_WAIT = 3.0
 LOCK_WAIT_TOOL = 1.0
@@ -109,6 +114,7 @@ STATES = {"user-prompt": "running", "tool": "running", "stop": "idle", "session-
 ASK_TOOL = "AskUserQuestion"
 MAX_QUESTIONS = 4  # questions of one dialog put to the hub
 MAX_ASKS = 5  # dialogs whose answers are still awaited, kept in the session's file
+ANSWER_CHARS = 1000  # of one answer given in a dialog, kept until the hub has it
 NOTE_CHARS = 4000  # what the inbox hands the agent at one message of the person
 QUESTION_CHARS = 2000
 LABEL_CHARS = 200
@@ -531,14 +537,18 @@ class Delivery:
                 del asks[stale]
 
     def answered(self) -> None:
-        """The dialog was answered in the session: report each answer to the decision it was put as."""
+        """Dialogs were answered in the session: report each answer to the decision it was put as, the ones an earlier
+        hook could not report too (they wait in the session's file)."""
+        rec = self.rec
+        waiting = rec.get("answers") or {}
+        for key in list(waiting):
+            self._report(key, waiting[key] if isinstance(waiting[key], dict) else {})
+            del waiting[key]
+
+    def _report(self, key: str, given: dict) -> None:
         rec = self.rec
         asks = rec.get("asks") or {}
-        key = str(self.payload.get("tool_use_id") or "last")
         entries = asks.get(key) or (asks.get("last") if key != "last" else None) or []
-        response = self.payload.get("tool_response")
-        given = response.get("answers") if isinstance(response, dict) else None
-        given = given if isinstance(given, dict) else {}
         for entry in entries:
             said = given.get(entry["question"])
             body = {"text": "answered in the session"}
@@ -596,10 +606,10 @@ class Delivery:
             self.state_post(wanted)
         if wanted != "ended" and due:
             self.flush()
+        if rec.get("answers"):  # before a new dialog is put: the earlier ones' answers end their wait first
+            self.answered()
         if self.hook == "ask":
             self.ask()
-        elif self.hook == "tool" and self.payload.get("tool_name") == ASK_TOOL:
-            self.answered()
         elif self.hook == "user-prompt":
             self.inbox()
 
@@ -621,6 +631,18 @@ def _title(payload: dict) -> str | None:
 
     line = " ".join(redact(prompt).split())
     return _cut(line, TITLE_CHARS) if line else None
+
+
+def _keep_answers(rec: dict, payload: dict) -> None:
+    """Keep the answers the AskUserQuestion dialog of ``payload`` was given until the hub has them."""
+    response = payload.get("tool_response")
+    given = response.get("answers") if isinstance(response, dict) else None
+    given = given if isinstance(given, dict) else {}
+    kept = {q: _cut(a, ANSWER_CHARS) for q, a in given.items() if isinstance(q, str) and isinstance(a, str)}
+    answers = rec.setdefault("answers", {})
+    answers[str(payload.get("tool_use_id") or "last")] = kept
+    for stale in list(answers)[:-MAX_ASKS]:
+        del answers[stale]
 
 
 def _refused_lately(rec: dict, now: float) -> bool:
@@ -663,12 +685,14 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
             with contextlib.suppress(OSError):
                 rec["offset"] = os.stat(transcript).st_size  # what is in the transcript now is not this turn's
         _append(rec, events, hub.token)
+        if asking:
+            _keep_answers(rec, payload)
         rec["touched"] = now
         store.save(rec)
     if _refused_lately(rec, now):
         return []
     state = hooks.HookState(hub_dir())
-    if state.down_since(hub.url, now) is not None:
+    if hook != "ask" and not asking and state.down_since(hub.url, now, COOLDOWN) is not None:
         return []
     due = hook != "tool" or asking or now - float(rec.get("flushed") or 0) >= FLUSH_EVERY
     if not due and rec["sent"] == STATES[hook]:
