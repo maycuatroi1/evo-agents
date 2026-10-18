@@ -203,8 +203,9 @@ Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-t
   them (state in `~/.evo/hub/memory-state.json`).
 - Stop also pushes the digest of a session of 6 messages or more to the project of its directory: calls and errors
   per tool and per Bash program, what the person wrote, model and tokens, the largest context one model call read
-  (`peak_context_tokens`), the compactions and the characters of each tool's results, with every string that looks
-  like a secret replaced on the machine first. A digest the hub did not take waits for a later Stop
+  (`peak_context_tokens`), the compactions, the characters of each tool's results, and how many results the spool
+  below cut, their size before the cut and the reads of spool files, with every string that looks like a secret
+  replaced on the machine first. A digest the hub did not take waits for a later Stop
   (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none.
 - PostToolUse writes a result of Bash, Read, Grep or an MCP tool longer than 10,000 characters (`EVO_SPOOL_THRESHOLD`)
   to `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its

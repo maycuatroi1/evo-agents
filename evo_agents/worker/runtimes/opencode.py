@@ -33,7 +33,8 @@ run`` prints is parsed here.
 - The run's usage adds up the tokens of each step (``step-finish``) with their cost, and holds
   ``peak_context_tokens``, the largest context of a step: its ``input`` plus ``cache.read`` plus ``cache.write``,
   which opencode counts apart (in the research's samples, a step that read 89,984 tokens from the cache had an input
-  of 171).
+  of 171); and the ``cache.read`` and ``cache.write`` of the first step that read any context, the first request
+  (``common.FIRST_REQUEST``).
 
 Checked with opencode 1.18.34 (``evo-agents worker selftest --runtime opencode``).
 """
@@ -61,6 +62,7 @@ from evo_agents.worker.runtimes.common import (
     add_numbers,
     cut,
     detect_runtime,
+    first_request,
     kill_group,
     larger,
     message_chunk,
@@ -344,6 +346,7 @@ class OpencodeAdapter(QueueAdapter):
         self._error: str | None = None
         self._usage: dict = {}
         self._peak: int | None = None  # the largest context of a step: input, cache read and cache write
+        self._first: dict | None = None  # the cache read and cache write of the first step (FIRST_REQUEST)
         self._cost = 0.0
         self._summary: str | None = None
         self.model: tuple[str, str] | None = None
@@ -564,7 +567,10 @@ class OpencodeAdapter(QueueAdapter):
         if isinstance(cache, dict):
             flat.update({f"cache_{key}": value for key, value in cache.items()})
         add_numbers(self._usage, flat)
-        self._peak = larger(self._peak, token_sum(flat.get("input"), flat.get("cache_read"), flat.get("cache_write")))
+        context = token_sum(flat.get("input"), flat.get("cache_read"), flat.get("cache_write"))
+        self._peak = larger(self._peak, context)
+        if self._first is None and context:
+            self._first = first_request(flat.get("cache_read"), flat.get("cache_write"))
         cost = part.get("cost") if isinstance(part.get("cost"), (int, float)) else None
         self._cost += cost or 0
         return [usage_update(tokens, cost, reason=part.get("reason"))]
@@ -598,7 +604,7 @@ class OpencodeAdapter(QueueAdapter):
         self.emit([raw({"type": "permission.asked", "properties": request, "reply": "once"})])
 
     def _outcome(self) -> Outcome:
-        usage = with_peak({**self._usage, "cost": self._cost} if self._usage else None, self._peak)
+        usage = with_peak({**self._usage, "cost": self._cost} if self._usage else None, self._peak, self._first)
         if self.interrupted:
             return Outcome(False, "interrupted", usage, self._summary)
         if self._error:

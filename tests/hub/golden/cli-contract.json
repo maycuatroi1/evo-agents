@@ -45796,6 +45796,48 @@
               ],
               "title": "Tool Result Chars",
               "description": "per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest"
+            },
+            "spool_results": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Spool Results",
+              "description": "results the spool hook cut, each written whole to a file on the machine; null when a client that did not count them pushed the digest"
+            },
+            "spool_original_chars": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Spool Original Chars",
+              "description": "the characters those results had before the cut; null when a client that did not count them pushed the digest"
+            },
+            "spool_reads": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 1000000000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Spool Reads",
+              "description": "calls that named the spool directory, the agent reading a spool file again; null when a client that did not count them pushed the digest"
             }
           },
           "type": "object",

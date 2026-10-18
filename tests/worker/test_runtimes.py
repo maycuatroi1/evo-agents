@@ -217,13 +217,40 @@ def test_killing_the_group_never_signals_the_daemons_own(monkeypatch):
     assert sent == []
 
 
+NO_FIRST = dict.fromkeys(common.FIRST_REQUEST)  # a usage whose runtime did not report its first request
+
+
 def test_a_runs_usage_holds_its_peak_context_or_null_never_zero():
     assert common.with_peak(None, None) is None and common.with_peak({}, None) is None, "nothing reported"
-    assert common.with_peak({"output_tokens": 1}, None) == {"output_tokens": 1, "peak_context_tokens": None}
-    assert common.with_peak(None, 7, context_window=None) == {"peak_context_tokens": 7}
+    assert common.with_peak({"output_tokens": 1}, None) == {"output_tokens": 1, "peak_context_tokens": None, **NO_FIRST}
+    assert common.with_peak(None, 7, context_window=None) == {"peak_context_tokens": 7, **NO_FIRST}
     assert common.larger(None, None) is None and common.larger(5, None) == 5 and common.larger(5, 3) == 5
     assert common.larger(None, 0) == 0 and common.larger(5, 9) == 9
     assert common.token_sum(None, "1", True, -2) is None and common.token_sum(1, None, 2) == 3
+
+
+def test_a_runs_usage_holds_the_cache_tokens_of_its_first_request_or_null():
+    first = common.first_request(900, 12_000)
+    assert first == {
+        "first_request_cache_read_input_tokens": 900,
+        "first_request_cache_creation_input_tokens": 12_000,
+    }
+    assert common.first_request("9", -1) == NO_FIRST, "what is not a count of tokens is not reported"
+    assert common.with_peak({"output_tokens": 1}, 50, first) == {"output_tokens": 1, "peak_context_tokens": 50, **first}
+    assert common.reports_first_request(first) and not common.reports_first_request(NO_FIRST)
+    assert not common.reports_first_request(None)
+
+
+def test_the_first_request_of_a_session_is_its_first_agents_not_the_last_ones():
+    first, later = common.first_request(0, 30_000), common.first_request(29_000, 500)
+    usage = {"input_tokens": 3, **later}
+    assert common.with_first_request(usage, [{"input_tokens": 1, **first}, usage]) == {"input_tokens": 3, **first}
+    # An agent that ended before any request reports none: the next agent's first request is the session's.
+    assert common.with_first_request(usage, [None, {"input_tokens": 0, **NO_FIRST}, usage]) == usage
+    assert common.with_first_request(usage, [usage], unseen=True) == {"input_tokens": 3, **NO_FIRST}, (
+        "the terminal UI made the first request, and reports no usage"
+    )
+    assert common.with_first_request(None, [usage]) is None
 
 
 def test_the_model_and_effort_come_from_the_run_then_the_environment(tmp_path):
@@ -434,6 +461,8 @@ def test_claude_codes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "output_tokens": 405,
         "total_cost_usd": 0.2041276,
         "peak_context_tokens": 2 + 16832 + 21553,  # the first message's; the second's usage was cut from the sample
+        "first_request_cache_read_input_tokens": 21553,  # the first message of the model, the agent's first request
+        "first_request_cache_creation_input_tokens": 16832,
     }
 
 
@@ -477,7 +506,28 @@ def test_claude_codes_usage_holds_the_largest_context_of_the_main_thread(tmp_pat
         "output_tokens": 3,
         "total_cost_usd": 0.01,
         "peak_context_tokens": 30003,
+        **common.first_request(20000, 1000),  # msg_a's
     }
+
+
+def test_claude_codes_first_request_is_the_first_message_of_the_model_in_the_main_thread(tmp_path):
+    main = {"input_tokens": 3, "cache_creation_input_tokens": 41_000, "output_tokens": 2}
+
+    async def behaviour(cli: FakeCLI) -> None:
+        await cli.users.get()
+        cli.print(INIT)
+        cli.print(_used("msg_err", {"input_tokens": 800_000, "cache_read_input_tokens": 1}, model="<synthetic>"))
+        cli.print(_used("msg_sub", {"input_tokens": 9, "cache_read_input_tokens": 7}, parent="toolu_task"))
+        cli.print(_used("msg_a", main))
+        cli.print(_used("msg_b", {"input_tokens": 1, "cache_read_input_tokens": 41_003, "output_tokens": 2}))
+        cli.print(_result("DONE"))
+        await cli.input_closed.wait()
+        cli.exit()
+
+    events, outcome = asyncio.run(_collect(_claude(tmp_path, behaviour)))
+    assert outcome.completed
+    assert outcome.usage["first_request_cache_read_input_tokens"] is None, "msg_a says no cache read"
+    assert outcome.usage["first_request_cache_creation_input_tokens"] == 41_000
 
 
 def test_claude_codes_usage_says_null_for_a_peak_context_the_stream_did_not_report(tmp_path):
@@ -489,7 +539,13 @@ def test_claude_codes_usage_says_null_for_a_peak_context_the_stream_did_not_repo
         cli.exit()
 
     events, outcome = asyncio.run(_collect(_claude(tmp_path, behaviour)))
-    assert outcome.usage == {"input_tokens": 2, "output_tokens": 3, "total_cost_usd": 0.01, "peak_context_tokens": None}
+    assert outcome.usage == {
+        "input_tokens": 2,
+        "output_tokens": 3,
+        "total_cost_usd": 0.01,
+        "peak_context_tokens": None,
+        **NO_FIRST,
+    }
 
 
 def test_a_message_during_a_claude_turn_goes_in_before_the_result_and_none_after_it(tmp_path):
@@ -1230,6 +1286,7 @@ def test_codexs_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "reasoning_output_tokens": 0,
         "total_tokens": 63245,
         "peak_context_tokens": 63195,  # the last request's input, its cached part in it
+        **common.first_request(31360, 0),  # the cached and cache write tokens of the first ``last``
     }
 
 
@@ -1257,6 +1314,8 @@ def test_codexs_usage_holds_the_largest_input_of_one_request_and_the_context_win
     assert outcome.usage["input_tokens"] == 62_000, "the thread's total, the latest"
     assert outcome.usage["peak_context_tokens"] == 50_000, "the largest request, not the last one"
     assert outcome.usage["context_window"] == 258_400
+    assert outcome.usage["first_request_cache_read_input_tokens"] == 40_000, "the first request's, not the last one's"
+    assert outcome.usage["first_request_cache_creation_input_tokens"] == 0
 
 
 def test_codexs_usage_is_none_when_it_reported_no_tokens(tmp_path):
@@ -1642,6 +1701,7 @@ def test_opencodes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
         "cache_read": 89984,
         "cost": 0,
         "peak_context_tokens": 171 + 89984,  # the second step's input and cache read; the first read 90,010
+        **common.first_request(0, 0),  # the first step's cache: none read, none written
     }
 
 
