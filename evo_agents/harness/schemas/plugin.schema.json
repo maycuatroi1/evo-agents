@@ -219,7 +219,7 @@
           "$ref": "#/$defs/pages"
         },
         "agent_packs": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/agent_packs"
         },
         "agent_types": {
           "$ref": "#/$defs/contributions"
@@ -739,6 +739,39 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/environment"
+      }
+    },
+    "agent_pack": {
+      "description": "An agent pack: a directory packs/<name>/ of the bundle laid out as a Claude Code plugin, whose skills (skills/<skill>/SKILL.md), subagents (agents/<agent>.md), hooks (hooks/hooks.json), MCP servers (.mcp.json, mcpServers) and instructions (INSTRUCTIONS.md) an agent profile attaches at a pinned version of the plugin. The hub registers it as <id>/<name> in the projects that enabled the plugin; a worker builds it into the directory of each run of the profile, Claude Code loads it as a plugin, and opencode and Codex get the skills, MCP servers and instructions (docs/plugins.md, Agent packs).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "agent_packs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/agent_pack"
       }
     }
   }

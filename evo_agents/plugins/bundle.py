@@ -12,7 +12,8 @@ directories beside it, which the extension points read.
 trusted: a gzip-compressed tar of at most MAX_BUNDLE bytes that decompresses to at most MAX_UNPACKED, at most
 MAX_FILES entries, only regular files and directories, every path relative and made of parts that are neither empty,
 ``.`` nor ``..``, without backslashes or control characters, unique even ignoring case, no file where another entry
-needs a directory, and a manifest that ``evo_agents.plugins.manifest`` reads whose pages' entries the bundle holds. The
+needs a directory, and a manifest that ``evo_agents.plugins.manifest`` reads whose pages' entries the bundle holds and
+whose agent packs ``evo_agents.plugins.agent_packs`` reads. The
 signature is never inside the bundle: it signs the bundle's bytes and travels beside them
 (``evo_agents.plugins.signing``).
 
@@ -33,6 +34,7 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
+from evo_agents.plugins import agent_packs
 from evo_agents.plugins.manifest import MANIFEST_FILE, Manifest, ManifestError, read_manifest
 
 KIND = "plugin-bundle"  # the blob kind of a bundle in the hub's blob store
@@ -140,6 +142,12 @@ def _manifest_of(files: Iterable[Entry]) -> Manifest:
     for page in manifest.pages():
         if "entry" in page and page["entry"] not in held:
             raise BundleError(f"page {page['name']} names {page['entry']}, which the bundle does not hold")
+    pairs = [(entry.path, entry.data) for entry in files]
+    for item in manifest.contributions("agent_packs"):
+        try:
+            agent_packs.components(agent_packs.files_of(pairs, item["name"]))
+        except agent_packs.PackError as exc:
+            raise BundleError(f"agent pack {item['name']} ({agent_packs.directory(item['name'])}): {exc}") from None
     return manifest
 
 
