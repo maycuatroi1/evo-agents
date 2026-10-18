@@ -1387,11 +1387,11 @@ engine `EVO_WORKER_CONTAINER_ENGINE` names (`docker`, `podman` or a path), else 
   opencode or Codex ([credentials.md](credentials.md)); the machine's own login is not there. An ACP agent's `secrets`
   must come from the run's leases too.
 
-The run's preflight asks the provider before the agent starts: the run is a step run (the agent of a plan, author,
-chat, review or judge run talks to the daemon through `evo-agents worker`, which a container does not have), headless,
-not opencode on network `none`, its declared mounts clear of the worker's home and the run's checkouts, and the
-engine answers `info` and has the image or pulls it by its digest (up to 15 minutes). Each problem fails the run with
-cause `environment` and the agent never starts. A run in a container is never handed to a person in a terminal UI,
+The run's preflight asks the provider before the agent starts: the run is a step or task run (the agent of a plan,
+author, chat, review or judge run talks to the daemon through `evo-agents worker`, which a container does not have),
+headless, not opencode on network `none`, its declared mounts clear of the worker's home and the run's checkouts, and
+the engine answers `info` and has the image or pulls it by its digest (up to 15 minutes). Each problem fails the run
+with cause `environment` and the agent never starts. A run in a container is never handed to a person in a terminal UI,
 which runs on the host. The daemon runs the step's verify commands on the host, as for any run, once the agent ended.
 
 Once an agent ends, the daemon removes what is left of the run's containers by their labels. agent.json names them,

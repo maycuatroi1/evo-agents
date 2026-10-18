@@ -334,7 +334,7 @@ def test_environment_preflight_names_what_a_container_cannot_take(tmp_path):
     home = tmp_path / "worker"
     said = box.preflight(kind="plan", mode="interactive", runtime="opencode", core_paths=[home])
     assert len(said) == 3
-    assert "runs the agent in a container, which takes step runs: the agent of a plan run talks" in said[0]
+    assert "runs the agent in a container, which takes step and task runs: the agent of a plan run talks" in said[0]
     assert "a person drives a run in a terminal of the host" in said[1]
     assert "has network none, and the daemon reaches opencode's server over a port" in said[2]
     clash = container(tmp_path, {"PATH": os.defpath, **engine.env}, mounts=[{"type": "tmpfs", "target": str(home)}])

@@ -483,8 +483,8 @@ The worker's container provider runs the agent through Docker or Podman (`docs/w
 as the owner's user, with the run's worktree mounted at its own path, every capability dropped, and only the variables
 the run's leases and the run itself set passed in, never the worker's own environment. Its preflight checks the
 engine and pulls the image; a worker without an engine, or whose engine cannot pull the image, fails the run before
-its agent starts, with cause `environment`. A container takes step runs: the agent of a plan, author, chat, review or
-judge run talks to the daemon through `evo-agents worker`, which a container does not have.
+its agent starts, with cause `environment`. A container takes step and task runs: the agent of a plan, author, chat,
+review or judge run talks to the daemon through `evo-agents worker`, which a container does not have.
 
 To try one by hand, enable the plugin on a project, add it to a worker's plugins, give an agent the axis, and dispatch
 under it:

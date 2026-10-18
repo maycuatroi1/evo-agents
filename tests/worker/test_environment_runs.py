@@ -113,3 +113,34 @@ def test_environment_run_on_a_worker_without_a_container_engine_fails_its_prefli
         f"{ENGINE_VARIABLE}=no-such-engine is not an executable on PATH; the agent did not start"
     )
     assert not log.exists(), "the agent never started"
+
+
+def test_environment_task_run_runs_its_agent_in_the_container_and_pushes_its_task_branch(machine):  # noqa: F811
+    """A task run, whose agent asks the daemon nothing (CONTAINER_KINDS), takes a container as a step run does: the
+    agent writes in the repo's worktree under the run's directory, and the daemon pushes task/<run> on the host."""
+    engine = Engine(machine.tmp)
+    agent_files(machine, **engine.env)
+    turn = [step for step in TURN if "write" not in step]
+    turn.insert(2, {"write": {"alpha/a.txt": "a\n", f"{runs.RESULT_DIR}/result.json": json.dumps(RESULT)}})
+    (machine.tmp / "acp-scenario.json").write_text(json.dumps({"turns": [turn]}), encoding="utf-8")
+    found = {}
+
+    async def body(hub, daemon):
+        plugin_hub(hub)
+        await wait_for(lambda: reported(hub) == FOUND, "the heartbeat to report the plugin's runtime")
+        run_id = hub.queue_task_run(["alpha"], runtime=RUNTIME)
+        hub.runs[run_id]["spec"].update(plugin_runtime=dict(DECLARATION), environment=dict(ENVIRONMENT))
+        hub.leases[run_id] = {"leases": [env_lease(1, "FAKE_API_KEY", LEASED_VALUE)], "missing": []}
+        assert await hub.wait_state(run_id, "done", "failed", "review") == "done", hub.texts(run_id)
+        found.update(hub=hub, run=run_id)
+
+    with_daemon(machine, body)
+    hub, run_id = found["hub"], found["run"]
+    chunks = [e["body"]["content"]["text"] for e in hub.runs[run_id]["events"] if e["kind"] == "agent_message_chunk"]
+    assert chunks == ["env FAKE_API_KEY: set", "env OWNER_SECRET: unset", "Wrote a.txt."]
+    assert "Preflight passed: 1 repo(s) and environment sandbox/box, its engine and image." in hub.texts(run_id)
+    branch = f"task/{run_id}"
+    assert machine.origin("alpha", "show", f"{branch}:a.txt") == "a", "the daemon pushed what the agent wrote"
+    (run_call,) = [call for call in engine.calls() if call["args"][0] == "run"]
+    assert run_call["image"] == IMAGE and run_call["cwd"] == str(machine.directory(run_id))
+    assert "FAKE_API_KEY" in run_call["env"] and "OWNER_SECRET" not in run_call["env"]

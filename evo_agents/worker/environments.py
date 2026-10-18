@@ -51,7 +51,7 @@ from evo_agents.plugins.run_environments import HOST, ContainerEnvironment, Moun
 
 ENGINE_VARIABLE = "EVO_WORKER_CONTAINER_ENGINE"  # docker, podman, or the path of either
 ENGINES = ("docker", "podman")
-CONTAINER_KINDS = ("step",)  # the kinds of run whose agent needs no `evo-agents worker` command of this daemon
+CONTAINER_KINDS = ("step", "task")  # the kinds of run whose agent needs no `evo-agents worker` command of this daemon
 HOME_DIR = "container-home"  # under runs/<run>: the container's HOME
 PROBE_TIMEOUT = 30.0  # seconds for `<engine> info` and `<engine> image inspect`
 PULL_TIMEOUT = 900.0  # seconds to pull an image
@@ -395,7 +395,7 @@ class Container(Environment):
         problems = []
         if kind not in CONTAINER_KINDS:
             problems.append(
-                f"{where} runs the agent in a container, which takes {', '.join(CONTAINER_KINDS)} runs: the agent of a "
+                f"{where} runs the agent in a container, which takes {' and '.join(CONTAINER_KINDS)} runs: the agent of a "
                 f"{kind} run talks to this worker's daemon through `evo-agents worker`, which a container does not "
                 "have; run it under an agent whose environment axis allows host"
             )
