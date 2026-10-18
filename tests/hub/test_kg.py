@@ -60,6 +60,7 @@ from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.sessions import READ_META
+from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 
 PROJECT = "alpha"
@@ -1333,3 +1334,96 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
     set_job_status(hub.db, job_id, "aborted")  # as the worker ends it
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["status"] == "succeeded"
+
+
+# The plans of the hub in the graph of a harness that names a hub project
+
+HUB_HARNESS_KNOWLEDGE = """\
+version: 1
+project: alpha
+policy:
+  levels: [public, internal, customer, secret]
+  sinks:
+    - {id: claude-code@anthropic, kind: agent-session, clearance: {level: customer}}
+    - {id: hub, kind: hub, clearance: {level: internal}}
+sources:
+  - id: harness
+    connector: harness
+    label: {level: public, integrity: U}
+"""
+
+
+class CountingHub(InProcessHub):
+    """``InProcessHub`` that notes the paths it was asked for."""
+
+    def __init__(self, client, headers):
+        super().__init__(client, headers)
+        self.paths: list[str] = []
+
+    def call(self, method, path, body=None, *, timeout=None):
+        self.paths.append(path)
+        return super().call(method, path, body, timeout=timeout)
+
+
+def put_plan(hub, body: dict, revision: int | None = None) -> dict:
+    response = hub.client.put(
+        f"/v1/projects/{PROJECT}/plans/{body['id']}", json={"body": body, "if_revision": revision}, headers=hub.alice
+    )
+    assert response.status_code in (200, 201), response.text
+    return response.json()
+
+
+def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tmp_path, monkeypatch):
+    from evo_agents.hub import client as hub_client
+    from evo_agents.hub import kg_plans
+    from evo_agents.hub.mirror import render
+
+    body = {"id": "rollout", "goal": "Ship it.", "steps": [{"id": 1, "title": "One", "what": "do one"}]}
+    first = put_plan(hub, body)
+    root = tmp_path / "alpha-harness"
+    (root / "plans/active").mkdir(parents=True)
+    (root / "harness.yaml").write_text(
+        "name: alpha\nrepos: []\nknowledge_file: knowledge.yaml\nhub: {project: alpha}\n"
+    )
+    (root / "knowledge.yaml").write_text(HUB_HARNESS_KNOWLEDGE)
+    copy = root / "plans/active/rollout.yaml"
+    copy.write_text(render(body, PROJECT, first["revision"], first["digest"]))  # the copy of revision 1
+    done = {**body, "steps": [{**body["steps"][0], "status": "done", "evidence": "shipped"}]}
+    second = put_plan(hub, done, first["revision"])  # the hub moves on; nobody exports
+    home = tmp_path / "kg-home"
+    project = load_project_at(root, home)
+
+    member = CountingHub(hub.client, hub.alice)
+    (result,) = sync_project(project, plans=kg_plans.reader(member))
+    assert result.ok, result.issues
+    assert member.paths == [f"/v1/projects/{PROJECT}/plans", f"/v1/projects/{PROJECT}/plans/rollout"]
+    report = build_project(project)
+    assert report.ok, report.errors
+    store = Store.for_project(project)
+    step = store.node("plan:rollout/step:1", report.build_id)
+    assert step["props"]["status"] == "done"  # the hub's revision, not the copy's
+    assert step["label"][0] == 1  # internal, the hub's label of the plan, above the source's public
+    record = project.corpus().get("harness:file:plans/active/rollout.yaml").record
+    assert record["uri"] == f"https://hub.test/p/{PROJECT}/plans/rollout"
+    assert record["label"] == {"level": "internal", "location": "any", "integrity": "U"}
+
+    copy.write_text(render(done, PROJECT, second["revision"], second["digest"]))  # exported since
+    member.paths.clear()
+    (again,) = sync_project(project, plans=kg_plans.reader(member))
+    assert again.ok and member.paths == [f"/v1/projects/{PROJECT}/plans"]  # known revision, current copy: one call
+    assert build_project(project).skipped  # an unchanged revision changes no item, so nothing is built
+
+    assert push(hub, SimpleNamespace(project=lambda: project), "alice").ok  # the hub builds what the machine read
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    there = tool_ok(hub, "kg_node", {"id": "plan:rollout/step:1"})["structuredContent"]["node"]
+    assert there["props"]["status"] == "done" and there["label"]["level"] == "internal"
+
+    monkeypatch.setattr(hub_client, "hub_dir", lambda: tmp_path / "signed-out")  # no hub login on this machine
+    (offline,) = sync_project(project, plans=kg_plans.reader())
+    assert offline.ok and not offline.warnings
+    assert build_project(project).skipped  # the copy is the revision the cursor holds: the same item, labels and all
+    copy.write_text(render(body, PROJECT, first["revision"], first["digest"]))  # an older copy, checked out by hand
+    assert sync_project(project, plans=kg_plans.reader())[0].ok
+    report = build_project(project)
+    step = Store.for_project(project).node("plan:rollout/step:1", report.build_id)
+    assert step["props"]["status"] == "pending" and step["label"][0] == 0  # the copy, with the source's label

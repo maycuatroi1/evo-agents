@@ -96,7 +96,8 @@ def files_at(repo: Path, ref: str) -> dict[str, str]:
 
 
 def alive_texts(corpus: Corpus) -> dict[str, str]:
-    return {r.record["props"]["path"]: corpus.body_text(r.record) for r in corpus.items("app")}
+    """The text of each file the corpus holds of source app; the items of its commits have none."""
+    return {r.record["props"]["path"]: corpus.body_text(r.record) for r in corpus.items("app") if ":file:" in r.item_id}
 
 
 def test_switching_to_a_ref_with_older_commits_takes_its_content_for_every_file(tmp_path, kg_env):
@@ -106,7 +107,7 @@ def test_switching_to_a_ref_with_older_commits_takes_its_content_for_every_file(
 
     project = git_project(tmp_path, kg_env, repo, "deploy")
     result = sync_source(project, "app")
-    assert result.ok and result.removals == 1  # docs/main-only.md is not on deploy
+    assert result.ok and result.removals == 2  # docs/main-only.md and the commit that added it are not on deploy
     corpus = project.corpus()
     assert alive_texts(corpus) == files_at(repo, "deploy")
     assert corpus.get("app:file:docs/main-only.md").deleted

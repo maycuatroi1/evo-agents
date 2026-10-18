@@ -105,6 +105,25 @@ def last_change_times(repo: Path, commit: str) -> dict[str, str]:
     return times
 
 
+def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
+    """The commits reachable from ``commit`` and not from ``since``, newest first, each ``{sha, parents, time, paths}``:
+    the committer time, and the paths it changed, a merge's against its first parent, a rename as a delete and an add.
+    GitError when ``since`` is not a commit of the clone."""
+    args = ["-c", "core.quotePath=false", "log", "--format=%x01%H %P%x01%cI", "--name-only", "--no-renames"]
+    args += ["--diff-merges=first-parent", commit]
+    if since:
+        args.append(f"^{since}")
+    found: list[dict] = []
+    for line in git(repo, *args).splitlines():
+        if line.startswith("\x01"):
+            shas, _, time = line[1:].partition("\x01")
+            sha, *parents = shas.split()
+            found.append({"sha": sha, "parents": parents, "time": time, "paths": []})
+        elif line and found:
+            found[-1]["paths"].append(line)
+    return found
+
+
 def commit_time(repo: Path, commit: str) -> str:
     return git(repo, "show", "-s", "--format=%cI", commit).strip()
 

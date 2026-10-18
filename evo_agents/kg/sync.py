@@ -43,6 +43,7 @@ NOT_LINEAGE = frozenset(
         "credentials",
         "timeout",
         "fetch",
+        "pulls",
         "include",
         "exclude",
         "allow",
@@ -266,10 +267,12 @@ def sync_source(
     credential_getter=None,
     corpus: Corpus | None = None,
     env: dict | None = None,
+    plans=None,
 ) -> SyncResult:
     """Run one source's connector into the corpus. The run gets a row in the runs table and a line in the
     project's audit log, once its state is committed. A git source whose commit and config are those its last ok
-    run read is not read again (``_read_already``)."""
+    run read is not read again (``_read_already``). ``plans`` reads the plans of the hub for a harness source
+    (``ConnectorContext.plans``)."""
     source = project.source(source_id)
     corpus = corpus or project.corpus()
     started_clock = time.monotonic()
@@ -285,7 +288,7 @@ def sync_source(
             _finish(project, corpus, result, source["connector"], None, started)
             return result
 
-        ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env)
+        ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env, plans)
         if _read_already(corpus, ctx, result):
             result.seconds = round(time.monotonic() - started_clock, 3)
             _finish(project, corpus, result, source["connector"], __version__, started)

@@ -13,12 +13,13 @@ IMPACT_MAX_LIMIT = 500
 
 INSTRUCTIONS = (
     "Knowledge graph of the bound project: repos, files, symbols, documents and sections, plans and steps, "
-    "seams, and the explicit links between them, each with provenance and a sensitivity label. Use kg_search "
+    "commits and pull requests, seams, and the explicit links between them, each with provenance and a sensitivity "
+    "label. Use kg_search "
     "or kg_context before grepping for a named requirement, plan, document, seam or feature; use grep for exact "
     "strings and code you just edited. Before editing, renaming or changing the signature of a symbol or file, call "
     "kg_impact (ids, repo:path or a diff) and check every dependent it lists, then grep for what its coverage note "
-    "says the seed's language lacks. kg_path traces a requirement to its steps, code and tests, or shows how two "
-    "nodes connect. Ids read repo:path, repo:path::Symbol and repo:path#section. Status 'parsed' was read from a "
+    "says the seed's language lacks. kg_path traces a requirement to its steps, code and tests, a plan step to the "
+    "files its commits changed, or shows how two nodes connect. Ids read repo:path, repo:path::Symbol and repo:path#section. Status 'parsed' was read from a "
     "source; 'resolved' matched a name to one target and can be wrong. The graph can lag the sources: read the live "
     "file (kg_node gives its uri) before quoting or editing it."
 )

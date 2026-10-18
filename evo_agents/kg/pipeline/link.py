@@ -18,6 +18,12 @@ receiver (``extract.pytypes``) names the class by a type expression: the class a
 callee returns, an instance of it when it is a class, else the class its return annotation names, which the
 index resolves once a build in the callee's own file; the method is then found up that class's chain.
 
+A SHA names a commit a git source read from its history when exactly one such commit starts with it: ``repo@sha``
+among the commits of that repo, a bare SHA in a plan step's evidence among those of the step's repo first, then of
+every repo; such a mention links to the commit's item, and one that names no commit read gets a Commit node of its own
+as before. A pull request is named by its URL, ``owner/repo#57``, ``repo#57`` with a repo name of harness.yaml, or
+"PR #57" in the text of a step of that repo.
+
 A link task notes what it reads of the index (``Reads``), and the build memoizes it by those entries rather than by
 the whole index (``Memo.run_traced``): a changed file links again the items that looked up one of its names or
 paths, not every item of the project.
@@ -36,7 +42,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "10"
+LINK_VERSION = "11"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -48,6 +54,8 @@ MD_LINK = re.compile(r"\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")
 REPO_SHA = re.compile(r"(?<![\w/.-])([A-Za-z0-9_.-]+)@([0-9a-f]{7,40})\b")
 BARE_SHA = re.compile(r"(?<![\w/.@-])([0-9a-f]{7,40})(?![\w-])")
 PLAN_STEP = re.compile(r"(?<![\w/.-])([a-z0-9][a-z0-9-]{2,})#(\d+)\b")
+GITHUB_PULL = re.compile(r"(?<![\w/.-])([A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+)#(\d+)\b")  # owner/repo#57
+PULL_WORD = re.compile(r"\b(?:PR|[Pp]ull [Rr]equest) ?#(\d+)\b")  # "PR #57" in the text of a step of that repo
 TOKEN = re.compile(r"(?<![\w.-])([A-Za-z0-9][A-Za-z0-9_.-]*[A-Za-z0-9])(?![\w-])")
 SYMBOLISH = re.compile(r"^[A-Za-z_][\w]*(?:\.[A-Za-z_]\w*)*(?:\(\))?$")
 
@@ -60,6 +68,8 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "plan": {},
         "step": {},
         "url": {},
+        "pr": {},  # "<repo>#57" and "<owner>/<repo>#57" -> the pull request
+        "commit": defaultdict(list),  # the first 7 characters of a SHA -> the commits read that start with them
         "path": defaultdict(list),
         "dir": defaultdict(list),
         "module": defaultdict(list),
@@ -118,8 +128,10 @@ def _return_types(index: dict, functions: list[dict]) -> None:
 def _learn(index: dict, f: dict) -> None:
     """Add one ``ident`` fact to the index."""
     kind = f["type"]
-    if kind in ("repo", "seam", "plan", "step", "url"):
+    if kind in ("repo", "seam", "plan", "step", "url", "pr"):
         index[kind].setdefault(f["key"], f["node"])
+    elif kind == "commit":
+        index["commit"][f["key"][:7]].append({"sha": f["key"], "repo": f.get("repo"), "node": f["node"]})
     elif kind == "path":
         index["path"][f["key"]].append({"node": f["node"], "repo": f.get("repo"), "source": f["source"]})
     elif kind == "dir":  # every item under a directory names it: keep one entry per node
@@ -460,6 +472,15 @@ class Linker:
             found = found or [e["node"] for e in entries]
         return found
 
+    def commit_target(self, sha: str, repo: str | None = None, strict: bool = False) -> str | None:
+        """The item of the one commit read whose SHA starts with ``sha``: among the commits of ``repo`` alone when
+        ``strict``, else those of ``repo`` first; None when no commit read has it, or two do. The same commit read by
+        two sources is one commit: the smaller item id stands for it."""
+        entries = [e for e in self.index["commit"].get(sha[:7], []) if e["sha"].startswith(sha)]
+        scoped = [e for e in entries if e["repo"] == repo] if repo else []
+        entries = scoped if strict or scoped else entries
+        return min(e["node"] for e in entries) if len({e["sha"] for e in entries}) == 1 else None
+
     def _first_file(self, candidates: list[str], repo: str | None) -> list[str]:
         for candidate in candidates:
             found, _ = self.path_target(candidate, repo)
@@ -526,12 +547,10 @@ class Linker:
                     break
             if found is None:
                 return  # a package import or a file outside the sources: not a dangling link
-        elif ttype == "module":
-            entries = self.index["module"].get(target["value"], [])
-            same = [e for e in entries if e["source"] == target.get("source")]
-            found = _unique(same or entries)
+        elif ttype in ("module", "commit"):
+            found = self._module_or_commit(ttype, target)
             if found is None:
-                return  # third-party or optional import: outside the project, not a dangling link
+                return  # third-party or optional import, or a commit no source read: not a dangling link
         if found is None:
             self._ref("dangling", f"{ttype}:{target['value']}")
             return
@@ -548,9 +567,67 @@ class Linker:
                 where=f.get("where") or [[unit, ""]],
             )
 
+    def _module_or_commit(self, ttype: str, target: dict) -> str | None:
+        if ttype == "commit":
+            return self.commit_target(target["value"], target.get("repo"), strict=True)
+        entries = self.index["module"].get(target["value"], [])
+        same = [e for e in entries if e["source"] == target.get("source")]
+        return _unique(same or entries)
+
     # -- scanning -------------------------------------------------------------------------------
 
-    def scan(self, src: str, unit: str, text: str, field: str = "text", heading: str | None = None) -> None:
+    def _commits(self, src: str, unit: str, text: str, field: str, claim, repo: str | None) -> None:
+        """``repo@sha``, and a bare SHA in evidence: the commit read when one has it, else a Commit node of the
+        mention's own."""
+        for m in REPO_SHA.finditer(text):
+            if not claim(m):
+                continue
+            name, sha = m.group(1), m.group(2)
+            self._count("resolved")
+            found = self.commit_target(sha, name, strict=True)
+            if found:
+                self._link(src, found, unit, m.start(), "parsed", "commit", field)
+                continue
+            commit = f"commit:{name}@{sha}"
+            self.nodes.setdefault(
+                commit, node(commit, "Commit", f"{name}@{sha[:10]}", [unit], props={"repo": name, "sha": sha})
+            )
+            self._link(src, commit, unit, m.start(), "parsed", "commit", field)
+            if name in self.index["repo"]:
+                key = (commit, "in_repo", self.index["repo"][name])
+                self.edges.setdefault(key, edge(commit, "in_repo", self.index["repo"][name], [unit]))
+        if field != "evidence":
+            return
+        for m in BARE_SHA.finditer(text):
+            sha = m.group(1)
+            if not (re.search(r"[a-f]", sha) and re.search(r"\d", sha)) or not claim(m):
+                continue
+            self._count("resolved")
+            found = self.commit_target(sha, repo)
+            if found:
+                self._link(src, found, unit, m.start(), "resolved", "commit", field)
+                continue
+            commit = f"commit:{sha}"
+            self.nodes.setdefault(commit, node(commit, "Commit", sha[:10], [unit], props={"sha": sha}))
+            self._link(src, commit, unit, m.start(), "parsed", "commit", field)
+
+    def _pulls(self, src: str, unit: str, text: str, field: str, claim, repo: str | None) -> None:
+        """A pull request a source read: ``owner/repo#57`` and ``repo#57`` (parsed), "PR #57" in the text of a step
+        of that repo (resolved)."""
+        for pattern, status in ((GITHUB_PULL, "parsed"), (PLAN_STEP, "parsed"), (PULL_WORD, "resolved")):
+            for m in pattern.finditer(text):
+                if pattern is PULL_WORD:
+                    key = f"{repo}#{m.group(1)}" if repo else None
+                else:
+                    key = f"{m.group(1).lower() if pattern is GITHUB_PULL else m.group(1)}#{m.group(2)}"
+                target = self.index["pr"].get(key) if key else None
+                if target and claim(m):
+                    self._count("resolved")
+                    self._link(src, target, unit, m.start(), status, "pr", field)
+
+    def scan(
+        self, src: str, unit: str, text: str, field: str = "text", heading: str | None = None, repo: str | None = None
+    ) -> None:
         taken: list[tuple[int, int]] = []
 
         def claim(m) -> bool:
@@ -601,35 +678,15 @@ class Linker:
             else:
                 self._count("ambiguous" if entries else "dangling", m.group(0))
 
-        for m in REPO_SHA.finditer(text):
-            if not claim(m):
-                continue
-            repo, sha = m.group(1), m.group(2)
-            commit = f"commit:{repo}@{sha}"
-            self.nodes.setdefault(
-                commit, node(commit, "Commit", f"{repo}@{sha[:10]}", [unit], props={"repo": repo, "sha": sha})
-            )
-            self._count("resolved")
-            self._link(src, commit, unit, m.start(), "parsed", "commit", field)
-            if repo in self.index["repo"]:
-                key = (commit, "in_repo", self.index["repo"][repo])
-                self.edges.setdefault(key, edge(commit, "in_repo", self.index["repo"][repo], [unit]))
-
-        if field == "evidence":
-            for m in BARE_SHA.finditer(text):
-                sha = m.group(1)
-                if not (re.search(r"[a-f]", sha) and re.search(r"\d", sha)) or not claim(m):
-                    continue
-                commit = f"commit:{sha}"
-                self.nodes.setdefault(commit, node(commit, "Commit", sha[:10], [unit], props={"sha": sha}))
-                self._count("resolved")
-                self._link(src, commit, unit, m.start(), "parsed", "commit", field)
+        self._commits(src, unit, text, field, claim, repo)
 
         for m in PLAN_STEP.finditer(text):
             target = self.index["step"].get(f"{m.group(1)}#{m.group(2)}")
             if target and claim(m):
                 self._count("resolved")
                 self._link(src, target, unit, m.start(), "parsed", "step", field)
+
+        self._pulls(src, unit, text, field, claim, repo)
 
         for m in REPO_PATH.finditer(text):
             repo, path = m.group(1), m.group(2)
@@ -723,10 +780,10 @@ def link_item(record: dict, fragments: list[dict], body: str | None, structure: 
     kind = record["kind"]
     if kind in ("manifest", "contracts", "plan", "knowledge", "binding", "ontology"):
         for t in texts:  # structured files: only the free-text fields, never comments or keys
-            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"))
+            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
     elif texts:
         for t in texts:
-            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"))
+            linker.scan(t["src"], t["unit"], t["text"], t.get("field", "text"), repo=t.get("repo"))
     elif kind in ("code", "config", "asset"):
         pass  # code links come from the structure stage; config and assets are not prose
     elif fragments:
