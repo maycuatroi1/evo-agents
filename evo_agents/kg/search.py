@@ -29,9 +29,17 @@ MAX_TEXT_CHARS = 100_000  # a node's body past this is cut and counted in the bu
 MAX_TERMS = 12  # words of a query read; the rest are dropped
 WEIGHTS = (0.0, 0.0, 6.0, 2.0, 1.0)  # bm25 weights of node_fts's columns: node_id, kind, name, path, body
 # A light prior on the BM25 score by kind: at the same text score, a node that is code or a document comes before one
-# that describes work on it (a plan, a step, a commit) or only groups it (a directory). The best RERANK_POOL matches by
-# BM25 alone are scored again with it.
-PRIOR = {"Plan": 0.5, "PlanStep": 0.5, "Commit": 0.5, "Directory": 0.5, "Section": 0.7, "Requirement": 0.7}
+# that describes work on it (a plan, a step, a commit, a pull request) or only groups it (a directory). The best
+# RERANK_POOL matches by BM25 alone are scored again with it.
+PRIOR = {
+    "Plan": 0.5,
+    "PlanStep": 0.5,
+    "Commit": 0.5,
+    "PullRequest": 0.5,
+    "Directory": 0.5,
+    "Section": 0.7,
+    "Requirement": 0.7,
+}
 RERANK_POOL = 300
 
 _FOLD = str.maketrans({"đ": "d", "Đ": "D"})

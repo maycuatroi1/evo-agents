@@ -53,7 +53,8 @@ from evo_agents.kg.schema import known_kinds
 from evo_agents.kg.store import Graph, StaleSchema, Store, edge_id, key_conflicts
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
-STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config"}  # config: tsconfig.json aliases
+# config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
+STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config", "commit", "pr"}
 DEFINITION_SAMPLES = 15
 UNSEARCHED_ITEMS = ("code", "plan")  # their text reaches search through symbols, docstrings, plans and steps
 UNSEARCHED_FIELDS = ("title", "verify", "evidence")  # the name already; commands and run output

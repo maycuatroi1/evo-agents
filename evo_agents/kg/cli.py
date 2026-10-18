@@ -97,6 +97,14 @@ def _print_push(reports: list, error: str | None) -> None:
             print(f"     {line}")
 
 
+def _hub_plans():
+    """What the harness connector reads the plans of the hub through, in a harness whose harness.yaml names a hub
+    project (``ConnectorContext.plans``); on a machine not signed in to a hub it reads the copies in plans/."""
+    from evo_agents.hub.kg_plans import reader
+
+    return reader()
+
+
 def _cmd_sync_due(args) -> int:
     from evo_agents.kg.ids import utc_now
     from evo_agents.kg.sync import sync_all_due, sync_due
@@ -108,7 +116,7 @@ def _cmd_sync_due(args) -> int:
         if args.project or args.accept_removals:
             print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
             return 2
-        outcomes = sync_all_due(build=args.build)
+        outcomes = sync_all_due(build=args.build, plans=_hub_plans())
         ok = all(o.ok for o in outcomes)
         pushed = _push() if args.push else None
         if pushed is not None:
@@ -128,7 +136,7 @@ def _cmd_sync_due(args) -> int:
 
     project = _project(args)
     try:
-        outcome = sync_due(project, build=args.build, accept=args.accept_removals)
+        outcome = sync_due(project, build=args.build, accept=args.accept_removals, plans=_hub_plans())
     except ProjectError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -155,7 +163,7 @@ def cmd_sync(args) -> int:
     if args.due:
         return _cmd_sync_due(args)
     project = _project(args)
-    results = sync_project(project, args.source or None, accept=args.accept_removals)
+    results = sync_project(project, args.source or None, accept=args.accept_removals, plans=_hub_plans())
     ok = all(r.ok and not r.held for r in results)
     report = None
     if args.build:

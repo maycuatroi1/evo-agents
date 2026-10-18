@@ -74,6 +74,13 @@ timeout) before each run, so the graph follows the remote without anyone fetchin
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
 is fetched. Without `ref:` a source reads HEAD of its checkout, whatever branch that has, and
 `harness validate` warns about it.
+A git source also reads the history of its ref, one `Commit` node per commit with `changes` edges to the files it
+changed, and, for a repo whose origin is on GitHub, the pull requests with their number, title, state, branches and
+merge commit, never their body or comments (`pulls: false` turns that off; the token comes from `GH_TOKEN`,
+`GITHUB_TOKEN` or `gh auth token`). A SHA or "PR #57" in a plan step's evidence then links the step to that commit
+or pull request, and through it to the files: `docs/kg.md`, section Plans of the hub, commits and pull requests.
+In a harness whose harness.yaml names a hub project, `kg sync` reads the plans at the revision the hub holds, with
+the hub's label, rather than the copies in `plans/`; a machine not signed in to a hub reads the copies.
 The graph says which commit each git source read and how many commits that is behind the remote's default
 branch (`origin/<default_branch>`, counted from the clone without fetching): `kg status`, `kg_status`, the
 SessionStart note and the hub's graph page show it, and `kg_node` links a file at that commit, so the lines

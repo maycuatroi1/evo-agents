@@ -67,3 +67,21 @@ def test_without_ontology_key_any_kind_builds_as_before(tmp_path, kg_env):
     report = build_project(project)
     assert report.ok, report.errors
     assert Store.for_project(project).node("screen:SCR-7", report.build_id)["kind"] == "Screen"
+
+
+def test_commits_and_pull_requests_are_hub_kinds_an_ontology_may_not_redefine(tmp_path, kg_env):
+    from evo_agents.kg.schema import HUB_KINDS, HUB_RELATIONS, validate_ontology
+
+    assert {"Commit", "PullRequest"} <= set(HUB_KINDS)
+    assert HUB_RELATIONS["changes"] == ("Commit", "*") and HUB_RELATIONS["merged_as"] == ("PullRequest", "Commit")
+    issues = validate_ontology({"node_kinds": ["PullRequest"], "relations": ["changes"]})
+    assert [i.message for i in issues] == [
+        "'PullRequest' is a hub kind; extend it with properties instead",
+        "'changes' is a hub relation",
+    ]
+    project = with_screens(make_project(tmp_path, kg_env), "node_kinds: [Screen]\n")
+    report = build_project(project)
+    assert report.ok, report.errors  # the commit items of the app's history build under an ontology
+    store = Store.for_project(project)
+    commits = store.db.execute("SELECT COUNT(*) FROM nodes WHERE kind = 'Commit' AND node_id LIKE 'app:commit:%'")
+    assert commits.fetchone()[0] == 1
