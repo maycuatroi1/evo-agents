@@ -54,12 +54,14 @@ from evo_agents.plugins.environment import (
 )
 from evo_agents.plugins.manifest import Manifest
 from evo_agents.plugins.process import (
+    STOP_GRACE,
     BackendGone,
     BackendProcess,
     BackendTimeout,
     describe_exit,
     kill_user,
     processes_of,
+    reap_zombies,
 )
 from evo_agents.plugins.protocol import RemoteError
 
@@ -140,6 +142,18 @@ class BackendStatus:
 
 def _backoff(restarts: int) -> float:
     return BACKOFF[restarts] if restarts < len(BACKOFF) else MAX_BACKOFF
+
+
+async def _clean(name: str, stopping: Awaitable[bool]) -> bool:
+    """What the stop of a retired plugin, or a kill of its user, says: whether no process of that user is left. An
+    error counts as processes left, so the host kills them again with its backoff rather than let the error end it."""
+    try:
+        return await stopping
+    except Exception as exc:
+        log.warning(
+            "plugin backend stop failed: killing its user again", extra={"contribution": name, "error": repr(exc)[:200]}
+        )
+        return False
 
 
 class Backend:
@@ -236,6 +250,7 @@ class Backend:
         await self._built()  # the placing of a start that was cancelled, which runs on in its thread
         if owner is not None and not await kill_user(owner):  # nothing of an earlier start lingers under its user
             raise PlacementError(LINGERING.format(name=self.name, uid=owner.uid))
+        self.reap(owner)
         await self._place(owner)
         params = await self._initialize_params()
         command = backend_command(self.where, self.manifest.backend["entry"], owner)
@@ -248,7 +263,7 @@ class Backend:
             await process.call("initialize", params, INIT_TIMEOUT)
         except (BackendTimeout, BackendGone, RemoteError) as exc:
             tail = " | ".join(list(process.stderr_tail)[-3:])
-            await process.stop(grace=2.0)
+            await self._put_down(process, 2.0)
             self.process = None
             said = f"; stderr: {tail}" if tail else ""
             raise PlacementError(f"plugin {self.name} did not initialize: {exc}{said}") from None
@@ -278,9 +293,26 @@ class Backend:
             log.error("plugin backend start failed", exc_info=exc, extra={"contribution": self.name})
         if self.process is not None:
             process, self.process = self.process, None
-            with contextlib.suppress(Exception):
-                await process.stop(grace=2.0)
+            await self._put_down(process, 2.0)
         self._schedule_retry(error)
+
+    async def _put_down(self, process: BackendProcess, grace: float) -> None:
+        """Stop ``process``. Whatever its stop raises is logged and goes no further: the backend is down either way, so
+        its restart backs off and the kill of its user still runs, rather than the error ending the retries."""
+        try:
+            await process.stop(grace=grace)
+        except Exception as exc:
+            log.warning("plugin backend stop failed", extra={"contribution": self.name, "error": repr(exc)[:200]})
+
+    def reap(self, owner: Identity | None) -> None:
+        """Reap the zombies of the plugin's user whose parent is the host (``process.reap_zombies``): children a
+        backend made with clone(CLONE_PARENT), which nothing else waits for. Only once no placing runs, since pip,
+        under that user, is the host's child too."""
+        if owner is None or (self._building is not None and not self._building.done()):
+            return
+        reaped = reap_zombies(owner.uid)
+        if reaped:
+            log.info("reaped zombies of a plugin user", extra={"contribution": self.name, "count": len(reaped)})
 
     def in_backoff(self) -> bool:
         return self.status.retry_at is not None and time.time() < self.status.retry_at
@@ -333,7 +365,7 @@ class Backend:
         except (BackendTimeout, BackendGone) as exc:
             async with self._lock:
                 if self.process is process:  # another call may have restarted it already
-                    await process.stop(grace=2.0)
+                    await self._put_down(process, 2.0)
                     self.process = None
                     self._schedule_retry(f"{exc} ({describe_exit(process.returncode)})")
             raise BackendUnavailable(f"plugin {self.name} did not answer: {exc}") from None
@@ -345,8 +377,10 @@ class Backend:
     async def stop(self) -> bool:
         """Stop the backend: a start under way is cancelled, the stop of the backend it replaced waited for, what runs
         under the plugin's user killed (pip's install included), the placing it was doing waited for, the process
-        stopped, and in isolation uid every process of the plugin's user killed again. Only then may the backend that
-        replaces this one, under the same user, start. False when processes of that user still run afterwards."""
+        stopped, and in isolation uid every process of the plugin's user killed again and the zombies of that user the
+        host is parent of reaped (``reap``). Only then may the backend that replaces this one, under the same user,
+        start. False when processes of that user still run afterwards. An error of the process's stop goes no further
+        than the log (``_put_down``), so the kill of the user still runs."""
         if self._starting is not None and not self._starting.done():
             self._starting.cancel()
             await asyncio.gather(self._starting, return_exceptions=True)
@@ -355,13 +389,18 @@ class Backend:
         await self._wind_down(owner)
         async with self._lock:
             if self.process is not None:
-                await self.process.stop()
+                await self._put_down(self.process, STOP_GRACE)
                 self.status.state = "backoff"
                 self.status.pid = None
                 self.process = None
-            if owner is not None and not await kill_user(owner):
-                log.warning("plugin backend stopped, processes of its user remain", extra={"contribution": self.name})
-                return False
+            if owner is not None:
+                clean = await kill_user(owner)
+                self.reap(owner)
+                if not clean:
+                    log.warning(
+                        "plugin backend stopped, processes of its user remain", extra={"contribution": self.name}
+                    )
+                    return False
         return True
 
 
@@ -427,7 +466,8 @@ class Host:
         return stopping
 
     async def _retire(self, backend: Backend) -> None:
-        clean, owner, tries = await backend.stop(), backend.user(), 0
+        owner, tries = backend.user(), 0
+        clean = await _clean(backend.name, backend.stop())
         try:
             while not clean and owner is not None:
                 wait = _backoff(tries)
@@ -450,7 +490,8 @@ class Host:
                 closing = self.closing.is_set()
                 with contextlib.suppress(TimeoutError):
                     await asyncio.wait_for(self.closing.wait(), wait)
-                clean = await kill_user(owner)
+                clean = await _clean(backend.name, kill_user(owner))
+                backend.reap(owner)
                 if closing:  # the host is closing: one more kill, then it leaves the rest to the container's end
                     break
         finally:
