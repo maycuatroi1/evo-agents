@@ -12,7 +12,7 @@ which the proxy sends). Their arguments are checked against these schemas before
 ``offered`` says which of them ``tools/list`` shows the agent of a run: a judge run JUDGE_TOOLS alone, any other run
 all but ask_member, which only a local session can call. A session that has the evo-kg plugin gets the kg_* tools
 from evo-kg alone, so the proxy hands it the hub's answers ``without_kg``: no kg_* tool, and HUB_INSTRUCTIONS, which
-leave the graph's paragraph to evo-kg's instructions.
+leave the graph's paragraph to evo-kg's instructions, whichever answer carries them (INSTRUCTED_BY).
 
 Standard library only, besides ``evo_agents.kg.serve`` and the hub's pure modules: the proxy runs on a core install.
 """
@@ -38,6 +38,12 @@ PROTOCOL_HEADER = "MCP-Protocol-Version"
 # when it calls a tool without a handshake of its own, and what the proxy offers while the hub does not answer.
 HANDSHAKE_VERSIONS = ("2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25")
 PROTOCOL_VERSION = HANDSHAKE_VERSIONS[-1]
+# The versions of the per-request envelope, which have no handshake: a client learns the server's instructions from
+# server/discover, as the hub's SDK serves it (mcp_types.version.MODERN_PROTOCOL_VERSIONS).
+MODERN_VERSIONS = ("2026-07-28",)
+# The answers that carry the server's instructions: initialize in the handshake versions, server/discover in the
+# envelope ones. In both, tools/list alone lists the tools (2026-07-28's subscriptions/listen only says a list changed).
+INSTRUCTED_BY = frozenset({"initialize", "server/discover"})
 NAME_PATTERN = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project or plan id, as evo_agents.hub.server.admin.PROJECT_NAME
 DATE_PATTERN = r"^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
 SESSION_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"  # as evo_agents.hub.digest.SESSION_ID
@@ -431,9 +437,9 @@ def offered(name: str, run_kind: str | None) -> bool:
 
 
 def without_kg(method: str, result: dict) -> dict:
-    """The result of an ``initialize`` or ``tools/list`` for a session whose kg_* tools come from evo-kg: no kg_*
-    tool, and HUB_INSTRUCTIONS in place of the instructions; any other result as it is."""
-    if method == "initialize" and "instructions" in result:
+    """The result of an ``initialize``, ``server/discover`` or ``tools/list`` for a session whose kg_* tools come from
+    evo-kg: no kg_* tool, and HUB_INSTRUCTIONS in place of the instructions; any other result as it is."""
+    if method in INSTRUCTED_BY and "instructions" in result:
         return {**result, "instructions": HUB_INSTRUCTIONS}
     tools = result.get("tools")
     if method == "tools/list" and isinstance(tools, list):
