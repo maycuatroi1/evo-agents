@@ -9,8 +9,6 @@ import sys
 from pathlib import Path
 
 from evo_agents import __version__
-from evo_agents.harness import validate_harness
-from evo_agents.schema import errors
 
 WORKER_ON_WINDOWS = (
     "evo-agents worker runs on macOS and Linux only: its daemon needs process groups, tmux and launchd or systemd. "
@@ -20,6 +18,9 @@ WORKER_ON_WINDOWS = (
 
 
 def _harness_validate(args) -> int:
+    from evo_agents.harness import validate_harness
+    from evo_agents.schema import errors
+
     targets = args.paths or [str(Path.cwd())]
     reports = []
     for target in targets:
@@ -84,13 +85,29 @@ def _utf8_streams() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _utf8_streams()
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if args.group == "worker" and os.name == "nt":
-        print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
-        return 2
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:3] == ["kg", "hook", "post-search"]:
+        # Claude Code runs this one after every grep: it loads neither the parsers of other commands nor the harness.
+        from evo_agents.kg.post_search import main as post_search
+
+        def run() -> int:
+            return post_search(argv[3:])
+    elif argv[:2] == ["kg", "hook"]:
+        from evo_agents.kg.cli import run_hook  # the parsers of the other hooks only
+
+        def run() -> int:
+            return run_hook(argv[2:])
+    else:
+        args = build_parser().parse_args(argv)
+        if args.group == "worker" and os.name == "nt":
+            print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
+            return 2
+
+        def run() -> int:
+            return int(args.func(args) or 0)
+
     try:
-        return int(args.func(args) or 0)
+        return run()
     except KeyboardInterrupt:
         return 130
     except BrokenPipeError:

@@ -14,6 +14,10 @@ export const SHARED_NODE = "requirement:KB-01"; // mentioned by the runbook (int
 export const HUB_NODE = "requirement:KB-77"; // 160 neighbours
 export const CONTRACT = "deals:doc:acme-contract"; // customer
 export const NOTES = 160;
+// The commit each source's run says it read (DOCS_READ, DEALS_READ): docs read origin/main 2 commits behind it, on
+// GitHub; deals read HEAD with no remote branch to compare with, and no link.
+export const DOCS_SHA = "4f1c2e7a9b3d5f60718293a4b5c6d7e8f9012345";
+export const DEALS_SHA = "a0b1c2d3e4f5a6b7c8d9e0f1a2b3c4d5e6f7a8b9";
 
 export type Build = {
   id: number;

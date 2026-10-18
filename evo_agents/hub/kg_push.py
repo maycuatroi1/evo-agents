@@ -4,7 +4,9 @@ For a project: send its knowledge config (``evo_agents.hub.kg_ingest.knowledge_c
 then push every finished run here that it has not ingested, oldest first, in the three steps the hub takes
 (``evo_agents.hub.server.kg``): upload the log through a presigned PUT, have the hub check it, upload and commit the
 blobs it says it lacks, commit the run. A log the hub holds already from an attempt that stopped half way is named by
-its hash instead of being uploaded again.
+its hash instead of being uploaded again. Every run the hub says it has ingested, of those whose log is here, is
+recorded in the corpus (``Corpus.record_on_hub``): retention deletes no log the hub has not received
+(``evo_agents.kg.retention``).
 
 The hub reads every upload back from its blob store when it is committed, a few round trips each, so a commit takes
 longer the more it carries: 0.2.0 hubs on R2 needed about 90 ms per upload, and one commit of 459 outlasted the
@@ -268,6 +270,7 @@ class Pusher:
                 report.pushed.append(run_id)
             else:
                 report.present += 1
+            corpus.record_on_hub([run_id], self.hub.url)
             self._say(f"{label}: on the hub already")
             return
         if state["missing"]:
@@ -275,20 +278,18 @@ class Pusher:
             self._upload_blobs(corpus, state["missing"], report, label)
         committed = self.hub.call("POST", f"{self.base}/runs/{run_id}/commit")
         report.pushed.append(run_id)
+        corpus.record_on_hub([run_id], self.hub.url)
         if committed.get("build"):
             report.build = committed["build"]
         self._say(f"{label}: ingested")
 
     def _uncleared_source(self, path: Path) -> str | None:
         """The source of the run logged at ``path`` when the project's hub sink does not clear its label."""
-        policy = self.project.policy
-        hub = next((sink for sink in policy.sinks.values() if sink.kind == "hub"), None)
         header = log_header(path)
         source = header.get("source") if header else None
-        if hub is None or not isinstance(source, str):
+        if not isinstance(source, str):
             return None  # the hub says what is wrong
-        label = policy.source_label(source)
-        return None if label.level <= hub.level and label.location <= hub.location else source
+        return source if self.project.policy.hub_clears(source) is False else None
 
     def push(self) -> PushReport:
         report = PushReport(self.name)
@@ -304,6 +305,7 @@ class Pusher:
             where = f"project {self.name}"
             self._retrying(where, lambda again: self.hub.call("PUT", f"{self.base}/config", config))
             held = set(self._retrying(where, lambda again: self.hub.call("GET", f"{self.base}/runs"))["ingested"])
+            corpus.record_on_hub(sorted(held.intersection(run_id for run_id, _ in logs)), self.hub.url)
             todo = []
             for run_id, path in logs:
                 if run_id in held:

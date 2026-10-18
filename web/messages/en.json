@@ -1521,6 +1521,16 @@
         "source": "Source"
       }
     },
+    "commits": {
+      "title": "Commits read",
+      "description": "The commit each git source of this graph read, and how far behind its remote's default branch that commit was when the source synced.",
+      "ref": "of {ref}",
+      "behind": "{count, plural, one {# commit} other {# commits}} behind {base}",
+      "upToDate": "up to date with {base}",
+      "notCompared": "no remote branch to compare with",
+      "open": "Open commit {commit} (opens in a new tab)",
+      "copy": "Copy the SHA of commit {commit}"
+    },
     "node": {
       "facts": "Node details",
       "id": "Id",

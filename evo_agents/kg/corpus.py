@@ -4,7 +4,7 @@ Layout under ``$EVO_KG_HOME/<project>/`` (default ``~/.evo/kg``), mode 0700::
 
     log/<run_id>.jsonl.gz   every message of one connector run, item text replaced by blob refs
     blobs/sha256/ab/cd...   item bodies and fragments
-    corpus.sqlite           the merged state sigma_p, rebuildable from the log
+    corpus.sqlite           the merged state sigma_p, rebuildable from the log; with the runs a hub holds (hub_runs)
     locks/<source>.lock     one sync per source at a time
     audit.jsonl             one line per sync and per build, counts and ids only (audit.py), mode 0600
 
@@ -80,6 +80,11 @@ CREATE TABLE IF NOT EXISTS lineages (
     lineage TEXT NOT NULL,
     epoch TEXT NOT NULL,
     run_id TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS hub_runs (
+    run_id TEXT PRIMARY KEY,
+    hub TEXT NOT NULL,
+    at TEXT NOT NULL
 ) STRICT;
 """
 ITEM_COLUMNS = "item_id, source, deleted, k_epoch, k_time, k_rev, k_run, k_tie, record"
@@ -332,6 +337,15 @@ class Corpus:
         row = self.db.execute("SELECT cursor FROM cursors WHERE source = ?", (source,)).fetchone()
         return json.loads(row[0]) if row and row[0] is not None else None
 
+    def record_cursor(self, source: str, cursor, run_id: str) -> None:
+        """Keep the cursor run ``run_id`` of ``source`` ended with, unless the source has one of a later run: runs
+        merged in any order leave the newest one's. In the caller's transaction."""
+        self.db.execute(
+            "INSERT INTO cursors VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor,"
+            " run_id = excluded.run_id WHERE excluded.run_id > cursors.run_id",
+            (source, json.dumps(cursor, ensure_ascii=False), run_id),
+        )
+
     def runs(self, source: str | None = None, limit: int = 20, status: str | None = None) -> list[dict]:
         """Recorded runs, newest first, optionally of one source and with one status (ok or failed)."""
         query = "SELECT run_id, source, connector, version, status, started_at, finished_at, detail FROM runs"
@@ -386,6 +400,17 @@ class Corpus:
                 json.dumps(detail or {}, ensure_ascii=False),
             ),
         )
+
+    def record_on_hub(self, run_ids: Iterable[str], hub: str) -> None:
+        """Remember that the hub at ``hub`` holds the runs ``run_ids`` (``hub kg push`` saw it say so): retention may
+        delete their logs (``evo_agents.kg.retention``). Commits."""
+        now = utc_now()
+        with self.db:
+            self.db.executemany("INSERT OR IGNORE INTO hub_runs VALUES (?, ?, ?)", [(r, hub, now) for r in run_ids])
+
+    def runs_on_hub(self) -> set[str]:
+        """The runs ``record_on_hub`` recorded."""
+        return {row[0] for row in self.db.execute("SELECT run_id FROM hub_runs")}
 
     def held(self, source: str | None = None) -> list[dict]:
         query = "SELECT run_id, source, scope, reason, ids FROM held"

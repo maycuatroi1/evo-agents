@@ -12380,7 +12380,7 @@
             "kg"
           ],
           "summary": "Graph Summary",
-          "description": "The build the knowledge graph pages read, and how many nodes of each kind the member can see in it.",
+          "description": "The build the knowledge graph pages read, how many nodes of each kind the member can see in it, and the commit\neach git source the member can see read.",
           "operationId": "graph_summary_v1_kg__project__graph_get",
           "parameters": [
             {
@@ -37149,6 +37149,14 @@
               "type": "array",
               "title": "Kinds",
               "description": "visible nodes by kind, most first"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/SourceRead"
+              },
+              "type": "array",
+              "title": "Sources",
+              "description": "the commit each git source the member can see read, by source"
             }
           },
           "type": "object",
@@ -48590,6 +48598,78 @@
             "versions"
           ],
           "title": "SkillHistory"
+        },
+        "SourceRead": {
+          "properties": {
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "the source's id in knowledge.yaml"
+            },
+            "commit": {
+              "type": "string",
+              "title": "Commit",
+              "description": "the SHA of the commit the source read"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref",
+              "description": "the ref the source names, HEAD when it names none"
+            },
+            "base": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base",
+              "description": "the remote's default branch the commit is compared with, e.g. origin/main"
+            },
+            "behind": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Behind",
+              "description": "commits of base the commit read lacks, as the machine that synced it counted; null when unknown"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the commit on its forge, when the repo's origin is on one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "commit",
+            "ref",
+            "base",
+            "behind",
+            "url"
+          ],
+          "title": "SourceRead"
         },
         "StateCounts": {
           "properties": {
