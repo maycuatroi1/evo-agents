@@ -11,7 +11,17 @@ from urllib.parse import quote
 from evo_agents.hub.cli_client import client_command, print_json, signed_in, table
 from evo_agents.hub.contract import json_option, returns_object
 
-CANDIDATES_KEYS = ("run_id", "project", "kind", "state", "failure_cause", "workers", "agents", "accounts")
+CANDIDATES_KEYS = (
+    "run_id",
+    "project",
+    "kind",
+    "state",
+    "failure_cause",
+    "workers",
+    "agents",
+    "accounts",
+    "other_projects",
+)
 
 
 def _fit(candidate: dict) -> str:
@@ -36,7 +46,15 @@ def _print(found: dict) -> None:
         (
             "Agents",
             ("AGENT", "FIT", "WHY"),
-            [(f"@{a['handle']}", _fit(a), "; ".join(a["reasons"])) for a in found["agents"]],
+            [
+                (
+                    f"@{a['handle']}"
+                    + ("" if a.get("project", found["project"]) == found["project"] else f" ({a['project']})"),
+                    _fit(a),
+                    "; ".join(a["reasons"]),
+                )
+                for a in found["agents"]
+            ],
             "the project has no agent profile",
         ),
         (
@@ -49,6 +67,18 @@ def _print(found: dict) -> None:
             "none is bound to the project",
         ),
     )
+    if found.get("other_projects"):
+        sections += (
+            (
+                "Other projects the error names",
+                ("PROJECT", "YOUR ROLE", "NAMED", "WHY"),
+                [
+                    (o["project"], o["role"] or "none", o["named"], "; ".join(o["reasons"]))
+                    for o in found["other_projects"]
+                ],
+                "",
+            ),
+        )
     for heading, header, rows, empty in sections:
         print(heading)
         table(header, rows) if rows else print(f"  {empty}")

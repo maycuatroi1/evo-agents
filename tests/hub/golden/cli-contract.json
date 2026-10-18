@@ -4940,7 +4940,8 @@
           "failure_cause",
           "workers",
           "agents",
-          "accounts"
+          "accounts",
+          "other_projects"
         ],
         "schema": "RerunCandidates"
       }
@@ -7122,6 +7123,28 @@
           "value": "string",
           "required": false,
           "repeatable": true
+        }
+      ],
+      "json": null
+    },
+    "worker triage invite": {
+      "positionals": [
+        {
+          "name": "handle",
+          "metavar": "HANDLE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
         }
       ],
       "json": null
@@ -29531,6 +29554,101 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/triage/invite": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Invite",
+          "description": "Invite the agent ``handle`` of another project, one the failed run's error names, into the chat of this thread\nfor the run's owner; 422 for an agent of no project the error names, 409 (said in the thread too) when the owner is\nno writer of its project or the chat's label or size forbids it.",
+          "operationId": "invite_v1_worker_runs__run_id__triage_invite_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageInviteIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TriageInvited"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/triage/plan": {
         "post": {
           "tags": [
@@ -30462,6 +30580,11 @@
               },
               "type": "array",
               "title": "Reasons"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project",
+              "description": "the project the agent belongs to: the run's, or another one its error names"
             }
           },
           "type": "object",
@@ -30472,7 +30595,8 @@
             "is_default",
             "fit",
             "rank",
-            "reasons"
+            "reasons",
+            "project"
           ],
           "title": "AgentCandidate"
         },
@@ -38697,6 +38821,52 @@
           ],
           "title": "OptionIn"
         },
+        "OtherProject": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "the owner's role there; null when they hold no grant"
+            },
+            "named": {
+              "type": "string",
+              "title": "Named",
+              "description": "what the run's error names that points at this project"
+            },
+            "fit": {
+              "type": "boolean",
+              "title": "Fit",
+              "description": "true when the owner is a writer there, so its agents may be asked"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Reasons"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "role",
+            "named",
+            "fit",
+            "reasons"
+          ],
+          "title": "OtherProject"
+        },
         "Overview": {
           "properties": {
             "counts": {
@@ -43192,6 +43362,14 @@
               },
               "type": "array",
               "title": "Accounts"
+            },
+            "other_projects": {
+              "items": {
+                "$ref": "#/components/schemas/OtherProject"
+              },
+              "type": "array",
+              "title": "Other Projects",
+              "description": "projects the run's error names, with the owner's grant on each"
             }
           },
           "type": "object",
@@ -48464,6 +48642,57 @@
             "plan_revision"
           ],
           "title": "TriageActed"
+        },
+        "TriageInviteIn": {
+          "properties": {
+            "handle": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Handle",
+              "description": "the agent's handle, @ left out"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "handle",
+            "reason"
+          ],
+          "title": "TriageInviteIn"
+        },
+        "TriageInvited": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the agent's name"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project",
+              "description": "the project of the agent invited"
+            },
+            "added": {
+              "type": "boolean",
+              "title": "Added",
+              "description": "false when the agent was in the chat already"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "project",
+            "added"
+          ],
+          "title": "TriageInvited"
         },
         "TriagePlanIn": {
           "properties": {

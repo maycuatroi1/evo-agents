@@ -119,9 +119,29 @@ CANDIDATES = {
             "fit": True,
             "rank": 1,
             "reasons": ["a worker of yours can take it"],
-        }
+            "project": "demo",
+        },
+        {
+            "profile_id": 9,
+            "handle": "evo-lms",
+            "name": "evo-lms",
+            "is_default": True,
+            "fit": True,
+            "rank": 2,
+            "reasons": ["a worker of yours can take it", "the run's error names evo-lms"],
+            "project": "evo-lms",
+        },
     ],
     "accounts": [{"name": "claude-main", "state": "ready", "workers": ["any"], "used_by_run": True}],
+    "other_projects": [
+        {
+            "project": "evo-lms",
+            "role": "writer",
+            "named": "evo-lms",
+            "fit": True,
+            "reasons": ["the owner is a writer of project evo-lms"],
+        }
+    ],
 }
 
 
@@ -143,7 +163,10 @@ def test_candidates_prints_the_workers_agents_and_accounts_with_why(monkeypatch,
     assert hub.calls == [("GET", "/v1/projects/demo/runs/161/rerun-candidates")]
     assert "Run #161 (step) failed, cause missing_tool: who can run it again" in result.out
     assert "studio  #1   claude-code" in result.out and "is offline; has no checkout of evo-lms" in result.out
-    assert "@demo  #1" in result.out and "claude-main  ready  any" in result.out
+    squeezed = " ".join(result.out.split())
+    assert "@demo #1" in squeezed and "claude-main ready any" in squeezed
+    assert "@evo-lms (evo-lms) #2" in squeezed and "Other projects the error names" in squeezed
+    assert "evo-lms writer evo-lms" in squeezed
     assert (
         as_json(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo", "--json"))
         == CANDIDATES

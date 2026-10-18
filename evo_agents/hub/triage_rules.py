@@ -11,6 +11,10 @@ whatever the agent was told:
   names a repo of that run (``edit_problems``), as a new revision under the owner's name, never losing a clause of
   the ``verify``; the ``verify_failed`` cause is rerun only together with such an edit.
 
+- when the cause or the error points at a repo of another project, invite the agent of that project into the thread
+  (``named_in`` finds what the error names; the hub checks the owner's writer role there and the chat's label) and hand
+  work to it by a mention, within the hop limit of a chat.
+
 Anything else is asked of the owner with a decision. Standard library only: the plan is a plain dict.
 """
 
@@ -36,6 +40,18 @@ RERUN_CAUSES = {
     "checkout": "on a worker that has a checkout of every repo of the run",
     VERIFY_WITH_EDIT: "after the verify or the what of a step was edited",
 }
+
+
+def named_in(text: str | None, names) -> dict[str, str]:
+    """Which of ``names`` the ``text`` of an error names, as whole words (a name is bounded by anything but a letter, a
+    digit, ``_``, ``-`` or ``.``): {name: the name}; the hub reads it as a pointer to that project, never as a fact."""
+    found = {}
+    for name in names:
+        if name and re.search(rf"(?<![\w.-]){re.escape(name)}(?![\w-])", text or ""):
+            found[name] = name
+    return found
+
+
 SAME_WORKER = ("missing_tool", "network", "hub_5xx")  # the rerun stays on the worker of the failed run
 NEW_ACCOUNT = ("rate_limit", "account_auth")  # the rerun takes an account the run did not, or another runtime
 

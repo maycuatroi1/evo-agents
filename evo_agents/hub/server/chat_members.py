@@ -125,6 +125,16 @@ async def _record(conn, user: Principal, action: str, target: str, project_id: i
 # Adding
 
 
+async def label_problems(conn: AsyncConnection, chat: ChatAccess, profile: Profile) -> list[str]:
+    """Who of the chat would not clear its label with agent ``profile`` in it, as ``uncleared`` says, one line each;
+    none when it is in the chat already or everyone clears it. Changes nothing."""
+    people, agents = await _members(conn, chat.chat_id)
+    if profile.handle in agents:
+        return []
+    projects = [*chat.projects, *await projects_by_id(conn, [profile.project_id])]
+    return await uncleared(conn, people, projects)
+
+
 async def put_agent(conn: AsyncConnection, user: Principal, chat: ChatAccess, profile: Profile) -> bool:
     """Add agent ``profile`` to ``chat`` once the checks pass; whether it was not in it."""
     people, agents = await _members(conn, chat.chat_id)

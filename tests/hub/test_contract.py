@@ -183,6 +183,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker propose",
         "worker put",
         "worker step",
+        "worker triage invite",
         "worker triage plan",
         "worker triage rerun",
     ]

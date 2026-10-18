@@ -23,7 +23,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import profiles, tables
+from evo_agents.hub import profiles, tables, triage_rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import account_state
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
@@ -60,6 +60,15 @@ class AgentCandidate(BaseModel):
     fit: bool
     rank: int | None = Field(description="1 for the best fit agent; null for one that is no fit")
     reasons: list[str]
+    project: str = Field(description="the project the agent belongs to: the run's, or another one its error names")
+
+
+class OtherProject(BaseModel):
+    project: str
+    role: str | None = Field(description="the owner's role there; null when they hold no grant")
+    named: str = Field(description="what the run's error names that points at this project")
+    fit: bool = Field(description="true when the owner is a writer there, so its agents may be asked")
+    reasons: list[str]
 
 
 class AccountCandidate(BaseModel):
@@ -78,12 +87,23 @@ class RerunCandidates(BaseModel):
     workers: list[WorkerCandidate]
     agents: list[AgentCandidate]
     accounts: list[AccountCandidate]
+    other_projects: list[OtherProject] = Field(
+        default_factory=list, description="projects the run's error names, with the owner's grant on each"
+    )
 
 
 async def _run(conn: AsyncConnection, run_id: int):
     r = tables.runs
     query = select(
-        r.c.id, r.c.kind, r.c.failure_cause, r.c.repos, r.c.repo, r.c.dispatched_via, r.c.profile_id, r.c.worker_id
+        r.c.id,
+        r.c.kind,
+        r.c.failure_cause,
+        r.c.error,
+        r.c.repos,
+        r.c.repo,
+        r.c.dispatched_via,
+        r.c.profile_id,
+        r.c.worker_id,
     ).where(r.c.id == run_id)
     return (await conn.execute(query)).one()
 
@@ -217,7 +237,64 @@ def _agent_view(profile: Profile, rows, run, cause: str | None, writer: bool, pr
         fit=fit,
         rank=None,
         reasons=reasons or ["a worker of yours can take it"],
+        project=project,
     )
+
+
+async def _other_projects(conn: AsyncConnection, owner_id: int, project_id: int, error: str | None):
+    """[(project id, name, the owner's role there or None, what the error names)] of the other projects the ``error``
+    points at: by the project's name, and for a project the owner holds a grant on also by the name of a repo of it."""
+    if not error:
+        return []
+    p, g, pr = tables.projects, tables.grants, tables.project_repos
+    rows = await conn.execute(
+        select(p.c.id, p.c.name, g.c.role)
+        .outerjoin_from(p, g, (g.c.project_id == p.c.id) & (g.c.user_id == owner_id))
+        .where(p.c.id != project_id)
+        .order_by(p.c.name)
+    )
+    found = []
+    held = {}
+    for row in rows:
+        if row.role is not None:
+            held[row.id] = row
+        if triage_rules.named_in(error, [row.name]):
+            found.append((row.id, row.name, row.role, row.name))
+    if held:
+        repos = await conn.execute(
+            select(pr.c.project_id, pr.c.name).where(pr.c.project_id.in_(list(held))).order_by(pr.c.name)
+        )
+        have = {entry[0] for entry in found}
+        for repo in repos:
+            if repo.project_id not in have and triage_rules.named_in(error, [repo.name]):
+                found.append((repo.project_id, held[repo.project_id].name, held[repo.project_id].role, repo.name))
+                have.add(repo.project_id)
+    return sorted(found, key=lambda entry: entry[1])
+
+
+async def _foreign(conn: AsyncConnection, owner_id: int, run, found) -> tuple[list[OtherProject], list[AgentCandidate]]:
+    """The other projects the run's error names, and the agents of those the owner holds a grant on."""
+    projects, agents = [], []
+    ap = tables.agent_profiles
+    for other_id, name, role, named in found:
+        writer = has_role(role, "writer")
+        if role is None:
+            reasons = [f"the owner holds no grant on project {name}: ask a member who can grant the writer role"]
+        elif not writer:
+            reasons = [f"the owner holds {role} on project {name}: inviting its agent needs the writer role"]
+        else:
+            reasons = [f"the owner is a writer of project {name}"]
+        projects.append(OtherProject(project=name, role=role, named=named, fit=writer, reasons=reasons))
+        if role is None:
+            continue
+        rows = (await conn.execute(workers_of(owner_id, other_id))).all()
+        listed = (await conn.execute(profile_select().where(ap.c.project_id == other_id).order_by(ap.c.id))).all()
+        for row in listed:
+            profile = profile_of(row)
+            if profile.deleted_at is None:
+                view = _agent_view(profile, rows, run, None, writer, name)
+                agents.append(view.model_copy(update={"reasons": [*view.reasons, f"the run's error names {named}"]}))
+    return projects, agents
 
 
 async def candidates_of(
@@ -253,6 +330,9 @@ async def candidates_of(
     writer = has_role(role, "writer")
     agents = [_agent_view(p, rows, run, cause, writer, project) for p in by_id.values() if p.deleted_at is None]
     agents.sort(key=lambda a: (not a.fit, not a.is_default, a.handle))
+    projects, away = await _foreign(conn, owner_id, run, await _other_projects(conn, owner_id, project_id, run.error))
+    away.sort(key=lambda a: (not a.fit, a.project, not a.is_default, a.handle))
+    agents += away
     place = 0
     for index, agent in enumerate(agents):
         if agent.fit:
@@ -267,6 +347,7 @@ async def candidates_of(
         workers=workers,
         agents=agents,
         accounts=[account for _, account in accounts[0]],
+        other_projects=projects,
     )
 
 
