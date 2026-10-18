@@ -557,7 +557,7 @@ LINK_FAILED = (
     "(Inbox, Telegram), and open it from your private chat with this bot."
 )
 HELP = (
-    "This bot brings you the decisions, proposals and notices of the evo-agents hub. Tap a button to answer, or "
+    "This bot brings you the decisions, proposals and notices of Evo Agent Hub. Tap a button to answer, or "
     "reply to a decision's message with your answer in words. Link this chat from the hub (Inbox, Telegram); /stop "
     "unlinks it."
 )
@@ -664,7 +664,7 @@ class Updates:
                 await self.say(chat_id, LINK_FAILED)
                 return "link_failed"
             log.info("telegram linked", extra={"login": member.login})
-            hub = self.config.public_url or "the evo-agents hub"
+            hub = self.config.public_url or "Evo Agent Hub"
             await self.say(
                 chat_id,
                 f"Linked to {hub} as {member.login}. Decisions, proposals and notices for you come here; /stop "

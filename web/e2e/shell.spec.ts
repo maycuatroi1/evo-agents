@@ -238,7 +238,7 @@ test.describe("shell", () => {
       "nav-myMemories",
       "nav-globalSkills",
     ]);
-    await expect(page.getByTestId("brand")).toHaveText("evo-agents hub");
+    await expect(page.getByTestId("brand")).toHaveText("Evo Agent Hub");
 
     // Inbox counts the open decision (attention), Runs the active run (running); both said in words.
     await expect(page.getByTestId("nav-inbox-count")).toHaveText("1");
@@ -277,7 +277,7 @@ test.describe("shell", () => {
     await expect.poll(() => widthOf(page, "[data-slot=sidebar-container]")).toBe(56);
     await expect(page.getByTestId("nav-inbox-count")).toBeHidden();
     await expect(page.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox, 1 quyết định hoặc đề xuất chờ bạn trả lời");
-    await expect(page.getByTestId("brand")).toHaveAccessibleName("evo-agents hub");
+    await expect(page.getByTestId("brand")).toHaveAccessibleName("Evo Agent Hub");
     await toggle.click();
     await expect.poll(() => widthOf(page, "[data-slot=sidebar-container]")).toBe(240);
 
