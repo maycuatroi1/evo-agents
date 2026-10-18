@@ -1,9 +1,11 @@
 """The hub client behind ``evo-agents hub login``, ``logout``, ``whoami``, ``token`` and ``admin``.
 
-Standard library only: the core package keeps PyYAML as its only dependency. Credentials live in ~/.evo/hub, where
-``config.json`` holds ``{url, login}`` and ``token`` the machine token; the directory is mode 0700 and both files
-0600. Each file is written to a temporary file in the same directory, flushed to disk and renamed over the old
-one, so a crash leaves the old file or the new one, never half a token.
+Standard library only: the core package keeps PyYAML as its only dependency. Credentials live in ~/.evo/hub, or in
+$EVO_HUB_HOME when it is set, where ``config.json`` holds ``{url, login}`` and ``token`` the machine token; the
+directory is mode 0700 and both files 0600. One machine keeps a login per hub that way: a harness whose project lives
+on another hub sets EVO_HUB_HOME (in the ``env`` of its .claude/settings.json, say) to the directory of that login.
+Each file is written to a temporary file in the same directory, flushed to disk and renamed over the old one, so a
+crash leaves the old file or the new one, never half a token.
 
 Requests carry the token as a Bearer header and never follow a redirect, which would hand the header to whatever
 host the redirect names. A hub URL must be https, or http to a loopback address for local runs. Every request has
@@ -58,6 +60,7 @@ MAX_IDLE = 8  # kept-alive connections per hub
 DIR_MODE = 0o700
 FILE_MODE = 0o600
 LOGIN_HINT = "run `evo-agents hub login --url URL`"
+HOME_VARIABLE = "EVO_HUB_HOME"  # the directory of the login, instead of ~/.evo/hub
 
 
 class HubError(Exception):
@@ -96,7 +99,16 @@ class Credentials:
 
 
 def hub_dir() -> Path:
-    return Path.home() / ".evo" / "hub"
+    """``$EVO_HUB_HOME`` with ``~`` expanded, else ``~/.evo/hub``; a blank value is unset. A relative value raises
+    HubError: hooks and the MCP proxy start in whatever directory the session is in, so a relative login directory
+    would move with it, into a checkout perhaps."""
+    value = os.environ.get(HOME_VARIABLE, "").strip()
+    if not value:
+        return Path.home() / ".evo" / "hub"
+    directory = Path(value).expanduser()
+    if not directory.is_absolute():
+        raise HubError(f"{HOME_VARIABLE} must be an absolute path or start with ~/, not {value!r}")
+    return directory
 
 
 def check_url(url: str, what: str = "the hub URL") -> str:

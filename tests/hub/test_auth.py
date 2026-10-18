@@ -589,6 +589,42 @@ def test_credentials_are_written_atomically_with_exact_modes(tmp_path, monkeypat
         hub_client.load_credentials()
 
 
+def test_evo_hub_home_holds_the_login_of_another_hub_and_leaves_the_default_alone(tmp_path, monkeypatch):
+    monkeypatch.setenv("HOME", str(tmp_path))
+    default = tmp_path / ".evo" / "hub"
+    assert hub_client.hub_dir() == default
+    hub_client.save_credentials("https://hub.test", "octo", "evh_default")
+
+    # As Claude Code passes it from the env of .claude/settings.json: unexpanded, ~ and all.
+    monkeypatch.setenv("EVO_HUB_HOME", "~/.evo/hub-lumen")
+    other = tmp_path / ".evo" / "hub-lumen"
+    assert hub_client.hub_dir() == other
+    with pytest.raises(hub_client.NotSignedIn, match="evo-agents hub login"):
+        hub_client.load_credentials()
+    assert hub_client.save_credentials("https://lumen.test", "octo", "evh_m1") == other
+    assert mode(other) == 0o700 and mode(other / "token") == 0o600 and mode(other / "config.json") == 0o600
+    assert hub_client.load_credentials() == hub_client.Credentials("https://lumen.test", "octo", "evh_m1")
+    hub_client.remove_credentials()
+    assert list(other.iterdir()) == []
+    assert (default / "token").read_text() == "evh_default\n"  # the default login was never touched
+
+    monkeypatch.setenv("EVO_HUB_HOME", str(tmp_path / "elsewhere"))
+    assert hub_client.hub_dir() == tmp_path / "elsewhere"
+    monkeypatch.setenv("EVO_HUB_HOME", "  ")  # blank is unset
+    assert hub_client.load_credentials() == hub_client.Credentials("https://hub.test", "octo", "evh_default")
+
+    # A relative directory would follow the working directory of each hook, into a checkout perhaps.
+    checkout = tmp_path / "checkout"
+    checkout.mkdir()
+    monkeypatch.chdir(checkout)
+    monkeypatch.setenv("EVO_HUB_HOME", ".evo/hub-lumen")
+    with pytest.raises(hub_client.HubError, match="EVO_HUB_HOME must be an absolute path"):
+        hub_client.load_credentials()
+    with pytest.raises(hub_client.HubError, match="EVO_HUB_HOME must be an absolute path"):
+        hub_client.save_credentials("https://lumen.test", "octo", "evh_m1")
+    assert list(checkout.iterdir()) == []
+
+
 def test_the_client_refuses_plain_http_to_other_hosts_and_never_follows_redirects(github):
     with pytest.raises(hub_client.HubError, match="must use https"):
         hub_client.check_url("http://hub.example.org")
