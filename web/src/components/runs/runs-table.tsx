@@ -14,7 +14,7 @@ import { workerHref } from "@/components/workers/queries";
 import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
-import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge } from "./badges";
+import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadge } from "./badges";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
 import { durationParts, runTiming } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
@@ -104,6 +104,7 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
   const repos = run.repos?.length ?? 0;
   const authorNew = run.kind === "author" && !run.plan_id; // an author run of a new plan: no plan to link to yet
   const chat = run.kind === "chat"; // a turn of an agent in a group chat: no plan, the run's page is where it leads
+  const task = run.kind === "task"; // a turn of a plugin's agent type on a task: no plan, its page is where it leads
   const local = run.kind === "local"; // a member's own Claude Code session: no plan, its page is where it leads
   const localLine = { project: run.project, machine: run.machine ?? "", account: localAccount(run), plan: run.plan_id || "none", step: run.step_key || "none" };
   const where = local
@@ -114,6 +115,10 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
     ? showProject
       ? t("chatRun.lineProject", { project: run.project, agent: run.profile ?? run.project })
       : t("chatRun.line", { agent: run.profile ?? run.project })
+    : task
+    ? showProject
+      ? t("taskRun.lineProject", { project: run.project, agent: run.profile ?? run.project, id: run.id })
+      : t("taskRun.line", { agent: run.profile ?? run.project, id: run.id })
     : authorNew
     ? showProject
       ? t("author.newPlanLineProject", { project: run.project })
@@ -135,14 +140,14 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       subTestId={failure ? "run-error" : "run-where"}
     >
       <Link
-        href={authorNew || chat || local ? runHref(run.project, run.id) : plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
+        href={authorNew || chat || task || local ? runHref(run.project, run.id) : plan ? planHref(run.project, run.plan_id) : stepHref(run.project, run.plan_id, run.step_key ?? "")}
         className={cn(NAME_LINK, "truncate")}
         title={title}
         data-testid={plan && !local ? "run-plan-link" : "run-step-link"}
       >
         {title}
       </Link>
-      {local ? <LocalRunKindBadge /> : run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : plan ? <PlanRunKindBadge /> : null}
+      {local ? <LocalRunKindBadge /> : run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : task ? <TaskRunKindBadge /> : plan ? <PlanRunKindBadge /> : null}
     </CellMain>
   );
 }
@@ -173,6 +178,7 @@ function useMobileRun(variant: RunsTableVariant) {
     const worker = run.worker_id !== null && run.worker ? run.worker : run.pinned_worker_id !== null ? t("pinnedWaiting") : t("noWorkerYet");
     const authorNew = run.kind === "author" && !run.plan_id;
     const chat = run.kind === "chat";
+    const task = run.kind === "task";
     const local = run.kind === "local";
     const where =
       variant === "step"
@@ -181,6 +187,8 @@ function useMobileRun(variant: RunsTableVariant) {
           ? t(variant === "worker" ? "local.lineProject" : "local.line", { project: run.project, machine: run.machine ?? "", account: localAccount(run), plan: run.plan_id || "none", step: run.step_key || "none" })
         : chat
           ? t(variant === "worker" ? "chatRun.lineProject" : "chatRun.line", { project: run.project, agent: run.profile ?? run.project })
+        : task
+          ? t(variant === "worker" ? "taskRun.lineProject" : "taskRun.line", { project: run.project, agent: run.profile ?? run.project, id: run.id })
           : authorNew
           ? t(variant === "worker" ? "author.newPlanLineProject" : "author.newPlanLine", { project: run.project })
           : plan
@@ -190,7 +198,7 @@ function useMobileRun(variant: RunsTableVariant) {
     return {
       title: variant === "step" ? t("mobile.runTitle", { id: run.id }) : plan && !local ? (run.title ?? run.plan_id) : (run.title ?? t("untitled")),
       href: runHref(run.project, run.id),
-      tags: local ? <LocalRunKindBadge /> : run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : plan ? <PlanRunKindBadge /> : null,
+      tags: local ? <LocalRunKindBadge /> : run.kind === "author" ? <AuthorRunKindBadge /> : chat ? <ChatRunKindBadge /> : task ? <TaskRunKindBadge /> : plan ? <PlanRunKindBadge /> : null,
       status: <StatusBadge kind="run" status={run.state} />,
       meta: t.rich("mobile.meta", { id: run.id, detail, ref: (chunks: ReactNode) => <span className="font-mono tabular-nums">{chunks}</span> }),
       metaText: t("mobile.metaText", { id: run.id, detail }),

@@ -189,6 +189,8 @@ function RunPage({ run }: { run: Run }) {
                     chunks
                   ),
               })
+            : run.kind === "task"
+            ? t("taskSub", { agent: run.profile ?? run.project, id: run.id })
             : authoring
             ? run.plan_id
               ? t.rich("authorPlanSub", { plan: run.plan_id, title, planLink })
