@@ -2208,6 +2208,21 @@
           "project": "của dự án này"
         },
         "host": "chính máy của worker"
+      },
+      "packs": {
+        "title": "Gói agent",
+        "hint": "Skill, subagent, hook, MCP server và chỉ dẫn từ các plugin mà dự án đã bật. Mỗi gói được ghim ở một phiên bản của plugin, chỉ đổi được tại đây; skill và MCP server của gói được tính là đã cho phép ở Skill và Tool.",
+        "failed": "Không đọc được các gói agent của dự án: các gói đã gắn được giữ nguyên.",
+        "noneRead": "Không có gì để chọn.",
+        "none": "Chưa plugin nào được bật trong {project} cung cấp gói agent.",
+        "choices": "Các gói agent để gắn",
+        "version": "Phiên bản của {pack}",
+        "installed": "{version} (đang cài)",
+        "goneVersion": "{version} (hub không còn giữ)",
+        "gone": "Không còn được cung cấp",
+        "noneAttached": "Chưa gắn gói nào.",
+        "count": "Đã gắn {count}, tối đa {max}.",
+        "tooMany": "Tối đa {max} gói agent."
       }
     },
     "detail": {
@@ -2280,7 +2295,8 @@
           "project": "dự án",
           "model": "model",
           "runtime": "runtime",
-          "environment": "môi trường"
+          "environment": "môi trường",
+          "packs": "các gói agent"
         }
       },
       "delete": {
@@ -2300,6 +2316,12 @@
         "empty": "Trong {searched} run mới nhất của dự án, không run nào chạy dưới agent này.",
         "caption": "Run dưới @{handle}",
         "scope": "Lấy từ {searched} run mới nhất của dự án."
+      },
+      "packs": {
+        "title": "Gói agent",
+        "hint": "Được nạp vào mọi run dưới agent này, mỗi gói ở phiên bản đã ghim. Skill và MCP server của gói được tính là đã cho phép.",
+        "none": "Không có: các run của nó không nhận gói agent nào.",
+        "version": "v{version}"
       }
     }
   },

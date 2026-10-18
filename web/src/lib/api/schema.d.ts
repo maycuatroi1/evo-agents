@@ -3172,6 +3172,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agent-packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Packs
+         * @description The agent packs a profile of the project may attach, by plugin, then in its manifest's order.
+         */
+        get: operations["list_agent_packs_v1_projects__project__agent_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats": {
         parameters: {
             query?: never;
@@ -4475,6 +4495,11 @@ export interface components {
              * @description the axes that are allowlists, in the order of the eight
              */
             restricted: string[];
+            /**
+             * Packs
+             * @description the agent packs it attaches, in order, each at the version it pins
+             */
+            packs: components["schemas"]["PinnedPack"][];
             /** Version */
             version: number;
             /** Created By */
@@ -4548,6 +4573,11 @@ export interface components {
              */
             color?: string | null;
             permissions?: components["schemas"]["AgentPermissions"];
+            /**
+             * Packs
+             * @description the agent packs it attaches, in order; see GET .../agent-packs
+             */
+            packs?: components["schemas"]["AgentPackPin"][];
         };
         /**
          * AgentEdit
@@ -4564,6 +4594,11 @@ export interface components {
             color?: string | null;
             /** @description the eight axes whole; an axis left out allows all */
             permissions?: components["schemas"]["AgentPermissions"] | null;
+            /**
+             * Packs
+             * @description the agent packs it attaches, whole, in order; [] for none
+             */
+            packs?: components["schemas"]["AgentPackPin"][] | null;
             /**
              * If Version
              * @description 409 unless the profile is at this version now
@@ -4624,6 +4659,56 @@ export interface components {
              * @description a message whose thread it goes in; null: the run's thread
              */
             reply_to?: number | null;
+        };
+        /**
+         * AgentPack
+         * @description A pack a profile of the project may attach: of a plugin the project enabled, at one of ``versions``.
+         */
+        AgentPack: {
+            /**
+             * Pack
+             * @description <plugin>/<name>
+             */
+            pack: string;
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Installed Version
+             * @description the plugin's version installed now, which a pin without one takes
+             */
+            installed_version: string;
+            /**
+             * Versions
+             * @description the versions of the plugin the hub holds that declare the pack and run on this release, the newest first
+             */
+            versions: string[];
+        };
+        /**
+         * AgentPackPin
+         * @description A pack a profile attaches: pack ``name`` of plugin ``plugin`` at version ``version`` of the plugin.
+         */
+        AgentPackPin: {
+            /**
+             * Plugin
+             * @description the plugin's id
+             */
+            plugin: string;
+            /**
+             * Name
+             * @description the pack, as the plugin's manifest names it
+             */
+            name: string;
+            /**
+             * Version
+             * @description a version of the plugin the hub holds; left out: the one installed now, which the profile pins
+             */
+            version?: string | null;
         };
         /**
          * AgentPermissions
@@ -8490,6 +8575,23 @@ export interface components {
             /** Path */
             path: string;
         };
+        /**
+         * PinnedPack
+         * @description A pack a profile attaches, at the version of its plugin it pins.
+         */
+        PinnedPack: {
+            /**
+             * Pack
+             * @description <plugin>/<name>
+             */
+            pack: string;
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
+        };
         /** Plan */
         Plan: {
             /** Project */
@@ -11009,6 +11111,45 @@ export interface components {
              */
             size_mb?: number | null;
         };
+        /**
+         * RunPack
+         * @description An agent pack the run's profile attaches (``evo_agents.plugins.agent_packs``), as the hub holds the version of
+         *     its plugin the profile pins: the worker downloads the plugin's bundle, checks it, and builds the pack from its
+         *     ``packs/<name>/`` into the run's directory for the agent's runtime.
+         */
+        RunPack: {
+            /**
+             * Pack
+             * @description <plugin>/<name>
+             */
+            pack: string;
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /**
+             * Version
+             * @description the version of the plugin the profile pins
+             */
+            version: string;
+            /**
+             * Sha256
+             * @description what the downloaded bundle must hash to
+             */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Url
+             * @description presigned GET of the plugin's bundle; a bearer credential until it expires
+             */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** RunPlugin */
         RunPlugin: {
             /** Name */
@@ -11232,6 +11373,11 @@ export interface components {
             plugin_runtime?: components["schemas"]["PluginRuntime"] | null;
             /** @description the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host */
             environment?: components["schemas"]["RunEnvironment"] | null;
+            /**
+             * Packs
+             * @description the agent packs the run's profile attaches, in its order, each at the version it pins, which the worker builds into the run's directory for its runtime; empty for a profile that attaches none
+             */
+            packs?: components["schemas"]["RunPack"][];
         };
         /** RunState */
         RunState: {
@@ -24101,6 +24247,64 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_agent_packs_v1_projects__project__agent_packs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPack"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

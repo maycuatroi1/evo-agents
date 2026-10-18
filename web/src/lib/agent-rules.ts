@@ -21,6 +21,8 @@ export const MAX_DESCRIPTION_CHARS = 1000;
 export const MAX_INSTRUCTIONS_CHARS = 8000;
 export const MAX_ALLOW = 200;
 export const MAX_MODEL_CHARS = 200;
+/** `profiles.MAX_PACKS`: the agent packs one profile attaches. */
+export const MAX_PACKS = 16;
 export const COLOR = /^#[0-9a-f]{6}$/;
 /** `profiles.PALETTE`: the colours the hub picks from by handle when a profile is created without one. */
 export const PALETTE = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#16a34a", "#0891b2", "#4f46e5"] as const;

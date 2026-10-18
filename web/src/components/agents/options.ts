@@ -115,3 +115,11 @@ export const agentOptionsQuery = (api: ApiSource, project: string) =>
     },
     staleTime: 30_000,
   });
+
+/** The agent packs a profile of the project may attach (GET .../agent-packs), read when the form opens. */
+export const agentPacksQuery = (api: ApiSource, project: string) =>
+  queryOptions({
+    queryKey: [...agentKeys.all(project), "packs"] as const,
+    queryFn: ({ signal }) => call(api().GET("/v1/projects/{project}/agent-packs", { params: { path: { project } }, signal })),
+    staleTime: 30_000,
+  });
