@@ -11,6 +11,7 @@ import { useNow } from "@/components/kg/use-now";
 import { planHref, stepHref } from "@/components/plans/links";
 import { StatusBadge } from "@/components/status/status-badge";
 import { workerHref } from "@/components/workers/queries";
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
 import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge } from "./badges";
@@ -214,7 +215,7 @@ export function RunsTable({
   testId?: string;
 }) {
   const t = useTranslations("runs");
-  const tRuntime = useTranslations("runs.runtime");
+  const tRuntime = useRuntimeName();
   const mobile = useMobileRun(variant);
   const columns = useMemo(() => {
     const helper = dataTableColumns<Run>();
