@@ -20,6 +20,7 @@ from pathlib import Path
 import yaml
 
 from evo_agents.hub import config
+from evo_agents.plugins.environment import NPROC
 
 ROOT = Path(__file__).resolve().parents[2]
 COMPOSE = ROOT / "deploy/hub/docker-compose.yml"
@@ -197,6 +198,11 @@ def test_compose_runs_the_plugin_isolation_service_as_root_with_four_capabilitie
     assert plugins["cap_add"] == PLUGINS_CAPABILITIES
     assert plugins["init"] is True and "no-new-privileges:true" in plugins["security_opt"]
     assert {"cpus", "mem_limit", "pids_limit"} <= set(plugins), "a backend must not starve the hub's machine"
+    pids = int(default_of("EVO_HUB_PLUGINS_PIDS", plugins["pids_limit"]))
+    assert pids >= (8 + 1) * NPROC, (
+        f"the review of PR #72: pids_limit {pids} with {NPROC} processes per plugin user lets a few plugins at their "
+        "limit take every pid of the service; eight of them must leave as much again to the host"
+    )
     mounts = {volume.split(":")[1] for volume in plugins["volumes"]}
     assert mounts == {"/plugins"} and "--data-dir" in plugins["command"] and "/plugins" in plugins["command"]
     others = {volume.split(":")[0] for name in ("api", "worker") for volume in services[name].get("volumes", [])}

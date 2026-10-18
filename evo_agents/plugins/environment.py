@@ -29,11 +29,13 @@ for a developer's machine; ``evo-agents plugin test`` runs the author's own plug
 
 The backend starts through a trampoline and a launcher. The trampoline is the host's own Python, isolated
 (``-I -S``: no site, no current directory). Started by the host, it first closes every file descriptor but 0, 1 and
-2, still as root (a loop may ignore ``close_fds``: uvloop does), then takes the backend's user and group, dropping
-every supplementary group, and exits NO_USER_EXIT unless it holds exactly them as its real, effective and saved IDs,
-with no capability left; it does so itself, so the start needs no argument of the event loop's subprocess_exec that
-some loops lack (``backend_command``). A backend that keeps the host's user (isolation ``process``) never runs as
-root, unless ``evo-agents plugin test`` says so for the author's own plugin (``KEEP_ROOT``). Then it
+2, still as root (a loop may ignore ``close_fds``: uvloop does; with neither /proc/self/fd nor /dev/fd to list, it
+closes up to the limit of open files), then takes the backend's user and group, dropping every supplementary group,
+and exits NO_USER_EXIT unless it holds exactly them as its real, effective and saved IDs, with no capability left; it
+does so itself, so the start needs no argument of the event loop's subprocess_exec that some loops lack
+(``backend_command``). A backend that keeps the host's user (isolation ``process``) never runs with root as its real,
+effective or saved user, nor with a capability, unless ``evo-agents plugin test`` says so for the author's own plugin
+(``KEEP_ROOT``). Then it
 changes into the backend's data directory, which root may not enter, and sets the resource limits
 (``backend_limits``: no core file, open files, address space, and in isolation ``uid`` the processes of the user), so
 they hold before any code of the plugin runs, then execs the environment's Python, isolated too (``-I``), with the
@@ -71,17 +73,24 @@ REQUIREMENTS_COPY = ".evo-requirements.txt"  # the file pip reads, written by th
 INSTALL_TIMEOUT = 600  # seconds for one venv and its requirements
 SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin"
 LIMITS = {"core": 0, "nofile": 1024, "as": 4 * 1024**3}  # per process: no core file (it would hold the secrets)
-NPROC = 256  # processes and threads of a backend's user, in isolation uid (RLIMIT_NPROC counts by real user)
+NPROC = 128  # processes and threads of a backend's user, in isolation uid (RLIMIT_NPROC counts by real user)
 SAME_USER = "-"  # the trampoline's user argument when the backend keeps the host's user, which must not be root
 KEEP_ROOT = "root"  # the same, root included: `evo-agents plugin test` only, which runs the author's own plugin
 NO_USER_EXIT = 71  # the exit code of the trampoline or the killer when it cannot take the user it is given
 KILLER_UID_BASE = 100_000  # the real user of the process that kills plugin id N's processes is KILLER_UID_BASE + N
+MAX_PLUGIN_ID = UID_BASE - KILLER_UID_BASE  # ids from here on would meet the users of the backends: never run
+MAX_FDS = 1 << 20  # where the trampoline stops closing descriptors when it can neither list them nor ask the limit
 CLOSE_FDS = (  # every descriptor but 0, 1 and 2: uvloop's subprocess_exec ignores close_fds
     "def close_fds():\n"
     "    try:\n"
     "        fds = [int(n) for n in os.listdir('/proc/self/fd' if os.path.isdir('/proc/self/fd') else '/dev/fd')]\n"
     "    except (OSError, ValueError):\n"
-    "        fds = range(3, 65536)\n"
+    "        try:\n"
+    "            top = os.sysconf('SC_OPEN_MAX')\n"
+    "        except (OSError, ValueError):\n"
+    "            top = -1\n"
+    f"        os.closerange(3, top if top > 3 else {MAX_FDS})\n"
+    "        return\n"
     "    for fd in fds:\n"
     "        if fd > 2:\n"
     "            try:\n"
@@ -93,30 +102,43 @@ TAKE_USER = (  # take a user and group, no other group and no capability, or exi
     "def refuse(why):\n"
     "    sys.stderr.write('evo-agents plugin: ' + why + '\\n')\n"
     f"    sys.exit({NO_USER_EXIT})\n"
+    "def held_caps():\n"  # CapPrm, CapEff and CapAmb on Linux, none elsewhere
+    "    if not sys.platform.startswith('linux'):\n"
+    "        return []\n"
+    "    with open('/proc/self/status') as status:\n"
+    "        caps = [int(line.split()[1], 16) for line in status\n"
+    "                if line.startswith(('CapPrm:', 'CapEff:', 'CapAmb:'))]\n"
+    "    if len(caps) < 2:\n"
+    "        raise ValueError('/proc/self/status shows no CapPrm and CapEff')\n"
+    "    return caps\n"
     "def take_user(ruid, euid, suid, gid):\n"
     "    if min(ruid, euid, suid, gid) <= 0:\n"
     "        refuse('will not take user or group 0')\n"
-    "    linux = sys.platform.startswith('linux')\n"
     "    try:\n"
     "        os.setgroups([])\n"
     "        os.setresgid(gid, gid, gid)\n"
     "        os.setresuid(ruid, euid, suid)\n"
     "        held = (os.getresuid(), os.getresgid(), os.getgroups())\n"
-    "        caps = []\n"
-    "        if linux:\n"
-    "            with open('/proc/self/status') as status:\n"
-    "                caps = [int(line.split()[1], 16) for line in status\n"
-    "                        if line.startswith(('CapPrm:', 'CapEff:', 'CapAmb:'))]\n"
+    "        caps = held_caps()\n"
     "    except (OSError, ValueError, AttributeError) as exc:\n"
     "        refuse('cannot take user %d: %s' % (euid, exc))\n"
-    "    if held != ((ruid, euid, suid), (gid, gid, gid), []) or any(caps) or (linux and len(caps) < 2):\n"
+    "    if held != ((ruid, euid, suid), (gid, gid, gid), []) or any(caps):\n"
     "        refuse('does not hold exactly user %d and group %d with no capability' % (euid, gid))\n"
+    "def keep_user():\n"  # the host's own user: never root by any of its IDs, and no capability
+    "    try:\n"
+    "        ids = os.getresuid() if hasattr(os, 'getresuid') else (os.getuid(), os.geteuid())\n"
+    "        caps = held_caps()\n"
+    "    except (OSError, ValueError) as exc:\n"
+    "        refuse('cannot read the host user: %s' % exc)\n"
+    "    if 0 in ids:\n"
+    "        refuse('will not run a backend under the host user root')\n"
+    "    if any(caps):\n"
+    "        refuse('will not run a backend with a capability of the host user')\n"
 )
 TRAMPOLINE = (
     "import os, sys\n" + CLOSE_FDS + TAKE_USER + "close_fds()\n"
     "if sys.argv[1] == '-':\n"
-    "    if os.getuid() == 0 or os.geteuid() == 0:\n"
-    "        refuse('will not run a backend under the host user root')\n"
+    "    keep_user()\n"
     "elif sys.argv[1] != 'root':\n"
     "    try:\n"
     "        uid, gid = (int(part) for part in sys.argv[1].split(':'))\n"
@@ -194,10 +216,10 @@ def identity(plugin_id: int) -> Identity | None:
 def killer_uid(owner: Identity) -> int | None:
     """The real user of the process that kills ``owner``'s processes (``process.kill_user``): one no process of the
     plugin has, so none of them may signal or trace it, while its effective user, the plugin's, lets it signal them
-    all. None when ``owner`` is no user ``identity`` gives (a plugin id of KILLER_UID_BASE or more would meet the
-    users of the backends)."""
+    all. None when ``owner`` is no user ``identity`` gives for a plugin id below MAX_PLUGIN_ID: from there on the
+    killers' users would meet the backends', so the host starts no backend for such an id and the hub installs none."""
     index = owner.uid - UID_BASE
-    return KILLER_UID_BASE + index if 0 <= index < UID_BASE - KILLER_UID_BASE else None
+    return KILLER_UID_BASE + index if 0 <= index < MAX_PLUGIN_ID else None
 
 
 def isolation() -> str:
