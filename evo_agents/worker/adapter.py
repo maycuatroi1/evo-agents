@@ -63,6 +63,10 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
   run's work the daemon asks ``profile_refusal`` whether the adapter can: one that cannot fails the run, with the
   reason, and an adapter that finds out only once its runtime runs raises ``ProfileRefused`` from ``start``. A
   profile that allows everything and has no instructions changes nothing.
+- ``context.packs`` are the agent packs the run's profile attaches, built for the run (``evo_agents.worker.packs``):
+  the adapter gives the runtime their components in its own form. Before the agent starts the daemon asks
+  ``pack_refusal`` whether the runtime loads them all (``pack_kinds``, ``pack_transports``): one that does not fails
+  the run, saying which pack holds what. A run with no pack gets what it got before packs were.
 
 Adapters are found, by runtime name, in ``BUILTIN`` (the runtimes this package supports), in the ``runtimes`` that
 core plugins contribute (the entry points of the group ``evo_agents.plugins``, ``evo_agents.plugins.core``), in the
@@ -96,6 +100,7 @@ from typing import TYPE_CHECKING, ClassVar
 from evo_agents import __version__
 from evo_agents.hub import profiles, runs
 from evo_agents.plugins.core import python_contributions
+from evo_agents.worker import packs
 from evo_agents.worker.environments import HOST_ENVIRONMENT, Environment
 
 if TYPE_CHECKING:
@@ -205,6 +210,7 @@ class RunContext:
     spent_usd: float = 0.0
     spent_seconds: float = 0.0
     environment: Environment = HOST_ENVIRONMENT  # where the agent runs: the host, or a container of a plugin's
+    packs: tuple = ()  # the agent packs of the run's profile, built for it (``evo_agents.worker.packs.Pack``)
 
     @property
     def run_id(self) -> int:
@@ -240,6 +246,10 @@ class Adapter(abc.ABC):
     runtime: ClassVar[str]
     binary: ClassVar[str]
     interactive: ClassVar[bool] = False  # whether it can hand its session to a person in a terminal (``tui``)
+    # The components of agent packs the runtime loads (``evo_agents.plugins.agent_packs.KINDS``) and the transports of
+    # their MCP servers it connects to; an adapter that names none loads no pack (``pack_refusal``).
+    pack_kinds: ClassVar[tuple[str, ...]] = ()
+    pack_transports: ClassVar[tuple[str, ...]] = ()
 
     @classmethod
     def detect(cls) -> Detection:
@@ -280,6 +290,21 @@ class Adapter(abc.ABC):
             f"the {cls.runtime} adapter of this worker does not apply agent profiles, and agent @{handle} limits "
             "tools, skills or models or has instructions"
         )
+
+    @classmethod
+    def pack_refusal(cls, built: tuple) -> str | None:
+        """Why the runtime cannot load the agent packs ``built`` (``evo_agents.worker.packs.Pack``) the run's profile
+        attaches, in a sentence for the run's error: a component or a transport it does not take, or two skills it
+        would name alike; None when it can, and always for a run with none. The daemon asks once the packs are built,
+        before the agent starts, and fails the run with cause runtime."""
+        if not built:
+            return None
+        if not cls.pack_kinds:
+            return (
+                f"the {cls.runtime} adapter of this worker loads no agent pack, and the run's agent attaches "
+                f"{', '.join(pack.label for pack in built)}: run it on claude-code, opencode or codex"
+            )
+        return packs.refusal(built, cls.runtime, kinds=cls.pack_kinds, transports=cls.pack_transports)
 
     @classmethod
     def environment_refusal(cls, context: RunContext) -> str | None:

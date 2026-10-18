@@ -7,6 +7,9 @@ here.
   ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE, BACKGROUND_NOTE
   and SUBAGENT (a fresh subagent with a plan handoff) appended (``--append-system-prompt``). The owner's settings,
   hooks, plugins and CLAUDE.md load as for ``claude`` itself.
+- The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) load as local plugins
+  (``plugins``, ``--plugin-dir``), with their skills, subagents and hooks; their MCP servers go in ``mcp_servers`` by
+  their own names, and their instructions after the profile's in the appended system prompt.
 - The input stream the client is connected with stays open while the agent may take input: the prompt and each of
   the owner's messages go in with ``query()``. Claude Code takes a message that arrives mid-turn at the next tool
   boundary, and may fold it into the same ``result`` (research_notes/worker-runtimes.md of the harness).
@@ -113,6 +116,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub import author, curator, digest, runs
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, ProfileRefused, RunContext, command_output
 from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
@@ -576,6 +580,8 @@ class ClaudeCodeAdapter(QueueAdapter):
     runtime = "claude-code"
     binary = "claude"
     interactive = True
+    pack_kinds = packs.KINDS
+    pack_transports = packs.TRANSPORTS
     background_wait = BACKGROUND_WAIT
     follow_up_after = FOLLOW_UP_AFTER
     turn_grace = TURN_GRACE
@@ -640,7 +646,7 @@ class ClaudeCodeAdapter(QueueAdapter):
 
         dropped = dropped_env(self.context)
         profile = profiles.profile_of(self.context)
-        append = profiles.with_instructions(SYSTEM_NOTE, profile)
+        append = packs.with_instructions(profiles.with_instructions(SYSTEM_NOTE, profile), self.context.packs)
         settings = {
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
@@ -669,6 +675,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         if kind == "chat":  # an @handle or @path in the chat's words never makes Claude Code read a file
             settings["verbatim_prompts"] = True
         settings.update(limits)
+        settings.update(packs.claude_options(self.context.packs))
         hooks = profiles.claude_hooks(profile)
         if hooks is not None:
             settings["hooks"] = hooks
