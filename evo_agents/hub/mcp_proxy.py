@@ -24,14 +24,16 @@ message, so an ``evo-agents hub login`` made meanwhile counts at once.
 
 A Claude Code session that has the evo-kg plugin as well gets the kg_* tools from evo-kg alone (``claude_plugins``):
 the proxy then drops them from every tools/list, the hub's or its own, and answers initialize with the hub's
-instructions without the graph's paragraph (``mcp_tools.without_kg``). A session without it gets them from the hub,
-and the labels of each kg_* result join the session label, as the evo-kg PostToolUse hook joins those of evo-kg's
-(``evo_agents.kg.sessions``): a read of the graph counts whichever server answered it. That label is the one of the
-Claude Code session the proxy started in (CLAUDE_CODE_SESSION_ID), the only file the proxy writes.
+instructions without the graph's paragraph (``mcp_tools.without_kg``). A session without it gets them from the hub.
+Either way, the labels of every kg_* result the hub answers join the session label, as the evo-kg PostToolUse hook
+joins those of evo-kg's (``evo_agents.kg.sessions``): a read of the graph counts whichever server answered it, and
+hiding the tools from a listing never leaves a call to them unlabelled. That label is the one of the Claude Code
+session the proxy started in (CLAUDE_CODE_SESSION_ID), the only file the proxy writes.
 
 Messages are answered concurrently, WORKERS at a time, the handshake first. Besides the session label, the proxy writes
 nothing on this machine, and never prints the token or what a message holds: stderr gets one line when the hub stops
-answering and one when it answers again.
+answering, one when it answers again, and one with the exception's type when a kg_* result cannot join the session
+label (the answer still goes back).
 
 ``McpClient`` is the same channel for single tool calls, which ``kg serve --backend hub`` and ``kg query --backend
 hub`` use. Standard library only.
@@ -324,20 +326,18 @@ class Proxy:
             self._write(self._for_session(message, reply))
 
     def _for_session(self, message, reply):
-        """``reply`` as this session takes it: without the kg_* tools when evo-kg serves them, else with the labels of
-        a kg_* result added to the session label (see the module)."""
+        """``reply`` as this session takes it: the labels of a kg_* result added to the session label, whether or not
+        the session lists the kg_* tools, and without those tools when evo-kg serves them (see the module)."""
         result = reply.get("result") if isinstance(reply, dict) else None
         if not isinstance(message, dict) or not isinstance(result, dict):
             return reply
         method = message.get("method")
-        if not self.kg:
-            return {**reply, "result": without_kg(method, result)}
         if method == "tools/call":
             try:
                 note_read(message, result)
-            except Exception:  # the label is the session's record, never a reason to lose the answer
-                pass
-        return reply
+            except Exception as exc:  # the label is the session's record, never a reason to lose the answer
+                self._note(f"evo-agents hub mcp: session label not updated for this result ({type(exc).__name__})")
+        return reply if self.kg else {**reply, "result": without_kg(method, result)}
 
     def answer(self, message):
         """The line to write for ``message``: the hub's answer, or the proxy's when the hub gives none."""
@@ -401,6 +401,11 @@ class Proxy:
         with self._lock:
             self._out.write(line)
             self._out.flush()
+
+    def _note(self, line: str) -> None:
+        with self._lock:
+            self.err.write(line + "\n")
+            self.err.flush()
 
     def _report(self, failure: str | None, url: str | None = None) -> None:
         """One stderr line when the hub stops answering, or answers again; nothing while that does not change."""
