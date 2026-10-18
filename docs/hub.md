@@ -251,7 +251,7 @@ without a grant gets the project's 404.
 A profile has a handle, unique on the hub (deleted profiles' included) and never a project's name, written
 `[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
 prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
-none; and seven axes of permissions. The handle never changes. Every edit that changes something, the avatar
+none; and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
 included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
 lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
 `description`, and `icon_url` for the avatar.
@@ -275,12 +275,20 @@ member who dispatches a run has (their workers, their secrets, the projects they
 | `project` | the other projects whose runs the profile may take; its own always | the dispatch |
 | `model` | model names, as a runtime names them | the dispatch (none named: the first allowed), and the worker's adapter |
 | `runtime` | `claude-code`, `opencode`, `codex`, and `<plugin>/<name>` of a plugin's runtime | the dispatch, and the claim of a run asking for `any` (which takes a runtime of the core) |
+| `environment` | where the agent runs, in order of preference: `host` (the worker's own machine) and `<plugin>/<name>` of a plugin's environment, a container | the dispatch (one the project registers), the claim (the first the worker takes) and the worker's preflight |
 
 The tool axis speaks runtime-neutral words, which each runtime's adapter turns into its own tools: `read` (read files
 and search them), `edit` (create and change files), `bash` (run shell commands), `web` (fetch web pages and search the
 web), `agent` (start subagents), and `mcp:<server>` (the tools of one MCP server). Tools that only keep the agent's own
 notes, such as a to-do list, are always there. A runtime that cannot turn off a word a profile leaves out fails the run
 before its agent starts.
+
+The environment axis is where its runs' agent runs. `all`, the default, runs it on the worker's host, as every run ran
+before the axis; an allowlist names `host` and the environments of plugins (`docs/plugins.md`, Environments) in order
+of preference, so `["sandbox/box", "host"]` takes the container where the worker can run it and the host elsewhere,
+and `["sandbox/box"]` waits for a worker that can. Schema 0040 gave every profile the axis with mode `all` and made a
+default profile's eight axes, all, the rule; a profile version written before it names seven axes, and the hub reads
+the one it does not name as `all`.
 
 ### Runs under a profile
 
@@ -297,13 +305,18 @@ which allowlist leaves what out and that nothing was dispatched, when:
 - the account picked by hand is not in the credential allowlist (422), or an author run's profile leaves out the skill
   `create-exec-plan` (422);
 - the pinned worker's daemon does not say it applies profiles (feature `agent_profiles`) and the profile limits
-  tools, skills or models or has instructions (409, as for any worker that could never claim the run).
+  tools, skills or models or has instructions (409, as for any worker that could never claim the run);
+- the environment axis names no environment the project registers, or allows none (422); a pinned worker whose
+  daemon does not say it runs environments (feature `environments`), or whose owner has not accepted the plugin of
+  any environment the profile allows, and the axis does not allow `host` (409).
 
 The run records `profile_id` and `profile_version`, and `Run` shows `profile` (the handle), `profile_id` and
 `profile_version`. The hub applies that version's rules to the run: a worker claims it only when the worker axis names
-it or one of its labels, the runtime axis one of its runtimes, and, for a profile that needs it, its daemon lists
-`agent_profiles` in its heartbeat's `features`; a run asking for `any` runtime takes the first of the worker's the
-profile allows. The claim carries the profile at that version (`RunSpec.profile`: handle, version, name, instructions,
+it or one of its labels, the runtime axis one of its runtimes, the environment axis `host` or a plugin's environment
+the worker takes, and, for a profile that needs it, its daemon lists `agent_profiles` in its heartbeat's `features`; a
+run asking for `any` runtime takes the first of the worker's the profile allows. The claim records the environment it
+picked in the run (`environment`: `<plugin>/<name>`, null for the host) and hands its declaration
+(`RunSpec.environment`). The claim carries the profile at that version (`RunSpec.profile`: handle, version, name, instructions,
 permissions) for the worker to apply. A rerun goes under the profile of the run it reruns, at its version now, checked
 again; the next attempt of a lost run and a run that resumes a parked one keep the profile and version. A run of the
 night shift goes under the project's default. A run from before 0030 has no profile and runs as before.
@@ -1216,6 +1229,11 @@ A plugin enabled in a project also registers its runtimes there, `<plugin>/<name
 the runs of the project may ask for them, and a dispatch of a runtime the project does not register is a 422. Schema
 0039 lets `runs.runtime` and `runs.requested_runtime` hold such a name and adds `workers.plugins`, the plugins whose
 runtimes a worker takes; going back to 0038 deletes the runs of plugins' runtimes and drops the column.
+
+It registers its environments there too, `<plugin>/<name>` (`docs/plugins.md`, Environments), which the environment
+axis of the project's agent profiles names. Schema 0040 adds the axis to every profile, with mode `all`, and
+`runs.environment`, the environment of a plugin a run's claim picked (NULL for the host); going back to 0039 drops the
+column and takes the axis out of every profile, whose runs then run on the host.
 
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the

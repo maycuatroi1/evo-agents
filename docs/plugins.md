@@ -217,6 +217,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
 | `pages` | `name`, `title`, `icon`, `menu`, `entry` (isolated) | a native page of the hub's web, at `/p/<project>/x/<id>/<name>` | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
 | `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
+| `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
 
 What a project does not enable is not there: every route, tool, job, event and channel of a plugin works in a project
 that enabled the plugin while the plugin is installed and turned on, and the hub checks it on each call, not once.
@@ -342,6 +343,73 @@ to list `<plugin>/<name>` under Runtimes, and dispatch to it:
 
 ```sh
 evo-agents hub run dispatch rollout 2 --project evo-agents --runtime sandbox/gemini
+```
+
+## Environments
+
+A plugin of either tier declares a run environment: a container image that a run's agent runs in on the worker,
+instead of the worker's own machine (the host).
+
+```json
+"contributes": {
+  "environments": [
+    {
+      "name": "box",
+      "title": "Agent box",
+      "image": "ghcr.io/acme/agent-box:1.2@sha256:0123...cdef",
+      "network": "outbound",
+      "mounts": [
+        {"type": "tmpfs", "target": "/scratch", "size_mb": 256},
+        {"type": "volume", "name": "npm-cache", "target": "/cache/npm"}
+      ]
+    }
+  ]
+}
+```
+
+- `image` is pinned by the digest of its manifest or index, `[registry/]repository[:tag]@sha256:<64 hex>`; a tag
+  alone is refused, since it can move after the publisher signed the manifest. The worker pulls it by that digest
+  before the agent starts and runs nothing else (`--pull=never`). The image holds the programs of the runtimes it runs
+  (`claude`, `opencode`, `codex`, or an ACP agent's program), found on its own PATH.
+- `network` is `none` (the container's loopback alone; opencode, whose server the daemon reaches over a port, cannot
+  run there) or `outbound` (the engine's default network, out to the internet and the model's API, with nothing
+  published but the port an agent serves the daemon on, bound to the worker's 127.0.0.1).
+- `mounts` (at most 8, each target once) are `tmpfs`, an empty file system in memory with an optional `size_mb`, or
+  `volume`, a named volume of the engine that outlives the run, such as a cache, which the worker names
+  `evo-<plugin>-<name>` so plugins never share one; `read_only` mounts either read-only. A target is a normalized
+  absolute path without a comma or a colon, never `/`, `/proc`, `/sys`, `/dev` or a path under them. A plugin never
+  mounts a path of the worker's own: the worker mounts the run's worktree, the git directory of each checkout it
+  belongs to and a home of the run itself, and refuses a declared target that is or holds one of its paths.
+
+**The hub registers a plugin's environment as `<plugin>/<name>`** (`sandbox/box`) in each project that enabled the
+plugin, while the plugin is installed and on, next to `host`. A plugin that declares one is enabled per project and
+needs no permission for it. **The eighth axis of an agent profile, environment, chooses where its runs' agent runs**:
+`all` runs it on the host, as every run ran before the axis; an allowlist names `host` and environments of plugins in
+order of preference. A dispatch (step runs, a plan run, a rerun, an author run) under a profile whose allowlist names
+no environment its project registers is a 422 that lists what the project registers.
+
+**A worker runs a plugin's environment only once its owner accepts the plugin**, in the worker's plugins (the same
+list as for runtimes), and only with a daemon that says the feature `environments`. A run whose profile allows only
+plugins' environments goes to such a worker alone; another never claims it, and the run waits rather than fails. The
+claim picks the first environment of the allowlist that is `host` or one the worker takes and the run's project
+registers, records it in the run (`environment`, null for the host, shown by `evo-agents hub run show --json`), and
+hands the worker its declaration as the project has the plugin then. A run whose allowlist names no environment its
+project still registers when a worker claims it fails there, saying so. A dispatch pinned to a worker that could never
+take one is 409.
+
+The worker's container provider runs the agent through Docker or Podman (`docs/workers.md`, Environments of plugins):
+as the owner's user, with the run's worktree mounted at its own path, every capability dropped, and only the variables
+the run's leases and the run itself set passed in, never the worker's own environment. Its preflight checks the
+engine and pulls the image; a worker without an engine, or whose engine cannot pull the image, fails the run before
+its agent starts, with cause `environment`. A container takes step runs: the agent of a plan, author, chat, review or
+judge run talks to the daemon through `evo-agents worker`, which a container does not have.
+
+To try one by hand, enable the plugin on a project, add it to a worker's plugins, give an agent the axis, and dispatch
+under it:
+
+```sh
+evo-agents hub agent create @boxed --project evo-agents --name Boxed --allow environment:sandbox/box
+evo-agents hub run dispatch rollout 2 --project evo-agents --agent boxed
 ```
 
 ## Pages

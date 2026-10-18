@@ -494,6 +494,13 @@ Credentials card.
   (`EVO_ENV_TICKET`, set on that one command of the pane's script, good for one answer within 2 minutes), so code the
   run does not trust, such as a verify command or a hidden check of a judge run, gets none of its `env` leases, a
   subscription token among them, from the socket.
+- **A container.** A run whose agent runs in a container of a plugin's environment (`docs/workers.md`, Environments
+  of plugins) gets its `env` leases there and none of the daemon's own environment: the container provider passes
+  each variable by name, so the engine's client reads the value and no command line holds it. Its `git` leases stay
+  out of the container, since the run's git configuration names a helper of the worker that the container does not
+  have: the daemon fetches and pushes the run's repos on the host with them, as for any run. The runtime's login in a
+  container is therefore a lease (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` for Claude Code, a provider's key
+  for opencode or Codex); the machine's own login, its keychain and its `~/.claude` are not there.
 - **Umask.** The service starts the daemon, and so its agents, with umask 077.
 - **No lease, machine's own.** An origin in `missing` gets a system event "no leased credential for {origin}:
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A
