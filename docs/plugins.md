@@ -293,6 +293,56 @@ the paths they had (the empty `prefix`: its routers carry their own under `/v1`)
 migration 0015. Nothing of it is per project, so it runs hub-wide: `evo-agents hub plugin list` and Administration,
 Plugins show it as a core plugin installed with the image, and no project enables it.
 
+### Builder
+
+The second core plugin is **builder** (`evo_agents/core_plugins/builder`), which projects enable. It contributes the
+agent type `builder`, whose profile is @builder, and the pack `builder/builder`. The pack holds the agent's
+instructions and two skills. `plugin-authoring` covers the manifest, plugin/1, the iframe bridge of a page, signing,
+and a CI template, `ci.yml`. `hub-settings` covers the proposals below. The type declares `mentioned_by: admin`, so
+@builder takes work from the project's admins alone. A writer who mentions it gets the hub's refusal in the thread,
+and no run starts. The pack's files come from the package: the hub packs them at claim time as the plugin's image
+bundle and hands the worker that bundle, as it hands any pack.
+
+**A change of a setting is a proposal.** The agent of a @builder chat run calls the MCP tool `builder__propose` of the
+hub's /mcp with a kind, a target, the fields it sets and those it unsets, and a summary:
+
+| kind | target | applies as | decided by |
+| --- | --- | --- | --- |
+| `branding` | the hub | the next version of the hub's branding | a hub admin |
+| `features` | `{"layer": "hub"}` or `{"layer": "project"}` | the next version of that layer of features | a hub admin |
+| `plugin_config` | `{"plugin": ...}`, with `"agent"` for an agent's layer | the next version of that layer of the plugin's config | an admin of the project |
+| `agent` | `{"agent": handle}` | the next version of the profile (name, description, instructions, packs) | an admin of the project |
+
+The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched.
+It then checks the change as the route that writes the setting would. @builder never sets a secret of a plugin's
+config, never sets a branding image (it may unset one), and never changes the project's default agent. A change that
+passes is kept pending in `builder_proposals` (migration 0043) at the setting's version. The hub shows it in the
+thread, and each member who may decide it gets an Inbox notice of kind `builder_proposal` that links to that
+message. Nothing changes until an admin approves it:
+
+- in the thread, with `approve 12`, `reject 12` or `roll back 12`, which the hub reads through the event `chat.message`
+  (a delivery made again does nothing new);
+- with `GET /v1/x/builder/{project}/proposals[/{id}]`, `POST .../{id}/answer` `{"answer": "approve" | "reject"}`
+  and `POST .../{id}/rollback`. These refuse a token scoped to a run.
+
+An approved proposal is applied only while the setting is still at the version it was proposed at. Otherwise it
+fails with the reason, and the agent proposes the change again. Applied, the setting has a new version, and a rollback
+writes the next one as a copy of the version before it, while the setting is still at the version the proposal made.
+The audit log keeps `builder.propose` and `builder.decide`.
+
+**A change of code is the chat run itself.** The agent edits the client's plugin repo that the run checks out and
+pushes its branch, and the hub opens the draft pull request (`docs/workers.md`). Nothing in it reaches the hub until
+the repo's CI publishes a version. `ci.yml` extends the workflow of Signing in CI below with a third job, `publish`,
+which runs after `sign` in the GitHub Environment `evo-hub`, whose required reviewers and secrets gate it. It writes a
+hub admin's machine token from that environment's secrets, runs
+`evo-agents hub plugin publish <bundle> --signature <bundle>.sigstore.json`, and deletes the token at the end. The
+version waits in the store as available. A hub admin upgrades to it with the store's existing routes, and only then
+does the hub install it.
+
+The routes refuse a token scoped to a run, but they take an admin's own machine token like any other caller's. An
+agent that can read such a token on its worker could approve its own proposal. Run @builder on workers where no
+admin's machine token is readable by the agent.
+
 ## Runtimes
 
 A plugin of either tier declares a runtime of agents with `acp`, the command of an agent that speaks the
@@ -501,7 +551,9 @@ worker of the project (`evo_agents/hub/task_runs.py`):
 `profile` takes the handle, name, description, instructions and permissions (by axis) of an agent profile
 (`docs/hub.md`, Agent profiles). `packs`, `environment`, `jobs`, `events` and `pages` name the plugin's own
 contributions by name. A manifest that names a part the plugin does not contribute, or one part twice, is refused, as
-are two types with the same handle.
+are two types with the same handle. `mentioned_by` says who hands the profile work by mentioning it in a group chat:
+`writer`, the default, for the project's writers, or `admin` for its admins alone. Any other member who mentions it
+gets the hub's refusal in the thread, and no run starts (core plugin builder, above).
 
 **An admin of a project enables an agent type there** after enabling its plugin:
 `PUT /v1/projects/{project}/agent-types/{plugin}/{name}` with:
