@@ -26,6 +26,9 @@ MAX_ENVIRONMENT_MOUNTS mounts (``evo_agents.plugins.run_environments``): a volum
 only a tmpfs has a size, each target is a normalized absolute path, once, and none is ``/`` or under the kernel's
 file systems (FORBIDDEN_TARGETS).
 
+An agent pack (``agent_packs``) is a directory ``packs/<name>/`` of the bundle laid out as a Claude Code plugin, which
+an agent profile attaches; ``evo_agents.plugins.agent_packs`` reads it and ``bundle.read_bundle`` checks it.
+
 The schema file is read where the package installs it, next to the harness schemas, without importing
 ``evo_agents.harness``. Standard library only, besides ``evo_agents.schema``.
 """
@@ -146,14 +149,15 @@ class Manifest:
 
 def is_per_project(data: dict) -> bool:
     """Whether a project enables the plugin of manifest ``data`` for anything: it is isolated, asks for a permission,
-    takes a config, or contributes an MCP tool, a job, an event, a page, an ACP runtime, an environment or a route
-    under /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of members and routes of its own) runs hub-wide wherever it is
-    installed: the hub's store lists it, installed with the image, and no project enables it. ``data`` is a manifest
-    that was read once (the store keeps it so), not checked again here."""
+    takes a config, or contributes an MCP tool, a job, an event, a page, an agent pack, an ACP runtime, an environment
+    or a route under /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of members and
+    routes of its own) runs hub-wide wherever it is installed: the hub's store lists it, installed with the image, and
+    no project enables it. ``data`` is a manifest that was read once (the store keeps it so), not checked again
+    here."""
     contributes = data.get("contributes") or {}
     if data.get("tier", "isolated") == "isolated" or data.get("permissions") or data.get("config"):
         return True
-    if any(contributes.get(point) for point in ("mcp_tools", "jobs", "events", "pages", "environments")):
+    if any(contributes.get(point) for point in ("mcp_tools", "jobs", "events", "pages", "agent_packs", "environments")):
         return True
     if any("acp" in item for item in contributes.get("runtimes") or ()):
         return True
