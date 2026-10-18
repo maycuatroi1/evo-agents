@@ -417,7 +417,7 @@ that does not match plan.schema.json, 413 over the size the hub keeps, the label
 and the warnings of the semantic checks in the answer. The dispatcher's writer role is checked again at each write:
 403 once it is lost, or the grant is gone. Without `--if-revision` a plan the hub holds is never replaced (409
 `revision_conflict`, with the plan as held). Each revision records the run (`run_id` of the revisions, which
-`evo-agents hub plan history` shows as `owner (author run #N)`), and the run points to the plan it wrote at its
+`evo-agents hub plan history` shows as `owner (run #N)`), and the run points to the plan it wrote at its
 latest revision (`plan_id` and `plan_revision` of the run, and a system event per revision).
 
 An author run writes one plan. `evo-agents hub run author REQUEST --plan ID` (`plan_id` of the dispatch) aims it at a

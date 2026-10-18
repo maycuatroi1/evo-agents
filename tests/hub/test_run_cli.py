@@ -276,7 +276,7 @@ def test_a_model_needs_the_runtime_that_names_it(monkeypatch, capsys, tmp_path, 
     assert result.err.startswith("error: --model names a model as one runtime names it, so it needs --runtime")
 
 
-def test_decision_cli_shows_an_author_run_decision_without_a_plan_as_the_author_run(monkeypatch, capsys, tmp_path):
+def test_decision_cli_shows_a_decision_without_a_plan_by_its_run_alone(monkeypatch, capsys, tmp_path):
     from evo_agents.hub import decision_cli
 
     planless = {
@@ -313,12 +313,12 @@ def test_decision_cli_shows_an_author_run_decision_without_a_plan_as_the_author_
     home = tmp_path / "home"
     table = ok(cli(monkeypatch, capsys, home, "hub", "decision", "list", "--project", "demo")).out
     (row,) = [line for line in table.splitlines() if line.startswith("#12")]
-    assert "author run #40" in row and "None" not in row and "null" not in row
+    assert row.split()[3:5] == ["#40", "-"] and "None" not in row and "null" not in row
     (row,) = [line for line in table.splitlines() if line.startswith("#13")]
     assert "wait-helper" in row and "author run" not in row
     shown = ok(cli(monkeypatch, capsys, home, "hub", "decision", "show", "12", "--project", "demo")).out
     (run_line,) = [line for line in shown.splitlines() if line.strip().startswith("run ")]
-    assert run_line.split(None, 1)[1] == "author run #40 (waiting), before it put a plan"
+    assert run_line.split(None, 1)[1] == "#40 (waiting), no plan"
     assert "None" not in shown and "null" not in shown
 
 
