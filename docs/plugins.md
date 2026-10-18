@@ -87,11 +87,15 @@ that holds **none** of the hub's variables: not `EVO_HUB_DSN`, not `EVO_HUB_SECR
 is given the hub's URL, the shared secret `EVO_HUB_PLUGIN_HOST_TOKEN` and a data directory, and nothing else. In the
 compose file it is the `plugins` service, built from the same image, running as root with only the capabilities
 SETUID, SETGID, CHOWN and KILL, `no-new-privileges`, an init as pid 1, its own volume at `/plugins`, and limits on its
-CPUs, memory and processes (`EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS`).
+CPUs, memory and processes (`EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS`). The default
+of 2048 processes lets fifteen backends sit at their own limit of 128 and still leaves 128 to the host, whose kill of
+a plugin's processes starts no process at all.
 
 **Each backend runs under a user of its own**, `UID_BASE` (200000) plus the plugin's id on the hub, with a group of
 the same number and no other group. The host gives one only as root, and a host that is not root **refuses to start
-a backend** (its state says why), unless it is started with `--allow-shared-user` on a developer's machine. Under a
+a backend** (its state says why), unless it is started with `--allow-shared-user` on a developer's machine. The users
+below 200000, from 100000 on, are the killers' (below), so a plugin whose id is 100000 or more gets none: the hub
+refuses to install its backend and the host starts none. Under a
 shared user the backends' environments and arguments stay apart, but their files, the host's `/proc` (its environment
 holds the shared secret) and each other's `/proc` in the moment after exec do not; `evo-agents plugin test` runs the
 author's own plugin that way. `evo_agents.plugins.environment.isolation` says which mode is in force (`uid` or
@@ -117,21 +121,45 @@ backend's secrets arrive only in `initialize`, on its stdin, and are its own plu
 config fields where the key is and never puts another plugin's secret in a backend's payload.
 
 A backend starts through a **trampoline**, the host's own Python run isolated (`-I -S`, so no `.pth` file and nothing
-of the current directory runs) under the backend's user: it changes into the data directory and sets the resource
-limits before any code of the plugin runs, then execs the environment's Python (`-I`). The limits are no core file,
-1024 open files, 4 GiB of address space per process and 256 processes and threads for the plugin's user. Then a
-**launcher** marks the backend **not dumpable** (`prctl(PR_SET_DUMPABLE, 0)`) and runs the entry; the host marks itself
-the same way at start. Stopping a backend kills its process group and then every process of its user (`kill(-1)` from
-a process of that user, until `/proc` shows none), so a child that left the group with `setsid()` goes too. Placing
-runs in a thread that cancelling a start does not end, so stopping also kills pip and waits for that thread, and the
-backend that replaces one, under the same user, starts only then. A start that cannot kill every process of the
-plugin's user places nothing and starts nothing: it backs off.
+of the current directory runs). Still as root, it first closes every file descriptor but 0, 1 and 2: uvloop (the loop
+uvicorn picks when uvicorn[standard] is installed) ignores `close_fds`, so a descriptor the host holds, or a copy of
+the backend's own pipes, would otherwise reach the plugin. Then it takes the backend's user and group itself, with no
+other group, and exits 71 unless it holds exactly them as its real, effective and saved IDs with no capability left;
+the host passes no user to the event loop's `subprocess_exec`, which uvloop would refuse. A backend that keeps the
+host's user (isolation `process`) never runs with root as its real, effective or saved user, nor with a capability:
+the trampoline refuses, except for `evo-agents plugin test`, which runs the author's own plugin and says so. Then it changes into the data directory and sets the resource limits
+before any code of the plugin runs, and execs the environment's Python (`-I`). The limits are no core file, 1024 open
+files, 4 GiB of address space per process and 128 processes and threads for the plugin's user. Then a **launcher**
+marks the backend **not dumpable** (`prctl(PR_SET_DUMPABLE, 0)`) and runs the entry; the host marks itself the same
+way at start.
+
+Stopping a backend kills its process group and then every process of its user, again until `/proc` shows none, so a
+child that left the group with `setsid()` goes too. The host does it **itself, as root** (CAP_KILL): pass after pass
+over `/proc`, it sends SIGSTOP to every process whose real or saved user is the plugin's, until a pass finds none of
+them running, then SIGKILL to each. It signals each process through a descriptor of its `/proc` directory, taken
+before it reads the status there (a pidfd for `pidfd_send_signal`), so a pid freed and taken again never gets the
+signal. A stopped process forks nothing and signals nothing, and no process of the plugin may signal, renice, move to
+another CPU or trace the host, whose user is root; SIGSTOP and SIGKILL can be neither caught nor blocked. So neither
+signals nor tricks with scheduling delay the kill, and it needs no new process, so it works with the service at its
+pids limit. What a pass cannot catch is a chain of processes each forking the next and exiting at once; for that a
+**killer** then calls `kill(-1)`, which reaches every process its user may signal at once (a fork under way fails
+rather than leave a child). The killer's effective user is the plugin's, so it may signal every process of the plugin,
+but its real and saved user is one of its own (100000 plus the plugin's id), so no process of the plugin may signal
+it; whatever it meets, it is killed after 10 seconds and its round fails. Placing runs in a thread that cancelling a
+start does not end, so stopping also kills pip and waits for that thread, and the backend that replaces one, under the
+same user, starts only then. A plugin no longer installed is stopped in the background, so its stop holds neither the
+loop that keeps the other plugins running nor any of them; while processes of its user outlive that stop, the host
+kills them again with a backoff until `/proc` shows none, and its state in the host's status, which reaches
+`GET /v1/plugins/{name}/backend`, says so. A start that cannot kill every process of the plugin's user places nothing
+and starts nothing: it backs off. Why a backend is down, a failed start's text included, is for a hub admin, in the
+backend's status; a project member calling the plugin reads only that its backend is not running now.
 
 The doors a secret could leave by, and what shuts each:
 
 | Door | Shut by |
 | --- | --- |
 | the backend's environment and arguments | built from nothing; secrets only on stdin |
+| a file descriptor of the host's | the trampoline closes all but 0, 1 and 2, as root, before the plugin's code runs |
 | `/proc` of the host, docker-init, the api or another backend | another user's process (and not dumpable); the api and worker are other containers |
 | another plugin's code, environment or data | root's files of mode 0750 with that plugin's group; data 0700 of another user |
 | a requirements line that runs code or reads a file | only `name==version --hash=...` lines, a copy the host writes, pip under the backend's user |
@@ -143,7 +171,8 @@ A hostile plugin that tries every door and reports what it reads, writes and may
 `tests/plugins/test_plugin_isolation_root.py`, which CI's `plugin-host-root` job runs as root in the hub's image with
 the service's capabilities and a fresh volume at `/plugins`, proves it also writes into no other plugin's directories
 and signals no process of another user, that pip runs under the backend's user, and that stopping a backend leaves no
-process of its user behind.
+process of its user behind, even with a process of that user stopping every other one, or a hundred spinning on
+one CPU while others demote whatever kills them.
 
 ### The hub token of a backend
 

@@ -14,7 +14,10 @@
 - the requirements are installed from the bundle's wheels alone (``tests/plugins/test_plugin_isolation_requirements``
   has the file's checks), and the resource limits hold before the plugin's code runs;
 - a backend that crashes or hangs makes the call fail within its timeout, and so does one whose start takes long;
-  the host starts a fresh one after a backoff.
+  the host starts a fresh one after a backoff;
+- a backend holds no file descriptor but 0, 1 and 2; the trampoline and the killer refuse a user they cannot take
+  exactly, and user 0 always; a killer that does not end is killed and its round fails; a plugin's stop runs beside
+  the host's other work, and the backend placed again after it waits for it.
 
 The backends run as real subprocesses. ``tests/fixtures/plugins/{hostile,faulty,sample}`` hold them. These checks
 need no hub, so they run without EVO_HUB_TEST_DSN. Run as root (CI's plugin-host-root job, in the hub's image), the
@@ -26,7 +29,9 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import logging
 import os
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -35,6 +40,7 @@ import pytest
 
 from evo_agents.plugins import environment
 from evo_agents.plugins import host as host_module
+from evo_agents.plugins import process as process_module
 from evo_agents.plugins.environment import NPROC, backend_env, identity, isolation, placement
 from evo_agents.plugins.host import SHARED_USER_REFUSED, Backend, BackendUnavailable, Host
 from tests.plugins.backends import (
@@ -102,6 +108,7 @@ def test_plugin_hostile_backend_reads_no_hub_or_sibling_secret(plugin_root, monk
 
     report, backends = asyncio.run(run())
     found = report["found"]
+    assert report["fds"] == [0, 1, 2], report  # nothing of the host's open files
     if isolation() == "uid":  # a user of its own: no other plugin's files, no other user's processes
         assert found == {}, found
         assert report["wrote"] == {} and report["signalled"] == {}, report
@@ -328,6 +335,53 @@ def test_plugin_isolation_a_backend_that_does_not_start_backs_off(plugin_root):
     asyncio.run(run())
 
 
+@pytest.mark.parametrize("where", ["spawn", "initialize"])
+def test_plugin_crash_any_error_of_a_start_backs_off_with_its_cause(where, plugin_root, monkeypatch, caplog):
+    """On agents.omelet.tech uvloop's subprocess_exec refused the user, group and extra_groups arguments with a
+    ValueError, which the start did not catch: the backend stayed "starting" with no backoff, and the host tried
+    again at every tick with a traceback. Any exception of a start is now a failed start: the backoff, its cause in
+    the status, a backend it had spawned stopped, and one traceback for as long as the cause stays the same."""
+    real_start, real_call, spawned = process_module.BackendProcess.start, process_module.BackendProcess.call, []
+
+    async def start(self):
+        if where == "spawn":
+            raise ValueError("unexpected kwargs: user, group, extra_groups")
+        await real_start(self)
+        spawned.append(self)
+
+    async def call(self, method, params, timeout):
+        if method == "initialize":
+            raise TypeError("a bug of the host")
+        return await real_call(self, method, params, timeout)
+
+    monkeypatch.setattr(process_module.BackendProcess, "start", start)
+    monkeypatch.setattr(process_module.BackendProcess, "call", call)
+
+    async def run() -> tuple[dict, dict, bool]:
+        host = shared(plugin_root)
+        backend = host.place(manifest("sample"), bundle("sample"), init("sample"))
+        with caplog.at_level(logging.WARNING, logger=host_module.__name__):
+            with pytest.raises(BackendUnavailable, match="could not start"):
+                await backend.call("ping", {}, 20)
+            first = backend.status.as_dict()
+            waits = backend.kick() is None  # in its backoff, the next tick starts nothing
+            backend.status.retry_at = time.time() - 1  # the backoff has passed
+            await backend.kick()
+        second = backend.status.as_dict()
+        await host.stop_all()
+        return first, second, waits
+
+    first, second, waits = asyncio.run(run())
+    cause = "ValueError: unexpected kwargs" if where == "spawn" else "TypeError: a bug of the host"
+    assert first["state"] == "backoff" and first["pid"] is None and first["retry_at"] is not None, first
+    assert cause in first["error"] and waits
+    assert second["state"] == "backoff" and second["restarts"] == 2 and cause in second["error"], second
+    assert len([record for record in caplog.records if record.exc_info]) == 1  # the same cause again: no traceback
+    if where == "initialize":
+        assert len(spawned) == 2 and not any(process.alive for process in spawned)
+        assert all(process.returncode is not None for process in spawned)
+
+
 # A placing that a stop cancels, and what another process of the plugin's user may plant meanwhile
 
 
@@ -398,3 +452,242 @@ def test_plugin_isolation_start_refused_while_processes_of_its_user_linger(plugi
     assert backend.status.error == host_module.LINGERING.format(name="sample", uid=user)
     assert kills and set(kills) == {user}
     assert backend.process is None and not backend.where.code.exists()  # nothing was placed
+
+
+# What takes a user, and what kills a plugin's user
+
+
+def _snippet(code: str, *args: str, home: Path) -> subprocess.CompletedProcess:
+    command = [sys.executable, "-I", "-S", "-c", code, *args]
+    return subprocess.run(command, capture_output=True, text=True, env={"HOME": str(home)}, cwd="/", timeout=60)
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the trampoline and the killer are POSIX")
+def test_plugin_isolation_trampoline_and_killer_refuse_a_user_they_cannot_take(tmp_path):
+    """The review of PR #72: the trampoline exited 71 only after a drop that worked, never when the drop itself
+    raised, and checked neither the saved IDs nor the capabilities. Each refusal is now exit NO_USER_EXIT with a
+    reason, before the backend's command runs; the killer runs with signal 0 here, so a refusal that failed would
+    still kill nothing."""
+    user, killer = environment.UID_BASE + 16, environment.KILLER_UID_BASE + 16
+    marker = tmp_path / "ran"
+    after = ["", sys.executable, "-c", f"open({str(marker)!r}, 'w').close()"]  # the limits, then what it would run
+    refused = {
+        "trampoline, user 0": _snippet(environment.TRAMPOLINE, "0:0", *after, home=tmp_path),
+        "trampoline, no user:group": _snippet(environment.TRAMPOLINE, "nobody", *after, home=tmp_path),
+        "killer, user 0": _snippet(process_module.KILLER, "1", "0", "0", home=tmp_path),
+        "killer, its real user the plugin's": _snippet(process_module.KILLER, str(user), str(user), "0", home=tmp_path),
+    }
+    if as_root():  # a backend that keeps the host's user, which is root, and not plugin test's KEEP_ROOT
+        refused["trampoline, host user root"] = _snippet(
+            environment.TRAMPOLINE, environment.SAME_USER, *after, home=tmp_path
+        )
+        # The second review of PR #72 (L3): root as the saved user only, and the capabilities that keeps, passed the
+        # check of the real and effective users. The trampoline's code runs here after setresuid(user, user, 0).
+        saved_root = (
+            "import os, sys\n"
+            f"os.setgroups([]); os.setresgid({user}, {user}, {user}); os.setresuid({user}, {user}, 0)\n"
+            "exec(compile(sys.argv.pop(1), 'trampoline', 'exec'))\n"
+        )
+        refused["trampoline, host user root as its saved user"] = _snippet(
+            saved_root, environment.TRAMPOLINE, environment.SAME_USER, *after, home=tmp_path
+        )
+    else:  # a user only root may take: setgroups raises
+        refused["trampoline, a user not its own"] = _snippet(
+            environment.TRAMPOLINE, f"{user}:{user}", *after, home=tmp_path
+        )
+        refused["killer, a user not its own"] = _snippet(
+            process_module.KILLER, str(killer), str(user), "0", home=tmp_path
+        )
+    for case, done in refused.items():
+        assert done.returncode == environment.NO_USER_EXIT, (case, done.returncode, done.stderr)
+        assert "evo-agents plugin: " in done.stderr, (case, done.stderr)
+    assert not marker.exists(), "the trampoline ran the backend's command after a refusal"
+    if not as_root():  # the host's own user, which is not root: the trampoline goes on to the backend's command
+        assert _snippet(environment.TRAMPOLINE, environment.SAME_USER, *after, home=tmp_path).returncode == 0
+        assert marker.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the trampoline is POSIX")
+def test_plugin_isolation_trampoline_closes_descriptors_it_cannot_list(tmp_path):
+    """The second review of PR #72 (L2): with neither /proc/self/fd nor /dev/fd to list, the trampoline closed only
+    the descriptors below 65536. It now closes up to the limit of open files (os.closerange), the one above too."""
+    import resource
+
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    high = 70_000
+    if hard != resource.RLIM_INFINITY and hard <= high:
+        pytest.skip(f"the limit of open files ({hard}) holds no descriptor {high}")
+    code = (
+        "import os, resource, sys\n"
+        "try:\n"
+        f"    resource.setrlimit(resource.RLIMIT_NOFILE, ({high + 1}, resource.getrlimit(resource.RLIMIT_NOFILE)[1]))\n"
+        f"    fd = os.open(os.devnull, os.O_RDONLY)\n    os.dup2(fd, {high}, inheritable=False)\n    os.dup2(fd, 300)\n"
+        "except (OSError, ValueError) as exc:\n"
+        "    print('SKIP', exc)\n"
+        "    sys.exit(0)\n"
+        "def unlistable(path):\n    raise OSError('no listing here')\n"
+        "os.listdir = unlistable\n" + environment.CLOSE_FDS + "close_fds()\n"
+        "left = []\n"
+        f"for n in (fd, 300, {high}):\n"
+        "    try:\n        os.fstat(n)\n        left.append(n)\n    except OSError:\n        pass\n"
+        "print(left)\n"
+    )
+    done = _snippet(code, home=tmp_path)
+    if done.stdout.startswith("SKIP"):
+        pytest.skip(f"this system holds no descriptor {high}: {done.stdout.strip()}")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "[]", f"descriptors left open: {done.stdout.strip()}"
+
+
+def _lingering_host(plugin_root, monkeypatch, kills: list[bool]) -> tuple[Host, int]:
+    """A host whose plugin ``sample`` has a user of its own, ``kill_user`` of which answers ``kills`` in turn (the
+    last one again once they run out), and two processes of that user that /proc shows."""
+    user = environment.UID_BASE + 21
+    answers = iter(kills)
+
+    async def kill(owner) -> bool:
+        assert owner.uid == user
+        return next(answers, kills[-1])
+
+    monkeypatch.setattr(host_module, "identity", lambda plugin_id: environment.Identity(user, user))
+    monkeypatch.setattr(host_module, "kill_user", kill)
+    monkeypatch.setattr(host_module, "processes_of", lambda uid: [4242, 4243])
+    monkeypatch.setattr(host_module, "BACKOFF", (0.05,))
+    monkeypatch.setattr(host_module, "MAX_BACKOFF", 0.05)
+    host = Host(plugin_root)
+    host.place(manifest("sample"), bundle("sample"), init("sample", 21))
+    return host, user
+
+
+def test_plugin_crash_a_retired_plugins_user_is_killed_again_until_none_is_left_and_admins_see_it(
+    plugin_root, monkeypatch
+):
+    """The second review of PR #72 (M1): an uninstalled plugin whose processes outlived its stop was dropped from the
+    status, only a warning logged, and nothing tried again, so the plugin ran on unseen. ``Host.retire`` now kills its
+    user again, with a backoff, until /proc shows none, and the host's status says so meanwhile."""
+    host, user = _lingering_host(plugin_root, monkeypatch, [False, False, False, True])
+
+    async def run() -> tuple[list[dict], list[dict]]:
+        stopping = host.retire("sample")
+        seen = []
+        while not stopping.done():
+            seen.extend(host.status())
+            await asyncio.sleep(0.01)
+        await stopping
+        return seen, host.status()
+
+    seen, after = asyncio.run(run())
+    assert seen, "the host's status left out the retired plugin while processes of its user ran"
+    want = host_module.RETIRED_LINGERING.format(name="sample", count=2, uid=user)
+    assert {(s["plugin"], s["state"], s["error"]) for s in seen} == {("sample", "backoff", want)}
+    assert max(s["restarts"] for s in seen) == 3  # the stop's kill, then two more that failed, then one that did not
+    assert after == [] and not host.lingering and "sample" not in host.stopping
+
+
+def test_plugin_crash_a_retired_plugins_lingering_user_never_holds_the_hosts_close(plugin_root, monkeypatch):
+    """A retired plugin whose user keeps processes the host cannot kill: closing the host kills once more and ends."""
+    host, _ = _lingering_host(plugin_root, monkeypatch, [False])
+    monkeypatch.setattr(host_module, "BACKOFF", (3600.0,))
+    monkeypatch.setattr(host_module, "MAX_BACKOFF", 3600.0)
+
+    async def run() -> list[dict]:
+        stopping = host.retire("sample")
+        while not host.lingering:
+            await asyncio.sleep(0.01)
+        shown = host.status()
+        await asyncio.wait_for(host.stop_all(), 10)
+        assert stopping.done()
+        return shown
+
+    shown = asyncio.run(run())
+    assert [s["plugin"] for s in shown] == ["sample"] and not host.lingering
+
+
+def test_plugin_isolation_no_backend_for_a_plugin_id_its_killer_has_no_user_for(plugin_root, monkeypatch):
+    """The second review of PR #72 (L4): a plugin id of MAX_PLUGIN_ID or more got no killer, as its killer's user would
+    meet the backends'. The host now refuses to place or start such a backend, and says why."""
+    plugin_id = environment.MAX_PLUGIN_ID
+    user = environment.UID_BASE + plugin_id
+    monkeypatch.setattr(host_module, "identity", lambda given: environment.Identity(user, user))
+
+    async def run() -> Backend:
+        host = Host(plugin_root)
+        backend = host.place(manifest("sample"), bundle("sample"), init("sample", plugin_id))
+        with pytest.raises(BackendUnavailable):
+            await backend.call("ping", {}, timeout=20)
+        await host.stop_all()
+        return backend
+
+    backend = asyncio.run(run())
+    want = host_module.NO_KILLER_USER.format(name="sample", plugin_id=plugin_id, limit=environment.MAX_PLUGIN_ID)
+    assert backend.status.state == "backoff" and backend.status.error == want
+    assert environment.killer_uid(environment.Identity(user, user)) is None
+    assert backend.process is None and not backend.where.code.exists()  # nothing was placed
+
+
+def _alive(pid: int) -> bool:
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return False
+    except PermissionError:
+        return True
+    return True
+
+
+def test_plugin_crash_a_killer_that_does_not_end_is_killed_and_its_round_fails(tmp_path, monkeypatch, caplog):
+    """The review of PR #72: kill_user waited for its killer with no timeout, so a killer that never ended (one a
+    process of the plugin's user had stopped) held the stop, the lock, the backend that replaces it and the reconcile
+    loop for ever. A killer now has KILLER_WAIT; then it is SIGKILLed and its round counts as failed."""
+    pids = tmp_path / "killers"
+    hanging = f"import os, time\nopen({str(pids)!r}, 'a').write('%d\\n' % os.getpid())\ntime.sleep(120)\n"
+    monkeypatch.setattr(process_module, "KILLER", hanging)
+    monkeypatch.setattr(process_module, "KILLER_WAIT", 0.5)
+    monkeypatch.setattr(process_module, "KILL_ROUNDS", 2)
+    monkeypatch.setattr(process_module, "processes_of", lambda uid: [4242])  # a process of the user that stays
+    owner = environment.Identity(environment.UID_BASE + 17, environment.UID_BASE + 17)
+
+    async def run() -> tuple[bool, float]:
+        started = time.monotonic()
+        killed = await process_module.kill_user(owner)
+        return killed, time.monotonic() - started
+
+    with caplog.at_level(logging.WARNING, logger=process_module.__name__):
+        killed, elapsed = asyncio.run(run())
+    started = [int(line) for line in pids.read_text().split()]
+    assert killed is False and elapsed < 10, (killed, elapsed)
+    assert started and not [pid for pid in started if _alive(pid)], "a killer outlived its round"
+    assert [record for record in caplog.records if "did not end in time" in record.getMessage()]
+
+
+def test_plugin_crash_a_plugins_stop_never_holds_the_host_and_its_next_backend_waits_for_it(plugin_root, monkeypatch):
+    """The review of PR #72: the reconcile loop awaited the stop of a plugin no longer installed, so one stop that
+    hung stopped the loop that keeps every other plugin running. ``Host.retire`` stops it in the background; the
+    backend placed again under that name starts only once that stop has ended, since both run under its user."""
+    release, events = asyncio.Event(), []
+    real_stop = Backend.stop
+
+    async def slow_stop(self):
+        events.append(("stop", self.name))
+        await release.wait()
+        await real_stop(self)
+        events.append(("stopped", self.name))
+
+    monkeypatch.setattr(Backend, "stop", slow_stop)
+
+    async def run() -> None:
+        host = shared(plugin_root)
+        host.place(manifest("faulty"), bundle("faulty"), init("faulty", 18))
+        assert text(await host.call("faulty", "tool", tool("ok"), 20)) == "ok"
+        stopping = host.retire("faulty")
+        assert "faulty" not in host.backends and host.stopping["faulty"] is stopping  # retire returned at once
+        again = host.place(manifest("faulty"), bundle("faulty"), init("faulty", 18))
+        again.kick()
+        await asyncio.sleep(0.3)
+        assert not again.alive and again.status.state == "placing", "it started beside the stop of the one before"
+        release.set()
+        assert text(await host.call("faulty", "tool", tool("ok"), 20)) == "ok"
+        assert events == [("stop", "faulty"), ("stopped", "faulty")] and "faulty" not in host.stopping
+        await host.stop_all()
+
+    asyncio.run(run())

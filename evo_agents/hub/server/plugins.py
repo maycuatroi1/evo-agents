@@ -49,6 +49,7 @@ from evo_agents.hub.server.plugin_store import (
     PluginPublished,
     PluginPublishIn,
     check_bundle,
+    check_placeable,
     check_state,
     committed,
     detail,
@@ -164,6 +165,7 @@ async def _install(request: Request, user, name: str, wanted: str | None, *, upg
             raise HTTPException(409, FROM_IMAGE.format(name=name))
         check_state(row, upgrade=upgrade, target=wanted)
         target = pick_version(name, rows, wanted, row.installed_version if upgrade else None, state.hub_version)
+        check_placeable(row, target)
     data = await fetch_bundle(blob_store(request), target.sha256, target.size)
     await asyncio.to_thread(
         check_bundle, data, target.signature, state.config, state.plugin_sigstore, state.hub_version, NOTHING_INSTALLED
