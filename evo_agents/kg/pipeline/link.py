@@ -13,7 +13,10 @@ paths, a package, a Go import path, a JS or TS specifier read through the neares
 qualified name to find there. The first entry that finds a definition decides; two definitions are
 ambiguous and link nothing. A call through ``this``, ``self`` or ``super`` names a class of its own file
 instead; the index's class hierarchy (``pipeline.hierarchy``) finds the method up that class's chain, and
-gives each class its ``inherits`` edges and each method its ``overrides`` edges.
+gives each class its ``inherits`` edges and each method its ``overrides`` edges. A Python call through a typed
+receiver (``extract.pytypes``) names the class by a type expression: the class an annotation names, or what a
+callee returns, an instance of it when it is a class, else the class its return annotation names, which the
+index resolves once a build in the callee's own file; the method is then found up that class's chain.
 """
 
 from __future__ import annotations
@@ -29,7 +32,7 @@ from evo_agents.kg.pipeline.stages import edge, frag_unit, item_unit, node, norm
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import node_kind_for_item
 
-LINK_VERSION = "9"
+LINK_VERSION = "10"
 
 URL = re.compile(r"https?://[^\s<>()\[\]{}`'\"|]+")
 BACKTICK = re.compile(r"`([^`\n]{2,200})`")
@@ -65,6 +68,7 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
         "classes": {},  # class symbol -> (its file item, its qualname)
     }
     with_bases: list[dict] = []
+    typed: list[dict] = []
     for facts in facts_by_item.values():
         for f in facts:
             if f["t"] == "node":
@@ -73,12 +77,38 @@ def build_index(facts_by_item: dict[str, list[dict]], identifiers: list[dict]) -
                 _learn(index, f)
                 if f["type"] == "symbol" and f.get("bases"):
                     with_bases.append(f)
+                if f["type"] == "symbol" and (f.get("returns") or f.get("items")):
+                    typed.append(f)
     index["gosuffix"] = _go_suffixes({key.partition("::")[0] for key in index["pkgdef"]})
     # Once per build, not once per item: a project with thousands of known URLs spent most of a link run here.
     index["url_prefix"] = {_url_prefix(u) for u in index["url"]}
     index["identifiers"] = [{"kind": i["kind"], "pattern": i["pattern"]} for i in identifiers]
     hierarchy.resolve(index, with_bases, lambda file, repo, path: Linker(index, file, repo, path))
+    _return_types(index, typed)
     return index
+
+
+def _return_types(index: dict, functions: list[dict]) -> None:
+    """``index["returns"]``: function -> the class its return annotation names; ``index["returns_items"]``:
+    function -> the class of each item of the tuple it returns (None for an item that names none). Each is
+    resolved in the function's own file, as a base is."""
+    contexts: dict[tuple, Linker] = {}
+    returns: dict[str, str] = {}
+    items: dict[str, tuple] = {}
+    for f in sorted(functions, key=lambda f: f["node"]):
+        key = (f["file"], f.get("repo"), f.get("path"))
+        if key not in contexts:
+            contexts[key] = Linker(index, *key)
+        ctx, target = contexts[key], {"repo": f.get("repo"), "source": f.get("source")}
+        if f.get("returns"):
+            found = ctx.first_found(f["returns"], target, index["classes"])
+            if found:
+                returns[f["node"]] = found
+        if f.get("items"):
+            found_items = tuple(ctx.first_found(v, target, index["classes"]) if v else None for v in f["items"])
+            if any(found_items):
+                items[f["node"]] = found_items
+    index["returns"], index["returns_items"] = returns, items
 
 
 def _learn(index: dict, f: dict) -> None:
@@ -259,28 +289,52 @@ class Linker:
 
     def resolve_call(self, f: dict) -> None:
         """Link a caller to the one symbol the first ``via`` entry with a definition finds."""
-        target = f["target"]
-        for kind, value, qual in target["via"]:
-            found = sorted(set(self.definitions(kind, value, qual, target)))
-            if not found:
-                continue
-            key = (f["src"], "calls", found[0])
-            if len(found) == 1 and found[0] != f["src"] and key not in self.edges:
-                self.edges[key] = edge(
-                    f["src"], "calls", found[0], f["units"], status="resolved", conf=0.8, needs=found, where=f["where"]
-                )
-            return
+        found = self.first_found(f["target"]["via"], f["target"])
+        key = (f["src"], "calls", found)
+        if found and found != f["src"] and key not in self.edges:
+            self.edges[key] = edge(
+                f["src"], "calls", found, f["units"], status="resolved", conf=0.8, needs=[found], where=f["where"]
+            )
+
+    def first_found(self, via: list, target: dict, keep=None) -> str | None:
+        """The one symbol the first ``via`` entry with a definition (in ``keep``, when given) finds; None when
+        that entry finds two, or none finds any."""
+        for kind, value, qual in via:
+            found = sorted({d for d in self.definitions(kind, value, qual, target) if keep is None or d in keep})
+            if found:
+                return found[0] if len(found) == 1 else None
+        return None
+
+    def class_of(self, kind: list, target: dict) -> str | None:
+        """The one class a type expression of this file names (``extract.pytypes``): ``ann`` the class its via
+        list finds; ``ret`` what the one callee its via list finds returns, the callee itself when it is a class,
+        else the class of its return annotation (or of one item of the tuple it returns); ``one`` the class all
+        its types name."""
+        classes = self.index["classes"]
+        if kind[0] == "one":
+            found = {self.class_of(k, target) for k in kind[1]}
+            return found.pop() if len(found) == 1 else None
+        if kind[0] == "ann":
+            return self.first_found(kind[1], target, classes)
+        callee, item = self.first_found(kind[1], target), kind[2]
+        if callee is None or callee in classes:
+            return callee if item is None else None
+        if item is None:
+            return self.index.get("returns", {}).get(callee)
+        items = self.index.get("returns_items", {}).get(callee, ())
+        return items[item] if item < len(items) else None
 
     def definitions(self, kind: str, value, qual: str, target: dict) -> list[str]:
         """The symbols named ``qual`` in the scope one ``via`` entry names, same repo or source first.
         ``local`` is a definition of this file; ``self`` and ``super`` the method ``qual`` up the chain of
-        the class ``value`` of this file, ``super`` past the class itself."""
+        the class ``value`` of this file, ``super`` past the class itself; ``typed`` the method ``qual`` up the
+        chain of the class the type expression ``value`` names."""
         repo = target.get("repo")
         if kind == "local":
             found = self.index["def"].get(f"{self.item_id}::{qual}")
             return [found] if found else []
-        if kind in ("self", "super"):
-            cls = self.index["def"].get(f"{self.item_id}::{value}")
+        if kind in ("self", "super", "typed"):
+            cls = self.index["def"].get(f"{self.item_id}::{value}") if kind != "typed" else self.class_of(value, target)
             member = hierarchy.find_member(self.index, cls, qual, skip=kind == "super") if cls else None
             return [member[0]] if member else []
         if kind in ("package", "gopkg"):

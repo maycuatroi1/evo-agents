@@ -45,10 +45,14 @@ def seed_coverage(seeds: Iterable[dict]) -> list[dict]:
 
 
 def coverage_line(row: dict) -> str:
-    parts = [
-        f"{name} yes" if row[key]["supported"] else f"{name} no ({row[key]['note']})"
-        for key, name in COVERAGE_NAMES.items()
-    ]
+    """One line per language: each table's yes or no, the reason of a no, and what a yes still misses."""
+    parts = []
+    for key, name in COVERAGE_NAMES.items():
+        cell = row[key]
+        if not cell["supported"]:
+            parts.append(f"{name} no ({cell['note']})")
+        else:
+            parts.append(f"{name} yes, not: {cell['missing']}" if cell.get("missing") else f"{name} yes")
     return f"coverage of {row['language']} seeds: " + "; ".join(parts)
 
 

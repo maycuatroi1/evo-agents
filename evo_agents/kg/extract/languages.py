@@ -4,8 +4,9 @@ One row per language the connectors mark as code (``connectors._files.LANGUAGE_B
 calls across files, inheritance (``inherits`` edges and calls through this, self or super) and
 ``overrides`` edges. A ``no`` carries the reason, measured on graphify 0.9.73 with a two-file fixture in
 tests/kg/test_cross_file.py and tests/kg/test_inheritance.py, which also check that such a language really
-gets no cross-file edge. kg_impact notes the rows of its seeds' languages; docs/kg.md and the
-using-project-graph skill print the tables, and tests/kg/test_serve.py keeps their yes and no equal to these.
+gets no cross-file edge. A ``yes`` may still name what it misses (``missing``), which kg_impact prints with it.
+kg_impact notes the rows of its seeds' languages; docs/kg.md and the using-project-graph skill print the tables,
+and tests/kg/test_serve.py keeps their yes and no equal to these.
 """
 
 from __future__ import annotations
@@ -20,13 +21,21 @@ from evo_agents.kg.extract.xref import LANGUAGE
 class Coverage:
     supported: bool
     note: str
+    missing: str = ""  # what a supported row still leaves out: callers of that kind to grep for
 
 
 CROSS_FILE_CALLS: dict[str, Coverage] = {
     "python": Coverage(
         True,
         "from m import f, import m [as x] then x.f(), from pkg import mod then mod.f(), relative imports,"
-        " imports inside a function body, star imports; a parameter or local of the same name hides the import",
+        " imports inside a function body, star imports; a parameter or local of the same name hides the import;"
+        " x.m() where the file types x: an annotated parameter or variable, x = C(...), x = f() or a, b = f() with"
+        " f's return annotated, a self attribute so typed or a typed property, f().m(), C.m(); C(...) reaches the"
+        " __init__ up C's chain (code backend python-ast, the default for Python)",
+        "x.m() where nothing in the file types x (an unannotated parameter or return, a loop, with or except"
+        " variable, a container's item, x.a.m() through another class's attribute or one a base class sets),"
+        " isinstance narrowing, getattr and other dynamic calls, an override reached through self.m() in its base"
+        " class",
     ),
     "typescript": Coverage(
         True,
@@ -155,5 +164,6 @@ def language_of(path: str) -> str | None:
 def coverage_of(language: str) -> dict[str, dict]:
     """A language's row of each table, as kg_impact reports it for a seed in that language."""
     return {
-        name: {"supported": table[language].supported, "note": table[language].note} for name, table in TABLES.items()
+        name: {"supported": table[language].supported, "note": table[language].note, "missing": table[language].missing}
+        for name, table in TABLES.items()
     }
