@@ -2073,6 +2073,12 @@
         "noun": "runtime",
         "hint": "Các chương trình agent mà run được khởi chạy.",
         "all": "Mọi runtime"
+      },
+      "environment": {
+        "title": "Môi trường",
+        "noun": "môi trường",
+        "hint": "Nơi agent của run chạy, theo thứ tự ưu tiên: host là chính máy worker, hoặc container của một plugin.",
+        "all": "Host của worker"
       }
     },
     "tools": {
@@ -2176,7 +2182,8 @@
           "worker": "Tên một worker, hoặc label:tên",
           "project": "Tên một dự án",
           "model": "Một model, theo tên runtime của nó đặt",
-          "runtime": "claude-code, opencode hoặc codex"
+          "runtime": "claude-code, opencode hoặc codex",
+          "environment": "host, hoặc môi trường của plugin: plugin/tên"
         },
         "add": "Thêm",
         "invalid": {
@@ -2186,7 +2193,8 @@
           "worker": "Tên một worker, hoặc label: kèm label của worker.",
           "project": "Tên dự án gồm chữ thường, chữ số và dấu gạch ngang.",
           "model": "Model là một dòng, tối đa 200 ký tự.",
-          "runtime": "Runtime là claude-code, opencode hoặc codex."
+          "runtime": "Runtime là claude-code, opencode hoặc codex.",
+          "environment": "Môi trường là host, hoặc id của plugin và tên môi trường: plugin/tên."
         },
         "nothing": "Không cho phép gì: run dưới agent này không có {axis} nào.",
         "count": "Cho phép {count}, tối đa {max}.",
@@ -2198,7 +2206,8 @@
         "skillScope": {
           "global": "dùng chung",
           "project": "của dự án này"
-        }
+        },
+        "host": "chính máy của worker"
       }
     },
     "detail": {
@@ -2270,7 +2279,8 @@
           "worker": "worker",
           "project": "dự án",
           "model": "model",
-          "runtime": "runtime"
+          "runtime": "runtime",
+          "environment": "môi trường"
         }
       },
       "delete": {
@@ -3830,7 +3840,8 @@
         "worker": "worker",
         "project": "dự án",
         "model": "model",
-        "runtime": "runtime"
+        "runtime": "runtime",
+        "environment": "môi trường"
       },
       "problem": {
         "deleted": "@{handle} đã bị xoá và không nhận run mới.",

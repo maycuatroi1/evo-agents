@@ -2,7 +2,7 @@ import { queryOptions } from "@tanstack/react-query";
 
 import { agentKeys } from "@/lib/agent-queries";
 import { type Axis, LABEL_PREFIX } from "@/lib/agents";
-import { AGENT_RUNTIMES, GITHUB_APP, TOOLS } from "@/lib/agent-rules";
+import { AGENT_RUNTIMES, GITHUB_APP, HOST_ENVIRONMENT, TOOLS } from "@/lib/agent-rules";
 import { call } from "@/lib/api/client";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
@@ -10,7 +10,8 @@ import type { ApiSource } from "@/lib/queries";
 /**
  * What the agent form offers on each axis, read from the hub as the admin sees it: their own secrets by name (and the
  * App's token), the global skills and the project's, the workers they see and those workers' labels, the models those
- * workers list, and the other projects of their grants; the tools and runtimes are the API's own words. A list the hub
+ * workers list, and the other projects of their grants; the tools, runtimes and host are the API's own words, and a
+ * plugin's environment, `<plugin>/<name>`, is typed by hand. A list the hub
  * does not answer is left empty and named in `failed`; the form still takes a value typed by hand on every axis, since
  * an allowlist may name what the admin cannot see (another member's secret or worker).
  */
@@ -84,6 +85,7 @@ export function optionsFrom(sources: Sources, project: string): AgentOptions {
         .sort(byValue),
       model: [...models].map(([model, runtimes]) => ({ value: model, detail: [...runtimes].join(", ") })).sort(byValue),
       runtime: AGENT_RUNTIMES.map((runtime) => ({ value: runtime, tag: runtime })),
+      environment: [{ value: HOST_ENVIRONMENT, tag: "host" }],
     },
     failed,
   };

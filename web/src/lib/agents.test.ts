@@ -59,6 +59,11 @@ describe("agent permissions", () => {
     expect(validItem("worker", "label:")).toBe(false);
     expect(validItem("project", "Demo")).toBe(false);
     expect(validItem("model", "anthropic/claude-sonnet-4-5")).toBe(true);
+    expect(validItem("environment", "host")).toBe(true);
+    expect(validItem("environment", "sandbox/box")).toBe(true);
+    expect(validItem("environment", "docker")).toBe(false);
+    expect(validItem("environment", "Sandbox/box")).toBe(false);
+    expect(validItem("environment", "sandbox/box/x")).toBe(false);
     expect(validItem("model", "two\nlines")).toBe(false);
     expect(validItem("runtime", "codex")).toBe(true);
     expect(validItem("runtime", "gemini")).toBe(false);
