@@ -23,6 +23,7 @@ import { useChatTitle } from "@/lib/use-chat-title";
 import { cn } from "@/lib/utils";
 
 import { HOME_NAV, HUB_NAV, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
+import { usePluginPageTitle } from "./plugin-nav";
 
 type Crumb = { label: string; href?: string };
 
@@ -44,6 +45,17 @@ function useCrumbs(): Crumb[] {
   const parts = pathname.split("/").filter(Boolean);
   const workerName = useWorkerName(parts[0] === "workers" ? parts[1] : undefined);
   const chatTitle = useChatTitle(parts[0] === "chats" ? parts[1] : undefined);
+  const pluginPage = parts[0] === "p" && parts[2] === "x";
+  const pageTitle = usePluginPageTitle(
+    pluginPage ? decodeURIComponent(parts[1]) : null,
+    pluginPage ? decodeURIComponent(parts[3] ?? "") : undefined,
+    pluginPage ? decodeURIComponent(parts[4] ?? "") : undefined,
+  );
+  if (parts[0] === "p" && parts[1] && pluginPage) {
+    // A plugin's page names itself as its menu item does, after the project.
+    const project = decodeURIComponent(parts[1]);
+    return [{ label: project, href: projectHref(project) }, { label: pageTitle ?? itemLabel(parts[4] ?? parts[3] ?? "") }];
+  }
   if (parts[0] === "p" && parts[1]) {
     const project = decodeURIComponent(parts[1]);
     const section = PROJECT_NAV.find((item) => item.segment !== "" && item.segment === parts[2]);

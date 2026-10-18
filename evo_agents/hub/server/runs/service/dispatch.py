@@ -22,6 +22,7 @@ from evo_agents.hub.credentials import dispatch_credential
 from evo_agents.hub.plans import PlanProblem, step_index, step_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.plugin_configs import check_run_layer
 from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued
@@ -209,10 +210,11 @@ async def queue_run(
     parent: int | None = None,
     picked: tuple[Picked, ...] = (),
     chosen: Chosen | None = None,
+    plugin_config: dict | None = None,
 ) -> int:
     """Queue a run of step ``key`` of the plan ``held``, in the caller's transaction, taking the accounts ``picked``
-    by hand, under the agent profile ``chosen`` (the project's default without one); HTTPException when the step may
-    not run now."""
+    by hand, under the agent profile ``chosen`` (the project's default without one), with its own layer of plugin
+    config ``plugin_config`` (checked already); HTTPException when the step may not run now."""
     body = held.body
     try:
         step = body["steps"][step_index(body, key)]
@@ -249,6 +251,7 @@ async def queue_run(
         "parent_run_id": parent,
         "repo": name,
         "branch": _short(repo.get("branch")),
+        **({} if plugin_config is None else {"plugin_config": plugin_config}),  # a JSON null is no layer
         **({} if chosen is None else chosen.columns()),
     }
     try:
@@ -308,6 +311,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
         picked = await _picked(conn, user, access, body.account, pinned)
         asked = Asked("step", body.runtime, body.model, pinned, _picks(picked))
         chosen = await choose(conn, user, access, body.profile, asked)
+        layer = await check_run_layer(conn, access.project_id, project, body.plugin_config)
         await lock_plan(conn, access.project_id, body.plan_id)
         activity = await plan_activity(conn, access.project_id, body.plan_id)
         no_plan_run(activity, body.plan_id)
@@ -328,6 +332,7 @@ async def dispatch_steps(engine, user: Principal, project: str, body: Dispatch) 
                 pinned=pinned,
                 picked=_picks(picked),
                 chosen=chosen,
+                plugin_config=layer,
             )
             target = run_target(project, body.plan_id, key, run_id) + _account_text(picked) + chosen.audit_text()
             await audit.record(

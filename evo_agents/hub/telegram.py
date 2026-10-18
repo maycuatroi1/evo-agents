@@ -1,7 +1,7 @@
 """The Telegram channel as the hub models it: link codes, the data of inline buttons, what may reach a chat, and the
 messages the hub sends. Pure functions on the standard library and ``evo_agents.hub.runs``;
-``evo_agents.hub.server.telegram`` holds the Bot API
-client, the channel's class, the webhook and the routes built on them, and ``docs/notifications.md`` the design.
+``evo_agents.core_plugins.telegram.server`` holds the Bot API client, the channel's class, the webhook and the routes
+built on them, and ``docs/notifications.md`` the design.
 
 The hub has one bot. A member links their private chat with a one-time code of LINK_CODE_CHARS characters of
 ``A-Z``, ``a-z``, ``0-9``, ``_`` and ``-`` (what a start parameter allows), which lives LINK_SECONDS; the hub keeps only

@@ -37,6 +37,7 @@ export const NOTICE_KINDS = [
   "author_waiting",
   "chat_mention",
   "chat_added",
+  "plugin_disabled",
 ] as const satisfies readonly NoticeKind[];
 export const DECISION_STATES = ["open", "answered", "expired", "cancelled"] as const satisfies readonly DecisionState[];
 export const DECISION_CATEGORIES = [

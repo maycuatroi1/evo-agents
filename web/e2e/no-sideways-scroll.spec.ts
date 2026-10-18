@@ -58,8 +58,13 @@ function phone(page: Page): boolean {
   return (page.viewportSize()?.width ?? 1440) < 768;
 }
 
-async function noSidewaysScroll(page: Page, visits: Visit[]) {
-  for (const width of WIDTHS) {
+/**
+ * Whether any visit scrolls sideways at any of `widths`. A test of several pages runs once per width, each with its own
+ * 30 s budget and its own seed, and a failure names its width: the plans, memories and skills pages at all four widths
+ * in one test went past that budget in CI (32.5 s, and 32.7 s on its retry). No page and no width left a test.
+ */
+async function noSidewaysScroll(page: Page, widths: number[], visits: Visit[]) {
+  for (const width of widths) {
     await page.setViewportSize({ width, height: 900 });
     for (const visit of visits) {
       await open(page, visit.path);
@@ -104,44 +109,52 @@ async function seedProject(me: Member): Promise<Visit[]> {
   ];
 }
 
-test("plans, memories and skills pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "customer" }]);
-  await noSidewaysScroll(page, await seedProject(me));
-});
-
-test("knowledge graph pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
-  const me = await member();
-  const kg = await sharedKg();
-  await grantOn(kg.project, me.login, "reader", "internal");
-  await noSidewaysScroll(page, [
-    { path: `${kgPath(kg.project)}?q=runbook`, ready: shown("kg-results") },
-    { path: nodePath(kg.project, SHARED_NODE), ready: shown("kg-neighbours") },
-  ]);
-});
-
-test("admin pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, signInAs }) => {
-  await signInAs(ADMIN_ACCOUNT);
-  await machineToken(ADMIN_ACCOUNT); // a machine token row next to the web sessions
-  await noSidewaysScroll(page, [
-    { path: "/admin/audit", ready: shown("audit-table") },
-    { path: "/admin/tokens", ready: shown("tokens-table") },
-    { path: "/admin/members", ready: shown("members-table") },
-    { path: `/admin/members/${ADMIN_ACCOUNT.login}`, ready: shown("member-tokens") },
-  ]);
-});
-
-test("workers pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
-  const worker = await registerWorker(me, { name: `${LONG}-worker`, projects: [me.projects[0]], slots: 8, labels: [LONG.slice(0, 40)] });
-  await heartbeat(worker.id, {
-    runtimes: { ...RUNTIMES, [`${LONG}-runtime`]: { available: true, version: LONG } },
-    checkouts: { [LONG]: { path: `~/github/${LONG}/${LONG}`, branch: LONG } },
+for (const width of WIDTHS) {
+  test(`plans, memories and skills pages never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "customer" }]);
+    await noSidewaysScroll(page, [width], await seedProject(me));
   });
-  await noSidewaysScroll(page, [
-    { path: "/workers", ready: shown("workers-table") },
-    { path: `/workers/${worker.id}`, ready: shown("heartbeat-strip") },
-  ]);
-});
+}
+
+for (const width of WIDTHS) {
+  test(`knowledge graph pages never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member();
+    const kg = await sharedKg();
+    await grantOn(kg.project, me.login, "reader", "internal");
+    await noSidewaysScroll(page, [width], [
+      { path: `${kgPath(kg.project)}?q=runbook`, ready: shown("kg-results") },
+      { path: nodePath(kg.project, SHARED_NODE), ready: shown("kg-neighbours") },
+    ]);
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`admin pages never scroll sideways at ${width} px`, async ({ page, signInAs }) => {
+    await signInAs(ADMIN_ACCOUNT);
+    await machineToken(ADMIN_ACCOUNT); // a machine token row next to the web sessions
+    await noSidewaysScroll(page, [width], [
+      { path: "/admin/audit", ready: shown("audit-table") },
+      { path: "/admin/tokens", ready: shown("tokens-table") },
+      { path: "/admin/members", ready: shown("members-table") },
+      { path: `/admin/members/${ADMIN_ACCOUNT.login}`, ready: shown("member-tokens") },
+    ]);
+  });
+}
+
+for (const width of WIDTHS) {
+  test(`workers pages never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const worker = await registerWorker(me, { name: `${LONG}-worker`, projects: [me.projects[0]], slots: 8, labels: [LONG.slice(0, 40)] });
+    await heartbeat(worker.id, {
+      runtimes: { ...RUNTIMES, [`${LONG}-runtime`]: { available: true, version: LONG } },
+      checkouts: { [LONG]: { path: `~/github/${LONG}/${LONG}`, branch: LONG } },
+    });
+    await noSidewaysScroll(page, [width], [
+      { path: "/workers", ready: shown("workers-table") },
+      { path: `/workers/${worker.id}`, ready: shown("heartbeat-strip") },
+    ]);
+  });
+}
 
 test("the secrets page never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
@@ -157,48 +170,49 @@ test("the secrets page never scrolls sideways at 375, 768, 1024 and 1440 px", as
     value: secretValue("wide"),
   });
   await putSecretByApi(me, `${LONG}-env`, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
-  await noSidewaysScroll(page, [{ path: "/secrets", ready: shown("secrets-table") }]);
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/secrets", ready: shown("secrets-table") }]);
 });
 
-test("runs pages never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
-  test.setTimeout(90_000); // seven pages at four widths
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
-  const project = me.projects[0];
-  await seedRunPlan(me, project);
-  const live = await liveWorker(me, project, `${LONG}-worker`);
-  const [run] = await dispatch(me, project, ["2", "4"]);
-  await claimRun(live);
-  await startRun(live, run.id, `${LONG}-session`);
-  await putSecretByApi(me, LONG, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
-  await leaseCredentials(live, run.id);
-  await sendEvents(live, run.id, [say(`${LONG} ${LONG}`), { kind: "tool_call", body: { title: "Read", rawInput: { file_path: `/${LONG}/${LONG}/${LONG}.ts` } } }]);
-  await runToReview(live, run.id);
-  await uploadDiff(live, run.id, `diff --git a/${LONG}/${LONG}.ts b/${LONG}/${LONG}.ts\n--- a/${LONG}/${LONG}.ts\n+++ b/${LONG}/${LONG}.ts\n@@ -1 +1 @@\n-${LONG}${LONG}\n+${LONG}${LONG}${LONG}\n`);
-  await noSidewaysScroll(page, [
-    { path: `/p/${project}/runs`, ready: shown("runs-table") },
-    { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
-    { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
-    {
-      // The run's page with every detail open: on a phone its overview, the trace's latest rows then the details.
-      path: runPath(project, run.id),
-      ready: async (page) => {
-        await shown(phone(page) ? "run-trace-preview-row" : "trace-item")(page);
-        await openRunDetails(page, { all: true });
-        await shown("run-lease-item")(page);
+for (const width of WIDTHS) {
+  test(`runs pages never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    await seedRunPlan(me, project);
+    const live = await liveWorker(me, project, `${LONG}-worker`);
+    const [run] = await dispatch(me, project, ["2", "4"]);
+    await claimRun(live);
+    await startRun(live, run.id, `${LONG}-session`);
+    await putSecretByApi(me, LONG, { kind: "env", env_var: LONG_VAR, projects: [project], value: secretValue("wide") });
+    await leaseCredentials(live, run.id);
+    await sendEvents(live, run.id, [say(`${LONG} ${LONG}`), { kind: "tool_call", body: { title: "Read", rawInput: { file_path: `/${LONG}/${LONG}/${LONG}.ts` } } }]);
+    await runToReview(live, run.id);
+    await uploadDiff(live, run.id, `diff --git a/${LONG}/${LONG}.ts b/${LONG}/${LONG}.ts\n--- a/${LONG}/${LONG}.ts\n+++ b/${LONG}/${LONG}.ts\n@@ -1 +1 @@\n-${LONG}${LONG}\n+${LONG}${LONG}${LONG}\n`);
+    await noSidewaysScroll(page, [width], [
+      { path: `/p/${project}/runs`, ready: shown("runs-table") },
+      { path: `/p/${project}/plans/${RUN_PLAN}/steps/2`, ready: shown("step-runs-table") },
+      { path: `/workers/${live.worker.id}`, ready: shown("worker-runs-table") },
+      {
+        // The run's page with every detail open: on a phone its overview, the trace's latest rows then the details.
+        path: runPath(project, run.id),
+        ready: async (page) => {
+          await shown(phone(page) ? "run-trace-preview-row" : "trace-item")(page);
+          await openRunDetails(page, { all: true });
+          await shown("run-lease-item")(page);
+        },
       },
-    },
-    {
-      // On a phone the trace is a screen of its own.
-      path: runPath(project, run.id),
-      ready: async (page) => {
-        if (phone(page)) await page.locator("#main").getByTestId("run-open-trace").click();
-        await shown("trace-item")(page);
+      {
+        // On a phone the trace is a screen of its own.
+        path: runPath(project, run.id),
+        ready: async (page) => {
+          if (phone(page)) await page.locator("#main").getByTestId("run-open-trace").click();
+          await shown("trace-item")(page);
+        },
       },
-    },
-    { path: `${runPath(project, run.id)}?view=log`, ready: shown("log-line") },
-    { path: `${runPath(project, run.id)}/diff`, ready: shown("diff-file") },
-  ]);
-});
+      { path: `${runPath(project, run.id)}?view=log`, ready: shown("log-line") },
+      { path: `${runPath(project, run.id)}/diff`, ready: shown("diff-file") },
+    ]);
+  });
+}
 
 test("home never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
@@ -212,61 +226,67 @@ test("home never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page,
   const [failing] = await dispatch(me, project, ["2"]);
   await claimRun(step);
   await reportState(step, failing.id, { state: "failed", error: `${LONG}${LONG}${LONG}` });
-  await noSidewaysScroll(page, [{ path: "/", ready: shown("needs-you-item") }]);
+  await noSidewaysScroll(page, WIDTHS, [{ path: "/", ready: shown("needs-you-item") }]);
 });
 
-test("the monitor never scrolls sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
-  const project = me.projects[0];
-  // Long unbroken names in the list and the tiles: a worker, a line of the trace, a command and a failure.
-  await seedMonitorPlan(me, project);
-  const {
-    live,
-    runs: [run],
-  } = await runningRuns(me, project, ["1"], `${LONG}-worker`);
-  await sendEvents(live, run.id, [say(`${LONG}${LONG}`), command(1, `cat /${LONG}/${LONG}/${LONG}.ts`)]);
-  const [ended] = await endedRuns(me, project, ["2"], `${LONG}-ended`);
-  await noSidewaysScroll(page, [
-    { path: "/monitor", ready: shown("tile-line") },
-    { path: monitorPath([run, ended]), ready: shown("tile-error-line") },
-  ]);
-});
+for (const width of WIDTHS) {
+  test(`the monitor never scrolls sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    // Long unbroken names in the list and the tiles: a worker, a line of the trace, a command and a failure.
+    await seedMonitorPlan(me, project);
+    const {
+      live,
+      runs: [run],
+    } = await runningRuns(me, project, ["1"], `${LONG}-worker`);
+    await sendEvents(live, run.id, [say(`${LONG}${LONG}`), command(1, `cat /${LONG}/${LONG}/${LONG}.ts`)]);
+    const [ended] = await endedRuns(me, project, ["2"], `${LONG}-ended`);
+    await noSidewaysScroll(page, [width], [
+      { path: "/monitor", ready: shown("tile-line") },
+      { path: monitorPath([run, ended]), ready: shown("tile-error-line") },
+    ]);
+  });
+}
 
-test("insights never scroll sideways at 375, 768, 1024 and 1440 px, charts or tables", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
-  const project = me.projects[0];
-  await seedInsights(me, project);
-  await noSidewaysScroll(page, [
-    {
-      path: `/p/${project}/insights`,
-      ready: async (page) => {
-        for (const chart of ["outcomes", "failure", "duration", "tokens"]) {
-          await expect(page.locator("#main").getByTestId(`insights-${chart}-chart`).locator("svg.recharts-surface")).toBeVisible();
-        }
+for (const width of WIDTHS) {
+  test(`insights never scroll sideways at ${width} px, charts or tables`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    await seedInsights(me, project);
+    await noSidewaysScroll(page, [width], [
+      {
+        path: `/p/${project}/insights`,
+        ready: async (page) => {
+          for (const chart of ["outcomes", "failure", "duration", "tokens"]) {
+            await expect(page.locator("#main").getByTestId(`insights-${chart}-chart`).locator("svg.recharts-surface")).toBeVisible();
+          }
+        },
       },
-    },
-    {
-      path: `/p/${project}/insights?days=90`,
-      ready: async (page) => {
-        // The widest table: tokens by type, six columns of figures.
-        await page.locator("#main").getByTestId("insights-tokens-view-table").click();
-        await shown("insights-tokens-table-region")(page);
+      {
+        path: `/p/${project}/insights?days=90`,
+        ready: async (page) => {
+          // The widest table: tokens by type, six columns of figures.
+          await page.locator("#main").getByTestId("insights-tokens-view-table").click();
+          await shown("insights-tokens-table-region")(page);
+        },
       },
-    },
-  ]);
-});
+    ]);
+  });
+}
 
-test("chats never scroll sideways at 375, 768, 1024 and 1440 px", async ({ page, member }) => {
-  const me = await member([{ role: "writer", maxLevel: "internal" }]);
-  const project = me.projects[0];
-  const mai = await signedInPerson("wide", [project]);
-  const chat = await createChatByApi(me, { title: `${LONG}${LONG}`.slice(0, 120), people: [mai.login], agents: [project] });
-  const root = await sendByApi(me, chat.id, `${LONG}${LONG} https://github.com/example-org/${LONG}/pull/7\n\n\`\`\`\n${LONG}${LONG}${LONG}\n\`\`\``);
-  await sendByApi(mai, chat.id, `${LONG}${LONG}`, root.id);
-  await noSidewaysScroll(page, [
-    { path: "/chats", ready: shown("chats-rows") },
-    { path: `/chats/${chat.id}`, ready: shown("chat-messages") },
-    // Below 1536 px the thread is a sheet, outside the page's main.
-    { path: `/chats/${chat.id}?thread=${root.id}`, ready: (page) => expect(page.getByTestId("chat-thread")).toHaveAttribute("data-state", "ready") },
-  ]);
-});
+for (const width of WIDTHS) {
+  test(`chats never scroll sideways at ${width} px`, async ({ page, member }) => {
+    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const project = me.projects[0];
+    const mai = await signedInPerson("wide", [project]);
+    const chat = await createChatByApi(me, { title: `${LONG}${LONG}`.slice(0, 120), people: [mai.login], agents: [project] });
+    const root = await sendByApi(me, chat.id, `${LONG}${LONG} https://github.com/example-org/${LONG}/pull/7\n\n\`\`\`\n${LONG}${LONG}${LONG}\n\`\`\``);
+    await sendByApi(mai, chat.id, `${LONG}${LONG}`, root.id);
+    await noSidewaysScroll(page, [width], [
+      { path: "/chats", ready: shown("chats-rows") },
+      { path: `/chats/${chat.id}`, ready: shown("chat-messages") },
+      // Below 1536 px the thread is a sheet, outside the page's main.
+      { path: `/chats/${chat.id}?thread=${root.id}`, ready: (page) => expect(page.getByTestId("chat-thread")).toHaveAttribute("data-state", "ready") },
+    ]);
+  });
+}

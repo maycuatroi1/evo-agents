@@ -1,7 +1,8 @@
 """The claim of a worker (POST /v1/worker/claim): the claims waiting in this api process (``RunWakeups``), the run a
 worker may take now, its lease, and the RunSpec it is handed, prompt, plan, budget, Curator role, skills and agent
 profile included. The run's agent profile, at the version the run went under, decides which workers may take it and
-the runtime of a run that asks for any (``service.profiles``)."""
+the runtime of a run that asks for any (``service.profiles``). A claim records the plugins of the run's project, each
+with its version and the digest of the run's effective config (``plugin_configs.record_run_plugins``)."""
 
 from __future__ import annotations
 
@@ -21,6 +22,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.server.listen import Listener
+from evo_agents.hub.server.plugin_configs import record_run_plugins
 from evo_agents.hub.server.run_state import RUNS_CHANNEL, move_run
 from evo_agents.hub.server.runs.models import (
     Claim,
@@ -347,6 +349,7 @@ async def _try_claim(
             token_id=user.token_id,
             lease=lease,
         )
+        await record_run_plugins(conn, run_id)  # the version and config digest of each plugin of its project
         spec = await _run_spec(conn, run_id, tuple(features or ()))
         if skill is not None:
             spec.skills = [await _skill_ticket(blobs, skill)]

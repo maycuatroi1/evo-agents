@@ -91,6 +91,27 @@ CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 CHAT_BUDGET = "chat.budget"  # the creator of a chat changed what its agents' runs may cost a day
+# The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
+# "plugin:<name>@<version>", never a manifest, a bundle or a signature.
+PLUGIN_PUBLISH = "plugin.publish"  # a hub admin published a signed version, which the hub now holds
+PLUGIN_INSTALL = "plugin.install"  # a hub admin installed a version, or installed one again after the hub turned it off
+PLUGIN_UPGRADE = "plugin.upgrade"  # a hub admin moved the installed version to a newer one
+PLUGIN_REMOVE = "plugin.remove"  # a hub admin removed the installed version; the versions stay in the store
+PLUGIN_DISABLE = "plugin.disable"  # the hub turned off an installed version that no longer runs on its release
+# Plugins in a project (evo_agents.hub.server.plugin_grants), in that project; the target is
+# "<project>/plugin:<name>@<version>", then " permissions=<names>" for a grant.
+PLUGIN_PROJECT_ENABLE = "plugin.project-enable"  # an admin of the project enabled an installed plugin for it
+PLUGIN_GRANT = "plugin.grant"  # an admin granted the permissions the installed version asks for, enabling it or after
+PLUGIN_PROJECT_DISABLE = "plugin.project-disable"  # an admin disabled it for the project: its grants went
+# A new version of a stored layer of a plugin's config (evo_agents.hub.server.plugin_configs): "plugin:<name> config
+# instance v<n>" outside any project, "<project>/plugin:<name> config project v<n>" or "<project>/@<handle>/plugin:
+# <name> config agent v<n>" in the project, then " fields=<names>" or " rollback-to=v<n>"; never a value.
+PLUGIN_CONFIG = "plugin.config"
+# A new version of a layer of the hub's own settings (evo_agents.hub.server.hub_settings): "branding v<n>" or
+# "features v<n>" for the hub's, "<project>/features v<n>" in the project, then " fields=<names>" or
+# " rollback-to=v<n>"; never a value.
+SETTINGS_BRANDING = "settings.branding"
+SETTINGS_FEATURES = "settings.features"
 # The leases of a run, in the run's project; the target names the run as above, then the secrets by name, the GitHub
 # App's accounts and the repos, never a value: "... run:<id> secrets=<names> github-app=<accounts> repos=<repos>".
 CREDENTIAL_LEASE = "credential.lease"  # the worker holding the run asked for its leases

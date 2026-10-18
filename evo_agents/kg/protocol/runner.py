@@ -15,6 +15,7 @@ from importlib import metadata
 from pathlib import Path
 
 from evo_agents.harness import CONNECTOR_GROUP, Harness
+from evo_agents.plugins.core import python_contributions
 
 DEFAULT_TIMEOUT = 1800
 
@@ -51,11 +52,19 @@ def _builtin(name: str) -> Callable[[ConnectorContext], Iterable[dict]] | None:
 
 
 def load_connector(name: str) -> Callable[[ConnectorContext], Iterable[dict]]:
-    """A builtin name, an entry point in group evo_agents.kg.connectors, or ``python:module:function``
-    for a connector that lives next to a project without being packaged."""
+    """A builtin name, a ``kg_connectors`` contribution of a core plugin (entry point group evo_agents.plugins), an
+    entry point in group evo_agents.kg.connectors, or ``python:module:function`` for a connector that lives next to a
+    project without being packaged."""
     found = _builtin(name)
     if found is not None:
         return found
+    contributed = python_contributions("kg_connectors").get(name)
+    if contributed is not None:
+        module_name, _, attr = contributed.partition(":")
+        try:
+            return getattr(importlib.import_module(module_name), attr)
+        except (ImportError, AttributeError) as exc:
+            raise ConnectorError(f"cannot load connector {name!r} ({contributed}): {exc}") from exc
     if name.startswith("python:"):
         module_name, _, attr = name[len("python:") :].partition(":")
         try:

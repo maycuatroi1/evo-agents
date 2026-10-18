@@ -1,6 +1,6 @@
 """Options of ``evo-agents hub run`` that ``evo_agents.hub.run_cli`` registers through these functions: where, how and
-how long a plan run or an author run runs, the account a run takes and the agent profile it goes under; and how a
-command refuses options that do not go together (``usage_error``).
+how long a step run, a plan run or an author run runs, the account a run takes and the agent profile it goes under,
+and the filters of ``run list``; and how a command refuses options that do not go together (``usage_error``).
 
 ``--account NAME`` on ``dispatch``, ``plan``, ``author`` and ``rerun`` picks one of your env secrets bound to the
 project, by name (``evo-agents hub account list``): the run takes it for its variable and keeps it, with no failover
@@ -19,7 +19,7 @@ from __future__ import annotations
 import sys
 
 from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H
-from evo_agents.hub.runs import MODES, PLAN_TIMEOUT_CHOICES, RUNTIMES
+from evo_agents.hub.runs import APPROVALS, MODES, PLAN_TIMEOUT_CHOICES, RUNTIMES, SHOWN_KINDS, SHOWN_STATES
 
 REQUESTED_RUNTIMES = ("any", *RUNTIMES)
 EXIT_USAGE = 2
@@ -71,6 +71,53 @@ def rerun_body(args) -> dict | None:
     if getattr(args, "account_by_rule", False):
         return {"account_by_rule": True}
     return None
+
+
+def dispatch_options(dispatch) -> None:
+    """The options of `hub run dispatch` after its plan, steps and --project: where, how and how long each run runs."""
+    dispatch.add_argument(
+        "--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has"
+    )
+    dispatch.add_argument(
+        "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
+    )
+    dispatch.add_argument(
+        "--worker", help="pin the runs to this worker of yours, by id or name (default: any of yours that can take one)"
+    )
+    dispatch.add_argument(
+        "--approval",
+        choices=APPROVALS,
+        help="default: review, which waits for `hub run approve`; auto marks the step done once every verify command "
+        "the worker runs again exits 0",
+    )
+    dispatch.add_argument("--timeout", type=int, choices=range(5, 241), metavar="MINUTES", help="5 to 240 (default 60)")
+
+
+def list_options(listed) -> None:
+    """The filters and the page of `hub run list` after its --project."""
+    listed.add_argument(
+        "--state",
+        action="append",
+        choices=SHOWN_STATES,
+        metavar="STATE",
+        help=f"only runs in this state, one of {', '.join(SHOWN_STATES)}; repeat it for several",
+    )
+    listed.add_argument(
+        "--kind", choices=SHOWN_KINDS, metavar="KIND", help=f"only runs of this kind, one of {', '.join(SHOWN_KINDS)}"
+    )
+    listed.add_argument("--account", metavar="EMAIL", help="only local runs of this Claude account")
+    listed.add_argument("--plan", help="only runs of this plan")
+    listed.add_argument("--step", help="only runs of this step key")
+    listed.add_argument("--worker", help="only runs this worker of yours claimed, by id or name")
+    listed.add_argument("--by", metavar="LOGIN", help="only runs this member dispatched")
+    listed.add_argument(
+        "--search",
+        metavar="TEXT",
+        help="text in the title, step, plan, repo, branch, worker, login, error, machine, directory or account, or a "
+        "run number such as #12",
+    )
+    listed.add_argument("--limit", type=int, choices=range(1, 201), metavar="N", help="1 to 200 (default 50)")
+    listed.add_argument("--offset", type=int, metavar="N", help="skip this many runs, for the next page")
 
 
 def plan_options(plan, with_model) -> None:

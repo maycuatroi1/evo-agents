@@ -20,6 +20,7 @@ import yaml
 from evo_agents.kg.policy import Policy
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds, validate_ontology
+from evo_agents.plugins.core import python_contributions
 from evo_agents.schema import Issue, errors, validate
 
 MANIFEST = "harness.yaml"
@@ -171,7 +172,10 @@ def registered_harnesses() -> list[dict]:
 
 
 def available_connectors() -> set[str]:
+    """The builtin connectors, those core plugins contribute (``evo_agents.plugins.core``) and the entry points of
+    group evo_agents.kg.connectors."""
     names = set(BUILTIN_CONNECTORS)
+    names.update(python_contributions("kg_connectors"))
     try:
         names.update(ep.name for ep in metadata.entry_points(group=CONNECTOR_GROUP))
     except Exception:  # pragma: no cover - broken environments still validate builtins

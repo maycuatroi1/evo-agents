@@ -170,3 +170,34 @@ def test_compose_defaults_are_the_hub_config_defaults():
         "runs with another value than the code and docs/hub.md say; make the compose default empty, or equal to "
         "the hub's:\n" + "\n".join(differ)
     )
+
+
+# The plugins service, which runs third-party code
+
+PLUGINS_ENVIRONMENT = {"EVO_HUB_PLUGIN_HOST_TOKEN", "EVO_HUB_LOG_LEVEL"}  # all the plugin host reads
+PLUGINS_CAPABILITIES = ["SETUID", "SETGID", "CHOWN", "KILL"]  # a user of its own for each backend, and no more
+
+
+def test_compose_gives_the_plugin_isolation_service_no_hub_variable():
+    plugins = compose()["services"]["plugins"]
+    environment = plugins["environment"]
+    assert isinstance(environment, dict) and environment is not passed_by_compose(), "never *hub-environment"
+    assert set(environment) == PLUGINS_ENVIRONMENT, (
+        f"the plugins service runs third-party code and takes only {sorted(PLUGINS_ENVIRONMENT)}; "
+        f"{sorted(set(environment) - PLUGINS_ENVIRONMENT)} would reach it"
+    )
+    assert "env_file" not in plugins and "secrets" not in plugins
+    assert set(plugins["networks"]) == {"default"}, "not on the platform's network, where the database is"
+
+
+def test_compose_runs_the_plugin_isolation_service_as_root_with_four_capabilities_and_limits():
+    services = compose()["services"]
+    plugins = services["plugins"]
+    assert plugins["user"] == "0:0" and plugins["cap_drop"] == ["ALL"]
+    assert plugins["cap_add"] == PLUGINS_CAPABILITIES
+    assert plugins["init"] is True and "no-new-privileges:true" in plugins["security_opt"]
+    assert {"cpus", "mem_limit", "pids_limit"} <= set(plugins), "a backend must not starve the hub's machine"
+    mounts = {volume.split(":")[1] for volume in plugins["volumes"]}
+    assert mounts == {"/plugins"} and "--data-dir" in plugins["command"] and "/plugins" in plugins["command"]
+    others = {volume.split(":")[0] for name in ("api", "worker") for volume in services[name].get("volumes", [])}
+    assert not others & {volume.split(":")[0] for volume in plugins["volumes"]}, "the plugins volume is its own"

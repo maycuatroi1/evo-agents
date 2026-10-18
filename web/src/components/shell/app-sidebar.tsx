@@ -6,8 +6,9 @@ import type { Route } from "next";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useTranslations } from "next-intl";
+import { Fragment } from "react";
 
-import { BrandMark } from "@/components/brand";
+import { HubMark } from "@/components/brand";
 import {
   Sidebar,
   SidebarContent,
@@ -22,12 +23,24 @@ import {
   useSidebar,
 } from "@/components/ui/sidebar";
 import { browserApi } from "@/lib/api/browser";
+import { brandingQuery } from "@/lib/hub-settings";
 import { whoamiQuery } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import { FleetLine } from "./fleet-line";
-import { countText, HOME_NAV, HUB_NAV, isActive, type NavCount, type NavLabel, PROJECT_NAV, projectHref } from "./nav";
+import {
+  countText,
+  HOME_NAV,
+  HUB_NAV,
+  isActive,
+  type NavCount,
+  type NavLabel,
+  PROJECT_NAV,
+  projectHref,
+  useNavShown,
+} from "./nav";
 import { useNavCounts } from "./nav-counts";
+import { PluginNavItems } from "./plugin-nav";
 import { ProjectSwitcher, useCurrentProject } from "./project-switcher";
 import { NAV_SHORTCUTS, ShortcutKeys } from "./shortcuts";
 import { UserMenu } from "./user-menu";
@@ -115,9 +128,11 @@ function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: 
 }
 
 /**
- * The sidebar of the kit's AppShell: the mark and name, the project switcher, Home and Inbox, the current project's
- * areas, the hub's areas, then the fleet line and the account at the foot. 240 px wide, folding to 56 px of icons on
- * desktop (the header button, Ctrl or Cmd + B) and a sheet under 768 px.
+ * The sidebar of the kit's AppShell: the mark and name (the hub's branding's when it sets them), the project switcher,
+ * Home and Inbox, the current project's areas and the pages its plugins add, the hub's areas, then the fleet line and
+ * the account at the foot.
+ * An area whose feature a hub admin turned off, for the hub or the project shown, is left out. 240 px wide, folding
+ * to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a sheet under 768 px.
  */
 export function AppSidebar() {
   const t = useTranslations("nav");
@@ -127,6 +142,8 @@ export function AppSidebar() {
   const counts = useNavCounts(project);
   const { isMobile, setOpenMobile } = useSidebar();
   const { data: me } = useQuery(whoamiQuery(browserApi));
+  const { data: branding } = useQuery(brandingQuery(browserApi));
+  const shown = useNavShown();
   const closeOnMobile = () => {
     if (isMobile) setOpenMobile(false);
   };
@@ -140,15 +157,15 @@ export function AppSidebar() {
           data-testid="brand"
           className="flex h-8 items-center gap-2 rounded-sm px-1 text-sm font-semibold tracking-[-0.01em] text-foreground group-data-[collapsible=icon]:justify-center group-data-[collapsible=icon]:px-0"
         >
-          <BrandMark className="size-6" />
-          <span className="truncate group-data-[collapsible=icon]:sr-only">{tApp("name")}</span>
+          <HubMark logoUrl={branding?.logo_url} className="size-6" />
+          <span className="truncate group-data-[collapsible=icon]:sr-only">{branding?.name ?? tApp("name")}</span>
         </Link>
         <ProjectSwitcher />
       </SidebarHeader>
       <SidebarContent className="px-3 py-1">
         <nav aria-label={t("label")} className="flex flex-col gap-3">
           <SidebarMenu className="gap-px">
-            {HOME_NAV.map((item) => (
+            {HOME_NAV.filter((item) => shown(item)).map((item) => (
               <NavItem
                 key={item.label}
                 label={item.label}
@@ -165,19 +182,24 @@ export function AppSidebar() {
             <SidebarGroup className="p-0">
               <SidebarGroupLabel>{t("project")}</SidebarGroupLabel>
               <SidebarMenu className="gap-px">
-                {PROJECT_NAV.map((item) => {
+                {PROJECT_NAV.filter((item) => shown(item, project)).map((item) => {
                   const href = projectHref(project, item.segment);
                   return (
-                    <NavItem
-                      key={item.label}
-                      label={item.label}
-                      icon={item.icon}
-                      href={href}
-                      active={isActive(pathname, href, item.segment === "")}
-                      count={item.count}
-                      value={item.count ? counts[item.count] : null}
-                      onNavigate={closeOnMobile}
-                    />
+                    <Fragment key={item.label}>
+                      {/* the pages the project's plugins add come after its own areas, before its Plugins */}
+                      {item.label === "plugins" ? (
+                        <PluginNavItems project={project} pathname={pathname} onNavigate={closeOnMobile} />
+                      ) : null}
+                      <NavItem
+                        label={item.label}
+                        icon={item.icon}
+                        href={href}
+                        active={isActive(pathname, href, item.segment === "")}
+                        count={item.count}
+                        value={item.count ? counts[item.count] : null}
+                        onNavigate={closeOnMobile}
+                      />
+                    </Fragment>
                   );
                 })}
               </SidebarMenu>
@@ -186,7 +208,7 @@ export function AppSidebar() {
           <SidebarGroup className="p-0">
             <SidebarGroupLabel>{t("hub")}</SidebarGroupLabel>
             <SidebarMenu className="gap-px">
-              {HUB_NAV.filter((item) => !item.adminOnly || me?.admin).map((item) => (
+              {HUB_NAV.filter((item) => (!item.adminOnly || me?.admin) && shown(item)).map((item) => (
                 <NavItem
                   key={item.label}
                   label={item.label}

@@ -2,6 +2,10 @@
 out as, and the answers that come back. ``evo_agents.hub.telegram`` holds the model (codes, buttons, what may reach a
 chat, the messages), ``docs/notifications.md`` the design.
 
+This is the server side of the core plugin telegram (``evo_agents.core_plugins.telegram``), which the hub reaches
+through its manifest only: ``TelegramChannel`` is its contribution to the channels, the three routers its routes,
+which keep the paths they had before Telegram was a plugin.
+
 The channel is on when EVO_HUB_TELEGRAM_BOT_TOKEN and EVO_HUB_TELEGRAM_WEBHOOK_SECRET are both set; without them
 linking answers 503, the webhook 404, and a delivery to a Telegram channel fails at once, while everything else runs.
 The Bot API is called with httpx (``BotApi``), never with the token in a log line, an error or the database.
@@ -35,12 +39,12 @@ decision or proposal is read, the hub checks that the member holds a grant on it
 one they do not gets NOT_YOURS, the same words whether it exists or not, and a project whose messages are restricted
 takes no answer from Telegram (RESTRICTED_ANSWER), as its messages carry no buttons.
 
-``TelegramChannel`` is the class CHANNELS names for kind ``telegram``. It reads the decision, the proposal, and the
-project's ladder and hub sink of a notification (``prepare``), sends the message ``evo_agents.hub.telegram`` builds, at
-most one a second to one chat and 30 a second overall (Bot FAQ), and answers the chat and Telegram's message_id
-(``telegram.message_ref``), kept as the delivery's external_id so a reply in that chat finds its decision. A decision
-or proposal that no longer waits by then goes out as ``telegram.closed_message``, never with its text. A 429 waits the
-retry_after Telegram gives without counting a failed try.
+``TelegramChannel`` is the class the plugin's manifest names for channels of kind ``telegram``. It reads the decision,
+the proposal, and the project's ladder and hub sink of a notification (``prepare``), sends the message
+``evo_agents.hub.telegram`` builds, at most one a second to one chat and 30 a second overall (Bot FAQ), and answers the
+chat and Telegram's message_id (``telegram.message_ref``), kept as the delivery's external_id so a reply in that chat
+finds its decision. A decision or proposal that no longer waits by then goes out as ``telegram.closed_message``, never
+with its text. A 429 waits the retry_after Telegram gives without counting a failed try.
 
 Hub admins see the bot and its webhook (GET /v1/admin/telegram) and register the webhook at the hub's public URL with
 the secret (POST /v1/admin/telegram/webhook): `evo-agents hub admin telegram [--set-webhook]`; they unlink a member's
@@ -72,7 +76,6 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import Login
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import (
-    CHANNELS,
     SESSION_ENDED,
     Channel,
     ChannelGone,
@@ -323,9 +326,6 @@ class TelegramChannel(Channel):
         return telegram.message_ref(chat_id, message_id) if isinstance(message_id, int) else None
 
 
-CHANNELS[KIND] = TelegramChannel
-
-
 # Where a member's link stands
 
 
@@ -482,6 +482,14 @@ class InboundLimit:
         return True
 
 
+def inbound(app) -> InboundLimit:
+    """The updates per chat the webhook takes in this process, made at the first update."""
+    limit = getattr(app.state, "telegram_inbound", None)
+    if limit is None:
+        limit = app.state.telegram_inbound = InboundLimit()
+    return limit
+
+
 @dataclass(frozen=True)
 class Member:
     user_id: int
@@ -632,7 +640,7 @@ class Updates:
             return "ignored"
         if not isinstance(chat_id, int):
             return "ignored"
-        if not self.app.state.telegram_inbound.allow(chat_id):
+        if not inbound(self.app).allow(chat_id):
             log.info("telegram update dropped: too many from one chat")
             return "dropped"
         if isinstance(callback, dict):

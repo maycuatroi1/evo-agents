@@ -114,6 +114,7 @@ describe("AppSidebar", () => {
       "nav-memories",
       "nav-skills",
       "nav-kg",
+      "nav-plugins",
       "nav-chats",
       "nav-workers",
       "nav-secrets",
@@ -128,6 +129,76 @@ describe("AppSidebar", () => {
     expect(screen.getByTestId("nav-runs")).toHaveAttribute("aria-current", "page");
     expect(screen.getByTestId("nav-runs")).toHaveAttribute("data-active", "true");
     expect(screen.getByTestId("nav-plans")).not.toHaveAttribute("aria-current");
+  });
+
+  it("lists the pages of the project's enabled plugins before its Plugins, each with its manifest's title", async () => {
+    const page = (name: string, extra = {}) => ({ name, title: `Page ${name}`, description: "", icon: "kanban", menu: true, native: false, url: `/v1/plugin-ui/x/demo/1.a/${name}.html`, ...extra });
+    const plugin = (name: string, extra = {}) => ({
+      name,
+      title: name,
+      description: "",
+      tier: "isolated",
+      publisher: "acme",
+      version: "1.0.0",
+      state: "installed",
+      disabled_reason: null,
+      enabled: true,
+      permissions: [],
+      granted: [],
+      pending: [],
+      config_schema: null,
+      pages: [page("board"), page("hidden", { menu: false })],
+      enabled_by: null,
+      enabled_at: null,
+      granted_by: null,
+      granted_at: null,
+      ...extra,
+    });
+    api.answers["/v1/projects/demo/plugins"] = [
+      plugin("sample"),
+      plugin("notes", { tier: "core", pages: [page("entries", { icon: "notebook-pen", native: true, url: null })] }),
+      plugin("off", { enabled: false }),
+      plugin("broken", { state: "disabled", disabled_reason: "incompatible" }),
+    ];
+    nav.pathname = "/p/demo/x/sample/board";
+    setup();
+    const board = await screen.findByTestId("nav-plugin-sample-board");
+    expect(board).toHaveAttribute("href", "/p/demo/x/sample/board");
+    expect(board).toHaveAttribute("aria-current", "page");
+    expect(board).toHaveTextContent("Page board");
+    const links = within(screen.getByRole("navigation", { name: "Điều hướng chính" })).getAllByRole("link");
+    const ids = links.map((link) => link.getAttribute("data-testid"));
+    expect(ids.slice(ids.indexOf("nav-kg"), ids.indexOf("nav-plugins") + 1)).toEqual([
+      "nav-kg",
+      "nav-plugin-sample-board",
+      "nav-plugin-notes-entries",
+      "nav-plugins",
+    ]);
+  });
+
+  it("leaves out the areas a hub admin turned off and shows the name and logo of the hub's branding", async () => {
+    api.answers["/v1/features"] = {
+      features: [
+        { id: "chats", layers: ["instance"], enabled: false },
+        { id: "curator", layers: ["instance", "project"], enabled: false },
+        { id: "kg", layers: ["instance", "project"], enabled: true },
+        { id: "monitor", layers: ["instance"], enabled: false },
+      ],
+      projects: [{ project: "demo", values: { kg: false, curator: true } }],
+    };
+    api.answers["/v1/branding"] = {
+      name: "Acme Agents",
+      logo_url: "/v1/branding/logo?v=0123456789abcdef",
+      favicon_url: null,
+      colors: { light: {}, dark: {} },
+      version: 2,
+    };
+    setup();
+    await waitFor(() => expect(screen.queryByTestId("nav-kg")).toBeNull());
+    for (const gone of ["nav-chats", "nav-monitor"]) expect(screen.queryByTestId(gone)).toBeNull();
+    expect(screen.getByTestId("nav-curator")).toBeInTheDocument(); // the project's layer turns it back on
+    expect(screen.getByTestId("brand")).toHaveTextContent("Acme Agents");
+    expect(screen.getByTestId("hub-logo")).toHaveAttribute("src", "/v1/branding/logo?v=0123456789abcdef");
   });
 
   it("counts open decisions in attention and active runs in running, in words for screen readers", async () => {

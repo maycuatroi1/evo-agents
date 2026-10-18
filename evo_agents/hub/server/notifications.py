@@ -4,7 +4,9 @@ the routes a member reads them with. ``docs/notifications.md`` is the design and
 ``notify`` stores, in the caller's transaction, one notification for one member and one delivery of it for each
 channel of the member's that is on: the web, which every member has without a row of notification_channels (a
 delivery without a channel), and each enabled row. The table is the outbox: nothing is sent while the transaction is
-open, and a hub that stops between the commit and the send loses nothing.
+open, and a hub that stops between the commit and the send loses nothing. A notification of a project also goes to
+the channels of the isolated plugins the project enabled and granted notifications:send, through the plugins' own
+outbox (``evo_agents.hub.plugin_events``).
 
 ``deliver_notifications`` is the job hub.deliver_notifications, every minute. It takes the pending deliveries whose
 ``next_at`` has passed, each in a transaction of its own with ``FOR UPDATE SKIP LOCKED``, and hands each to an
@@ -16,8 +18,9 @@ say more: RetryAfter (the service asked to wait, such as Telegram's 429 with ret
 without counting a failed try; Undeliverable fails the delivery at once; ChannelGone fails it and turns the channel off
 with its reason in the channel's config (``disabled_reason``), as when a member blocked the bot. A kind with no class
 in CHANNELS, or a channel turned off since, fails its delivery at once with that reason, so a hub that drops a channel
-does not try it forever. Adding a channel takes a subclass of Channel and its entry in CHANNELS; the tables, the outbox
-and the job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
+does not try it forever. Adding a channel takes a subclass of Channel, contributed by a core plugin to the channels
+under the kind's name (``evo_agents.core_plugins.telegram``), or an entry in CHANNELS; the tables, the outbox and the
+job stay as they are. A class may read more of a notification first (``prepare``, in the delivery's
 transaction), and ``send`` may answer the id the service gave the message, kept as the delivery's ``external_id``.
 
 Before a channel of a row gets a notification, the job checks two things as they stand at the delivery, not as they
@@ -68,7 +71,8 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import review, runs, tables
+from evo_agents.hub import plugin_events, review, runs, tables
+from evo_agents.hub.plugin_calls import core_registry, load
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody
@@ -179,6 +183,7 @@ async def notify(
     )
     notification_id = inserted.scalar_one()
     await conn.execute(_deliveries(notification_id, user_id))
+    await plugin_events.emit_notification(conn, notification_id, project_id)  # the channels of isolated plugins
     return notification_id
 
 
@@ -252,11 +257,13 @@ CHANNELS: dict[str, type[Channel]] = {WEB: WebChannel}
 
 
 def channel_class(kind: str) -> type[Channel] | None:
-    """The class CHANNELS names for ``kind``, once every channel the hub ships has registered its class (importing a
-    channel's module adds it, as ``evo_agents.hub.server.telegram`` does for kind telegram)."""
-    from evo_agents.hub.server import telegram  # noqa: F401 (it registers TelegramChannel)
-
-    return CHANNELS.get(kind)
+    """The class CHANNELS names for ``kind``, else the one a core plugin contributes to the channels under that name
+    (``evo_agents.hub.plugin_calls``), as the core plugin telegram does for kind telegram."""
+    if kind in CHANNELS:
+        return CHANNELS[kind]
+    contributed = core_registry().contributions("channels")
+    found = next((item for _, item in contributed if item["name"] == kind and "python" in item), None)
+    return None if found is None else load(found["python"])
 
 
 def backoff(attempts: int) -> timedelta:
