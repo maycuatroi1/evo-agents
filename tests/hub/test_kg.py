@@ -1313,7 +1313,14 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
     ((build_id,),) = query(hub.db, select(builds.c.id))
     set_job_status(hub.db, job_id, "doing")  # a worker took it
     original = hub_kg_build.build_graph
-    monkeypatch.setattr(hub_kg_build, "build_graph", lambda project: (time.sleep(1.0), original(project))[1])
+    building, stopped_build = threading.Event(), threading.Event()
+
+    def build_until_stopped(project):
+        building.set()
+        stopped_build.wait(60)
+        return original(project)
+
+    monkeypatch.setattr(hub_kg_build, "build_graph", build_until_stopped)
 
     async def stop_during_the_build():
         config = make_config(hub.db, hub.worker_dir, hub.s3)
@@ -1323,11 +1330,14 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
             job_queue = await JobQueue.open(pool)
             context = HubContext(config, pool, store, config.data_dir)
             task = asyncio.ensure_future(run_build(context, PROJECT, build_id, job_id, job_queue._manager))
-            await asyncio.sleep(0.5)
+            # Not after a fixed time: on a loaded runner the job may still be in the transaction that starts the
+            # build, and a cancel there records nothing.
+            assert await asyncio.to_thread(building.wait, 60)
             task.cancel()  # what procrastinate does to a job still running when the grace period ends
             with pytest.raises(asyncio.CancelledError):
                 await task
         finally:
+            stopped_build.set()
             await pool.close()
             store.close()
 
