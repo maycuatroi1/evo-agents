@@ -97,6 +97,7 @@ evo-agents kg status                 # freshness, coverage and held deletions pe
 evo-agents kg build --verify         # rebuild from scratch and compare hashes
 evo-agents kg query kg_search "KB-01"
 evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
+evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg_context and grep (docs/kg-eval.md)
 ```
 
 Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
@@ -413,8 +414,8 @@ docs/         hub.md: running and using the hub; workers.md: workers, runs, plan
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
               and size budgets that CI checks, and how to split a module; kg.md: what kg_impact follows, and
-              its coverage per language; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
-              hub for a client
+              its coverage per language; kg-eval.md: measuring retrieval with `kg eval`; plugins.md: plugins,
+              the plugin host and plugin/1; hub-deployment.md: a hub for a client
 ```
 
 ## License
