@@ -109,6 +109,25 @@ def commit_time(repo: Path, commit: str) -> str:
     return git(repo, "show", "-s", "--format=%cI", commit).strip()
 
 
+def remote_head(repo: Path, remote: str = "origin") -> str | None:
+    """The default branch of ``remote`` as the clone recorded it (``refs/remotes/<remote>/HEAD``), or None."""
+    try:
+        name = git(repo, "symbolic-ref", "--quiet", "--short", f"refs/remotes/{remote}/HEAD").strip()
+    except GitError:
+        return None
+    prefix = f"{remote}/"
+    return name[len(prefix) :] if name.startswith(prefix) and len(name) > len(prefix) else None
+
+
+def behind(repo: Path, commit: str, base: str) -> int | None:
+    """How many commits ``base`` (a remote-tracking branch such as ``origin/main``) has that ``commit`` lacks, as the
+    clone has them now: no fetch. None when the clone has no such branch or either commit is missing."""
+    try:
+        return int(git(repo, "rev-list", "--count", f"{commit}..refs/remotes/{base}").strip())
+    except (GitError, ValueError, OSError):
+        return None
+
+
 def tracked_clean(repo: Path) -> set[str]:
     """Tracked paths whose working-tree content equals HEAD."""
     changed = set(git(repo, "diff", "--name-only", "HEAD").splitlines())
@@ -134,3 +153,14 @@ def web_url(origin: str, branch: str, path: str) -> str | None:
     if host == "github.com":
         return f"https://{host}/{project}/blob/{branch}/{path}"
     return f"https://{host}/{project}/-/blob/{branch}/{path}"
+
+
+def commit_url(origin: str, sha: str) -> str | None:
+    """Browser URL of one commit on its forge."""
+    m = _REMOTE.match(origin.strip())
+    if not m:
+        return None
+    host, project = m.group(1), m.group(2)
+    if host == "github.com":
+        return f"https://{host}/{project}/commit/{sha}"
+    return f"https://{host}/{project}/-/commit/{sha}"

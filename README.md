@@ -72,7 +72,12 @@ at any depth, and `state/` at the root only (a nested `src/state/` is ordinary c
 `fetch: true` on a git source whose `ref:` is `origin/<branch>` fetches that branch from `origin` (with a
 timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
-is fetched.
+is fetched. Without `ref:` a source reads HEAD of its checkout, whatever branch that has, and
+`harness validate` warns about it.
+The graph says which commit each git source read and how many commits that is behind the remote's default
+branch (`origin/<default_branch>`, counted from the clone without fetching): `kg status`, `kg_status`, the
+SessionStart note and the hub's graph page show it, and `kg_node` links a file at that commit, so the lines
+of a span match what the link opens.
 Changing where a source reads from (a git source's `ref:`, `repo:` or `path:`, an exec source's `command:`)
 makes its next run replace what the source read before, even when the old ref has newer commits; within
 one ref, a file keeps the copy whose last commit is newest. Keys such as `refresh:`, `label:`, `include:`
@@ -166,7 +171,9 @@ fields of the result, and how the text of every tool is written.
 
 Hooks:
 
-- SessionStart prints a short note: the bound project and the snapshot age.
+- SessionStart prints a short note: the bound project, the snapshot age, and the commit each git source
+  read with how far behind its remote's default branch that is now (`commits read: app 1550c7a (3 behind
+  origin/main)`), counted from the checkout without the network.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
   label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it.
 - PreToolUse, before Grep, Glob, or `rg` or `grep` in Bash, may add a note with the ids of graph

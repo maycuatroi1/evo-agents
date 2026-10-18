@@ -30,6 +30,11 @@ shows only once the file changes again. A change of the source's ``ref``, ``repo
 (``evo_agents.kg.corpus``): the next run's records replace those read from the old ref, even where its commits
 are newer.
 
+The run's cursor (``read_cursor``) names the commit read, how far it is behind the remote's default branch as the
+clone has it, and where links at that commit start. An item's ``uri`` links to its file by branch, never by commit,
+which would change every item's hash on every commit; the tools show the link at the commit read instead
+(``evo_agents.kg.freshness``).
+
 Before a file's text becomes an item, ``evo_agents.kg.redact`` replaces each secret in it (a private key in PEM, a
 provider's key, the password of a URI, the literal value of a variable named as a secret) with a marker that names
 its kind, ``[redacted:password]``; the rest of the text stays, so the file's structure still enters the graph. The
@@ -65,6 +70,16 @@ def repo_dir(ctx) -> Path:
     return path
 
 
+def behind_now(ctx, commit: str, base: str) -> int | None:
+    """How many commits ``base`` (``origin/main``) has that ``commit`` lacks in the checkout of the source of ``ctx``
+    as it is now, without fetching; None when there is no checkout or it has no such branch."""
+    try:
+        repo = repo_dir(ctx)
+    except ValueError:
+        return None
+    return _git.behind(repo, commit, base) if repo.is_dir() else None
+
+
 def _fetch(repo: Path, ref: str):
     """Fetch the branch of an ``origin/<branch>`` ref; a failure is a warning, not a failed run."""
     remote, _, branch = ref.partition("/")
@@ -88,6 +103,24 @@ def blob_item(item_id: str, path: str, sha: str, data: bytes, *, rev_time: str, 
     if redactions:
         item["props"]["redactions"] = redactions
     return item
+
+
+def read_cursor(repo: Path, ref: str, commit: str, *, origin: str, branch: str, default: str | None) -> dict:
+    """The cursor that ends a run: the commit read and the ref named; ``base``, the remote's default branch as the
+    clone has it now (harness.yaml's ``default_branch``, else the clone's ``origin/HEAD``), and ``behind``, how many of
+    its commits the commit read lacks, when the clone has that branch; with an origin on a forge, ``url`` of the commit
+    and ``blob``, where file links by branch start and where those at the commit read start
+    (``evo_agents.kg.freshness`` reads all of it)."""
+    cursor: dict = {"commit": commit, "ref": ref}
+    default = default or _git.remote_head(repo)
+    count = _git.behind(repo, commit, f"origin/{default}") if default else None
+    if count is not None:
+        cursor.update(base=f"origin/{default}", behind=count)
+    url = _git.commit_url(origin, commit) if origin else None
+    if url:
+        cursor["url"] = url
+        cursor["blob"] = {"branch": _git.web_url(origin, branch, ""), "commit": _git.web_url(origin, commit, "")}
+    return cursor
 
 
 def run(ctx):
@@ -118,13 +151,9 @@ def run(ctx):
     others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude, allow)]
     times = _git.last_change_times(repo, commit)
     fallback_time = _git.commit_time(repo, commit)
-    branch = ctx.source.get("branch")
-    origin = ""
-    if ctx.harness and ctx.source.get("repo"):
-        entry = ctx.harness.repo(ctx.source["repo"]) or {}
-        origin = entry.get("origin", "")
-        branch = branch or entry.get("default_branch")
-    branch = branch or "main"
+    entry = (ctx.harness.repo(ctx.source["repo"]) or {}) if ctx.harness and ctx.source.get("repo") else {}
+    origin = entry.get("origin", "")
+    branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
 
     count = 0
     batch = 200
@@ -153,6 +182,7 @@ def run(ctx):
         item["props"]["repo"] = ctx.source.get("repo") or repo.name
         yield finalize_item(item)
         count += 1
-    yield {"type": "state", "cursor": {"commit": commit}}
+    cursor = read_cursor(repo, ref, commit, origin=origin, branch=branch, default=entry.get("default_branch"))
+    yield {"type": "state", "cursor": cursor}
     yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
     yield {"type": "closed", "status": "ok"}

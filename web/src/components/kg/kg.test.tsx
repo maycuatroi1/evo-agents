@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { kgKeys } from "@/lib/kg/queries";
-import type { GraphNode, KgBuild, Neighbourhood } from "@/lib/kg/types";
+import type { GraphNode, KgBuild, Neighbourhood, SourceRead } from "@/lib/kg/types";
 import { makeQueryClient } from "@/lib/query-client";
 import { renderVi } from "@/test/render";
 
@@ -16,6 +16,7 @@ import { BuildHistory, LatestBuild, latestSucceeded } from "./build-status";
 import { KgNodePage } from "./kg-node-page";
 import { KgOverview } from "./kg-overview";
 import { NeighbourhoodSection } from "./neighbourhood";
+import { SourceCommits } from "./source-commits";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -204,6 +205,51 @@ describe("knowledge graph pages", () => {
     withQueries(<KgNodePage project="demo" id="deals:doc:acme" hops={2} errors={{ node: failure(404), neighbourhood: null }} />);
     expect(screen.getByTestId("state-not-found")).toHaveTextContent("Không tìm thấy node");
     expect(screen.getByTestId("state-not-found")).toHaveTextContent("deals:doc:acme");
+  });
+});
+
+describe("commits read", () => {
+  const sha = "4f1c2e7a9b3d5f60718293a4b5c6d7e8f9012345";
+  const read = (source: string, overrides: Partial<SourceRead> = {}): SourceRead => ({
+    source,
+    commit: sha,
+    ref: "origin/main",
+    base: "origin/main",
+    behind: 0,
+    url: `https://github.com/acme/${source}/commit/${sha}`,
+    ...overrides,
+  });
+
+  it("names each source's commit and marks only a source behind its remote's default branch", () => {
+    renderVi(
+      <SourceCommits
+        sources={[
+          read("app", { ref: "HEAD", behind: 254 }),
+          read("docs"),
+          read("deals", { base: null, behind: null, url: null, ref: null }),
+        ]}
+      />,
+    );
+    const rows = screen.getAllByTestId("source-commit");
+    expect(rows.map((row) => row.getAttribute("data-source"))).toEqual(["app", "docs", "deals"]);
+    const [app, docs, deals] = rows;
+    expect(within(app).getByTestId("source-commit-sha")).toHaveTextContent("4f1c2e7");
+    expect(within(app).getByRole("link", { name: "Mở commit 4f1c2e7 (mở trong tab mới)" })).toHaveAttribute(
+      "href",
+      `https://github.com/acme/app/commit/${sha}`,
+    );
+    expect(within(app).getByText("của HEAD")).toBeInTheDocument();
+    expect(within(app).getByTestId("source-behind")).toHaveTextContent("chậm origin/main 254 commit");
+    expect(within(app).getByTestId("source-behind")).toHaveAttribute("data-behind", "254");
+    expect(within(docs).getByTestId("source-behind")).toHaveTextContent("khớp với origin/main");
+    expect(within(deals).queryByRole("link")).toBeNull();
+    expect(within(deals).getByText("của HEAD")).toBeInTheDocument();
+    expect(within(deals).getByText("không có nhánh remote để so")).toBeInTheDocument();
+  });
+
+  it("shows nothing when no source read a commit", () => {
+    renderVi(<SourceCommits sources={[]} />);
+    expect(screen.queryByTestId("kg-commits")).toBeNull();
   });
 });
 

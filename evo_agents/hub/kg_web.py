@@ -1,5 +1,6 @@
 """What the hub's web pages read of a project's knowledge graph: node search, one node with its neighbours, the
-neighbourhood the graph view draws, and how many visible nodes of each kind the graph holds.
+neighbourhood the graph view draws, how many visible nodes of each kind the graph holds, and the commit each source
+the member can see read.
 
 Each read opens the project's latest successful build the way the kg_* tools do (``evo_agents.hub.kg_graph``: the
 verified artifact cache, the fallback to a cached build when the blob store does not answer) and answers with the
@@ -27,6 +28,7 @@ from typing import TypeVar
 
 from evo_agents.hub.blobs import BlobStore
 from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession
+from evo_agents.kg import freshness
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve import HUB_DEGREE, SEED_EDGES, STATUS_RANK, ToolError
 from evo_agents.kg.store import Store
@@ -92,6 +94,23 @@ class WebSession(HubSession):
                 counts[kind] = counts.get(kind, 0) + count
         ordered = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return [{"kind": kind, "count": count} for kind, count in ordered]
+
+    def sources(self) -> list[dict]:
+        """The commit each git source of the build read (``evo_agents.kg.freshness.reads``), for the sources whose
+        node the member can see."""
+        if self.error:
+            return []
+        store, b = self._visible_store()
+        found = []
+        for read in freshness.reads(store.build_row(b)["coverage"]):
+            node = store.node(f"source:{read['source']}", b)
+            if node is not None and self.visible(node["label"]):
+                found.append(read)
+        return found
+
+    def summary(self) -> dict:
+        """What GET /v1/kg/{project}/graph shows: visible nodes by kind, and the commits sources read."""
+        return {"kinds": self.kinds(), "sources": self.sources()}
 
     def neighbourhood(self, node_id: str, hops: int = MAX_HOPS, limit: int = MAX_NODES) -> dict:
         """The visible nodes and edges within ``hops`` steps of the node, at most ``limit`` nodes. Raises
