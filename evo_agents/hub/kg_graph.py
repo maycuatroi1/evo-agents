@@ -31,9 +31,10 @@ from datetime import datetime
 from pathlib import Path
 
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
+from evo_agents.kg import store as kg_store
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session, ToolError
-from evo_agents.kg.store import Store
+from evo_agents.kg.store import StaleSchema, Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 KEEP = 2  # graphs kept per project: the latest, and the one before it to fall back on
@@ -42,6 +43,24 @@ MAX_HANDLES = 100  # kg_more handles kept per user and project
 
 class GraphUnavailable(Exception):
     """No graph of the project can be read: the blob store does not answer and none is cached."""
+
+
+class GraphOutdated(GraphUnavailable):
+    """The newest graph was written with an older store schema than this hub reads: a new build will replace it."""
+
+    def __init__(self, project: str, graph: BuiltGraph, exc: StaleSchema):
+        super().__init__(
+            f"the graph of project {project} (build {graph.build_id}) was written with store schema {exc.found}, and "
+            f"this hub reads {kg_store.SCHEMA_VERSION}: a new build of it is queued; try again once it has run"
+        )
+
+
+def open_graph(path: Path, project: str, graph: BuiltGraph) -> Store:
+    """The cached artifact of ``graph`` as a read-only store; GraphOutdated when an older schema wrote it."""
+    try:
+        return Store.open_file(path, immutable=True)
+    except StaleSchema as exc:
+        raise GraphOutdated(project, graph, exc) from None
 
 
 class ArtifactMismatch(Exception):
@@ -291,7 +310,7 @@ def answer(
     keeps the SQLite connection in the thread that made it."""
     path, graph = cache.acquire(store, project, graphs)
     try:
-        opened = Store.open_file(path, immutable=True)
+        opened = open_graph(path, project, graph)
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
             return handles.call(session, owner, tool, arguments)

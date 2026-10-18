@@ -26,7 +26,7 @@ from collections.abc import Callable
 from typing import TypeVar
 
 from evo_agents.hub.blobs import BlobStore
-from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession
+from evo_agents.hub.kg_graph import BuiltGraph, GraphCache, HubSession, open_graph
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve import HUB_DEGREE, SEED_EDGES, STATUS_RANK, ToolError
 from evo_agents.kg.store import Store
@@ -182,7 +182,7 @@ def read(
     GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
     path, graph = cache.acquire(store, project, graphs)
     try:
-        opened = Store.open_file(path, immutable=True)
+        opened = open_graph(path, project, graph)
         try:
             return reader(WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])), graph
         finally:
