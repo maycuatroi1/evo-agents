@@ -732,10 +732,9 @@ def test_a_copy_of_the_revision_the_cursor_holds_gives_the_same_item_without_the
 def test_harness_connector_reads_the_copies_without_a_hub_and_warns_when_the_hub_fails(harness_dir):
     harness = hub_harness(harness_dir)
     disk = items_by_path(list(ConnectorRun(ConnectorContext("p", HARNESS, harness))))
-    assert (
-        disk["plans/active/p.yaml"]["body"]["text"] == "id: p\nsteps: []\n"
-        and "label" not in disk["plans/active/p.yaml"]
-    )
+    copy = (harness_dir / "plans/active/p.yaml").read_bytes().decode()  # its lines end in CRLF on Windows
+    assert copy.replace("\r\n", "\n") == "id: p\nsteps: []\n"
+    assert disk["plans/active/p.yaml"]["body"]["text"] == copy and "label" not in disk["plans/active/p.yaml"]
 
     signed_out = list(ConnectorRun(ConnectorContext("p", HARNESS, harness, plans=hub_reader(None))))
     assert items_by_path(signed_out) == disk and not any(m["type"] in ("state", "log") for m in signed_out)
