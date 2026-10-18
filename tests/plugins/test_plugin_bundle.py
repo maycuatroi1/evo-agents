@@ -39,8 +39,8 @@ def test_plugin_bundle_packs_one_directory_into_the_same_bytes_every_time(tmp_pa
     with tarfile.open(fileobj=io.BytesIO(packed.data), mode="r:gz") as tar:
         members = {member.name: member for member in tar.getmembers()}
     assert {(m.mtime, m.uid, m.gid, m.uname, m.gname) for m in members.values()} == {(0, 0, 0, "", "")}
-    executable = os.name != "nt"
-    assert members["backend/run.sh"].mode == (0o755 if executable else 0o644)
+    # Executable by its mode on POSIX, by its #! line on Windows, which has no execute bit (bundle._read_file).
+    assert members["backend/run.sh"].mode == 0o755
     assert members["web/index.html"].mode == 0o644
 
 
@@ -79,29 +79,31 @@ def tarball(*entries: tuple, with_manifest: bool = True, gzipped: bool = True) -
                 tar.addfile(info, io.BytesIO(data))
             else:
                 tar.addfile(info)
-    return gzip.compress(buffer.getvalue()) if gzipped else buffer.getvalue()
+    return gzip.compress(buffer.getvalue(), mtime=0) if gzipped else buffer.getvalue()
 
 
-@pytest.mark.parametrize(
-    ("data", "problem"),
-    [
-        (b"not a tarball", "not a gzip-compressed tar"),
-        (tarball(entry("web/a.html"), gzipped=False), "not a gzip-compressed tar"),
-        (tarball(entry("/etc/passwd")), "an absolute path"),
-        (tarball(entry("../outside")), "an empty, '.' or '..' part"),
-        (tarball(entry("web/./a")), "an empty, '.' or '..' part"),
-        (tarball(entry("web\\a")), "a backslash"),
-        (tarball(entry("web/\x07bell")), "a control character"),
-        (tarball(entry("web/" + "a" * 256)), "a part over 255 bytes"),
-        (tarball(entry("web/link", kind=tarfile.SYMTYPE, linkname="/etc/passwd")), "is not a regular file"),
-        (tarball(entry("web/hard", kind=tarfile.LNKTYPE, linkname=MANIFEST)), "is not a regular file"),
-        (tarball(entry("web/fifo", kind=tarfile.FIFOTYPE)), "is not a regular file"),
-        (tarball(entry("web/A.html"), entry("web/a.html")), "one path ignoring case"),
-        (tarball(entry("web"), entry("web/a.html")), "which is a file"),
-        (tarball(entry("web/a.html"), with_manifest=False), f"has no {MANIFEST} at its top"),
-        (tarball(entry(f"nested/{MANIFEST}"), with_manifest=False), f"has no {MANIFEST} at its top"),
-    ],
-)
+# Each case's id is its problem: an id made of the bundle's bytes holds NUL characters and runs long, and pytest puts
+# the id in the variable PYTEST_CURRENT_TEST, which Windows refuses then.
+REFUSED = [
+    (b"not a tarball", "not a gzip-compressed tar"),
+    (tarball(entry("web/a.html"), gzipped=False), "not a gzip-compressed tar"),
+    (tarball(entry("/etc/passwd")), "an absolute path"),
+    (tarball(entry("../outside")), "an empty, '.' or '..' part"),
+    (tarball(entry("web/./a")), "an empty, '.' or '..' part"),
+    (tarball(entry("web\\a")), "a backslash"),
+    (tarball(entry("web/\x07bell")), "a control character"),
+    (tarball(entry("web/" + "a" * 256)), "a part over 255 bytes"),
+    (tarball(entry("web/link", kind=tarfile.SYMTYPE, linkname="/etc/passwd")), "is not a regular file"),
+    (tarball(entry("web/hard", kind=tarfile.LNKTYPE, linkname=MANIFEST)), "is not a regular file"),
+    (tarball(entry("web/fifo", kind=tarfile.FIFOTYPE)), "is not a regular file"),
+    (tarball(entry("web/A.html"), entry("web/a.html")), "one path ignoring case"),
+    (tarball(entry("web"), entry("web/a.html")), "which is a file"),
+    (tarball(entry("web/a.html"), with_manifest=False), f"has no {MANIFEST} at its top"),
+    (tarball(entry(f"nested/{MANIFEST}"), with_manifest=False), f"has no {MANIFEST} at its top"),
+]
+
+
+@pytest.mark.parametrize(("data", "problem"), REFUSED, ids=[problem for _, problem in REFUSED])
 def test_plugin_bundle_is_refused_whole_for_any_entry_that_could_land_outside_or_mislead(data, problem):
     with pytest.raises(BundleError, match=re.escape(problem)):
         read_bundle(data)

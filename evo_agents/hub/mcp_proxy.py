@@ -22,9 +22,18 @@ something else), the proxy answers in its place: initialize, ping and tools/list
 naming the hub's URL; any other request with a JSON-RPC error saying the same. Credentials are read again for every
 message, so an ``evo-agents hub login`` made meanwhile counts at once.
 
-Messages are answered concurrently, WORKERS at a time, the handshake first. The proxy writes nothing on this machine,
-and never prints the token or what a message holds: stderr gets one line when the hub stops answering and one when it
-answers again.
+A Claude Code session that has the evo-kg plugin as well gets the kg_* tools from evo-kg alone (``claude_plugins``):
+the proxy then drops them from every tools/list, the hub's or its own, and answers initialize with the hub's
+instructions without the graph's paragraph (``mcp_tools.without_kg``). A session without it gets them from the hub.
+Either way, the labels of every kg_* result the hub answers join the session label, as the evo-kg PostToolUse hook
+joins those of evo-kg's (``evo_agents.kg.sessions``): a read of the graph counts whichever server answered it, and
+hiding the tools from a listing never leaves a call to them unlabelled. That label is the one of the Claude Code
+session the proxy started in (CLAUDE_CODE_SESSION_ID), the only file the proxy writes.
+
+Messages are answered concurrently, WORKERS at a time, the handshake first. Besides the session label, the proxy writes
+nothing on this machine, and never prints the token or what a message holds: stderr gets one line when the hub stops
+answering, one when it answers again, and one with the exception's type when a kg_* result cannot join the session
+label (the answer still goes back).
 
 ``McpClient`` is the same channel for single tool calls, which ``kg serve --backend hub`` and ``kg query --backend
 hub`` use. Standard library only.
@@ -46,6 +55,7 @@ from evo_agents.hub.client import CONNECTIONS, Credentials, HubError, Unreachabl
 from evo_agents.hub.mcp_tools import (
     HANDSHAKE_VERSIONS,
     INSTRUCTIONS,
+    KG_TOOL_NAMES,
     LOCAL_RUN_HEADER,
     PROJECT_HEADER,
     PROTOCOL_HEADER,
@@ -54,6 +64,7 @@ from evo_agents.hub.mcp_tools import (
     SERVER_NAME,
     SINK_HEADER,
     TOOLS,
+    without_kg,
 )
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.worker.home import WorkerHome, WorkerStateError
@@ -68,6 +79,7 @@ HUB_ERROR = -32000  # JSON-RPC's range for server errors: the hub gave no answer
 ENVELOPE_VERSION = "io.modelcontextprotocol/protocolVersion"  # params._meta key of a 2026-07-28 message
 NAMED_BY = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}  # the param Mcp-Name mirrors
 RUN_VARIABLE = "EVO_RUN_ID"  # set by the worker daemon for the agent of a run (evo_agents.worker.run)
+KG_PLUGIN = "evo-kg"  # the plugin that serves the kg_* tools of a session that has it
 _HEADER_SAFE = re.compile(r"[\x20-\x7e]*")
 _SENTINEL = re.compile(r"=\?base64\?.*\?=")
 
@@ -211,20 +223,38 @@ def current_run() -> int | None:
     return int(value) if value.isascii() and value.isdigit() and int(value) >= 1 else None
 
 
-def session_credentials() -> Credentials:
-    """What a message goes with: inside a run (``current_run``) of this machine's worker, the worker's token for that
-    run and the hub the worker joined; else, and when the worker's state holds no token, the machine token of
-    ``evo-agents hub login``. Read again for every message, never kept."""
+def run_credentials() -> Credentials | None:
+    """Inside a run (``current_run``) of this machine's worker, the worker's token for that run and the hub the worker
+    joined; None outside a run, and when the worker's state holds no token (not a worker here)."""
     run = current_run()
-    if run is not None:
-        home = WorkerHome()
-        try:
-            config, token = home.load_config(), home.load_token()
-        except WorkerStateError:
-            pass  # not a worker here: the machine's own credentials
-        else:
-            return Credentials(config.url, config.owner or config.name, token, run)
-    return load_credentials()
+    if run is None:
+        return None
+    home = WorkerHome()
+    try:
+        config, token = home.load_config(), home.load_token()
+    except WorkerStateError:
+        return None
+    return Credentials(config.url, config.owner or config.name, token, run)
+
+
+def session_credentials() -> Credentials:
+    """What a message goes with: ``run_credentials`` inside a run of this machine's worker; else the machine token of
+    ``evo-agents hub login``. Read again for every message, never kept."""
+    return run_credentials() or load_credentials()
+
+
+def note_read(message: dict, result: dict) -> None:
+    """Join the labels of a kg_* result into the label of this process's Claude Code session, as the evo-kg hook does
+    for evo-kg's results: nothing for another tool, an error, a result that names no label, or without a session."""
+    params = message.get("params")
+    if not isinstance(params, dict) or params.get("name") not in KG_TOOL_NAMES or result.get("isError"):
+        return
+    from evo_agents.kg.sessions import current_session_id, record_read, structured_result
+
+    session = current_session_id()
+    data = structured_result(result) if session is not None else None
+    if data is not None:
+        record_read(session, data)
 
 
 def hub_project(project: str | None) -> str | None:
@@ -247,6 +277,7 @@ class Proxy:
         project: str | None,
         sink: str = AGENT_SINK,
         *,
+        kg: bool = True,
         credentials=session_credentials,
         timeout: float = TIMEOUT,
         workers: int = WORKERS,
@@ -256,6 +287,7 @@ class Proxy:
     ):
         self.project = project
         self.sink = sink
+        self.kg = kg  # False: the session has evo-kg, which serves the kg_* tools (see the module)
         self.credentials = credentials
         self.timeout = timeout
         self.sleep = sleep
@@ -291,7 +323,21 @@ class Proxy:
         except Exception as exc:  # one message never stops the proxy
             reply = self._standing_in(message, f"evo-agents hub mcp failed on this message ({type(exc).__name__})")
         if reply is not None:
-            self._write(reply)
+            self._write(self._for_session(message, reply))
+
+    def _for_session(self, message, reply):
+        """``reply`` as this session takes it: the labels of a kg_* result added to the session label, whether or not
+        the session lists the kg_* tools, and without those tools when evo-kg serves them (see the module)."""
+        result = reply.get("result") if isinstance(reply, dict) else None
+        if not isinstance(message, dict) or not isinstance(result, dict):
+            return reply
+        method = message.get("method")
+        if method == "tools/call":
+            try:
+                note_read(message, result)
+            except Exception as exc:  # the label is the session's record, never a reason to lose the answer
+                self._note(f"evo-agents hub mcp: session label not updated for this result ({type(exc).__name__})")
+        return reply if self.kg else {**reply, "result": without_kg(method, result)}
 
     def answer(self, message):
         """The line to write for ``message``: the hub's answer, or the proxy's when the hub gives none."""
@@ -356,6 +402,11 @@ class Proxy:
             self._out.write(line)
             self._out.flush()
 
+    def _note(self, line: str) -> None:
+        with self._lock:
+            self.err.write(line + "\n")
+            self.err.flush()
+
     def _report(self, failure: str | None, url: str | None = None) -> None:
         """One stderr line when the hub stops answering, or answers again; nothing while that does not change."""
         with self._lock:
@@ -377,7 +428,10 @@ def cmd_mcp(args) -> int:
             "a project argument",
             file=sys.stderr,
         )
-    return Proxy(project, args.sink).run(sys.stdin.buffer, sys.stdout.buffer)
+    from evo_agents.hub import claude_plugins
+
+    kg = not claude_plugins.session_has(KG_PLUGIN)
+    return Proxy(project, args.sink, kg=kg).run(sys.stdin.buffer, sys.stdout.buffer)
 
 
 def register_mcp(hsub) -> None:

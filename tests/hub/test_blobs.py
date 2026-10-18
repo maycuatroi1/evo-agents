@@ -1,7 +1,8 @@
 """The blob store: uploads through presigned PUTs to a fake S3 (moto, in this process), commits that read the bytes
 back and hash them, the size limit of each kind, the writer role, health with R2 down, retries, the cleanup of
 uploads nobody committed, and S3 credentials kept out of every log line. Also what bounds a commit's time on a store
-as slow to answer as R2: the calls it makes per upload, and the uploads all commits of a process work on at once.
+as slow to answer as R2: the calls it makes per upload, and the uploads all commits of a process work on at once,
+and a store the hub calls at an internal address while its presigned URLs name the public one.
 
 Each test gets a Postgres database and a bucket of its own; moto checks no signature (see ``tests.hub.s3``)."""
 
@@ -44,7 +45,7 @@ from evo_agents.hub.blobs import (
     new_upload_id,
     upload_key,
 )
-from evo_agents.hub.config import S3_VARIABLES, ConfigError, HubConfig, load_config
+from evo_agents.hub.config import S3_INTERNAL_ENDPOINT, S3_VARIABLES, ConfigError, HubConfig, load_config
 from evo_agents.hub.db import make_engine, open_pool
 from evo_agents.hub.log import JsonFormatter, scrub
 from evo_agents.hub.migrate import head_revision, migrate
@@ -684,6 +685,45 @@ def test_the_blob_store_takes_all_four_variables_or_none(s3):
         with pytest.raises(ConfigError) as caught:
             load_config({**dsn, **s3.env(), variable: value})
         assert caught.value.variable == variable
+
+
+def test_the_hub_calls_the_store_at_its_internal_endpoint_and_presigns_for_the_public_one(s3, tmp_path):
+    """EVO_HUB_S3_INTERNAL_ENDPOINT: the hub's own reads, writes and health probe go there, so a graph larger than
+    what a proxy in front of the public address takes is written whole; clients get URLs signed for the public one."""
+    public = "https://blob.example.invalid"  # nothing answers there: any call of the hub to it would fail
+    dsn = {"EVO_HUB_DSN": "postgresql://hub@db/hub"}
+    config = load_config({**dsn, **s3.env(), "EVO_HUB_S3_ENDPOINT": public, S3_INTERNAL_ENDPOINT: s3.endpoint + "/"})
+    assert (config.s3_endpoint, config.s3_internal_endpoint) == (public, s3.endpoint)
+    store = BlobStore.from_config(config)
+    try:
+        assert (store.endpoint, store.internal_endpoint) == (public, s3.endpoint)
+        store.check()
+        data = b"a graph too large for the proxy in front of the public address"
+        path = tmp_path / "graph.sqlite"
+        path.write_bytes(data)
+        assert store.put_file(sha(data), path) and store.has_blob(sha(data))
+        assert s3.get(blob_key(sha(data))) == data
+        sink = io.BytesIO()
+        assert store.fetch(blob_key(sha(data)), sink, len(data)) == (sha(data), len(data)) and sink.getvalue() == data
+        for url in (store.presign_put(new_upload_id(), 3), store.presign_get(sha(data))):
+            parts = urlsplit(url)
+            assert f"{parts.scheme}://{parts.netloc}" == public
+            assert "host" in parse_qs(parts.query)["X-Amz-SignedHeaders"][0].split(";")  # SigV4 signs that host
+    finally:
+        store.close()
+
+    plain = BlobStore.from_config(load_config({**dsn, **s3.env(), S3_INTERNAL_ENDPOINT: ""}))  # compose's empty value
+    assert plain.internal_endpoint == plain.endpoint == s3.endpoint and plain._signer is plain._s3
+    assert urlsplit(plain.presign_get(sha(b"x"))).netloc == urlsplit(s3.endpoint).netloc
+    plain.close()
+
+    for env, problem in (
+        ({**dsn, S3_INTERNAL_ENDPOINT: s3.endpoint}, "is set but the blob store is not"),
+        ({**dsn, **s3.env(), S3_INTERNAL_ENDPOINT: "lumen-hub-seaweedfs:8333"}, "must be an http(s) URL"),
+    ):
+        with pytest.raises(ConfigError, match=re.escape(problem)) as caught:
+            load_config(env)
+        assert caught.value.variable == S3_INTERNAL_ENDPOINT
 
 
 def test_the_log_filter_masks_presigned_urls_and_botocore_debug_lines(s3):

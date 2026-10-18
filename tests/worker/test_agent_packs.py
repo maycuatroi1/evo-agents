@@ -24,7 +24,7 @@ from evo_agents.worker import packs
 from evo_agents.worker.adapter import Adapter
 from evo_agents.worker.runtimes import common, profiles
 from evo_agents.worker.runtimes.claude_code import ClaudeCodeAdapter
-from evo_agents.worker.runtimes.codex import CodexAdapter
+from evo_agents.worker.runtimes.codex import CodexAdapter, thread_compaction
 from evo_agents.worker.runtimes.opencode import OpencodeAdapter
 from tests.plugins.samples import manifest, pack_files, write_plugin
 from tests.worker.test_agent_profiles import DEFAULT, INSTRUCTIONS, _command, profile
@@ -387,6 +387,7 @@ def test_codex_gets_the_skill_roots_mcp_servers_and_instructions_of_its_packs(tm
     method, options = adapter.fake.log[1]
     assert method == "thread/start"
     assert options["config"] == {
+        **thread_compaction(adapter.context),  # what the owner's codex config leaves to the thread
         "model_reasoning_effort": "low",
         "mcp_servers": {
             "docs": {"url": "https://docs.example.test/mcp", "http_headers": {"X-Team": "acme"}},

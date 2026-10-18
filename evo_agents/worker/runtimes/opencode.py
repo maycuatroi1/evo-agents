@@ -13,6 +13,10 @@ run`` prints is parsed here.
 - Permissions: every ``permission.asked`` of the session, or of a session it started, is answered ``once``
   (``POST /permission/:id/reply``), which is what ``opencode run --auto`` does ("auto-approve permissions that are
   not explicitly denied"): a rule of the owner's config that denies something still denies it.
+- Compaction: the server's OPENCODE_CONFIG_CONTENT gets ``compaction.prune`` on (``compaction_env``), so at the end
+  of a turn opencode clears tool outputs older than its newest 40,000 tokens of them (opencode 1.18.34). It stays as
+  opencode has it when the owner's config sets it (``owner_prune``) or EVO_WORKER_OPENCODE_COMPACTION_PRUNE is
+  ``off``, ``false`` or ``0``; the profile's ``permission`` is merged after it.
 - The model is the run's ``model``, else ``EVO_WORKER_OPENCODE_MODEL``, else the ``model`` of the owner's opencode
   config, as ``provider/model``, split at its first ``/`` into the ``providerID`` and ``modelID`` of each prompt; a
   model the server does not list fails the start with that reason, since opencode would only answer with an unknown
@@ -34,7 +38,8 @@ run`` prints is parsed here.
 - The run's usage adds up the tokens of each step (``step-finish``) with their cost, and holds
   ``peak_context_tokens``, the largest context of a step: its ``input`` plus ``cache.read`` plus ``cache.write``,
   which opencode counts apart (in the research's samples, a step that read 89,984 tokens from the cache had an input
-  of 171).
+  of 171); and the ``cache.read`` and ``cache.write`` of the first step that read any context, the first request
+  (``common.FIRST_REQUEST``).
 
 Checked with opencode 1.18.34 (``evo-agents worker selftest --runtime opencode``).
 """
@@ -66,6 +71,7 @@ from evo_agents.worker.runtimes.common import (
     add_numbers,
     cut,
     detect_runtime,
+    first_request,
     kill_group,
     larger,
     message_chunk,
@@ -102,6 +108,13 @@ RUN_RULES = [
 # Events of the session that repeat what message.part.updated, message.updated and session.status say. The
 # session.next.* family carries the same content again, piece by piece.
 IGNORED = frozenset({"session.updated", "session.diff", "session.idle", "message.part.delta", "message.updated"})
+# The variable that turns off ``compaction.prune`` for the runs of this worker (``compaction_env``), and the names of
+# an opencode config file, in the global folder and in a project.
+PRUNE_SETTING = "EVO_WORKER_OPENCODE_COMPACTION_PRUNE"
+CONFIG_NAMES = ("config.json", "opencode.json", "opencode.jsonc")
+_STRING = r'("(?:\\.|[^"\\])*")'
+_COMMENTS = re.compile(_STRING + r"|//[^\n]*|/\*.*?\*/", re.S)
+_TRAILING_COMMAS = re.compile(_STRING + r"|,(?=\s*[}\]])")
 TOOL_KINDS = {
     "read": "read",
     "edit": "edit",
@@ -128,6 +141,58 @@ def parse_models(output: str | None) -> list[str] | None:
         return None
     lines = (ESCAPES.sub("", line).strip() for line in output.splitlines())
     return [line for line in lines if MODEL_LINE.match(line)] or None
+
+
+def jsonc(text: str):
+    """``text`` as opencode reads a config: JSON with comments and trailing commas; None when it is not that."""
+
+    def strings_only(match: re.Match) -> str:
+        return match.group(1) or ""
+
+    try:
+        return json.loads(_TRAILING_COMMAS.sub(strings_only, _COMMENTS.sub(strings_only, text)))
+    except ValueError:
+        return None
+
+
+def config_paths(env: Mapping[str, str], worktree: Path) -> list[Path]:
+    """The owner's opencode config files: the global ones (``$XDG_CONFIG_HOME/opencode``, else ``~/.config/opencode``),
+    the file OPENCODE_CONFIG names, and the worktree's (``opencode.json[c]``, ``.opencode/opencode.json[c]``)."""
+    base = Path(env.get("XDG_CONFIG_HOME") or Path(env.get("HOME") or Path.home()) / ".config") / "opencode"
+    paths = [base / name for name in CONFIG_NAMES]
+    if env.get("OPENCODE_CONFIG"):
+        paths.append(Path(env["OPENCODE_CONFIG"]).expanduser())
+    return paths + [folder / name for folder in (worktree, worktree / ".opencode") for name in CONFIG_NAMES[1:]]
+
+
+def owner_prune(env: Mapping[str, str], worktree: Path) -> bool:
+    """Whether the owner's opencode config sets ``compaction.prune``: in OPENCODE_CONFIG_CONTENT or in a file of
+    ``config_paths``. OPENCODE_CONFIG_CONTENT overrides those files, so a run setting it there would override them."""
+    texts = [env.get(profiles.CONFIG_CONTENT) or ""]
+    for path in config_paths(env, worktree):
+        with contextlib.suppress(OSError, UnicodeDecodeError):
+            texts.append(path.read_text(encoding="utf-8"))
+    for text in texts:
+        data = jsonc(text) if text.strip() else None
+        compaction = data.get("compaction") if isinstance(data, dict) else None
+        if isinstance(compaction, dict) and "prune" in compaction:
+            return True
+    return False
+
+
+def compaction_env(env: Mapping[str, str], worktree: Path) -> dict[str, str]:
+    """The environment of a run's ``opencode serve``: ``env`` with ``compaction.prune`` on in OPENCODE_CONFIG_CONTENT,
+    merged into what the variable already held; ``env`` as it is when EVO_WORKER_OPENCODE_COMPACTION_PRUNE is ``off``,
+    ``false`` or ``0``, when the owner's config sets ``compaction.prune`` (``owner_prune``), or when the variable holds
+    something other than a JSON object."""
+    if env.get(PRUNE_SETTING, "").strip().lower() in ("off", "false", "0") or owner_prune(env, worktree):
+        return dict(env)
+    own = env.get(profiles.CONFIG_CONTENT) or ""
+    content = jsonc(own) if own.strip() else {}
+    if not isinstance(content, dict):
+        return dict(env)
+    compaction = content.get("compaction") if isinstance(content.get("compaction"), dict) else {}
+    return {**env, profiles.CONFIG_CONTENT: json.dumps({**content, "compaction": {**compaction, "prune": True}})}
 
 
 def free_port() -> int:
@@ -296,6 +361,7 @@ class OpencodeAdapter(QueueAdapter):
         self._error: str | None = None
         self._usage: dict = {}
         self._peak: int | None = None  # the largest context of a step: input, cache read and cache write
+        self._first: dict | None = None  # the cache read and cache write of the first step (FIRST_REQUEST)
         self._cost = 0.0
         self._summary: str | None = None
         self.model: tuple[str, str] | None = None
@@ -321,9 +387,11 @@ class OpencodeAdapter(QueueAdapter):
         return await start_server(program, worktree, self.server_env(), context=self.context, directory=directory)
 
     def server_env(self) -> dict[str, str]:
-        """The environment of the run's server: the agent's, with the permissions of its profile
-        (``profiles.opencode_env``) and the skills and MCP servers of its agent packs (``packs.opencode_env``)."""
-        return packs.opencode_env(profiles.opencode_env(self.context.env, self.profile), self.context.packs)
+        """The environment of the run's server: the agent's, with ``compaction.prune`` on (``compaction_env``), the
+        permissions of its profile (``profiles.opencode_env``) and the skills and MCP servers of its agent packs
+        (``packs.opencode_env``)."""
+        env = compaction_env(self.context.env, self.context.worktree)
+        return packs.opencode_env(profiles.opencode_env(env, self.profile), self.context.packs)
 
     # HTTP
 
@@ -525,7 +593,10 @@ class OpencodeAdapter(QueueAdapter):
         if isinstance(cache, dict):
             flat.update({f"cache_{key}": value for key, value in cache.items()})
         add_numbers(self._usage, flat)
-        self._peak = larger(self._peak, token_sum(flat.get("input"), flat.get("cache_read"), flat.get("cache_write")))
+        context = token_sum(flat.get("input"), flat.get("cache_read"), flat.get("cache_write"))
+        self._peak = larger(self._peak, context)
+        if self._first is None and context:
+            self._first = first_request(flat.get("cache_read"), flat.get("cache_write"))
         cost = part.get("cost") if isinstance(part.get("cost"), (int, float)) else None
         self._cost += cost or 0
         return [usage_update(tokens, cost, reason=part.get("reason"))]
@@ -559,7 +630,7 @@ class OpencodeAdapter(QueueAdapter):
         self.emit([raw({"type": "permission.asked", "properties": request, "reply": "once"})])
 
     def _outcome(self) -> Outcome:
-        usage = with_peak({**self._usage, "cost": self._cost} if self._usage else None, self._peak)
+        usage = with_peak({**self._usage, "cost": self._cost} if self._usage else None, self._peak, self._first)
         if self.interrupted:
             return Outcome(False, "interrupted", usage, self._summary)
         if self._error:

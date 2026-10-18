@@ -198,6 +198,28 @@ def test_plugin_install_publish_list_show_upgrade_and_remove(hub):
 
 
 @needs_pg
+def test_plugin_install_refuses_a_backend_the_plugin_host_could_not_run(hub):
+    """The second review of PR #72 (L4): the plugin host has no killer user for a plugin whose id on the hub is
+    MAX_PLUGIN_ID or more, as that user would meet the backends'. The hub refuses to install such a plugin's backend,
+    and says why, rather than let the host refuse to start it."""
+    from sqlalchemy import func, select
+
+    from evo_agents.plugins.bundle import pack
+    from evo_agents.plugins.environment import MAX_PLUGIN_ID
+    from tests.plugins.samples import manifest, write_plugin
+
+    live.sql(hub.db, select(func.setval(func.pg_get_serial_sequence("plugins", "id"), MAX_PLUGIN_ID, False)))
+    data = manifest(backend={"runtime": "python", "entry": "backend/main.py"})
+    packed = pack(write_plugin(hub.tmp / "far", data, {"backend/main.py": "print('far')\n"}))
+    published = publish(hub, packed, ed25519_signature(packed.data))
+    assert published.status_code == 200, published.text
+    message = refusal(act(hub, "sandbox", "install"), 409)
+    assert f"has id {MAX_PLUGIN_ID} on this hub" in message and f"below {MAX_PLUGIN_ID}" in message
+    shown = hub.client.get("/v1/plugins/sandbox", headers=hub.who[live.ADMIN]).json()
+    assert shown["installed_version"] is None
+
+
+@needs_pg
 def test_plugin_install_is_for_hub_admins_and_a_version_never_changes(hub):
     packed = bundle_of(hub.tmp / "v1")
     for method, path in (

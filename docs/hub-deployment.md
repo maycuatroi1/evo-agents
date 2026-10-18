@@ -114,7 +114,8 @@ Start from `deploy/hub/.env.example` and set every value in the platform's envir
    at least 32 random characters (`python -c 'import secrets; print(secrets.token_urlsafe(32))'`); the hub refuses a
    value an example ever showed. `EVO_HUB_PLUGIN_HOST_URL` takes the value of `.env.example`,
    `http://evo-agents-hub-plugins:8090`, the service's alias on the stack's own network. `EVO_HUB_PLUGINS_CPUS`,
-   `EVO_HUB_PLUGINS_MEMORY` and `EVO_HUB_PLUGINS_PIDS` cap every backend together (default `1`, `2g` and `512`).
+   `EVO_HUB_PLUGINS_MEMORY` and `EVO_HUB_PLUGINS_PIDS` cap every backend together (default `1`, `2g` and `2048`: fifteen backends at their own limit of 128 processes
+   leave 128 to the host).
    Without the token and the URL the hub runs, the store and core plugins work, and no isolated backend starts.
 4. **What the client uses besides**: the GitHub App that gives runs their tokens, the Curator's App, Telegram and
    Sentry, each as `docs/hub.md` says.

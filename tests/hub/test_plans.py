@@ -25,7 +25,7 @@ from evo_agents.harness import load_yaml, parse_yaml, plan_digest, validate_harn
 from evo_agents.hub import mirror
 from evo_agents.hub.client import Hub, HubError
 from evo_agents.hub.mirror import MIRROR_HEADER, export, read_plan, render
-from evo_agents.hub.plan_cli import complete_plan, import_plans, patch_item, put_file
+from evo_agents.hub.plan_cli import abandon_plan, complete_plan, import_plans, patch_item, put_file, reopen_plan
 from evo_agents.hub.plans import (
     MAX_PLAN_BYTES,
     PlanProblem,
@@ -211,6 +211,41 @@ def test_a_plan_is_complete_once_every_step_is_done():
     assert undone_steps(body) == []
     assert undone_steps({"id": "x", "steps": [{"what": "a", "status": "done"}, "bare"]}) == ["1"]
     assert undone_steps({"id": "x"}) == []
+
+
+def test_a_descoped_step_counts_as_closed_and_keeps_its_date_key():
+    body = draft()
+    body, _ = update_item(body, "steps", 0, {"status": "done"})
+    body, _ = update_item(body, "steps", 1, {"status": "descoped", "descoped_at": "2026-10-18"})
+    assert undone_steps(body) == ["3"]
+    body, _ = update_item(body, "steps", 2, {"status": "descoped"})
+    assert undone_steps(body) == []
+    plan = {**body, "status": "abandoned", "abandoned_at": "2026-10-18", "abandoned_reason": "x", "superseded_by": "y"}
+    assert not [i for i in validate_plan_issues(plan)]
+
+
+def validate_plan_issues(plan):
+    from evo_agents.harness import load_schema
+    from evo_agents.schema import validate
+
+    return validate(plan, load_schema("plan"))
+
+
+def test_abandoned_and_reopened_bodies():
+    from evo_agents.hub.plans import abandoned_body, reopened_body
+
+    body = draft()
+    gone = abandoned_body(body, "not needed", "2026-10-18")
+    assert (gone["status"], gone["abandoned_reason"], gone["abandoned_at"]) == ("abandoned", "not needed", "2026-10-18")
+    assert gone["steps"] == body["steps"] and "superseded_by" not in gone
+    swapped = abandoned_body(body, "replaced", "2026-10-18", "other")
+    assert (swapped["status"], swapped["superseded_by"]) == ("superseded", "other")
+    with pytest.raises(PlanProblem, match="reason"):
+        abandoned_body(body, "  ", "2026-10-18")
+    back = reopened_body(swapped)
+    assert back["status"] == "active" and not {"abandoned_at", "abandoned_reason", "superseded_by"} & set(back)
+    with pytest.raises(PlanProblem, match="nothing to reopen"):
+        reopened_body(body)
 
 
 @pytest.mark.parametrize(
@@ -878,6 +913,50 @@ def test_complete_needs_every_step_done_and_moves_the_plan_once(client, github, 
     # A completed plan still takes item updates, as a debt fixed after the plan closed.
     fixed = patch_item(alice, PROJECT, "rollout", "tech_debt", {"status": "fixed", "fixed_at": "2026-10-05"}, index=0)
     assert (fixed["area"], fixed["revision"]) == ("completed", 5)
+
+
+@needs_pg
+def test_abandon_and_reopen_move_the_plan_and_keep_step_statuses(client, github, hub_db):
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    assert put(alice, draft(steps=2)).status_code == 200
+    patch_item(alice, PROJECT, "rollout", "steps", {"status": "descoped", "descoped_at": "2026-10-18"}, step=1)
+    done = complete_plan.__module__  # complete still needs every step closed
+    with pytest.raises(HubError, match="steps that are not done: 2"):
+        complete_plan(alice, PROJECT, "rollout")
+    patch_item(alice, PROJECT, "rollout", "steps", {"status": "descoped"}, step=2)
+    assert complete_plan(alice, PROJECT, "rollout")["area"] == "completed" and done
+    # abandon a completed plan too, then it is stable
+    gone = abandon_plan(alice, PROJECT, "rollout", "dropped for good")
+    assert (gone["area"], gone["changed"], gone["body"]["status"]) == ("completed", True, "abandoned")
+    assert gone["body"]["abandoned_reason"] == "dropped for good" and gone["body"]["abandoned_at"]
+    assert [s["status"] for s in gone["body"]["steps"]] == ["descoped", "descoped"]
+    again = abandon_plan(alice, PROJECT, "rollout", "other")
+    assert again["changed"] is False and again["revision"] == gone["revision"]
+    back = reopen_plan(alice, PROJECT, "rollout")
+    assert (back["area"], back["body"]["status"], back["changed"]) == ("active", "active", True)
+    assert "abandoned_at" not in back["body"]
+    with pytest.raises(HubError, match="nothing to reopen") as refused:
+        reopen_plan(alice, PROJECT, "rollout")
+    assert refused.value.status == 409
+
+
+@needs_pg
+def test_abandon_supersede_needs_a_known_other_plan(client, github, hub_db):
+    hubs = setup_project(client, github)
+    alice = hubs["alice"]
+    assert put(alice, draft()).status_code == 200
+    with pytest.raises(HubError) as missing:
+        abandon_plan(alice, PROJECT, "rollout", "replaced", "nope")
+    assert missing.value.status == 404
+    with pytest.raises(HubError) as itself:
+        abandon_plan(alice, PROJECT, "rollout", "replaced", "rollout")
+    assert itself.value.status == 422
+    other = {**draft(), "id": "rollout-v2"}
+    assert put(alice, other).status_code == 200
+    swapped = abandon_plan(alice, PROJECT, "rollout", "replaced", "rollout-v2")
+    assert (swapped["body"]["status"], swapped["body"]["superseded_by"]) == ("superseded", "rollout-v2")
+    assert alice.call("GET", plan_url("rollout", "revisions"))[0]["summary"].startswith("superseded:")
 
 
 @needs_pg

@@ -150,7 +150,8 @@ async def _report(host: Host, puller: Puller) -> None:
 
 async def reconcile(host: Host, puller: Puller) -> None:
     """Pull the installed isolated plugins, place or update each backend and start it in the background; stop those
-    no longer installed; report the status afterwards."""
+    no longer installed, in the background too (``Host.retire``), so no plugin's stop holds the loop that keeps the
+    others running; report the status afterwards."""
     try:
         plugins = await puller.plugins()
     except Exception as exc:  # the hub may be down; keep the backends as they are and try again later
@@ -169,7 +170,7 @@ async def reconcile(host: Host, puller: Puller) -> None:
         host.place(manifest, data, item["init"])
     for name in list(host.backends):
         if name not in wanted:
-            await host.backends.pop(name).stop()
+            host.retire(name)
     host.kick_all()
     await _report(host, puller)
 
