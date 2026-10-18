@@ -145,13 +145,17 @@ pids limit. What a pass cannot catch is a chain of processes each forking the ne
 **killer** then calls `kill(-1)`, which reaches every process its user may signal at once (a fork under way fails
 rather than leave a child). The killer's effective user is the plugin's, so it may signal every process of the plugin,
 but its real and saved user is one of its own (100000 plus the plugin's id), so no process of the plugin may signal
-it; whatever it meets, it is killed after 10 seconds and its round fails. Placing runs in a thread that cancelling a
-start does not end, so stopping also kills pip and waits for that thread, and the backend that replaces one, under the
-same user, starts only then. A plugin no longer installed is stopped in the background, so its stop holds neither the
-loop that keeps the other plugins running nor any of them; while processes of its user outlive that stop, the host
-kills them again with a backoff until `/proc` shows none, and its state in the host's status, which reaches
-`GET /v1/plugins/{name}/backend`, says so. A start that cannot kill every process of the plugin's user places nothing
-and starts nothing: it backs off. Why a backend is down, a failed start's text included, is for a hub admin, in the
+it; whatever it meets, it is killed after 10 seconds and its round fails. One kill gives up after 30 seconds in all,
+however many processes escape its rounds, and the caller tries again on its own schedule. A child a backend makes
+with `clone(CLONE_PARENT)` is the host's child, which nothing else waits for: once it has ended, the host reaps it
+when it stops the backend and before the next start, so it holds no pid, nor one of the processes the user's limit
+allows. Placing runs in a thread that cancelling a start does not end, so stopping also kills pip and waits for that
+thread, and the backend that replaces one, under the same user, starts only then. A plugin no longer installed is
+stopped in the background, so its stop holds neither the loop that keeps the other plugins running nor any of them;
+while processes of its user outlive that stop, or the stop fails with an error, the host kills them again with a
+backoff until `/proc` shows none, and its state in the host's status, which reaches `GET /v1/plugins/{name}/backend`,
+says so. A start that cannot kill every process of the plugin's user places nothing and starts nothing: it backs
+off. Why a backend is down, a failed start's text included, is for a hub admin, in the
 backend's status; a project member calling the plugin reads only that its backend is not running now.
 
 The doors a secret could leave by, and what shuts each:
