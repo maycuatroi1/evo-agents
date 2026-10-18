@@ -26,7 +26,7 @@ type Props = MessageActions & {
  * while the visitor reads at the end, and offers Jump to the latest when they scrolled up. Earlier messages load on
  * demand, a page at a time.
  */
-export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onThread, reacting }: Props) {
+export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onThread, reacting, under }: Props) {
   const t = useTranslations("chats.messages");
   const format = useFormatter();
   const messages = mainMessages(feed);
@@ -105,6 +105,7 @@ export function MessageList({ chat, me, feed, highlight, loadOlder, onReact, onT
                     onReact={onReact}
                     onThread={onThread}
                     reacting={reacting}
+                    under={under}
                   />
                 </Fragment>
               );

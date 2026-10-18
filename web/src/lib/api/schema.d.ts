@@ -1389,6 +1389,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/runs/{run_id}/rerun-candidates": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Run Candidates
+         * @description The workers of the run's owner and the agent profiles of the project that could run a failed run again, each
+         *     with why it fits or why not, the best first; the owner's alone (403 for another member), 409 for a run that did
+         *     not fail.
+         */
+        get: operations["run_candidates_v1_projects__project__runs__run_id__rerun_candidates_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project}/runs": {
         parameters: {
             query?: never;
@@ -3519,6 +3541,71 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/triage/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rerun
+         * @description Run the failed run of this triage thread again for its owner, inside the frame; 422 for a cause with no
+         *     automatic rerun, 409 when the chain of reruns, the chat's budget or an earlier rerun forbids it.
+         */
+        post: operations["rerun_v1_worker_runs__run_id__triage_rerun_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/triage/plan": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Edit Plan
+         * @description Change the ``verify`` or narrow the ``what`` of a pending step of the failed run's plan for its owner, as a new
+         *     revision under their name, inside the frame (``triage_rules.edit_problems``); with ``rerun`` the failed step is run
+         *     again in the same transaction, and a refused rerun leaves the plan as it was.
+         */
+        post: operations["edit_plan_v1_worker_runs__run_id__triage_plan_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/triage/invite": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Invite
+         * @description Invite the agent ``handle`` of another project, one the failed run's error names, into the chat of this thread
+         *     for the run's owner; 422 for an agent of no project the error names, 409 (said in the thread too) when the owner is
+         *     no writer of its project or the chat's label or size forbids it.
+         */
+        post: operations["invite_v1_worker_runs__run_id__triage_invite_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/plugins": {
         parameters: {
             query?: never;
@@ -4303,6 +4390,23 @@ export interface components {
              */
             held_by: components["schemas"]["HeldBy"][];
         };
+        /** AccountCandidate */
+        AccountCandidate: {
+            /** Name */
+            name: string;
+            /**
+             * State
+             * @description ready, cooling, paused or expired
+             */
+            state: string;
+            /**
+             * Workers
+             * @description the workers it is bound to for the project; any for every worker
+             */
+            workers: string[];
+            /** Used By Run */
+            used_by_run: boolean;
+        };
         /** AccountChange */
         AccountChange: {
             /**
@@ -4553,6 +4657,31 @@ export interface components {
              * @description empty for mode all
              */
             allow?: string[];
+        };
+        /** AgentCandidate */
+        AgentCandidate: {
+            /** Profile Id */
+            profile_id: number;
+            /** Handle */
+            handle: string;
+            /** Name */
+            name: string;
+            /** Is Default */
+            is_default: boolean;
+            /** Fit */
+            fit: boolean;
+            /**
+             * Rank
+             * @description 1 for the best fit agent; null for one that is no fit
+             */
+            rank: number | null;
+            /** Reasons */
+            reasons: string[];
+            /**
+             * Project
+             * @description the project the agent belongs to: the run's, or another one its error names
+             */
+            project: string;
         };
         /** AgentChatIn */
         AgentChatIn: {
@@ -7465,7 +7594,7 @@ export interface components {
              * @default question
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
             /** Question */
             question: string;
             /**
@@ -8101,6 +8230,28 @@ export interface components {
             label: string;
             /** Description */
             description?: string | null;
+        };
+        /** OtherProject */
+        OtherProject: {
+            /** Project */
+            project: string;
+            /**
+             * Role
+             * @description the owner's role there; null when they hold no grant
+             */
+            role: string | null;
+            /**
+             * Named
+             * @description what the run's error names that points at this project
+             */
+            named: string;
+            /**
+             * Fit
+             * @description true when the owner is a writer there, so its agents may be asked
+             */
+            fit: boolean;
+            /** Reasons */
+            reasons: string[];
         };
         /** Overview */
         Overview: {
@@ -10006,6 +10157,38 @@ export interface components {
              * @default false
              */
             account_by_rule: boolean;
+        };
+        /** RerunCandidates */
+        RerunCandidates: {
+            /** Run Id */
+            run_id: number;
+            /** Project */
+            project: string;
+            /** Kind */
+            kind: string;
+            /** State */
+            state: string;
+            /** Failure Cause */
+            failure_cause: string | null;
+            /** Workers */
+            workers: components["schemas"]["WorkerCandidate"][];
+            /** Agents */
+            agents: components["schemas"]["AgentCandidate"][];
+            /** Accounts */
+            accounts: components["schemas"]["AccountCandidate"][];
+            /**
+             * Other Projects
+             * @description projects the run's error names, with the owner's grant on each
+             */
+            other_projects?: components["schemas"]["OtherProject"][];
+            /**
+             * Cause Inferred
+             * @description true when the hub guessed failure_cause from the error
+             * @default false
+             */
+            cause_inferred: boolean;
+            /** @description the thread the hub opened for the failure, if any */
+            triage?: components["schemas"]["TriageThread"] | null;
         };
         /** Results */
         Results: {
@@ -12377,6 +12560,151 @@ export interface components {
              */
             duration_ms: number;
         };
+        /** TriageActed */
+        TriageActed: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /**
+             * Run Id
+             * @description the run queued again; null for a plan edit without a rerun
+             */
+            run_id: number | null;
+            /**
+             * Plan Revision
+             * @description the revision the edit wrote; null for a rerun alone
+             */
+            plan_revision: number | null;
+        };
+        /** TriageInviteIn */
+        TriageInviteIn: {
+            /**
+             * Handle
+             * @description the agent's handle, @ left out
+             */
+            handle: string;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** TriageInvited */
+        TriageInvited: {
+            /**
+             * Message Id
+             * @description the Decision: line the hub posted in the thread, in the agent's name
+             */
+            message_id: number;
+            /**
+             * Project
+             * @description the project of the agent invited
+             */
+            project: string;
+            /**
+             * Added
+             * @description false when the agent was in the chat already
+             */
+            added: boolean;
+        };
+        /** TriagePlanIn */
+        TriagePlanIn: {
+            /**
+             * Worker
+             * @description a worker of the owner, by name; a fit candidate
+             */
+            worker?: string | null;
+            /**
+             * Runtime
+             * @description a runtime that worker has, for the rerun
+             */
+            runtime?: string | null;
+            /**
+             * Account
+             * @description one of the owner's accounts ready on that worker
+             */
+            account?: string | null;
+            /**
+             * Cause Confirmed
+             * @description true after the agent read the run's log and the cause the hub guessed is the right one
+             * @default false
+             */
+            cause_confirmed: boolean;
+            /**
+             * Step
+             * @description the step's id, a step that is pending
+             */
+            step: string;
+            /**
+             * Verify
+             * @description the new verify: no command fewer
+             */
+            verify?: string | null;
+            /**
+             * What
+             * @description the new what: shorter than the old one
+             */
+            what?: string | null;
+            /**
+             * If Revision
+             * @description the revision of the plan the edit was made against
+             */
+            if_revision: number;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+            /**
+             * Rerun
+             * @description run the failed step again once the plan is edited, in the same step
+             * @default false
+             */
+            rerun: boolean;
+        };
+        /** TriageRerunIn */
+        TriageRerunIn: {
+            /**
+             * Worker
+             * @description a worker of the owner, by name; a fit candidate
+             */
+            worker?: string | null;
+            /**
+             * Runtime
+             * @description a runtime that worker has, for the rerun
+             */
+            runtime?: string | null;
+            /**
+             * Account
+             * @description one of the owner's accounts ready on that worker
+             */
+            account?: string | null;
+            /**
+             * Cause Confirmed
+             * @description true after the agent read the run's log and the cause the hub guessed is the right one
+             * @default false
+             */
+            cause_confirmed: boolean;
+            /**
+             * Reason
+             * @description why, for the Decision: line
+             */
+            reason: string;
+        };
+        /** TriageThread */
+        TriageThread: {
+            /** Chat Id */
+            chat_id: number;
+            /** Root Message Id */
+            root_message_id: number;
+            /**
+             * Link
+             * @description the web page of the thread, /chats/ID?message=ID
+             */
+            link: string;
+        };
         /** UploadItem */
         UploadItem: {
             /**
@@ -12676,6 +13004,54 @@ export interface components {
             drained_at: string | null;
             /** Revoked At */
             revoked_at: string | null;
+        };
+        /** WorkerCandidate */
+        WorkerCandidate: {
+            /** Worker Id */
+            worker_id: number;
+            /** Worker */
+            worker: string;
+            /** Fit */
+            fit: boolean;
+            /**
+             * Rank
+             * @description 1 for the best fit worker; null for one that is no fit
+             */
+            rank: number | null;
+            /**
+             * Reasons
+             * @description what makes it fit, or each thing that makes it not
+             */
+            reasons: string[];
+            /**
+             * Is Run Worker
+             * @description the worker the failed run was on
+             */
+            is_run_worker: boolean;
+            /** Online */
+            online: boolean;
+            /**
+             * Free Slots
+             * @description slots left, the runs queued for the worker counted
+             */
+            free_slots: number;
+            /**
+             * Runtimes
+             * @description the runtimes it reports available that the run's profile allows
+             */
+            runtimes: string[];
+            /**
+             * Models
+             * @description the models those runtimes list on the machine
+             */
+            models: string[];
+            /** Labels */
+            labels: string[];
+            /**
+             * Accounts
+             * @description the accounts bound to the project that are ready on it
+             */
+            accounts: string[];
         };
         /** WorkerCounts */
         WorkerCounts: {
@@ -17676,6 +18052,74 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    run_candidates_v1_projects__project__runs__run_id__rerun_candidates_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RerunCandidates"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };
@@ -25515,6 +25959,228 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    rerun_v1_worker_runs__run_id__triage_rerun_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageRerunIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    edit_plan_v1_worker_runs__run_id__triage_plan_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriagePlanIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageActed"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    invite_v1_worker_runs__run_id__triage_invite_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TriageInviteIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TriageInvited"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

@@ -4941,7 +4941,9 @@
           "workers",
           "agents",
           "accounts",
-          "other_projects"
+          "other_projects",
+          "cause_inferred",
+          "triage"
         ],
         "schema": "RerunCandidates"
       }
@@ -43370,6 +43372,23 @@
               "type": "array",
               "title": "Other Projects",
               "description": "projects the run's error names, with the owner's grant on each"
+            },
+            "cause_inferred": {
+              "type": "boolean",
+              "title": "Cause Inferred",
+              "description": "true when the hub guessed failure_cause from the error",
+              "default": false
+            },
+            "triage": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TriageThread"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the thread the hub opened for the failure, if any"
             }
           },
           "type": "object",
@@ -48864,6 +48883,30 @@
             "reason"
           ],
           "title": "TriageRerunIn"
+        },
+        "TriageThread": {
+          "properties": {
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "root_message_id": {
+              "type": "integer",
+              "title": "Root Message Id"
+            },
+            "link": {
+              "type": "string",
+              "title": "Link",
+              "description": "the web page of the thread, /chats/ID?message=ID"
+            }
+          },
+          "type": "object",
+          "required": [
+            "chat_id",
+            "root_message_id",
+            "link"
+          ],
+          "title": "TriageThread"
         },
         "UploadItem": {
           "properties": {

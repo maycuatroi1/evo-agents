@@ -190,3 +190,24 @@ def test_a_run_of_another_kind_opens_no_thread(client, hub, hub_db, kind):
 
     assert client.portal.call(again) is None
     assert count(hub_db, tables.run_triage) == 0
+
+
+def test_the_candidates_of_a_failed_run_say_whether_the_cause_was_guessed_and_where_its_thread_is(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    said = failed_step(client, hub, worker)
+    ((chat_id, root_id, *_),) = row_of(hub_db, said)
+    url = f"/v1/projects/{PROJECT}/runs/{said}/rerun-candidates"
+    answer = client.get(url, headers=hub["owner"]).json()
+    assert answer["cause_inferred"] is False
+    assert answer["triage"] == {
+        "chat_id": chat_id,
+        "root_message_id": root_id,
+        "link": f"/chats/{chat_id}?message={root_id}",
+    }
+
+
+def test_the_candidates_of_a_run_whose_cause_the_hub_guessed_say_so(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    guessed = failed_step(client, hub, worker, cause=None, error="verify command `pytest` exited 1")
+    answer = client.get(f"/v1/projects/{PROJECT}/runs/{guessed}/rerun-candidates", headers=hub["owner"]).json()
+    assert answer["cause_inferred"] is True and answer["triage"] is not None

@@ -334,7 +334,8 @@
       "parksIn": "parks in {duration}",
       "parked": "parked <time></time>",
       "more": "{count, plural, one {# more in the inbox} other {# more in the inbox}}",
-      "whereAuthor": "{project}, author run{titled, select, yes {: {title}} other {}}"
+      "whereAuthor": "{project}, author run{titled, select, yes {: {title}} other {}}",
+      "whereTriage": "{project}, triage of a failed run"
     },
     "flight": {
       "title": "In flight",
@@ -3563,6 +3564,96 @@
         "steadyOthers": "Any other worker that can take it takes it now.",
         "steadyPinned": "The run is pinned to {worker}, so no other worker takes it."
       },
+      "triage": {
+        "title": "Why it failed",
+        "openThread": "Open triage thread",
+        "noCause": "The hub has no cause for this failure.",
+        "guessed": "Guess",
+        "guessedNote": "The hub guessed it from the error text; no worker named it.",
+        "candidatesFailed": "The candidates could not be read.",
+        "noThread": "No triage thread was opened for this run.",
+        "candidates": "Who could run it again",
+        "candidatesSummary": "{fitWorkers} of {workers} workers, {fitAgents} of {agents} agents fit",
+        "workers": "Workers",
+        "agents": "Agents",
+        "otherProjects": "Other projects",
+        "noWorkers": "No worker is registered for this project.",
+        "noAgents": "No agent is set up for this project.",
+        "fitRank": "Fit, #{rank}",
+        "fit": "Fit",
+        "noFit": "No fit",
+        "runWorker": "Ran it",
+        "offline": "Offline",
+        "defaultAgent": "Default",
+        "otherNamed": "Named in the project's settings: {named}",
+        "noGrant": "No grant",
+        "cause": {
+          "origin": {
+            "label": "Repository origin",
+            "hint": "The worker could not reach or use the repository's origin."
+          },
+          "credentials": {
+            "label": "Credentials",
+            "hint": "The worker had no credentials the run needed."
+          },
+          "missing_tool": {
+            "label": "Missing tool",
+            "hint": "A tool the run needs is not installed on the worker."
+          },
+          "push_conflict": {
+            "label": "Push conflict",
+            "hint": "The branch moved on the origin and the push was refused."
+          },
+          "verify_failed": {
+            "label": "Verify failed",
+            "hint": "The step's verify command did not pass."
+          },
+          "timeout": {
+            "label": "Timed out",
+            "hint": "The run took longer than its time limit."
+          },
+          "cost_cap": {
+            "label": "Cost cap",
+            "hint": "The run reached its spending cap."
+          },
+          "turn_cap": {
+            "label": "Turn cap",
+            "hint": "The agent used all the turns it was given."
+          },
+          "time_cap": {
+            "label": "Time cap",
+            "hint": "The run reached its time cap."
+          },
+          "checkout": {
+            "label": "Checkout",
+            "hint": "The worker could not check out the repository."
+          },
+          "runtime": {
+            "label": "Runtime error",
+            "hint": "The agent's runtime stopped with an error."
+          },
+          "worker_stopped": {
+            "label": "Worker stopped",
+            "hint": "The worker went away while the run was in flight."
+          },
+          "branch_mismatch": {
+            "label": "Branch mismatch",
+            "hint": "The checkout was not on the branch the run expected."
+          },
+          "rate_limit": {
+            "label": "Rate limit",
+            "hint": "The account hit its rate limit."
+          },
+          "account_auth": {
+            "label": "Account sign-in",
+            "hint": "The agent's account is not signed in on the worker."
+          },
+          "other": {
+            "label": "Other cause",
+            "hint": "The hub has no name for this cause."
+          }
+        }
+      },
       "errors": {
         "forbidden": "The hub refused: only the member who dispatched the run can steer it, and approve and rerun need the writer role.",
         "notFound": "The run can no longer be read: its plan left the hub, or you lost access to it.",
@@ -4021,7 +4112,8 @@
       "fewerCommits": "Show fewer",
       "answerProposalLabel": "Answer proposal #{id}",
       "viewProposalLabel": "View proposal #{id}",
-      "openProposal": "Open proposal #{id}"
+      "openProposal": "Open proposal #{id}",
+      "openTriage": "Open triage thread"
     },
     "sheet": {
       "title": "Decision #{id}",
@@ -4063,7 +4155,9 @@
       "showLess": "Show less",
       "agentsPick": "Agent's pick",
       "authorRunLink": "Author run #{id}",
-      "authorRun": "author run #{id}"
+      "authorRun": "author run #{id}",
+      "triageRunLink": "Triage run #{id}",
+      "triageRun": "triage run #{id}"
     },
     "answer": {
       "title": "Answer decision #{id}",

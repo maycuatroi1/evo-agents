@@ -334,7 +334,8 @@
       "parksIn": "tạm gác sau {duration}",
       "parked": "tạm gác <time></time>",
       "more": "{count, plural, other {còn # quyết định trong Inbox}}",
-      "whereAuthor": "{project}, author run{titled, select, yes {: {title}} other {}}"
+      "whereAuthor": "{project}, author run{titled, select, yes {: {title}} other {}}",
+      "whereTriage": "{project}, xử lý một run lỗi"
     },
     "flight": {
       "title": "Đang diễn ra",
@@ -3563,6 +3564,96 @@
         "steadyOthers": "Worker khác nhận được run này thì nhận ngay.",
         "steadyPinned": "Run này được ghim vào {worker}, nên không worker nào khác nhận nó."
       },
+      "triage": {
+        "title": "Vì sao run thất bại",
+        "openThread": "Mở thread xử lý lỗi",
+        "noCause": "Hub chưa có nguyên nhân cho lỗi này.",
+        "guessed": "Suy đoán",
+        "guessedNote": "Hub suy ra từ nội dung lỗi; không worker nào nêu nguyên nhân.",
+        "candidatesFailed": "Không đọc được danh sách ứng viên.",
+        "noThread": "Chưa có thread xử lý lỗi cho run này.",
+        "candidates": "Ai có thể chạy lại",
+        "candidatesSummary": "{fitWorkers}/{workers} worker, {fitAgents}/{agents} agent phù hợp",
+        "workers": "Worker",
+        "agents": "Agent",
+        "otherProjects": "Dự án khác",
+        "noWorkers": "Dự án này chưa có worker nào.",
+        "noAgents": "Dự án này chưa có agent nào.",
+        "fitRank": "Phù hợp, #{rank}",
+        "fit": "Phù hợp",
+        "noFit": "Không phù hợp",
+        "runWorker": "Đã chạy run này",
+        "offline": "Offline",
+        "defaultAgent": "Mặc định",
+        "otherNamed": "Được nêu trong cài đặt dự án: {named}",
+        "noGrant": "Không có quyền",
+        "cause": {
+          "origin": {
+            "label": "Origin của repo",
+            "hint": "Worker không truy cập được origin của repo."
+          },
+          "credentials": {
+            "label": "Thông tin xác thực",
+            "hint": "Worker thiếu thông tin xác thực mà run cần."
+          },
+          "missing_tool": {
+            "label": "Thiếu công cụ",
+            "hint": "Worker chưa cài một công cụ mà run cần."
+          },
+          "push_conflict": {
+            "label": "Xung đột khi push",
+            "hint": "Nhánh trên origin đã đổi nên lần push bị từ chối."
+          },
+          "verify_failed": {
+            "label": "Verify không đạt",
+            "hint": "Lệnh verify của bước không đạt."
+          },
+          "timeout": {
+            "label": "Quá thời gian",
+            "hint": "Run chạy lâu hơn giới hạn thời gian."
+          },
+          "cost_cap": {
+            "label": "Trần chi phí",
+            "hint": "Run đã chạm trần chi phí."
+          },
+          "turn_cap": {
+            "label": "Trần số lượt",
+            "hint": "Agent đã dùng hết số lượt được cấp."
+          },
+          "time_cap": {
+            "label": "Trần thời gian",
+            "hint": "Run đã chạm trần thời gian."
+          },
+          "checkout": {
+            "label": "Checkout",
+            "hint": "Worker không checkout được repo."
+          },
+          "runtime": {
+            "label": "Lỗi runtime",
+            "hint": "Runtime của agent dừng vì lỗi."
+          },
+          "worker_stopped": {
+            "label": "Worker đã dừng",
+            "hint": "Worker biến mất khi run đang chạy."
+          },
+          "branch_mismatch": {
+            "label": "Sai nhánh",
+            "hint": "Bản checkout không ở nhánh mà run mong đợi."
+          },
+          "rate_limit": {
+            "label": "Chạm giới hạn tốc độ",
+            "hint": "Tài khoản đã chạm giới hạn tốc độ."
+          },
+          "account_auth": {
+            "label": "Đăng nhập tài khoản",
+            "hint": "Tài khoản của agent chưa đăng nhập trên worker."
+          },
+          "other": {
+            "label": "Nguyên nhân khác",
+            "hint": "Hub chưa có tên cho nguyên nhân này."
+          }
+        }
+      },
       "errors": {
         "forbidden": "Hub từ chối: chỉ người dispatch run mới điều khiển được run, và duyệt hay chạy lại cần quyền ghi.",
         "notFound": "Không đọc được run nữa: plan của nó đã rời hub, hoặc bạn mất quyền truy cập.",
@@ -4021,7 +4112,8 @@
       "fewerCommits": "Thu gọn",
       "answerProposalLabel": "Trả lời đề xuất #{id}",
       "viewProposalLabel": "Xem đề xuất #{id}",
-      "openProposal": "Mở đề xuất #{id}"
+      "openProposal": "Mở đề xuất #{id}",
+      "openTriage": "Mở thread xử lý lỗi"
     },
     "sheet": {
       "title": "Quyết định #{id}",
@@ -4063,7 +4155,9 @@
       "showLess": "Thu gọn",
       "agentsPick": "Agent đề xuất",
       "authorRunLink": "Author run #{id}",
-      "authorRun": "author run #{id}"
+      "authorRun": "author run #{id}",
+      "triageRunLink": "Run xử lý lỗi #{id}",
+      "triageRun": "run xử lý lỗi #{id}"
     },
     "answer": {
       "title": "Trả lời quyết định #{id}",

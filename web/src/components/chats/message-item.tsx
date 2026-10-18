@@ -2,7 +2,7 @@
 
 import { MessageSquareReply } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import type { Ref } from "react";
+import type { ReactNode, Ref } from "react";
 
 import { SafeMarkdown } from "@/components/data/markdown";
 import { Button } from "@/components/ui/button";
@@ -20,7 +20,11 @@ export type MessageActions = {
   onThread?: (root: number) => void;
   /** The message whose reaction the hub is writing now. */
   reacting: number | null;
+  /** What the page puts under a message (the decisions its agent's run asked): the chat knows nothing of it. */
+  under?: MessageSlot;
 };
+
+export type MessageSlot = (message: GroupMessage) => ReactNode;
 
 type Props = MessageActions & {
   message: GroupMessage;
@@ -40,7 +44,7 @@ type Props = MessageActions & {
  * for a message that starts a thread, how many replies it has, who wrote them, and a way into it. React and Reply in
  * thread sit at its top right, shown while the pointer is over it or a key is in it, always on touch screens.
  */
-export function MessageItem({ message, chat, me, thread, highlighted = false, domId, onReact, onThread, reacting, ref }: Props) {
+export function MessageItem({ message, chat, me, thread, highlighted = false, domId, onReact, onThread, reacting, under, ref }: Props) {
   const t = useTranslations("chats.message");
   const format = useFormatter();
   const created = new Date(message.created_at);
@@ -79,6 +83,7 @@ export function MessageItem({ message, chat, me, thread, highlighted = false, do
           {message.body}
         </SafeMarkdown>
         <MessageLinks message={message} chat={chat} />
+        {under?.(message)}
         {/* The reactions, then React and Reply in thread: in the same row under 768 px; from 768 px those two sit over
             the message's top right corner, shown while the pointer is over it, a key is in it or its picker is open. */}
         <div className="flex flex-wrap items-center gap-1.5 md:contents">

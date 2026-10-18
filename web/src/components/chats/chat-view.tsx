@@ -22,8 +22,10 @@ import { type ChatPage, chatsHref, type GroupMessage } from "@/lib/chats";
 
 import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
+import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
 import { MembersSheet } from "./members-sheet";
+import { type MessageSlot } from "./message-item";
 import { MessageList } from "./message-list";
 import { ThreadPanel } from "./thread-panel";
 import { useChatFeed } from "./use-chat-feed";
@@ -33,15 +35,22 @@ const CARD = "flex min-h-0 flex-col overflow-hidden rounded-md border bg-card sh
 const THREAD_COLUMN_QUERY = "(min-width: 96rem)";
 
 /**
+ * What the page under src/app puts under a message, a hook of the live feed and whether the chat has ended: the chat
+ * leaves the decisions of its agents' runs to the page, which composes the chat and the inbox's card.
+ */
+export type UseUnder = (feed: Feed, ended: boolean) => MessageSlot | undefined;
+const useNothingUnder: UseUnder = () => undefined;
+
+/**
  * A chat's page (web/DESIGN.md, Chats): its head, its messages, live, and the composer; a thread beside it from 2xl
  * (beside the sidebar and the list, a third column needs that much) or in a sheet below; its members in a sheet. `?thread=ID` opens a thread, and `?message=ID` (where a notice links)
  * shows that message marked, in its thread when it is a reply.
  */
-export function ChatView({ chatId, initialError }: { chatId: number; initialError: ApiErrorInfo | null }) {
+export function ChatView({ chatId, initialError, useUnder = useNothingUnder }: { chatId: number; initialError: ApiErrorInfo | null; useUnder?: UseUnder }) {
   const state = useHubQuery(chatPageQuery(browserApi, chatId), initialError);
   return (
     <QueryView state={state} loading={<ChatLoading />}>
-      {(page) => <Conversation key={chatId} page={page} />}
+      {(page) => <Conversation key={chatId} page={page} useUnder={useUnder} />}
     </QueryView>
   );
 }
@@ -59,7 +68,7 @@ function numberParam(value: string | null): number | null {
   return value && /^[1-9][0-9]{0,17}$/.test(value) ? Number(value) : null;
 }
 
-function Conversation({ page }: { page: ChatPage }) {
+function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }) {
   const t = useTranslations("chats.view");
   const queryClient = useQueryClient();
   const params = useSearchParams();
@@ -115,6 +124,7 @@ function Conversation({ page }: { page: ChatPage }) {
   const onReact = (message: GroupMessage, emoji: string, on: boolean) => react.mutate({ message, emoji, on });
 
   const ended = live.ended !== null;
+  const under = useUnder(live.feed, ended);
   const panel =
     thread !== null ? (
       <ThreadPanel
@@ -130,6 +140,7 @@ function Conversation({ page }: { page: ChatPage }) {
         readOnly={ended}
         onReact={onReact}
         reacting={reacting}
+        under={under}
         className={wide ? `${CARD} w-[26rem] shrink-0` : "h-full"}
       />
     ) : null;
@@ -147,6 +158,7 @@ function Conversation({ page }: { page: ChatPage }) {
           onReact={onReact}
           onThread={openThread}
           reacting={reacting}
+          under={under}
         />
         {ended ? (
           <div role="alert" className="flex flex-wrap items-start gap-3 border-t bg-surface-sunken px-4 py-3 text-sm" data-testid="chat-ended">

@@ -271,7 +271,8 @@ const PAGES: Entry[] = [
       const main = page.locator("#main");
       await expect(main.getByTestId("flight-item")).toHaveCount(1);
       await expect(main.getByTestId("monitor-tile")).toHaveCount(2);
-      await expect(main.getByTestId("tile-line")).toHaveCount(2);
+      // The live tile's two lines, and the ended tile's one: the hub's note that it guessed the failure's cause.
+      await expect(main.getByTestId("tile-line")).toHaveCount(3);
     },
   },
   {
