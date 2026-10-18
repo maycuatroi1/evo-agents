@@ -108,6 +108,7 @@ from evo_agents.hub.server import (
 )
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import error_response
+from evo_agents.hub.server.mcp_text import TEXT_CHARS, digest_json, event_lines, fit_digest, one_line
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (
     JOIN_HINT,
@@ -120,7 +121,7 @@ from evo_agents.hub.server.security import (
     RunScope,
     authenticate,
 )
-from evo_agents.kg.serve import CAP_CHARS, Session, _error, for_model, wants_data
+from evo_agents.kg.serve import Session, _error, for_model, wants_data
 from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
@@ -134,10 +135,6 @@ SESSION = "evo_mcp"  # the key of McpSession in request.state
 SHOWN_PROBLEMS = 5
 ASK_WAIT_SECONDS = 20  # ask_member holds this long for an answer, well inside the proxy's 120 s and a tool's deadline
 EXCERPT = 200  # characters of a memory shown by memory_search
-# Characters of the text of digest_show and run_events, under the envelope's cut: the Curator's review reads them
-# whole, without kg_more, and the spool hook leaves the tools of evo-hub whole.
-TEXT_CHARS = CAP_CHARS - 1_000
-EVENT_CHARS = 500  # characters of one event's line in run_events
 PLAN_WIDTH = 110  # as the copies in git
 _PROJECT = re.compile(PROJECT_NAME)
 _SINK = re.compile(r"[^\x00-\x1f\x7f]{1,100}")
@@ -389,11 +386,6 @@ def _problems(exc: ValidationError) -> str:
     return "; ".join(found)
 
 
-def _one_line(text: str, limit: int = EXCERPT) -> str:
-    line = " ".join(text.split())
-    return line if len(line) <= limit else line[: limit - 3].rstrip() + "..."
-
-
 def _where(memory) -> str:
     if memory.scope == "project":
         return f"project {memory.project}, {memory.location}"
@@ -409,9 +401,9 @@ def _about(body: str) -> str:
     """The description of a memory's frontmatter, else the start of its text."""
     described = frontmatter(body).get("description")
     if isinstance(described, str) and described.strip():
-        return _one_line(described)
+        return one_line(described, EXCERPT)
     found = FRONTMATTER.match(body)
-    return _one_line(body[found.end() :] if found else body)
+    return one_line(body[found.end() :] if found else body, EXCERPT)
 
 
 class HubMcp(MCPServer):
@@ -803,7 +795,7 @@ class HubMcp(MCPServer):
         )
         lines = [
             f"{s.name} ({'global' if s.project is None else f'project {s.project}'}, version {s.version}): "
-            f"{_one_line(s.description)}"
+            f"{one_line(s.description, EXCERPT)}"
             for s in found
         ]
         data = {"skills": [s.model_dump(mode="json") for s in found], "summary": f"{len(found)} skills"}
@@ -931,13 +923,7 @@ class HubMcp(MCPServer):
             kind=list(dict.fromkeys(arguments.get("kinds") or [])),
             sink=caller.sink,
         )
-        lines, used = [], 0
-        for event in found.events:
-            line = f"{event.seq} {event.at:%H:%M:%S} {event.kind}: {_one_line(_event_text(event.body), EVENT_CHARS)}"
-            if lines and used + len(line) + 1 > TEXT_CHARS - 200:  # room for the first and last lines
-                break
-            lines.append(line)
-            used += len(line) + 1
+        lines = event_lines(found.events)
         found = found.model_copy(
             update={"events": found.events[: len(lines)], "more": found.more or len(lines) < len(found.events)}
         )
@@ -968,56 +954,11 @@ class HubMcp(MCPServer):
             answer = item.answer_option or ("text" if item.answer_text else "-")
             of = f"run #{item.run_id}, plan {item.plan_id}" if item.plan_id else f"run #{item.run_id}, no plan"
             lines.append(
-                f"#{item.id} {item.category} ({item.state}, {of}): {_one_line(item.question)}; answer {answer}"
+                f"#{item.id} {item.category} ({item.state}, {of}): {one_line(item.question, EXCERPT)}; answer {answer}"
             )
         text = "\n".join(lines) or f"no decision of project {project} matches"
         data = {"project": project, **found.model_dump(mode="json"), "summary": f"{found.total} decisions"}
         return text, data
-
-
-def digest_json(body: dict) -> str:
-    """A digest as JSON, one key on each line, its value on one line."""
-    fields = (f" {json.dumps(key)}: {json.dumps(value, ensure_ascii=False)}" for key, value in body.items())
-    return "{\n" + ",\n".join(fields) + "\n}"
-
-
-def fit_digest(body: dict, budget: int) -> tuple[dict, dict[str, int]]:
-    """``body`` with the last items of its longest lists left out until ``digest_json`` of it fits in ``budget``
-    characters, and how many items each list lost. A kept item keeps its index, which session:ID:FIELD:INDEX
-    evidence names; the lists put the most called tools, the most repeated commands and errors and the earliest
-    user_turns first (``evo_agents.hub.digest``), so their last items go."""
-    kept = dict(body)
-    while (excess := len(digest_json(kept)) - budget) > 0:
-        sizes = sorted(
-            (
-                (len(json.dumps(value, ensure_ascii=False)), key)
-                for key, value in kept.items()
-                if isinstance(value, list)
-            ),
-            reverse=True,
-        )
-        if not sizes or sizes[0][0] <= 2:  # nothing left to take off
-            break
-        (size, key), floor = sizes[0], (sizes[1][0] if len(sizes) > 1 else 0)
-        items = list(kept[key])
-        while items and excess > 0:
-            taken = len(json.dumps(items.pop(), ensure_ascii=False)) + 2
-            excess, size = excess - taken, size - taken
-            if size <= floor:  # another list is the longest now
-                break
-        kept[key] = items
-    left_out = {key: len(value) - len(kept[key]) for key, value in body.items() if isinstance(value, list)}
-    return kept, {key: n for key, n in left_out.items() if n}
-
-
-def _event_text(body: dict) -> str:
-    """What an event says, for one line: its text, the text of its content, else its JSON."""
-    if isinstance(body.get("text"), str):
-        return body["text"]
-    content = body.get("content")
-    if isinstance(content, dict) and isinstance(content.get("text"), str):
-        return content["text"]
-    return json.dumps(body, ensure_ascii=False, default=str)
 
 
 def _tool_line(tool) -> str:
