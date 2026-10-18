@@ -223,7 +223,7 @@ def test_whoever_reads_an_author_run_reads_its_decisions_on_the_list_the_page_ho
         )
         result = mcp_decisions(client, hub[name])
         text = result["content"][0]["text"]
-        assert f"#{found['id']} architecture (open, author run #{run_id}, no plan): {QUESTION}" in text, name
+        assert f"#{found['id']} architecture (open, run #{run_id}, no plan): {QUESTION}" in text, name
         assert "None" not in text and "null" not in text
     # a member who does not read the run reads none of its decisions; nor does someone without a grant
     assert client.get(f"/v1/projects/{PROJECT}/runs/{run_id}", headers=public_reader).status_code == 404

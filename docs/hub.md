@@ -617,8 +617,8 @@ hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (
 default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
 The agent asks and reports in the run's chat: `run chat` prints it, `run send` replies, and `run finish` ends it once
 the plan is as you want it (`docs/workers.md`, Author runs). On a worker whose daemon says `author_decisions`, the
-agent asks a question with options as a decision instead, which `hub decision list` shows as `author run #N` while
-the run has no plan and `hub decision answer` answers; the run waits for every decision of the turn, or a reply. The web does the same from New plan, Revise with agent and
+agent asks a question with options as a decision instead, which `hub decision list` shows with its run and no plan while
+the run has none and `hub decision answer` answers; the run waits for every decision of the turn, or a reply. The web does the same from New plan, Revise with agent and
 the run's Chat tab.
 
 Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
