@@ -34,7 +34,7 @@ type Props = Omit<MessageActions, "onThread"> & {
  * xl a column beside the chat; below xl the same panel in a sheet. It reads the whole thread once it opens (the chat's
  * page holds only its latest messages), and the chat's stream keeps it current after that.
  */
-export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSent, onClose, readOnly, onReact, reacting, className }: Props) {
+export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSent, onClose, readOnly, onReact, reacting, under, className }: Props) {
   const t = useTranslations("chats.thread");
   const [state, setState] = useState<"loading" | "ready" | "failed">("loading");
   const [attempt, setAttempt] = useState(0);
@@ -116,14 +116,14 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
           ) : (
             <ol className="flex flex-col gap-1">
               {first ? (
-                <ThreadItem message={first} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} />
+                <ThreadItem message={first} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} under={under} />
               ) : null}
               <li className="flex items-center gap-3 px-3 py-1 text-xs text-fg-subtle" data-testid="chat-thread-divider">
                 <span>{t("replies", { count })}</span>
                 <span aria-hidden="true" className="h-px flex-1 bg-border" />
               </li>
               {replies.map((message) => (
-                <ThreadItem key={message.id} message={message} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} />
+                <ThreadItem key={message.id} message={message} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} under={under} />
               ))}
               {state === "ready" && !replies.length ? (
                 <li className="px-3 py-2 text-sm text-muted-foreground" data-testid="chat-thread-empty">
@@ -165,7 +165,8 @@ function ThreadItem({
   highlight,
   onReact,
   reacting,
-}: Pick<Props, "chat" | "me" | "highlight" | "onReact" | "reacting"> & { message: GroupMessage }) {
+  under,
+}: Pick<Props, "chat" | "me" | "highlight" | "onReact" | "reacting" | "under"> & { message: GroupMessage }) {
   return (
     <MessageItem
       message={message}
@@ -174,6 +175,7 @@ function ThreadItem({
       highlighted={highlight === message.id}
       onReact={onReact}
       reacting={reacting}
+      under={under}
       domId={`thread-message-${message.id}`}
     />
   );

@@ -920,6 +920,10 @@ checkouts of the run's repos, the most free slots, the smallest id. Each agent p
 and `reasons` too: it is fit when the owner is a writer of the project, a worker can take a chat run of it, and, for
 `missing_tool`, it lets the agent run shell commands; the project's default comes first among the fit ones. The worker
 rules are the ones a chat run goes by (`pick_worker`, [Chat runs](#chat-runs)), kept in one place.
+The answer also says `cause_inferred` (true when `failure_cause` was guessed by the hub from the run's error text, as the
+system event `failure_cause_inferred` records, and no worker named it) and `triage` (`chat_id`, `root_message_id` and
+`link`, the web page `/chats/ID?message=ID` of the thread the hub opened for the run; null when it opened none). The
+run's page in the web shows both over its trace (web/DESIGN.md, Run detail).
 
 ### Reading runs
 

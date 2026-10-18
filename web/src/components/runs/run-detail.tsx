@@ -30,6 +30,7 @@ import { useRepoWeb } from "./links";
 import { CHAT_TAB, chatKey, decisionAnchor, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions } from "./run-actions";
 import { RunNotes } from "./run-notes";
+import { RunTriage } from "./run-triage";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
 import { LocalRunDetails } from "./local-run-details";
@@ -336,6 +337,7 @@ function RunPage({ run }: { run: Run }) {
         </RunActions>
       )}
       {screen || local ? null : <RunNotes run={run} controls={controls} />}
+      {screen || local ? null : <RunTriage run={run} owner={controls.owner} />}
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
       {/* Under 768 px: the decision, the trace's latest rows, then the details as flat sections, in the page's order. */}
       {overview ? decisionCard : null}

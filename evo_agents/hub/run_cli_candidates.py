@@ -21,6 +21,8 @@ CANDIDATES_KEYS = (
     "agents",
     "accounts",
     "other_projects",
+    "cause_inferred",
+    "triage",
 )
 
 

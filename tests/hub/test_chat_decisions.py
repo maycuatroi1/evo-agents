@@ -151,3 +151,16 @@ def test_a_reply_in_the_thread_resumes_a_parked_chat_run_with_its_decision_open(
         hub_db, select(tables.decisions.c.run_id, tables.decisions.c.state).where(tables.decisions.c.id == found["id"])
     )
     assert moved_to == [(new_id, "open")]
+
+
+def test_a_chat_run_decision_is_in_the_overview_and_the_notifications_of_its_owner(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    _, _, _, found = waiting_chat(client, hub, worker)
+    overview = client.get("/v1/me/overview", headers=hub["owner"]).json()
+    asked = [d for d in overview["open_decisions"] if d["id"] == found["id"]]
+    assert [(d["category"], d["yours"], d["run_state"]) for d in asked] == [("triage", True, "waiting")]
+    assert overview["counts"]["waiting_on_you"] >= 1
+    notes = client.get("/v1/me/notifications", headers=hub["owner"]).json()["notifications"]
+    assert [(n["kind"], n["decision_state"]) for n in notes if n["decision_id"] == found["id"]] == [
+        ("decision", "open")
+    ]

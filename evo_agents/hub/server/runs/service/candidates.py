@@ -20,12 +20,13 @@ from types import SimpleNamespace
 
 from fastapi import HTTPException
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, tables, triage_rules
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import account_state
+from evo_agents.hub.chats import chat_link
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.runs.service.controls import owned_run
@@ -78,6 +79,12 @@ class AccountCandidate(BaseModel):
     used_by_run: bool
 
 
+class TriageThread(BaseModel):
+    chat_id: int
+    root_message_id: int
+    link: str = Field(description="the web page of the thread, /chats/ID?message=ID")
+
+
 class RerunCandidates(BaseModel):
     run_id: int
     project: str
@@ -90,6 +97,8 @@ class RerunCandidates(BaseModel):
     other_projects: list[OtherProject] = Field(
         default_factory=list, description="projects the run's error names, with the owner's grant on each"
     )
+    cause_inferred: bool = Field(default=False, description="true when the hub guessed failure_cause from the error")
+    triage: TriageThread | None = Field(default=None, description="the thread the hub opened for the failure, if any")
 
 
 async def _run(conn: AsyncConnection, run_id: int):
@@ -358,7 +367,7 @@ async def rerun_candidates(engine, user: Principal, project: str, run_id: RunId)
         access, owned = await owned_run(conn, user, project, run_id, "list candidates for")
         if owned.state != "failed":
             raise HTTPException(409, f"run {run_id} is {owned.state}: only a failed run has candidates to run it again")
-        return await candidates_of(
+        found = await candidates_of(
             conn,
             project=access.name,
             project_id=access.project_id,
@@ -368,3 +377,22 @@ async def rerun_candidates(engine, user: Principal, project: str, run_id: RunId)
             state=owned.state,
             run_id=run_id,
         )
+        return found.model_copy(update=await _triage_fields(conn, run_id))
+
+
+async def _triage_fields(conn: AsyncConnection, run_id: int) -> dict:
+    """What the run's page needs beside the candidates: whether the hub guessed the cause, and the triage thread."""
+    t, e = tables.run_triage, tables.run_events
+    row = (
+        await conn.execute(select(t.c.chat_id, t.c.root_message_id, t.c.cause_inferred).where(t.c.run_id == run_id))
+    ).one_or_none()
+    if row is not None:
+        thread = TriageThread(
+            chat_id=row.chat_id, root_message_id=row.root_message_id, link=chat_link(row.chat_id, row.root_message_id)
+        )
+        return {"cause_inferred": row.cause_inferred, "triage": thread}
+    guessed = e.c.body["failure_cause_inferred"].astext == "true"
+    inferred = (
+        await conn.execute(select(exists().where(e.c.run_id == run_id, e.c.kind == "system", guessed)))
+    ).scalar()
+    return {"cause_inferred": bool(inferred), "triage": None}

@@ -275,6 +275,24 @@ test("when the stream cannot be used, the page reads the events instead", async 
   await expect(main(page).getByTestId("run-error-text")).toHaveText("the agent stopped");
 });
 
+test("a failed run shows its cause, a way into the triage thread and who could run it again", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const { project, live, run } = await runningRun(me);
+  await reportState(live, run.id, { state: "failed", error: "pnpm test exited 1", failure_cause: "verify_failed" });
+
+  await open(page, runPath(project, run.id));
+  const triage = main(page).getByTestId("run-triage");
+  await expect(triage).toBeVisible();
+  await expect(triage.getByTestId("run-triage-cause")).toHaveText("verify_failed");
+  await expect(triage.getByTestId("run-triage-guessed")).toHaveCount(0);
+  // The hub opens the thread when the project has a triage agent; with none, the page says so.
+  await expect(triage.getByTestId("run-triage-thread").or(triage.getByTestId("run-triage-no-thread"))).toBeVisible();
+  const candidates = triage.getByTestId("run-triage-candidates");
+  await expect(candidates).toBeVisible();
+  await candidates.locator("summary").click();
+  await expect(candidates.getByTestId("run-triage-worker").first()).toBeVisible();
+});
+
 test("Approve turns a run in review done, and the plan shows its step done", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const { project, live, run } = await runningRun(me);

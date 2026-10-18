@@ -158,7 +158,7 @@ function LiveDecision({
 const MAX_CHAT_DECISIONS = 200;
 
 /** Every decision of one run, in any state, newest first: an author run's chat shows them all. */
-const runDecisionsQuery = (api: ApiSource, project: string, runId: number) =>
+export const runDecisionsQuery = (api: ApiSource, project: string, runId: number) =>
   queryOptions({
     queryKey: ["projects", project, "decisions", { run: runId }] as const,
     queryFn: ({ signal }) =>

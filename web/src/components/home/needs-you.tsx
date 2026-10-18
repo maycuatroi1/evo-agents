@@ -29,6 +29,7 @@ const preloadSheet = () => void loadSheet();
 function useWhere(overview: Overview) {
   const t = useTranslations("home.needs");
   return (item: OverviewDecision) => {
+    if (item.category === "triage") return t("whereTriage", { project: item.project });
     if (item.plan_id === null) {
       const title = overview.active_runs.find((run) => run.project === item.project && run.id === item.run_id)?.title ?? null;
       return t("whereAuthor", { project: item.project, title: title ?? "", titled: title ? "yes" : "no" });
