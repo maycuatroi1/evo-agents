@@ -32,6 +32,13 @@ the profile leaves out (``profiles.codex_config``), the model is one of its allo
 DEVELOPER_NOTE; a profile that leaves out ``edit`` or limits skills, which Codex cannot turn off, fails the run before
 its agent starts (``profile_refusal``).
 
+The thread compacts its history as it nears ``model_auto_compact_token_limit`` and keeps ``tool_output_token_limit``
+tokens of each tool output in it: the thread's ``config`` gets both from ``compact_config``, the daemon's
+EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT and EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT (``off`` or ``0`` leaves codex's
+own), else COMPACT_SETTINGS' defaults, 200,000 and 8,000 (docs/workers.md says why). A key the owner's codex config
+sets (``owner_compact_keys``) is left out, since the thread's ``config`` overrides ``config.toml``; the profile's
+``config`` is merged last.
+
 Checked with openai-codex 0.160.0 and codex-cli 0.153.4 as the app-server (``evo-agents worker selftest --runtime
 codex``); the SDK bundles a codex binary of its own version, which the adapter does not use.
 """
@@ -106,6 +113,14 @@ SKIPPED = frozenset(
 )
 _CAMEL = re.compile(r"(?<!^)(?=[A-Z])")
 MODELS_CACHE = "models_cache.json"
+# What the thread's config gets for compaction (``compact_config``): each key of codex's config, the variable of the
+# daemon's environment that changes it, and its default, in tokens.
+AUTO_COMPACT_LIMIT = "model_auto_compact_token_limit"
+TOOL_OUTPUT_LIMIT = "tool_output_token_limit"
+COMPACT_SETTINGS = (
+    (AUTO_COMPACT_LIMIT, "EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT", 200_000),
+    (TOOL_OUTPUT_LIMIT, "EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT", 8_000),
+)
 
 
 def codex_home(env: Mapping[str, str]) -> Path:
@@ -153,6 +168,55 @@ def home_models(home: Path) -> list[str]:
             continue
         found += read(text)
     return list(dict.fromkeys(found))
+
+
+def owner_compact_keys(home: Path, worktree: Path) -> set[str]:
+    """The keys of COMPACT_SETTINGS the owner's codex config sets: at the top of ``config.toml`` in ``home`` or in the
+    profile its ``profile`` names, or in the worktree's ``.codex/config.toml``."""
+    keys = {key for key, _, _ in COMPACT_SETTINGS}
+    found: set[str] = set()
+    for path in (home / "config.toml", worktree / ".codex" / "config.toml"):
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        tables = [data]
+        named, tables_by_name = data.get("profile"), data.get("profiles")
+        if isinstance(named, str) and isinstance(tables_by_name, dict) and isinstance(tables_by_name.get(named), dict):
+            tables.append(tables_by_name[named])
+        found |= {key for table in tables for key in keys if key in table}
+    return found
+
+
+def compact_config(env: Mapping[str, str], owned: set[str] | frozenset[str] = frozenset()) -> dict[str, int]:
+    """What the thread's ``config`` gains for compaction: each key of COMPACT_SETTINGS that ``owned`` (the owner's
+    config) leaves unset, at its variable's value when that is a whole number of tokens, else at its default; nothing
+    for a key whose variable is ``off`` or ``0``, which leaves codex's own. Codex caps the compaction limit at 90% of
+    the model's context window."""
+    found: dict[str, int] = {}
+    for key, setting, default in COMPACT_SETTINGS:
+        if key in owned:
+            continue
+        value = env.get(setting, "").strip().lower()
+        if value in ("off", "0"):
+            continue
+        found[key] = int(value) if value.isascii() and value.isdigit() else default
+    return found
+
+
+def thread_compaction(context: RunContext) -> dict[str, int]:
+    """``compact_config`` for the run of ``context``, the keys its owner's codex config sets left out; the terminal UI
+    passes the same with ``-c``."""
+    owned = owner_compact_keys(codex_home(context.env), Path(context.worktree))
+    return compact_config(context.env, owned)
+
+
+def config_args(context: RunContext, effort: str | None) -> list[str]:
+    """The ``-c`` options of the terminal UI on the run of ``context``: the reasoning effort ``effort``, then
+    ``thread_compaction``, as the headless thread's config has them."""
+    settings: dict[str, object] = {"model_reasoning_effort": json.dumps(effort)} if effort else {}
+    settings.update(thread_compaction(context))
+    return [part for key, value in settings.items() for part in ("-c", f"{key}={value}")]
 
 
 def wire(payload) -> dict:
@@ -320,7 +384,10 @@ class CodexAdapter(QueueAdapter):
             self.server_version = self._codex.metadata.serverInfo.version.split()[0]
         effort = run_setting(self.context, self.runtime, "effort")
         profile = profiles.profile_of(self.context)
-        config = profiles.codex_config(profile, self.mcp_servers() if profile is not None else ())
+        config = {
+            **thread_compaction(self.context),
+            **profiles.codex_config(profile, self.mcp_servers() if profile is not None else ()),
+        }
         if effort:
             config["model_reasoning_effort"] = effort
         self.thread_options = {
