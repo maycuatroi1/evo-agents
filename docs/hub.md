@@ -274,7 +274,7 @@ member who dispatches a run has (their workers, their secrets, the projects they
 | `worker` | worker names, or `label:<label>` (ignoring case) | the dispatch (a pinned worker, or one of the dispatcher's at least) and the claim |
 | `project` | the other projects whose runs the profile may take; its own always | the dispatch |
 | `model` | model names, as a runtime names them | the dispatch (none named: the first allowed), and the worker's adapter |
-| `runtime` | `claude-code`, `opencode`, `codex` | the dispatch, and the claim of a run asking for `any` |
+| `runtime` | `claude-code`, `opencode`, `codex`, and `<plugin>/<name>` of a plugin's runtime | the dispatch, and the claim of a run asking for `any` (which takes a runtime of the core) |
 
 The tool axis speaks runtime-neutral words, which each runtime's adapter turns into its own tools: `read` (read files
 and search them), `edit` (create and change files), `bash` (run shell commands), `web` (fetch web pages and search the
@@ -623,7 +623,8 @@ the run's Chat tab.
 
 Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
 the plan commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes
-`--runtime` (`any` by default: the first runtime the claiming worker has), `--model` (the model as the runtime names
+`--runtime` (`any` by default: the first runtime of the core the claiming worker has; or `<plugin>/<name>`, a runtime
+a plugin enabled on the project declares, which the hub refuses with 422 when the project does not register it), `--model` (the model as the runtime names
 it, `provider/model` for opencode; the runtime's own choice by default), `--mode` (`headless` by default, or
 `interactive`), `--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval`
 (`review` by default, which waits for `run approve`; `auto` marks the step done once every verify command the worker
@@ -1210,6 +1211,11 @@ evo-agents hub plugin list --project evo-agents                  # each installe
 evo-agents hub plugin enable sandbox --project evo-agents        # prints what it asks for, then asks; --yes grants it
 evo-agents hub plugin disable sandbox --project evo-agents
 ```
+
+A plugin enabled in a project also registers its runtimes there, `<plugin>/<name>` (`docs/plugins.md`, Runtimes):
+the runs of the project may ask for them, and a dispatch of a runtime the project does not register is a 422. Schema
+0039 lets `runs.runtime` and `runs.requested_runtime` hold such a name and adds `workers.plugins`, the plugins whose
+runtimes a worker takes; going back to 0038 deletes the runs of plugins' runtimes and drops the column.
 
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the
