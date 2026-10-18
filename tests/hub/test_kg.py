@@ -42,7 +42,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import Text, cast, column, func, insert, select, table, update
+from sqlalchemy import Text, cast, column, create_engine, delete, func, insert, select, table, update
 
 from evo_agents.hub import kg_build as hub_kg_build
 from evo_agents.hub import kg_push, tables
@@ -416,8 +416,10 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
     assert first.ok and first.pushed == [run_id]
     corpus = laptop.project().corpus()
     assert corpus.runs_on_hub() == {run_id}  # retention may delete its log now (evo_agents.kg.retention)
-    with corpus.db:
-        corpus.db.execute("DELETE FROM hub_runs")
+    local = create_engine(f"sqlite:///{corpus.db_path}")  # the laptop's corpus, not a hub table: Core on table()
+    with local.begin() as conn:
+        conn.execute(delete(table("hub_runs")))
+    local.dispose()
     before = jobs(hub.db)
 
     again = push(hub, laptop)  # the hub lists the run: nothing is sent
