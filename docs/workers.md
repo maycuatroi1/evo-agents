@@ -1273,6 +1273,15 @@ answered decision, a move to another account), the keys stay those of the first 
 when the session started in the terminal UI, whose requests report no usage. A run that resumes a parked one reports
 the first request its own agent made in the session.
 
+A Claude Code session of a run asks for the preset system prompt without its dynamic sections
+(`exclude_dynamic_sections`), so the system prompt holds nothing of the machine, the worktree or the step and a new
+session reads it from the cache that a session of another run, step or worktree wrote. Claude Code 2.1.296 moves its
+auto memory section, whose path names the worktree, into the first user message, next to CLAUDE.md and the git status
+snapshot, so the agent still gets its memory. With one-turn sessions on 2026-10-18, the first request in a second
+worktree read 11,504 tokens from the cache (the tools and the whole system prompt) where it read 10,488 before. The
+rest of a first request, from the first user message on, is the session's own: it was written anew even in the same
+worktree with a prompt that differed only in its last words, so the order of a step's prompt does not change it.
+
 A runtime is available when its binary answers `--version` with at least the version the adapter was checked with,
 and the package the adapter needs is installed at least at the version checked: Claude Code 2.1.289 with
 claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 0.160.0 (whose bundled codex is not
