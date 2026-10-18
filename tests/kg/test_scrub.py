@@ -404,10 +404,13 @@ def test_scrub_purge_drops_the_records_a_change_of_ref_superseded(tmp_path, kg_e
     assert found.rewrite == [first.name] and found.logs == []
     with holding_sources(project.root):
         deleted = purge(found)
-    assert (deleted["blobs"], deleted["logs"], deleted["rewritten"], deleted["dropped"]) == (1, 0, 1, 2)
+    # Dropped: the main run's docker-compose.yml, docs/guide.md and the commit both refs reach, which the deploy run
+    # read again. The commit only main reaches stays from the main run, held back like docs/main-only.md.
+    assert (deleted["blobs"], deleted["logs"], deleted["rewritten"], deleted["dropped"]) == (1, 0, 1, 3)
 
     entries = [record for record in records_of(first) if record["type"] in ("item", "tombstone")]
-    assert [record["id"] for record in entries] == ["app:file:docs/main-only.md"]
+    main_only = git(repo, "rev-parse", "main").strip()
+    assert sorted(record["id"] for record in entries) == [f"app:commit:{main_only}", "app:file:docs/main-only.md"]
     assert records_of(first)[0]["epoch"] == BASE_EPOCH
     assert_compacted(project, kept, state, content)
     corpus = Corpus(project.name, project.home)
@@ -420,7 +423,7 @@ def test_scrub_purge_drops_the_records_a_change_of_ref_superseded(tmp_path, kg_e
     finally:
         corpus.close()
 
-    assert accept_removals(project, "app") == 1  # the held removal goes on from the rewritten log
+    assert accept_removals(project, "app") == 2  # the held removals (file, commit) go on from the rewritten log
     assert states(project)[0] == states(project)[1]
     assert project.corpus().get("app:file:docs/main-only.md").deleted
 

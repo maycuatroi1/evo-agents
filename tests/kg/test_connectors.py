@@ -1,16 +1,23 @@
+import datetime as dt
+import gzip
+import json
 import os
 import subprocess
 from pathlib import Path
 
 import pytest
 
-from evo_agents.harness import Harness
+from evo_agents.harness import Harness, plan_digest
+from evo_agents.kg import retention
 from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import _files, _git
+from evo_agents.kg.connectors import git as git_connector
+from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol.conformance import run_conformance
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.serve import Session
+from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 from tests.kg.projects import commit, git, make_project, write
 
@@ -57,7 +64,8 @@ def run_git(repo: Path, source_id="app", **keys):
 
 
 def items_by_path(messages):
-    return {m["props"]["path"]: m for m in messages if m["type"] == "item"}
+    """The file items of a run, by path; the commit items of its history have none."""
+    return {m["props"]["path"]: m for m in messages if m["type"] == "item" and m["kind"] != "commit"}
 
 
 def test_git_connector_reads_committed_files(tmp_path):
@@ -369,3 +377,382 @@ def test_harness_repo_is_named_from_the_manifest_in_a_worktree(harness_dir):
     item = next(m for m in msgs if m["type"] == "item" and m["props"]["path"] == "CLUSTER.md")
     assert item["props"]["repo"] == "h-harness"
     assert item["uri"] == "https://github.com/acme/h-harness/blob/master/CLUSTER.md"
+
+
+# The history of the ref and the pull requests of a repo on GitHub
+
+
+def commits_of(messages) -> dict[str, dict]:
+    return {m["props"]["sha"]: m for m in messages if m["type"] == "item" and m["kind"] == "commit"}
+
+
+def listing_of(messages, scope: str) -> dict:
+    return next(m for m in messages if m["type"] == "listing" and m["scope"] == scope)
+
+
+def test_git_history_gives_each_commit_the_files_it_changed(tmp_path):
+    repo = make_repo(tmp_path / "app")
+    first = sh(repo, "rev-parse", "HEAD").strip()
+    sh(repo, "checkout", "-qb", "feature")
+    (repo / "config.yaml").write_text("name: app2\n")
+    (repo / "node_modules/y.js").write_text("ignored too")
+    sh(repo, "add", "-A")
+    sh(repo, "commit", "-qm", "feature: edit the config")
+    sh(repo, "checkout", "-q", "main")
+    (repo / "docs/guide.md").unlink()
+    sh(repo, "commit", "-qam", "drop the guide")
+    sh(repo, "merge", "-q", "--no-ff", "-m", "Merge feature", "feature")
+    merge, feature = sh(repo, "rev-parse", "HEAD").strip(), sh(repo, "rev-parse", "feature").strip()
+
+    msgs = run_git(repo)
+    commits = commits_of(msgs)
+    assert len(commits) == 4
+    assert commits[first]["props"]["paths"] == ["app/server.py", "config.yaml", "docs/guide.md", "logo.png"]
+    assert commits[feature]["props"]["paths"] == ["config.yaml"]  # node_modules/ is excluded, as from the tree
+    merged = commits[merge]
+    assert merged["props"]["paths"] == ["config.yaml"] and merged["props"]["merge"] is True  # against main's side
+    assert merged["id"] == f"app:commit:{merge}" and merged["rev"] == merge and merged["title"] == f"app@{merge[:10]}"
+    assert merged["props"]["parents"][1] == feature and merged["props"]["files"] == 1
+    assert "body" not in merged and "uri" not in merged  # no message; a source by path has no forge to link to
+    assert listing_of(msgs, "app:commit:") == {"type": "listing", "scope": "app:commit:", "complete": True, "count": 4}
+
+
+def test_git_history_caps_the_paths_of_a_sweep_and_counts_them_all(tmp_path, monkeypatch):
+    repo = make_repo(tmp_path / "app")
+    monkeypatch.setattr(git_connector, "MAX_COMMIT_PATHS", 2)
+    head = sh(repo, "rev-parse", "HEAD").strip()
+    props = commits_of(run_git(repo))[head]["props"]
+    assert props["paths"] == ["app/server.py", "config.yaml"] and props["files"] == 4
+
+
+def test_git_history_after_a_cursor_of_the_same_input_reads_only_the_new_commits(tmp_path):
+    repo = make_repo(tmp_path / "app")
+    source = {"id": "app", "connector": "git", "path": str(repo)}
+    first = list(ConnectorRun(ConnectorContext("p", source)))
+    cursor = next(m for m in first if m["type"] == "state")["cursor"]
+    (repo / "config.yaml").write_text("name: app2\n")
+    sh(repo, "commit", "-qam", "edit")
+    head = sh(repo, "rev-parse", "HEAD").strip()
+
+    later = list(ConnectorRun(ConnectorContext("p", source, cursor=cursor)))
+    assert list(commits_of(later)) == [head]
+    assert listing_of(later, "app:commit:")["complete"] is False  # what the first run read stays
+    other = list(ConnectorRun(ConnectorContext("p", source, cursor={**cursor, "input": "sha256:other code"})))
+    assert len(commits_of(other)) == 2 and listing_of(other, "app:commit:")["complete"] is True
+    gone = list(ConnectorRun(ConnectorContext("p", source, cursor={**cursor, "commit": "0" * 40})))
+    assert len(commits_of(gone)) == 2 and gone[-1]["status"] == "ok"  # a commit the clone lacks: the whole history
+
+
+TOKEN = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"  # made up: what a token looks like, never one
+
+
+def github_pull(number: int, updated: str, **extra) -> dict:
+    return {
+        "number": number,
+        "title": f"Change {number}",
+        "state": "closed",
+        "merged_at": None,
+        "merge_commit_sha": "f" * 40,
+        "head": {"ref": f"feat/{number}", "sha": "e" * 40},
+        "base": {"ref": "main"},
+        "html_url": f"https://github.com/acme/demo-app/pull/{number}",
+        "created_at": "2026-09-01T00:00:00Z",
+        "updated_at": updated,
+        "body": "Free text of the pull request that must never be read.",
+        **extra,
+    }
+
+
+@pytest.fixture
+def github(monkeypatch):
+    """GitHub stood in for: the pages it answers, and the requests it got as (repo, page)."""
+    from evo_agents.kg.connectors import _github
+
+    fake = type("FakeGitHub", (), {})()
+    fake.pages, fake.asked = [], []
+
+    def page(project, number, secret):
+        assert secret == TOKEN
+        fake.asked.append((project, number))
+        return fake.pages[number - 1] if number <= len(fake.pages) else []
+
+    monkeypatch.setattr(_github, "_page", page)
+    monkeypatch.setattr(_github, "enabled", lambda env=None: True)
+    monkeypatch.setattr(_github, "token", lambda env=None: TOKEN)
+    return fake
+
+
+def test_git_reads_the_pull_requests_of_a_repo_on_github_without_their_text(tmp_path, kg_env, github):
+    project = make_project(tmp_path, kg_env)
+    head = git(tmp_path / "demo-app", "rev-parse", "HEAD").strip()
+    merged = github_pull(7, "2026-10-02T00:00:00Z", merged_at="2026-10-02T00:00:00Z", merge_commit_sha=head)
+    github.pages = [[merged, github_pull(6, "2026-10-01T00:00:00Z", state="open")]]
+    (result,) = sync_project(project, ["app"])
+    assert result.ok, result.issues
+    assert github.asked == [("acme/demo-app", 1)]
+    corpus = project.corpus()
+    pull = corpus.get("app:pr:7").record
+    assert pull["kind"] == "pr" and pull["title"] == "Change 7" and pull["label"] == {"integrity": "U"}
+    assert pull["uri"] == "https://github.com/acme/demo-app/pull/7"
+    assert pull["props"] == {
+        "repo": "app",
+        "github": "acme/demo-app",
+        "number": 7,
+        "status": "merged",
+        "head": "feat/7",
+        "base": "main",
+        "merge_commit": head,
+    }
+    assert (
+        corpus.get("app:pr:6").record["props"]["status"] == "open"
+        and "merge_commit" not in corpus.get("app:pr:6").record["props"]
+    )
+    assert corpus.cursor("app")["pulls"] == {"since": "2026-10-02T00:00:00Z"}
+    written = gzip.decompress(Path(result.log).read_bytes()).decode()
+    assert "Free text" not in written and TOKEN not in written  # neither the body nor the token reach the log
+    assert TOKEN not in json.dumps(corpus.cursor("app"))
+
+    report = build_project(project)
+    assert report.ok, report.errors
+    store = Store.for_project(project)
+    node = store.node("app:pr:7", report.build_id)
+    assert node["kind"] == "PullRequest" and node["name"] == "Change 7"
+    assert {k: node["props"][k] for k in ("number", "status", "head", "base")} == {
+        "number": 7,
+        "status": "merged",
+        "head": "feat/7",
+        "base": "main",
+    }
+    edges = {(e["src"], e["rel"], e["dst"]) for e in store.edges_of("app:pr:7", report.build_id)}
+    assert ("app:pr:7", "merged_as", f"app:commit:{head}") in edges
+    text = Session(project, "wide").call("kg_node", {"id": "app:pr:7"})["content"][0]["text"]
+    assert "Free text" not in text and "(parsed, internal,U)" in text.splitlines()[0]
+
+
+def test_git_reads_only_the_pull_requests_updated_since_the_newest_it_saw(tmp_path, kg_env, github):
+    project = make_project(tmp_path, kg_env)
+    github.pages = [[github_pull(7, "2026-10-02T00:00:00Z"), github_pull(6, "2026-10-01T00:00:00Z")]]
+    assert sync_project(project, ["app"])[0].ok
+    write(tmp_path / "demo-app/docs/new.md", "# New\n")
+    commit(tmp_path / "demo-app")
+    github.asked.clear()
+    github.pages = [
+        [github_pull(8, "2026-10-03T00:00:00Z"), github_pull(7, "2026-10-02T00:00:00Z")],
+        [github_pull(5, "x")],
+    ]
+    (result,) = sync_project(project, ["app"])
+    assert result.ok and result.items - result.removals > 0
+    assert github.asked == [("acme/demo-app", 1)]  # page 1 ends below a full page, so page 2 is never asked for
+    assert project.corpus().cursor("app")["pulls"] == {"since": "2026-10-03T00:00:00Z"}
+    assert {r.item_id for r in project.corpus().items("app") if ":pr:" in r.item_id} == {
+        "app:pr:6",
+        "app:pr:7",
+        "app:pr:8",
+    }
+
+
+def test_git_run_stays_ok_when_github_cannot_be_read_and_keeps_its_cursor(tmp_path, kg_env, github, monkeypatch):
+    from evo_agents.kg.connectors import _github
+
+    project = make_project(tmp_path, kg_env)
+    github.pages = [[github_pull(7, "2026-10-02T00:00:00Z")]]
+    assert sync_project(project, ["app"])[0].ok
+
+    def refused(project, number, secret):
+        raise _github.PullsError(f"GitHub answered HTTP 401 for the pull requests of {project}")
+
+    monkeypatch.setattr(_github, "_page", refused)
+    write(tmp_path / "demo-app/docs/new.md", "# New\n")
+    commit(tmp_path / "demo-app")
+    (result,) = sync_project(project, ["app"])
+    assert result.ok and result.warnings == [
+        "pulls not read: GitHub answered HTTP 401 for the pull requests of acme/demo-app"
+    ]
+    assert project.corpus().cursor("app")["pulls"] == {"since": "2026-10-02T00:00:00Z"}
+    assert not project.corpus().get("app:pr:7").deleted  # a pull request read before stays
+
+
+def history_of(corpus) -> set[str]:
+    return {r.item_id for r in corpus.items("app") if ":commit:" in r.item_id or ":pr:" in r.item_id}
+
+
+def items_in(path: Path) -> set[str]:
+    return {record["id"] for record in Corpus.read_log(path) if record.get("type") == "item"}
+
+
+def test_a_default_prune_keeps_the_commits_and_pull_requests_a_later_run_reads_on_from(tmp_path, kg_env, github):
+    """Later runs read only the commits and pull requests since the cursor's (``history_and_pulls``): the records of
+    the runs before must outlive retention (``evo_agents.kg.retention``), or the graph would lose them for good."""
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    github.pages = [[github_pull(7, "2026-10-02T00:00:00Z"), github_pull(6, "2026-10-01T00:00:00Z")]]
+    runs = [sync_project(project, ["app"])[0]]
+    github.pages = []  # no pull request updated since
+    for version in range(2):
+        write(app / "docs/notes.md", f"# Notes\n\nVersion {version} of the notes.\n")
+        commit(app, f"notes {version}")
+        runs.append(sync_project(project, ["app"])[0])
+    assert all(r.ok for r in runs)
+    first, second, third = (Path(r.log) for r in runs)
+    corpus = project.corpus()
+    history = history_of(corpus)
+    assert len(history) == 5  # three commits, two pull requests, each read by one run only
+    state, cursor = corpus.state_digest(), corpus.cursor("app")
+
+    later = dt.datetime.now(dt.UTC) + dt.timedelta(days=2)  # every run is older than the default periods
+    found = retention.plan(project.name, project.root, retention.DEFAULTS, now=later, policy=project.policy)
+    # The third run holds every file; the two before hold nothing else the corpus has but their history.
+    assert found.logs == [] and set(found.rewrite) == {first.name, second.name}
+    assert found.kept[retention.IN_USE] == 1 and found.runs == []
+    retention.apply(found)
+    assert items_in(first) | items_in(second) == history - {f"app:commit:{git(app, 'rev-parse', 'HEAD').strip()}"}
+    corpus = project.corpus()
+    assert [p.name for p in corpus.log_files()] == [first.name, second.name, third.name]
+    assert history_of(corpus) == history
+    assert corpus.state_digest(corpus.rebuild_state()) == state == corpus.state_digest()
+    assert corpus.cursor("app") == cursor
+
+    write(app / "docs/notes.md", "# Notes\n\nVersion 2 of the notes.\n")
+    commit(app, "notes 2")
+    head = git(app, "rev-parse", "HEAD").strip()
+    github.pages = [[github_pull(8, "2026-10-03T00:00:00Z")]]
+    (result,) = sync_project(project, ["app"])
+    assert result.ok, result.issues
+    read = list(Corpus.read_log(Path(result.log)))
+    assert list(commits_of(read)) == [head] and listing_of(read, "app:commit:")["complete"] is False
+    assert {m["id"] for m in read if m.get("type") == "item" and m["kind"] == "pr"} == {"app:pr:8"}
+    corpus = project.corpus()
+    assert history_of(corpus) == history | {f"app:commit:{head}", "app:pr:8"}  # nothing read before was lost
+    report = build_project(project, verify=True, cold=True)
+    assert report.ok and report.verify["match"], report.verify
+
+
+def test_git_reads_no_pull_request_without_a_token_or_when_turned_off(tmp_path, monkeypatch):
+    from evo_agents.kg.connectors import _github
+
+    repo = make_repo(tmp_path / "app")
+    harness = Harness(
+        tmp_path, {"name": "h", "repos": [{"name": "app", "path": str(repo), "origin": "git@github.com:acme/app.git"}]}
+    )
+    monkeypatch.setattr(_github, "_page", lambda *a: pytest.fail("asked GitHub"))
+    monkeypatch.setattr(_github, "enabled", lambda env=None: True)
+    monkeypatch.setattr(_github, "token", lambda env=None: None)
+    msgs = list(ConnectorRun(ConnectorContext("p", {"id": "app", "connector": "git", "repo": "app"}, harness)))
+    assert msgs[-1]["status"] == "ok" and not any(m.get("kind") == "pr" for m in msgs)
+    assert any(m["type"] == "log" and m["level"] == "info" and "no GitHub token" in m["message"] for m in msgs)
+    monkeypatch.setattr(_github, "token", lambda env=None: pytest.fail("looked for a token"))
+    source = {"id": "app", "connector": "git", "repo": "app", "pulls": False}
+    assert list(ConnectorRun(ConnectorContext("p", source, harness)))[-1]["status"] == "ok"
+
+
+def test_github_token_comes_from_the_source_then_the_environment(monkeypatch):
+    from evo_agents.kg.connectors import _github
+
+    monkeypatch.setenv("GITHUB_TOKEN", "from-env")
+    assert _github.token({"GH_TOKEN": "from-source"}) == "from-source"
+    assert _github.token({}) == "from-env"
+    assert _github.enabled({}) is False  # the suite turns the reading off (tests/conftest.py)
+    assert _github.enabled({"EVO_KG_PULLS": "1"}) is True
+
+
+# The plans of the hub, in a harness whose harness.yaml names a hub project
+
+
+HUB_BODY = {"id": "p", "steps": [{"id": 1, "what": "x", "status": "done"}]}
+HUB_TEXT = (
+    "# Mirror of evo-agents hub plan p, revision 4. Do not edit\n"
+    "id: p\nsteps:\n  - {id: 1, what: x, status: done}\n"
+    f"hub: {{project: h, revision: 4, digest: '{plan_digest(HUB_BODY)}'}}\n"
+)
+
+
+def hub_reader(answer, calls: list | None = None):
+    def read(harness, project, held):
+        if calls is not None:
+            calls.append((project, held))
+        return answer(project) if callable(answer) else answer
+
+    return read
+
+
+def hub_harness(harness_dir: Path) -> Harness:
+    (harness_dir / "harness.yaml").write_text("name: h\nrepos: []\nhub: {project: h}\n")
+    (harness_dir / "plans/active/draft.yaml").write_text("id: draft\nsteps: []\n")  # not on the hub
+    return Harness(harness_dir, {"name": "h", "hub": {"project": "h"}})
+
+
+def plan_entry(area: str = "completed") -> dict:
+    return {
+        "plan_id": "p",
+        "area": area,
+        "revision": 4,
+        "digest": plan_digest(HUB_BODY),
+        "label": {"level": "internal", "location": "any", "projects": ["h"], "integrity": "U"},
+        "text": HUB_TEXT,
+        "updated_at": "2026-10-18T15:59:04.611428Z",
+        "url": "https://hub.test/p/h/plans/p",
+    }
+
+
+def held_of(entry: dict) -> dict:
+    return {key: entry[key] for key in ("area", "revision", "digest", "label", "updated_at", "url")}
+
+
+HARNESS = {"id": "harness", "connector": "harness"}
+
+
+def test_harness_connector_reads_the_plans_the_hub_holds_instead_of_their_copies(harness_dir):
+    harness = hub_harness(harness_dir)
+    calls: list = []
+    cursor = {"plans": {"project": "h", "held": {"p": {"revision": 3}}}}
+    reader = hub_reader({"plans": [plan_entry()]}, calls)
+    msgs = list(ConnectorRun(ConnectorContext("p", HARNESS, harness, cursor, plans=reader)))
+    assert calls == [("h", {"p": {"revision": 3}})]  # what the run before held, for this project
+    items = items_by_path(msgs)
+    assert "plans/active/p.yaml" not in items  # the copy on disk is an older revision, in the other area
+    plan = items["plans/completed/p.yaml"]
+    assert plan["kind"] == "plan" and plan["body"]["text"] == HUB_TEXT
+    assert plan["label"] == {"level": "internal", "location": "any", "integrity": "U"}  # kg/1 labels name no project
+    assert plan["uri"] == "https://hub.test/p/h/plans/p" and plan["rev_time"] == "2026-10-18T15:59:04.611428Z"
+    assert items["plans/active/draft.yaml"]["kind"] == "plan"  # a plan the hub does not hold comes from disk
+    state = next(m for m in msgs if m["type"] == "state")
+    assert state["cursor"] == {"plans": {"project": "h", "held": {"p": held_of(plan_entry())}}}
+    assert msgs[-2] == {"type": "listing", "scope": "harness:file:", "complete": True, "count": len(items)}
+    assert msgs[-1] == {"type": "closed", "status": "ok"}
+
+
+def test_a_copy_of_the_revision_the_cursor_holds_gives_the_same_item_without_the_hub(harness_dir):
+    harness = hub_harness(harness_dir)
+    entry = plan_entry("active")
+    with_hub = list(ConnectorRun(ConnectorContext("p", HARNESS, harness, plans=hub_reader({"plans": [entry]}))))
+    cursor = next(m for m in with_hub if m["type"] == "state")["cursor"]
+    (harness_dir / "plans/active/p.yaml").write_text(HUB_TEXT)  # exported since: a later file time changes nothing
+    for reader in (None, hub_reader(None), hub_reader({"error": "the hub is down"})):
+        without = list(ConnectorRun(ConnectorContext("p", HARNESS, harness, cursor, plans=reader)))
+        assert items_by_path(without) == items_by_path(with_hub)
+        assert not any(m["type"] == "state" for m in without)  # the cursor stays as the hub left it
+    (harness_dir / "plans/active/p.yaml").write_text(HUB_TEXT.replace("status: done", "status: pending"))
+    edited = items_by_path(list(ConnectorRun(ConnectorContext("p", HARNESS, harness, cursor))))
+    assert "label" not in edited["plans/active/p.yaml"]  # no longer the revision held: read as any file
+
+
+def test_harness_connector_reads_the_copies_without_a_hub_and_warns_when_the_hub_fails(harness_dir):
+    harness = hub_harness(harness_dir)
+    disk = items_by_path(list(ConnectorRun(ConnectorContext("p", HARNESS, harness))))
+    assert (
+        disk["plans/active/p.yaml"]["body"]["text"] == "id: p\nsteps: []\n"
+        and "label" not in disk["plans/active/p.yaml"]
+    )
+
+    signed_out = list(ConnectorRun(ConnectorContext("p", HARNESS, harness, plans=hub_reader(None))))
+    assert items_by_path(signed_out) == disk and not any(m["type"] in ("state", "log") for m in signed_out)
+
+    for answer in ({"error": "the plans of hub project h were not read (HTTP 503)"}, lambda project: 1 / 0):
+        msgs = list(ConnectorRun(ConnectorContext("p", HARNESS, harness, plans=hub_reader(answer))))
+        assert items_by_path(msgs) == disk and msgs[-1]["status"] == "ok"
+        (warning,) = [m for m in msgs if m["type"] == "log"]
+        assert warning["level"] == "warning" and "the plans of hub project h were not read" in warning["message"]
+
+    plain = Harness(harness_dir, {"name": "h"})  # no hub project: the reader is never asked
+    reader = hub_reader(lambda project: pytest.fail("asked the hub"))
+    assert items_by_path(list(ConnectorRun(ConnectorContext("p", HARNESS, plain, plans=reader)))) == disk

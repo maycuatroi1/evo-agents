@@ -8,7 +8,7 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
-from tests.kg.projects import GUIDE, commit, make_project, write
+from tests.kg.projects import GUIDE, commit, git, make_project, write
 
 
 def sync_build(project, **kw):
@@ -182,20 +182,20 @@ def test_link_runs_again_only_for_the_items_whose_reads_changed(tmp_path, kg_env
     store = Store.for_project(project)
     assert not any(e[2].endswith("::fresh_helper") for e in edge_keys(store, first.build_id))
 
-    # A body changes, no name does: only that file links again.
+    # A body changes, no name does: only that file links again, besides the item of the new commit.
     search = (app / "app/search.py").read_text()
     write(app / "app/search.py", search.replace("return sorted(items)", "return sorted(items, reverse=True)"))
     commit(app)
     body = sync_build(project, verify=True, cold=True)
     assert body.verify["match"], body.verify
-    assert body.memo["link"]["misses"] == 1 and body.memo["link"]["hits"] == first.memo["link"]["misses"] - 1
+    assert body.memo["link"]["misses"] == 2 and body.memo["link"]["hits"] == first.memo["link"]["misses"] - 1
 
     # A new name: the document that looked it up in vain links again, and now to it.
     write(app / "app/search.py", search + "\n\ndef fresh_helper():\n    return 1\n")
     commit(app)
     named = sync_build(project, verify=True, cold=True)
     assert named.verify["match"], named.verify
-    assert named.memo["link"]["misses"] == 2  # app/search.py and docs/later.md
+    assert named.memo["link"]["misses"] == 3  # app/search.py, docs/later.md and the new commit
     later = ("app:file:docs/later.md#later", "mentions", "symbol:app:app/search.py::fresh_helper")
     assert later in edge_keys(Store.for_project(project), named.build_id)
 
@@ -230,3 +230,48 @@ def test_serve_reads_the_store_read_only_and_compares_labels_only_when_some_are_
     assert skipping["wide"][2]["structuredContent"]["node"]["id"] == "app:file:app/search.py"
     assert skipping["agent"][2].get("isError")
     assert not any(n["id"].startswith("app:") for n in skipping["agent"][0]["structuredContent"]["results"])
+
+
+def test_a_done_step_reaches_the_files_its_evidence_commit_changed(tmp_path, kg_env, monkeypatch):
+    from evo_agents.kg.connectors import _github
+
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    write(app / "app/suggest.py", "def suggest(query):\n    return query\n")  # a file nothing else names
+    commit(app, "search: suggest")
+    sha = git(app, "rev-parse", "HEAD").strip()
+    plan = project.harness.root / "plans/active/demo.yaml"
+    plan.write_text(
+        plan.read_text().replace(
+            "evidence: app@1a2b3c4d", f"evidence: 'app@1a2b3c4d; {sha[:7]} adds suggest, merged through PR #12'"
+        )
+    )
+    pull = {
+        "number": 12,
+        "title": "Search suggestions",
+        "state": "closed",
+        "merged_at": "2026-10-01T03:00:00Z",
+        "merge_commit_sha": sha,
+        "head": {"ref": "feat/suggest"},
+        "base": {"ref": "main"},
+        "html_url": "https://github.com/acme/demo-app/pull/12",
+        "updated_at": "2026-10-01T03:00:00Z",
+    }
+    monkeypatch.setattr(_github, "enabled", lambda env=None: True)
+    monkeypatch.setattr(_github, "token", lambda env=None: "test-token")
+    monkeypatch.setattr(_github, "_page", lambda project, page, secret: [pull] if page == 1 else [])
+    report = sync_build(project, verify=True, cold=True)
+    assert report.verify["match"], report.verify
+    store = Store.for_project(project)
+    edges = edge_keys(store, report.build_id)
+    step, found, pr = "plan:demo/step:1", f"app:commit:{sha}", "app:pr:12"
+    assert (step, "mentions", found) in edges  # the bare SHA of the evidence, among the commits of the step's repo
+    assert (found, "changes", "app:file:app/suggest.py") in edges
+    assert (step, "mentions", pr) in edges and (pr, "merged_as", found) in edges
+    assert (step, "mentions", "commit:app@1a2b3c4d") in edges  # a SHA no source read keeps a node of its own
+    assert store.node(found, report.build_id)["kind"] == "Commit"
+
+    path = Session(project, "wide").call("kg_path", {"from": step, "to": "app:file:app/suggest.py"})
+    data = path["structuredContent"]
+    assert data["found"] and data["hops"] == 2
+    assert [n["id"] for n in data["nodes"]] == [step, found, "app:file:app/suggest.py"]
