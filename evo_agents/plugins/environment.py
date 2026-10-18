@@ -28,8 +28,10 @@ that way unless it is told to (``Host(allow_shared_user=True)``, ``evo-agents hu
 for a developer's machine; ``evo-agents plugin test`` runs the author's own plugin that way.
 
 The backend starts through a trampoline and a launcher. The trampoline is the host's own Python, isolated
-(``-I -S``: no site, no current directory), already under the backend's user: it changes into the backend's
-data directory, which root may not enter, and sets the resource limits
+(``-I -S``: no site, no current directory). Started by the host, it first takes the backend's user and group,
+dropping every supplementary group, and exits NO_USER_EXIT unless it holds exactly them; it does so itself, so the
+start needs no argument of the event loop's subprocess_exec that some loops lack (``backend_command``). Then it
+changes into the backend's data directory, which root may not enter, and sets the resource limits
 (``backend_limits``: no core file, open files, address space, and in isolation ``uid`` the processes of the user), so
 they hold before any code of the plugin runs, then execs the environment's Python, isolated too (``-I``), with the
 launcher. The launcher marks the process not dumpable on Linux (``prctl(PR_SET_DUMPABLE, 0)``) and exits 70 when that
@@ -67,18 +69,29 @@ INSTALL_TIMEOUT = 600  # seconds for one venv and its requirements
 SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin"
 LIMITS = {"core": 0, "nofile": 1024, "as": 4 * 1024**3}  # per process: no core file (it would hold the secrets)
 NPROC = 256  # processes and threads of a backend's user, in isolation uid (RLIMIT_NPROC counts by real user)
+SAME_USER = "-"  # the trampoline's user argument when the backend keeps the host's user (isolation process)
+NO_USER_EXIT = 71  # the trampoline's exit code when it cannot take the backend's user
 TRAMPOLINE = (
     "import os, sys\n"
+    "if sys.argv[1] != '-':\n"
+    "    uid, gid = (int(part) for part in sys.argv[1].split(':'))\n"
+    "    os.setgroups([])\n"
+    "    os.setgid(gid)\n"
+    "    os.setuid(uid)\n"
+    "    if uid <= 0 or (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (uid, uid, gid, gid) "
+    "or os.getgroups():\n"
+    "        sys.stderr.write('evo-agents plugin trampoline: cannot take the user of the backend\\n')\n"
+    "        sys.exit(71)\n"
     "os.chdir(os.environ['HOME'])\n"
     "if sys.platform.startswith('linux'):\n"
     "    import resource\n"
-    "    for item in filter(None, sys.argv[1].split(',')):\n"
+    "    for item in filter(None, sys.argv[2].split(',')):\n"
     "        name, _, value = item.partition('=')\n"
     "        which = getattr(resource, 'RLIMIT_' + name.upper())\n"
     "        hard = resource.getrlimit(which)[1]\n"
     "        limit = int(value) if hard == resource.RLIM_INFINITY else min(int(value), hard)\n"
     "        resource.setrlimit(which, (limit, limit))\n"
-    "os.execv(sys.argv[2], sys.argv[2:])\n"
+    "os.execv(sys.argv[3], sys.argv[3:])\n"
 )
 LAUNCHER = (
     "import ctypes, os, runpy, sys\n"
@@ -409,17 +422,26 @@ def backend_limits(owner: Identity | None) -> str:
 
 
 def backend_cwd(where: Placement, owner: Identity | None) -> Path:
-    """Where the backend's process starts: subprocess changes directory before it takes the backend's user, and root
-    without CAP_DAC_READ_SEARCH cannot enter the data directory of that user, so a backend with a user of its own
-    starts in / and the trampoline, already under that user, changes into its HOME, the data directory."""
+    """Where the backend's process starts: it starts as root, and root without CAP_DAC_READ_SEARCH cannot enter the
+    data directory of the backend's user, so a backend with a user of its own starts in / and the trampoline, once it
+    has taken that user, changes into its HOME, the data directory."""
     return Path("/") if owner is not None and os.name == "posix" else where.data
 
 
+def user_argument(owner: Identity | None) -> str:
+    """The user the trampoline takes, ``uid:gid``, or SAME_USER for a backend that keeps the host's."""
+    return SAME_USER if owner is None else f"{owner.uid}:{owner.gid}"
+
+
 def backend_command(where: Placement, entry: str, owner: Identity | None = None) -> list[str]:
-    """The command of a backend: on POSIX the trampoline (the host's Python, isolated, changing into HOME and setting
-    the limits), then the environment's Python, isolated from PYTHON* variables, the user's site and the current
-    directory, the launcher, then the entry."""
+    """The command of a backend: on POSIX the trampoline (the host's Python, isolated, taking the backend's user,
+    changing into HOME and setting the limits), then the environment's Python, isolated from PYTHON* variables, the
+    user's site and the current directory, the launcher, then the entry.
+
+    The trampoline takes the user itself (setgroups, setgid, setuid, then a check), rather than the host passing
+    ``user``, ``group`` and ``extra_groups`` to the event loop's subprocess_exec: uvloop, which uvicorn runs the host
+    on when it is installed, refuses those arguments, so the backend starts the same whatever loop the host runs."""
     backend = [str(where.python), "-I", "-B", "-u", "-X", "utf8", "-c", LAUNCHER, str(where.code / entry)]
     if os.name != "posix":
         return backend
-    return [sys.executable, "-I", "-S", "-c", TRAMPOLINE, backend_limits(owner), *backend]
+    return [sys.executable, "-I", "-S", "-c", TRAMPOLINE, user_argument(owner), backend_limits(owner), *backend]

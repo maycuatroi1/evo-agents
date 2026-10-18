@@ -132,6 +132,8 @@ jobs:
   # the hub's variables, and a fresh named volume at /plugins, so each backend gets a user of its own (isolation uid).
   # The tests of tests/plugins that start backends then run in that mode against the hostile, faulty, sample and
   # wheeled plugins, with tests/plugins/test_plugin_isolation_root.py, and `plugin test` checks the sample plugin.
+  # tests/plugins/test_plugin_isolation_service.py starts `evo-agents hub plugin-host` itself, on the loop uvicorn picks
+  # in this image (uvloop, from uvicorn[standard]), as the plugins service runs it; the other tests run on asyncio's.
   plugin-host-root:
     name: plugin-host-root
     needs: changes
@@ -156,7 +158,7 @@ jobs:
               pip install --no-cache-dir --quiet pytest
               python -m pytest -q -rs -p no:cacheprovider tests/plugins/test_plugin_isolation.py \
                 tests/plugins/test_plugin_isolation_root.py tests/plugins/test_plugin_isolation_requirements.py \
-                tests/plugins/test_plugin_protocol.py
+                tests/plugins/test_plugin_isolation_service.py tests/plugins/test_plugin_protocol.py
               python -m evo_agents plugin test tests/fixtures/plugins/sample'
 
   # The full run only. Service containers run on Linux only: macOS and Windows install the core package without the

@@ -26,6 +26,7 @@ from __future__ import annotations
 import asyncio
 import importlib.util
 import json
+import logging
 import os
 import sys
 import time
@@ -35,6 +36,7 @@ import pytest
 
 from evo_agents.plugins import environment
 from evo_agents.plugins import host as host_module
+from evo_agents.plugins import process as process_module
 from evo_agents.plugins.environment import NPROC, backend_env, identity, isolation, placement
 from evo_agents.plugins.host import SHARED_USER_REFUSED, Backend, BackendUnavailable, Host
 from tests.plugins.backends import (
@@ -326,6 +328,53 @@ def test_plugin_isolation_a_backend_that_does_not_start_backs_off(plugin_root):
         assert backend.status.error and backend.status.retry_at is not None
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("where", ["spawn", "initialize"])
+def test_plugin_crash_any_error_of_a_start_backs_off_with_its_cause(where, plugin_root, monkeypatch, caplog):
+    """On agents.omelet.tech uvloop's subprocess_exec refused the user, group and extra_groups arguments with a
+    ValueError, which the start did not catch: the backend stayed "starting" with no backoff, and the host tried
+    again at every tick with a traceback. Any exception of a start is now a failed start: the backoff, its cause in
+    the status, a backend it had spawned stopped, and one traceback for as long as the cause stays the same."""
+    real_start, real_call, spawned = process_module.BackendProcess.start, process_module.BackendProcess.call, []
+
+    async def start(self):
+        if where == "spawn":
+            raise ValueError("unexpected kwargs: user, group, extra_groups")
+        await real_start(self)
+        spawned.append(self)
+
+    async def call(self, method, params, timeout):
+        if method == "initialize":
+            raise TypeError("a bug of the host")
+        return await real_call(self, method, params, timeout)
+
+    monkeypatch.setattr(process_module.BackendProcess, "start", start)
+    monkeypatch.setattr(process_module.BackendProcess, "call", call)
+
+    async def run() -> tuple[dict, dict, bool]:
+        host = shared(plugin_root)
+        backend = host.place(manifest("sample"), bundle("sample"), init("sample"))
+        with caplog.at_level(logging.WARNING, logger=host_module.__name__):
+            with pytest.raises(BackendUnavailable, match="could not start"):
+                await backend.call("ping", {}, 20)
+            first = backend.status.as_dict()
+            waits = backend.kick() is None  # in its backoff, the next tick starts nothing
+            backend.status.retry_at = time.time() - 1  # the backoff has passed
+            await backend.kick()
+        second = backend.status.as_dict()
+        await host.stop_all()
+        return first, second, waits
+
+    first, second, waits = asyncio.run(run())
+    cause = "ValueError: unexpected kwargs" if where == "spawn" else "TypeError: a bug of the host"
+    assert first["state"] == "backoff" and first["pid"] is None and first["retry_at"] is not None, first
+    assert cause in first["error"] and waits
+    assert second["state"] == "backoff" and second["restarts"] == 2 and cause in second["error"], second
+    assert len([record for record in caplog.records if record.exc_info]) == 1  # the same cause again: no traceback
+    if where == "initialize":
+        assert len(spawned) == 2 and not any(process.alive for process in spawned)
+        assert all(process.returncode is not None for process in spawned)
 
 
 # A placing that a stop cancels, and what another process of the plugin's user may plant meanwhile

@@ -13,7 +13,7 @@ unchanged plugin is never restarted for a new one. ``call`` sends one request an
 ``BackendGone``, stops the backend and schedules a restart, raising ``BackendUnavailable`` so the caller answers an
 error within the timeout rather than waiting. Restarts back off (``BACKOFF``), capped at ``MAX_BACKOFF``; ``status``
 says the state, the process id, how many restarts, since when it runs, the last failure and when it is tried again,
-for an admin to read.
+for an admin to read. Whatever a start raises is a failed start that backs off, a bug of the host's included.
 
 A backend starts only under a user of its own, which the host can give it as root (``environment.identity``). A host
 that is not root refuses to start one, unless it was made with ``allow_shared_user`` for a developer's machine: then
@@ -30,6 +30,7 @@ Standard library only (asyncio).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -61,6 +62,7 @@ CALL_TIMEOUT = 30.0  # seconds one call to a backend may take
 INIT_TIMEOUT = 30.0
 KILL_INTERVAL = 0.5  # seconds between kills of a plugin's user while its placing winds down
 STATES = ("placing", "starting", "running", "backoff")
+MAX_ERROR = 2000  # characters of a failure kept in the status
 MIN_HOST_TOKEN = 32  # characters of the secret the api and the plugin host share
 EXAMPLE_HOST_TOKENS = frozenset({"dev-only-plugin-host-secret-change-me-000000"})  # once in deploy/hub/.env.example
 SHARED_USER_REFUSED = (
@@ -230,6 +232,7 @@ class Backend:
         log.info("plugin backend running", extra={"contribution": self.name, "pid": process.pid})
 
     async def _start_once(self) -> None:
+        """One start; whatever it raises is a failed start, which backs off with its cause in the status."""
         async with self._lock:
             if self.alive:
                 return
@@ -237,6 +240,20 @@ class Backend:
                 await self._start()
             except (PlacementError, OSError) as exc:
                 self._schedule_retry(str(exc))
+            except Exception as exc:  # a bug, or a call the event loop refuses: still a failed start, never a loop
+                await self._failed_unexpectedly(exc)
+
+    async def _failed_unexpectedly(self, exc: Exception) -> None:
+        """Stop what the start spawned and back off. The traceback is logged once for as long as the cause stays the
+        same, so a cause that lasts adds a warning per try, not a traceback."""
+        error = f"{type(exc).__name__}: {exc}"[:MAX_ERROR]
+        if error != self.status.error:
+            log.error("plugin backend start failed", exc_info=exc, extra={"contribution": self.name})
+        if self.process is not None:
+            process, self.process = self.process, None
+            with contextlib.suppress(Exception):
+                await process.stop(grace=2.0)
+        self._schedule_retry(error)
 
     def in_backoff(self) -> bool:
         return self.status.retry_at is not None and time.time() < self.status.retry_at
@@ -269,7 +286,7 @@ class Backend:
         self.status.state = "backoff"
         self.status.pid = None
         self.status.started_at = None
-        self.status.error = error[:2000]
+        self.status.error = error[:MAX_ERROR]
         self.status.retry_at = time.time() + _backoff(self.status.restarts - 1)
         log.warning(
             "plugin backend scheduled for restart",

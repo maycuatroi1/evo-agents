@@ -1,8 +1,10 @@
 """One running backend of an isolated plugin, as the plugin host and ``evo-agents plugin test`` drive it over plugin/1.
 
 ``BackendProcess`` starts the command ``evo_agents.plugins.environment`` builds, with exactly the environment given
-(nothing inherited), in a session and process group of its own, under the user ``identity`` names when there is
-one, with no file descriptor besides its three pipes. ``call`` writes one request and waits for its response at most
+(nothing inherited), in a session and process group of its own, with no file descriptor besides its three pipes;
+when the backend has a user of its own (``owner``), the trampoline at the head of that command takes it. Neither the
+start nor ``kill_user`` passes an argument the event loop's subprocess_exec may lack (uvloop takes no ``user``,
+``group`` or ``extra_groups``), so both work on any loop the host runs. ``call`` writes one request and waits for its response at most
 ``timeout`` seconds: ``BackendTimeout`` when none comes, ``BackendGone`` when the process ends or closes its stdout
 first, ``protocol.RemoteError`` for the error it answers. A line on stdout that is no plugin/1 response is kept in
 ``violations``; the last lines of stderr in ``stderr_tail``, each cut at STDERR_LINE characters. ``stop`` asks the
@@ -35,7 +37,16 @@ MAX_VIOLATIONS = 20
 STOP_GRACE = 5.0  # seconds a backend has to exit after shutdown
 KILL_WAIT = 2.0  # seconds after SIGTERM before SIGKILL
 KILL_ROUNDS = 10  # kill(-1) rounds before kill_user gives up on a user that keeps forking
-KILLER = "import os, signal\nos.kill(-1, signal.SIGKILL)\n"  # run as the user: every process it may signal
+KILLER = (  # takes the user given, then kills every process that user may signal; never kill(-1) as root
+    "import os, signal, sys\n"
+    "uid, gid = int(sys.argv[1]), int(sys.argv[2])\n"
+    "os.setgroups([])\n"
+    "os.setgid(gid)\n"
+    "os.setuid(uid)\n"
+    "if uid <= 0 or (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (uid, uid, gid, gid):\n"
+    "    sys.exit(71)\n"
+    "os.kill(-1, signal.SIGKILL)\n"
+)
 PROC = Path("/proc")
 
 
@@ -74,9 +85,6 @@ class BackendProcess:
 
     async def start(self) -> None:
         """Start the process; OSError when it cannot."""
-        extra = {}
-        if self.owner is not None:
-            extra = {"user": self.owner.uid, "group": self.owner.gid, "extra_groups": []}
         self.proc = await asyncio.create_subprocess_exec(
             *self.command,
             stdin=asyncio.subprocess.PIPE,
@@ -87,7 +95,6 @@ class BackendProcess:
             start_new_session=True,
             close_fds=True,
             limit=protocol.MAX_LINE,
-            **extra,
         )
         self._readers = [asyncio.create_task(self._read_stdout()), asyncio.create_task(self._read_stderr())]
 
@@ -223,10 +230,11 @@ def processes_of(uid: int) -> list[int]:
 
 
 async def kill_user(owner: Identity) -> bool:
-    """SIGKILL every process of ``owner``'s user: a process started under that user calls kill(-1), which reaches
-    every process the user may signal (all of its own, nothing else), again until /proc shows none; True when none is
-    left. The host needs CAP_SETUID and CAP_SETGID, which it has when it gives backends users of their own. The killer
-    is the host's Python, isolated, so nothing of the plugin runs in it."""
+    """SIGKILL every process of ``owner``'s user: a process that takes that user calls kill(-1), which reaches every
+    process the user may signal (all of its own, nothing else), again until /proc shows none; True when none is left.
+    The host needs CAP_SETUID and CAP_SETGID, which it has when it gives backends users of their own. The killer is the
+    host's Python, isolated, so nothing of the plugin runs in it; it takes the user itself (KILLER), like the
+    trampoline of a backend, and kills nothing unless it holds exactly that user."""
     for _ in range(KILL_ROUNDS):
         if PROC.is_dir() and not processes_of(owner.uid):
             return True
@@ -236,15 +244,14 @@ async def kill_user(owner: Identity) -> bool:
             "-S",
             "-c",
             KILLER,
+            str(owner.uid),
+            str(owner.gid),
             stdin=subprocess.DEVNULL,
             stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
             env={},
             cwd="/",
             close_fds=True,
-            user=owner.uid,
-            group=owner.gid,
-            extra_groups=[],
         )
         await killer.wait()
         if not PROC.is_dir():
