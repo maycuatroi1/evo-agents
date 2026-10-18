@@ -52,6 +52,8 @@ SAFE = re.compile(r"[A-Za-z0-9._:/#@-]{1,160}")  # what an id may look like to b
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
 PREFIXED = re.compile(r"(.+?):(\d+):")  # path:line:text
 FIRST_COLON = re.compile(r"([^:]+):")  # path:text, path:count
+DRIVE = re.compile(r"[A-Za-z]:[\\/]")  # C:\ or C:/, which starts an absolute path on Windows
+WINDOWS = os.name == "nt"
 BARE = re.compile(r"(\d+)(?::|$)")  # line:text of a single file or under a heading; a count alone
 # A line that defines a name, in the languages the graph reads: def, class, function, func (Go methods too), fn,
 # interface, struct, enum, trait, type, record, object, module, and const, let or var bound to something.
@@ -171,9 +173,10 @@ def parse_line(text: str, numbered: bool | None, count: bool) -> Line | None:
     if found:
         line.path, line.number, line.text = found[1], int(found[2]), text[found.end() :]
         return line
-    found = FIRST_COLON.match(text)
+    start = 3 if WINDOWS and DRIVE.match(text) else 0  # the colon of a drive ends no path
+    found = FIRST_COLON.match(text, start)
     if found:
-        line.path, line.text = found[1], text[found.end() :]
+        line.path, line.text = text[: found.end(1)], text[found.end() :]
         if count and line.text.strip() == "0":
             return None  # grep -c names files without a match too
     return line

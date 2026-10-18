@@ -501,6 +501,19 @@ def test_post_search_reads_file_lists_counts_headings_and_the_grep_tool(linked, 
     assert link_lines(post_search.post_search(cd, only="grep")) == [SEARCH]
 
 
+def test_post_search_reads_past_the_colon_of_a_windows_drive(monkeypatch):
+    # The Grep tool names files by absolute path, which starts with a drive on Windows: C:\ or C:/ ends no path.
+    monkeypatch.setattr(post_search, "WINDOWS", True)
+    listed = post_search.parse_line(r"C:\work\app\search.py", None, False)
+    assert listed.path is None and listed.whole == r"C:\work\app\search.py"  # the whole line is the path
+    counted = post_search.parse_line(r"C:\work\app\search.py:2", None, True)
+    assert (counted.path, counted.text) == (r"C:\work\app\search.py", "2")
+    matched = post_search.parse_line("C:/work/app/search.py:def search(query):", False, False)
+    assert (matched.path, matched.text) == ("C:/work/app/search.py", "def search(query):")
+    numbered = post_search.parse_line(r"C:\work\app\search.py:5:def search(query):", None, False)
+    assert (numbered.path, numbered.number) == (r"C:\work\app\search.py", 5)
+
+
 def test_post_search_says_nothing_when_there_is_nothing_to_add(linked, tmp_path):
     linked()
     app = tmp_path / "demo-app"
@@ -736,7 +749,8 @@ def test_grep_command_reads_what_shapes_the_output(command, expected):
 
 
 def test_grep_command_follows_cd_and_leaves_outputs_it_cannot_read():
-    assert grep_command.parse("cd ../app && rg -n x", "/work/harness").base == "/work/app"
+    # The directory as this system names it (\work\app on Windows), as the hook joins it with what a result names.
+    assert grep_command.parse("cd ../app && rg -n x", "/work/harness").base == os.path.normpath("/work/app")
     assert grep_command.parse("cd $HOME && rg -n x", "/work").base is None
     for command in ("cat f | grep x", "rg --files", "rg --json x", "grep -rL x .", "grep -vn x f", "ls", "", None):
         assert grep_command.parse(command, "/work") is None, command
