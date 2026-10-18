@@ -31,14 +31,18 @@ const TASK = {
   attempt: 1,
   max_attempts: 1,
   repos: [],
+  branch: "task/77",
   error: null,
   created_at: "2026-10-18T07:00:00Z",
   started_at: "2026-10-18T07:00:05Z",
   finished_at: null,
 } as unknown as Run;
 
+// A lost run's next attempt is a new run on the branch of the run the dispatch made.
+const RETRY = { ...TASK, id: 81, attempt: 2, max_attempts: 2, parent_run_id: 77 } as unknown as Run;
+
 describe("RunsTable, a task run", () => {
-  it("carries the Task run tag, says the plugin handed the task to its agent on branch task/<run>, and links to the run's page", () => {
+  it("carries the Task run tag, says the plugin handed the task to its agent on the run's branch, and links to the run's page", () => {
     renderVi(<RunsTable runs={[TASK]} caption="Runs" viewer={null} />);
     const table = screen.getByTestId("runs-table");
     const kinds = within(table).getAllByTestId("run-kind");
@@ -50,6 +54,16 @@ describe("RunsTable, a task run", () => {
     expect(within(table).getAllByText("Một task plugin giao cho @builder, trên nhánh task/77").length).toBeGreaterThan(0);
     for (const link of within(table).getAllByRole("link", { name: "Add a CSV export" })) {
       expect(link).toHaveAttribute("href", "/p/demo/runs/77");
+    }
+  });
+
+  it("names the branch the hub recorded for a later attempt, not one of its own id", () => {
+    renderVi(<RunsTable runs={[RETRY]} caption="Runs" viewer={null} />);
+    const table = screen.getByTestId("runs-table");
+    expect(within(table).getAllByText("Một task plugin giao cho @builder, trên nhánh task/77").length).toBeGreaterThan(0);
+    expect(within(table).queryByText(/task\/81/)).toBeNull();
+    for (const link of within(table).getAllByRole("link", { name: "Add a CSV export" })) {
+      expect(link).toHaveAttribute("href", "/p/demo/runs/81");
     }
   });
 });
