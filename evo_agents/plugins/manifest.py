@@ -125,15 +125,22 @@ class Manifest:
         return tuple(item["name"] for item in self.contributions("tables"))
 
     def per_project(self) -> bool:
-        """Whether a project enables the plugin for anything: it asks for a permission, takes a config, or contributes
-        an MCP tool, a job, an event, a page or a route under /v1/x/<id>/<project>. A core plugin that does none of that
-        (Telegram: a channel of members and routes of its own) runs wherever it is installed, and the hub's store
-        does not list it."""
-        if self.tier == "isolated" or self.permissions or self.config:
-            return True
-        if any(self.contributions(point) for point in ("mcp_tools", "jobs", "events", "pages")):
-            return True
-        return any("prefix" not in item for item in self.contributions("routes"))
+        """Whether a project enables the plugin for anything (``is_per_project``)."""
+        return is_per_project(self.data)
+
+
+def is_per_project(data: dict) -> bool:
+    """Whether a project enables the plugin of manifest ``data`` for anything: it is isolated, asks for a permission,
+    takes a config, or contributes an MCP tool, a job, an event, a page or a route under /v1/x/<id>/<project>. A core
+    plugin that does none of that (Telegram: a channel of members and routes of its own) runs hub-wide wherever it is
+    installed: the hub's store lists it, installed with the image, and no project enables it. ``data`` is a manifest
+    that was read once (the store keeps it so), not checked again here."""
+    contributes = data.get("contributes") or {}
+    if data.get("tier", "isolated") == "isolated" or data.get("permissions") or data.get("config"):
+        return True
+    if any(contributes.get(point) for point in ("mcp_tools", "jobs", "events", "pages")):
+        return True
+    return any("prefix" not in item for item in contributes.get("routes") or ())
 
 
 def _semantics(data: dict) -> list[str]:
