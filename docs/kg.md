@@ -146,7 +146,14 @@ The text is what an agent's model reads, so it is kept short and readable:
   stored ids (`evo-agents:file:evo_agents/kg/store.py`, `symbol:evo-agents:evo_agents/kg/store.py::Store.search`)
   stay in the structured result, and every tool takes both forms. Other ids (`plan:x/step:2`, `repo:x`) are as stored.
 - A line names the node's kind, its name when the id does not end with it, its status, the line of a symbol, the
-  status and number of a plan step. The URI is left to `kg_node`, whose props and evidence carry it.
+  status and number of a plan step. The URI is left to `kg_node`, whose props and evidence carry it. For a file of a
+  git source on a forge, `kg_node` gives the link at the commit the source read (`.../blob/<sha>/path`), so a span's
+  lines match the file it opens; the corpus keeps the link by branch, which does not change an item's hash on every
+  commit (`evo_agents/kg/freshness.py`).
+- `kg_status` names, per git source, the commit read and how far behind the remote's default branch it is:
+  `read    app 1550c7a of HEAD, 3 behind origin/main`. On a machine with the checkout the count is taken again from
+  the clone's `origin/<default_branch>` without fetching; the hub, which has no checkout, shows the count of the
+  machine that synced the source.
 - The label most nodes of a result share is printed once, under the first line (`label of every node: public,U`);
   a node with another label names it on its line.
 - `kg_context` keeps its whole text, header, nodes and edges, within `budget_tokens`, counted as UTF-8 bytes / 3,

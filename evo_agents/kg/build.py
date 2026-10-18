@@ -3,6 +3,8 @@
 Stages run as memoized tasks: map and structure per item, then one identifier index, then link and
 binding per item. Assembly merges facts, applies entity resolution (only declared ``same_as``),
 evaluates the provenance circuit, computes labels, checks node keys, and writes the store as one build.
+Its coverage names, per source, what the build holds; for a git source that includes the commit read
+(``evo_agents.kg.freshness``).
 A store written by an older schema is rebuilt from the corpus log into a new file that replaces it.
 """
 
@@ -17,6 +19,7 @@ from pathlib import Path
 
 from evo_agents.kg import audit
 from evo_agents.kg.corpus import Corpus
+from evo_agents.kg.freshness import add_reads
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.pipeline.binding import BINDING_VERSION, binding_item
@@ -452,6 +455,7 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         memo = Memo(path)
     try:
         graph, coverage, errors, issues = run_pipeline(project, corpus, memo)
+        add_reads(coverage, corpus)
         memo.commit()
         report.memo = memo.stats()
         report.issues = issues[:50]

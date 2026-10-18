@@ -332,6 +332,15 @@ class Corpus:
         row = self.db.execute("SELECT cursor FROM cursors WHERE source = ?", (source,)).fetchone()
         return json.loads(row[0]) if row and row[0] is not None else None
 
+    def record_cursor(self, source: str, cursor, run_id: str) -> None:
+        """Keep the cursor run ``run_id`` of ``source`` ended with, unless the source has one of a later run: runs
+        merged in any order leave the newest one's. In the caller's transaction."""
+        self.db.execute(
+            "INSERT INTO cursors VALUES (?, ?, ?) ON CONFLICT(source) DO UPDATE SET cursor = excluded.cursor,"
+            " run_id = excluded.run_id WHERE excluded.run_id > cursors.run_id",
+            (source, json.dumps(cursor, ensure_ascii=False), run_id),
+        )
+
     def runs(self, source: str | None = None, limit: int = 20, status: str | None = None) -> list[dict]:
         """Recorded runs, newest first, optionally of one source and with one status (ok or failed)."""
         query = "SELECT run_id, source, connector, version, status, started_at, finished_at, detail FROM runs"

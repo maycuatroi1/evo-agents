@@ -10,7 +10,8 @@ A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the
 
 Each run in ``kg_ingests`` that corpus.sqlite does not list yet is fetched (its log, checked against its SHA-256),
 merged with the corpus's own merge, and listed; the merge is order-independent, so the runs of several machines in
-any order give one state. Then every blob a live item refers to and the cache lacks is fetched, checked, and moved
+any order give one state; the cursor a run ended with is kept unless a later run's is, so a git source's coverage
+names the commit its newest run read (``evo_agents.kg.freshness``). Then every blob a live item refers to and the cache lacks is fetched, checked, and moved
 into place. The graph is built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces
 graph.sqlite in one rename: a single file, the artifact. Anything that fails marks the build failed with a message
 naming no content, and the worker goes on with the next job.
@@ -180,8 +181,11 @@ def _merge(corpus: Corpus, ingest: Ingest) -> None:
         raise BuildFailure(f"the log of run {ingest.run_id} names run {run_id}")
     header = records[0]
     end = next((r for r in reversed(records) if r.get("type") == "run_end"), {})
+    state = next((r for r in reversed(records) if r.get("type") == "state"), None)
     with corpus.db:
         corpus.merge(records, run_id)
+        if state is not None and header.get("source"):  # the commit a git source read, for the build's coverage
+            corpus.record_cursor(header["source"], state.get("cursor"), run_id)
         corpus.record_run(
             run_id,
             source=header.get("source") or "",
