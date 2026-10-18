@@ -79,7 +79,7 @@ def tarball(*entries: tuple, with_manifest: bool = True, gzipped: bool = True) -
                 tar.addfile(info, io.BytesIO(data))
             else:
                 tar.addfile(info)
-    return gzip.compress(buffer.getvalue()) if gzipped else buffer.getvalue()
+    return gzip.compress(buffer.getvalue(), mtime=0) if gzipped else buffer.getvalue()
 
 
 @pytest.mark.parametrize(
