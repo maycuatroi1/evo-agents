@@ -23,6 +23,7 @@ import asyncio
 import gzip
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -1423,6 +1424,10 @@ def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tm
     assert offline.ok and not offline.warnings
     assert build_project(project).skipped  # the copy is the revision the cursor holds: the same item, labels and all
     copy.write_text(render(body, PROJECT, first["revision"], first["digest"]))  # an older copy, checked out by hand
+    # Checked out after the revision: a file's time counts whole seconds (epoch_to_iso), the revision's does not, and
+    # the test can get here within the second of the revision.
+    later = time.time() + 1
+    os.utime(copy, (later, later))
     assert sync_project(project, plans=kg_plans.reader())[0].ok
     report = build_project(project)
     step = Store.for_project(project).node("plan:rollout/step:1", report.build_id)
