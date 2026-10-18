@@ -160,8 +160,9 @@ hub that has a graph of the project, the server answers from the hub with the sa
 `kg_impact` walks back over callers, in other files too when the caller's imports say where the callee lives,
 importers, members, definers, subclasses (`inherits`), overriding methods (`overrides`), implementations and tests.
 Each result notes, per language of its seeds, whether calls across files, inheritance and overrides are covered, and
-names a seed with more incoming edges than it reads (2,000), with their number. [docs/kg.md](docs/kg.md) has the
-coverage table per language and the fields of the result.
+names a seed with more incoming edges than it reads (2,000), with their number. Its text lists the first 20 dependents
+of each hop and counts the rest (`limit` raises it). [docs/kg.md](docs/kg.md) has the coverage table per language, the
+fields of the result, and how the text of every tool is written.
 
 Hooks:
 
