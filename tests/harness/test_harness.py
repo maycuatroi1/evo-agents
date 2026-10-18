@@ -59,6 +59,7 @@ sources:
   - id: app
     connector: git
     repo: app
+    ref: origin/main
     label: {level: internal, integrity: T}
 """,
     )
@@ -117,6 +118,18 @@ def test_knowledge_semantics_catch_bad_references(harness: Path):
     assert any("unknown connector 'nope'" in m for m in messages)
     assert any("'ghost' is not declared" in m for m in messages)
     assert any("'top' is not in policy.levels" in m for m in messages)
+
+
+def test_a_git_source_without_a_ref_is_a_warning(harness: Path, capsys):
+    text = (harness / "knowledge.yaml").read_text()
+    (harness / "knowledge.yaml").write_text(text.replace("    ref: origin/main\n", ""))
+    knowledge = _knowledge_report(harness)
+    assert knowledge.ok
+    (issue,) = knowledge.issues
+    assert (issue.path, issue.severity) == ("sources[1].ref", "warning")
+    assert "reads HEAD" in issue.message and "ref: origin/main" in issue.message
+    assert main(["harness", "validate", str(harness)]) == 0  # a warning does not fail validate
+    assert "sources[1].ref" in capsys.readouterr().out
 
 
 def test_missing_label_is_fail_closed_warning(harness: Path):

@@ -266,6 +266,25 @@ def contracts_semantics(data: dict, harness: Harness | None = None) -> list[Issu
     return issues
 
 
+NO_REF = (
+    "no ref: the source reads HEAD of its checkout, whatever branch that has, and machines that push to one hub may "
+    "read different branches; name the deployed branch, e.g. ref: origin/main with fetch: true"
+)
+
+
+def _git_source_issues(src: dict, where: str, repo_names: set | None) -> list[Issue]:
+    """A git source reads a repo harness.yaml declares or a path, at a ref it names. ``repo_names`` is None when
+    there is no harness.yaml to check the repo against."""
+    issues: list[Issue] = []
+    if not (src.get("repo") or src.get("path")):
+        issues.append(Issue(where, "a git source needs repo or path"))
+    if src.get("repo") and repo_names is not None and src["repo"] not in repo_names:
+        issues.append(Issue(f"{where}.repo", f"repo {src['repo']!r} is not declared in harness.yaml"))
+    if not src.get("ref"):
+        issues.append(Issue(f"{where}.ref", NO_REF, "warning"))
+    return issues
+
+
 def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | None = None) -> list[Issue]:
     """Checks a schema cannot express: references between sources, labels and the policy, and, given
     the path of knowledge.yaml, the ontology it points at."""
@@ -290,10 +309,8 @@ def knowledge_semantics(data: dict, manifest: dict | None = None, path: Path | N
             issues.append(Issue(f"{where}.connector", f"unknown connector {connector!r}"))
         if connector == "exec" and not src.get("command"):
             issues.append(Issue(f"{where}.command", "an exec connector needs a command"))
-        if connector == "git" and not (src.get("repo") or src.get("path")):
-            issues.append(Issue(where, "a git source needs repo or path"))
-        if connector == "git" and src.get("repo") and manifest is not None and src["repo"] not in repo_names:
-            issues.append(Issue(f"{where}.repo", f"repo {src['repo']!r} is not declared in harness.yaml"))
+        if connector == "git":
+            issues += _git_source_issues(src, where, repo_names if manifest is not None else None)
         label = src.get("label")
         if not label:
             issues.append(Issue(f"{where}.label", "no label: treated as the highest level with integrity U", "warning"))

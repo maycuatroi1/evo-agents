@@ -9,10 +9,11 @@ adds to the session label (sessions.py).
 
 The text is written to be read: a node is named by its readable id (``refs.readable``: ``repo:path``,
 ``repo:path::Symbol``, ``repo:path#section``) and its name only when the id does not already end with it;
-its URI is left to kg_node; a label shared by every node of a result is printed once, under the first
-line. kg_context keeps its whole text, nodes and edges, within ``budget_tokens`` (UTF-8 bytes / 3), and
-kg_impact lists the first ``limit`` dependents of each hop and counts the rest. Each tool takes readable
-and stored ids alike, and the argument names agents guess (``refs.ALIASES``).
+its URI is left to kg_node, which links to the file at the commit its source read (``freshness.Links``); a
+label shared by every node of a result is printed once, under the first line. kg_context keeps its whole
+text, nodes and edges, within ``budget_tokens`` (UTF-8 bytes / 3), and kg_impact lists the first ``limit``
+dependents of each hop and counts the rest. Each tool takes readable and stored ids alike, and the argument
+names agents guess (``refs.ALIASES``).
 
 An MCP client gets a result's text alone (``for_model``), which is what its model reads: Claude Code 2.1.296
 shows the model a result's structuredContent instead of its text when it has one, and the JSON of the data
@@ -38,6 +39,7 @@ from evo_agents.kg.budget import (
     Room,
     line_size,
 )
+from evo_agents.kg.freshness import Links
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, ProjectError, resolve_project
@@ -245,7 +247,7 @@ class Session:
             "summary": f"{len(results)} results",
         }
 
-    def _evidence(self, store: Store, elem: str, b: int) -> list[dict]:
+    def _evidence(self, store: Store, elem: str, b: int, links: Links) -> list[dict]:
         out = []
         for w in store.where(elem, b)[:10]:
             unit = store.unit(w["unit"], b)
@@ -261,7 +263,7 @@ class Session:
                     "anchor": unit["anchor"],
                     "rev": unit["rev"],
                     "span": w["span"] or unit["span"],
-                    "uri": item["props"].get("uri"),
+                    "uri": links.at_commit(item["props"].get("uri"), unit["source"]),
                     "source": unit["source"],
                 }
             )
@@ -279,7 +281,7 @@ class Session:
                                     "anchor": unit["anchor"],
                                     "rev": unit["rev"],
                                     "span": unit["span"],
-                                    "uri": item["props"].get("uri"),
+                                    "uri": links.at_commit(item["props"].get("uri"), unit["source"]),
                                     "source": unit["source"],
                                 }
                             )
@@ -307,6 +309,8 @@ class Session:
         n = self._lookup(store, id, b)
         if n is None:
             raise ToolError("no visible node has that id; search with kg_search")
+        links = Links.of(store, b)
+        n = links.node(n)
         edges = [e for e in store.edges_of(n["id"], b, limit=400) if self.visible(e["label"])]
         others = store.nodes({e["dst"] if e["src"] == n["id"] else e["src"] for e in edges}, b)
         lines = [self._line(n)]
@@ -315,7 +319,7 @@ class Session:
         props = {k: v for k, v in n["props"].items() if k not in ("span",)}
         if props:
             lines.append("props: " + json.dumps(props, ensure_ascii=False, sort_keys=True))
-        evidence = self._evidence(store, n["id"], b)
+        evidence = self._evidence(store, n["id"], b, links)
         for ev in evidence:
             lines.append(
                 f"evidence: {readable(ev['item'])}{'#' + ev['anchor'] if ev['anchor'] else ''} rev {ev['rev']}"
