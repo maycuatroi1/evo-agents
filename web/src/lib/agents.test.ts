@@ -16,6 +16,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     is_default: false,
     permissions: {},
     restricted: [],
+    packs: [],
     version: 1,
     created_by: "octo",
     created_at: "2026-10-14T03:00:00Z",
@@ -59,6 +60,11 @@ describe("agent permissions", () => {
     expect(validItem("worker", "label:")).toBe(false);
     expect(validItem("project", "Demo")).toBe(false);
     expect(validItem("model", "anthropic/claude-sonnet-4-5")).toBe(true);
+    expect(validItem("environment", "host")).toBe(true);
+    expect(validItem("environment", "sandbox/box")).toBe(true);
+    expect(validItem("environment", "docker")).toBe(false);
+    expect(validItem("environment", "Sandbox/box")).toBe(false);
+    expect(validItem("environment", "sandbox/box/x")).toBe(false);
     expect(validItem("model", "two\nlines")).toBe(false);
     expect(validItem("runtime", "codex")).toBe(true);
     expect(validItem("runtime", "gemini")).toBe(false);

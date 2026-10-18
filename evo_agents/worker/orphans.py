@@ -9,6 +9,9 @@ starts: the pid of the leader of its process group, the group, and the leader's 
 orphan, asks the hub about those runs in its first heartbeat (``daemon.Daemon``), and stops the group (``stop``):
 SIGTERM to the group and to the groups of the leader's descendants, then SIGKILL to what is left after STOP_GRACE
 seconds. A leader whose pid now belongs to a process that started at another time is not the agent: nothing is sent.
+An agent that ran in a container of a plugin's environment (``containers`` in agent.json) also has what is left of its
+run's containers removed through the engine (``evo_agents.worker.environments.remove_containers``), since a container
+can outlive the engine's client the process group held.
 
 Standard library only.
 """
@@ -22,6 +25,7 @@ import signal
 import subprocess
 from datetime import UTC, datetime
 
+from evo_agents.worker.environments import find_engine, remove_containers
 from evo_agents.worker.runtimes.common import descendants, kill_group
 
 STOP_GRACE = 10.0  # seconds an orphan's process group has to end on SIGTERM before SIGKILL
@@ -100,9 +104,27 @@ def _target(agent: dict) -> tuple[int | None, str | None]:
     return pgid, None
 
 
+def _remove_containers(agent: dict) -> str:
+    """Remove what is left of the containers agent.json ``agent`` names; a phrase for the log, empty for none."""
+    found = agent.get("containers")
+    if not isinstance(found, dict) or not isinstance(found.get("run"), int) or not isinstance(found.get("worker"), str):
+        return ""
+    engine, why = find_engine(os.environ)
+    if engine is None:
+        return f"; its containers were not looked for: {why}"
+    removed = remove_containers(engine, found["worker"], found["run"], os.environ)
+    return f"; {removed} container(s) of environment {found.get('environment')} removed" if removed else ""
+
+
 async def stop(agent: dict, grace: float = STOP_GRACE) -> str:
     """Stop the process group of the agent ``agent`` (an agent.json) describes, its leader's descendants in other
-    groups included: SIGTERM, then SIGKILL after ``grace`` seconds. What happened, as a phrase for the log."""
+    groups included: SIGTERM, then SIGKILL after ``grace`` seconds; and remove what is left of its run's containers.
+    What happened, as a phrase for the log."""
+    stopped = await _stop_group(agent, grace)
+    return stopped + await asyncio.to_thread(_remove_containers, agent)
+
+
+async def _stop_group(agent: dict, grace: float) -> str:
     pgid, why = await asyncio.to_thread(_target, agent)
     if pgid is None:
         return f"nothing to stop: {why}"

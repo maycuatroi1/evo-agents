@@ -29,6 +29,7 @@ function useOptionText(axis: Axis) {
     if (axis === "tool" && option.tag && option.tag in TOOL_KEYS) return { title: option.value, detail: tTools(option.tag as ToolKey), mono: true };
     if (axis === "runtime" && option.tag && option.tag in RUNTIME_KEYS) return { title: tRuntime(option.tag as RuntimeKey), detail: option.value, mono: false };
     if (option.tag === "githubApp") return { title: option.value, detail: t("githubApp"), mono: true };
+    if (option.tag === "host") return { title: option.value, detail: t("host"), mono: true };
     if (option.tag === "label") return { title: option.value, detail: t("labelWorkers", { count: Number(option.detail ?? 0) }), mono: true };
     if (option.tag === "custom") return { title: option.value, detail: t("custom"), mono: true };
     if (option.tag === "global" || option.tag === "project") {

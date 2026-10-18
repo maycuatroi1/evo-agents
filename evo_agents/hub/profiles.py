@@ -1,5 +1,5 @@
 """Agent profiles: who an agent of a project is (handle, name, avatar, colour, description, instructions) and what its
-runs may use, on seven axes (``docs/hub.md``, section "Agent profiles").
+runs may use, on eight axes (``docs/hub.md``, section "Agent profiles").
 
 A profile belongs to a project, whose admins manage it; every member of the project reads it. Its handle is unique on
 the hub and never equal to the name of a project, except for the project's default profile, whose handle is the
@@ -16,13 +16,26 @@ allowlist never grows by itself when a secret, a skill or a worker is added. Wha
 - ``worker``: worker names, or ``label:<label>`` for every worker carrying that label, compared ignoring case;
 - ``project``: project names, the other projects whose runs the profile may take (its own always);
 - ``model``: model names, as a runtime names them;
-- ``runtime``: ``claude-code``, ``opencode``, ``codex``.
+- ``runtime``: ``claude-code``, ``opencode``, ``codex``, and the runtimes of plugins, ``<plugin>/<name>``
+  (``evo_agents.plugins.runtimes``);
+- ``environment``: where the agent runs, in order of preference: ``host``, the worker's own machine, and the
+  environments of plugins, ``<plugin>/<name>``, each a container (``evo_agents.plugins.run_environments``). An axis of
+  mode all runs on the host, as every run ran before the axis; so does a profile version written before it, which
+  names seven axes (``rule``).
 
-The hub enforces credential, skill, worker, project, model and runtime when it dispatches, hands out and leases a
-run; the worker's adapter enforces tool, skill and model in the agent session, from the profile the claim carries
-(``RunSpec.profile``). A worker whose daemon does not say it does (``runs.AGENT_PROFILES``) never claims a run whose
+The hub enforces credential, skill, worker, project, model, runtime and environment when it dispatches, hands out and
+leases a run (a claim picks the first environment of the allowlist the claiming worker takes); the worker's adapter
+enforces tool, skill and model in the agent session, from the profile the claim carries (``RunSpec.profile``), and
+its container provider the environment (``evo_agents.worker.environments``). A worker whose daemon does not say it does (``runs.AGENT_PROFILES``) never claims a run whose
 profile limits tool, skill or model, or adds instructions. Every edit of a profile raises its version; a run records
 the profile and version it was dispatched under, and the hub applies that version's rules to it.
+
+A profile may also attach agent packs of plugins (``evo_agents.plugins.agent_packs``), at most MAX_PACKS, each pinned at
+a version of its plugin: ``{"plugin", "name", "version"}``. A pack it attaches counts as named on its skill and tool
+axes: the skills of the pack pass the skill axis and its MCP servers the tool axis (``mcp:<server>``), since pinning
+the pack at a version is the admin's consent to what that version holds; the axes still limit everything else, and a
+pack widens no other axis. Only a worker whose daemon builds packs (``runs.AGENT_PACKS``) and whose owner accepted
+each plugin takes such a run (``packs_unfit``).
 
 Standard library only: the command line and the worker import this module on a core install.
 """
@@ -32,9 +45,11 @@ from __future__ import annotations
 import hashlib
 import re
 
-from evo_agents.hub.runs import MAX_MODEL_CHARS, RUNTIMES
+from evo_agents.hub.runs import AGENT_PACKS, MAX_MODEL_CHARS, RUNTIMES
+from evo_agents.plugins.run_environments import HOST, is_environment
+from evo_agents.plugins.runtimes import is_plugin_runtime
 
-AXES = ("credential", "tool", "skill", "worker", "project", "model", "runtime")
+AXES = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
 MODES = ("all", "allowlist")
 ALL, ALLOWLIST = MODES
 
@@ -44,6 +59,7 @@ MAX_NAME_CHARS = 80
 MAX_DESCRIPTION_CHARS = 1000
 MAX_INSTRUCTIONS_CHARS = 8000
 MAX_ALLOW = 200  # items in one allowlist
+MAX_PACKS = 16  # agent packs one profile attaches; the check agent_profiles_packs_check of schema 0041 holds it too
 COLOR_PATTERN = r"^#[0-9a-f]{6}$"
 DEFAULT_COLOR = "#475569"  # the default profile of every project
 PALETTE = ("#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#16a34a", "#0891b2", "#4f46e5")
@@ -110,7 +126,13 @@ def item_problem(axis: str, item: str) -> str | None:
         fits = len(item) <= MAX_MODEL_CHARS and _LINE.fullmatch(item)
         return None if fits else f"{item!r} is not a model's name (one line, at most {MAX_MODEL_CHARS} characters)"
     if axis == "runtime":
-        return None if item in RUNTIMES else f"runtime {item!r} is none of {', '.join(RUNTIMES)}"
+        if item in RUNTIMES or is_plugin_runtime(item):
+            return None
+        return f"runtime {item!r} is none of {', '.join(RUNTIMES)}, nor a plugin's <plugin>/<name>"
+    if axis == "environment":
+        return (
+            None if is_environment(item) else f"environment {item!r} is neither {HOST} nor a plugin's <plugin>/<name>"
+        )
     return f"{axis!r} is no axis: {', '.join(AXES)}"
 
 
@@ -125,12 +147,12 @@ def problems(permissions: dict) -> list[str]:
     it is one."""
     found = [f"{axis!r} is no axis: {', '.join(AXES)}" for axis in permissions if axis not in AXES]
     for axis in AXES:
-        rule = permissions.get(axis)
-        if not isinstance(rule, dict) or rule.get("mode") not in MODES:
+        given = permissions.get(axis)
+        if not isinstance(given, dict) or given.get("mode") not in MODES:
             found.append(f"{axis}: mode is all or allowlist")
             continue
-        allow = rule.get("allow", [])
-        if rule["mode"] == ALL and allow:
+        allow = given.get("allow", [])
+        if given["mode"] == ALL and allow:
             found.append(f"{axis}: an axis of mode all takes no allow list")
         elif len(allow) > MAX_ALLOW:
             found.append(f"{axis}: at most {MAX_ALLOW} items")
@@ -138,14 +160,21 @@ def problems(permissions: dict) -> list[str]:
     return found
 
 
+def rule(permissions: dict | None, axis: str) -> dict:
+    """The rule of ``axis`` in ``permissions``: ``{"mode": "all"}`` for an axis they do not name (a profile version
+    written before the axis existed) or for a run without a profile."""
+    found = (permissions or {}).get(axis)
+    return found if isinstance(found, dict) else {"mode": ALL}
+
+
 def limited(permissions: dict | None, axis: str) -> bool:
     """Whether ``axis`` of ``permissions`` is an allowlist; never for a run without a profile."""
-    return bool(permissions) and (permissions.get(axis) or {}).get("mode") == ALLOWLIST
+    return rule(permissions, axis).get("mode") == ALLOWLIST
 
 
 def allowed(permissions: dict | None, axis: str) -> list[str] | None:
     """The allowlist of ``axis``; None when the axis allows all (or there is no profile)."""
-    return list(permissions[axis].get("allow", [])) if limited(permissions, axis) else None
+    return list(rule(permissions, axis).get("allow", [])) if limited(permissions, axis) else None
 
 
 def allows(permissions: dict | None, axis: str, item: str) -> bool:
@@ -177,3 +206,27 @@ def needs_worker(permissions: dict | None, instructions: str | None) -> bool:
 def restricted_axes(permissions: dict | None) -> list[str]:
     """The axes of ``permissions`` that are allowlists, in AXES order."""
     return [axis for axis in AXES if limited(permissions, axis)]
+
+
+def pack_plugins(packs: list | None) -> list[str]:
+    """The plugins whose agent packs ``packs`` (a profile's, each ``{"plugin", "name", "version"}``) attach, sorted."""
+    return sorted({pack["plugin"] for pack in packs or ()})
+
+
+def packs_unfit(packs: list | None, *, worker_id: int, agent_version: str | None, features, plugins) -> str | None:
+    """What keeps a worker (as its last heartbeat reported it, and its owner set it) from ever claiming a run whose
+    profile attaches ``packs``; None when nothing does, and always for a profile that attaches none."""
+    if not packs:
+        return None
+    if AGENT_PACKS not in set(features or ()):
+        return (
+            f"its daemon (evo-agents {agent_version or 'of an unknown version'}) does not say it builds agent packs, "
+            "and the run's agent attaches some: upgrade it and restart its daemon"
+        )
+    missing = [name for name in pack_plugins(packs) if name not in set(plugins or ())]
+    if missing:
+        return (
+            f"its owner has not let it take the agent packs of plugin {', '.join(missing)}: add it to the worker's "
+            f"plugins, on its page or with PATCH /v1/workers/{worker_id}"
+        )
+    return None

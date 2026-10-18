@@ -4,11 +4,16 @@
   every 5 minutes), the checkouts (``checkouts.discover``, every minute), the free slots, the runs it holds and its
   version. The answer says whether to drain, and for each run whether to cancel it, whether the hub still holds it
   for this worker, and how many messages of the owner wait.
-- The answer also carries the worker's settings as the hub holds them (slots, name, labels), which its owner may
-  change from the web. When they differ from config.json, the daemon takes them in memory, writes config.json again
-  (the other fields as they are on disk) and logs the old and new values: more slots are claimed at the next turn of
-  the claim loop, and fewer stop no run, the daemon only claims nothing until it holds fewer runs than the new
-  slots. An answer without settings (a hub before schema 0026) changes nothing.
+- The answer also carries the worker's settings as the hub holds them (slots, name, labels, plugins), which its owner
+  may change from the web. When they differ from config.json, the daemon takes them in memory, writes config.json
+  again (the other fields as they are on disk) and logs the old and new values: more slots are claimed at the next
+  turn of the claim loop, and fewer stop no run, the daemon only claims nothing until it holds fewer runs than the new
+  slots. An answer without settings (a hub before schema 0026) changes nothing, and one without plugins (a hub before
+  0039) leaves them.
+- The daemon says it runs the runtimes of plugins (``runs.PLUGIN_RUNTIMES``), so the answer carries the declarations
+  of the runtimes of the plugins its owner accepted (``plugin_runtimes``): each one, of a plugin of config.json's
+  plugins, gets its adapter of ACP (``acp.adapter_class``), and the next heartbeat looks for their programs and
+  reports them beside the core's runtimes; the hub hands a run of one only to a worker that reports it available.
 - It claims a run whenever it has a free slot and is neither draining nor stopping, one long poll of up to 25
   seconds at a time, and runs each run it gets (``run.Run``) next to the others.
 - The answer's ``takeover`` and ``handback`` hand a run's agent to a person in tmux and back (``interactive``), and
@@ -58,13 +63,15 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.hub import runs
+from evo_agents.plugins.runtimes import AcpRuntime
 from evo_agents.worker import checkouts, gitops, interactive, orphans
-from evo_agents.worker.adapter import Adapter, detect_runtimes
+from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
 from evo_agents.worker.power import KeepAwake, WakeWatch
 from evo_agents.worker.run import Run, Sender, run_class
+from evo_agents.worker.runtimes.acp import adapter_class
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
 
 log = logging.getLogger("evo_agents.worker")
@@ -79,19 +86,26 @@ LEFTOVER_GRACE = 30.0  # seconds the daemon waits at its end for leftover events
 MAX_HEARTBEAT_RUNS = 64  # run ids in one heartbeat, as the hub takes them
 
 
+def _strings(value) -> bool:
+    return isinstance(value, list) and all(isinstance(item, str) for item in value)
+
+
 def _settings(value) -> dict | None:
-    """The worker settings of a heartbeat answer, {"slots", "name", "labels"}, or None when they are not as the hub
-    sends them."""
+    """The worker settings of a heartbeat answer, {"slots", "name", "labels"} and "plugins" when the hub sends them
+    (0039), or None when they are not as the hub sends them."""
     if not isinstance(value, dict):
         return None
     slots, name, labels = value.get("slots"), value.get("name"), value.get("labels")
     if isinstance(slots, bool) or not isinstance(slots, int) or not 1 <= slots <= runs.MAX_SLOTS:
         return None
-    if not isinstance(name, str) or not name:
+    if not isinstance(name, str) or not name or not _strings(labels):
         return None
-    if not isinstance(labels, list) or not all(isinstance(label, str) for label in labels):
-        return None
-    return {"slots": slots, "name": name, "labels": list(labels)}
+    found = {"slots": slots, "name": name, "labels": list(labels)}
+    if "plugins" in value:
+        if not _strings(value["plugins"]) or len(value["plugins"]) > runs.MAX_WORKER_PLUGINS:
+            return None
+        found["plugins"] = list(value["plugins"])
+    return found
 
 
 def heartbeat_seconds(env: Mapping[str, str]) -> float:
@@ -125,6 +139,8 @@ class Daemon:
         self.run_tasks: dict[int, asyncio.Task] = {}
         self.orphans: dict[int, dict] = {}  # run id -> {"agent": agent.json, "record": run.json}, until the hub answers
         self.runtimes: dict[str, dict] = {}
+        self.plugin_runtimes: dict[str, AcpRuntime] = {}  # the declarations the hub sent, by runtime
+        self.plugin_adapters: dict[str, type[Adapter]] = {}  # and the adapter of ACP of each
         self.checkouts: dict[str, dict] = {}
         self.draining = False
         self.exit_code = 0
@@ -136,6 +152,7 @@ class Daemon:
         self._checkouts_at = float("-inf")
         self._beat_failures = 0
         self._settings_unread = False
+        self._declarations_unread: set[str] = set()  # the errors of declarations logged already
         self.keep_awake = keep_awake or KeepAwake(config.name)  # the power assertions, while it holds a run
         self.wake = wake or WakeWatch()  # notices a sleep from the turns of the heartbeat and claim loops
 
@@ -171,11 +188,15 @@ class Daemon:
     async def _look_at_machine(self, force: bool = False) -> None:
         now = asyncio.get_running_loop().time()
         if force or now - self._runtimes_at > RUNTIMES_EVERY:
-            self.runtimes = await asyncio.to_thread(detect_runtimes, self.adapters)
+            self.runtimes = await asyncio.to_thread(self._detect)
             self._runtimes_at = now
         if force or now - self._checkouts_at > CHECKOUTS_EVERY:
             self.checkouts = await asyncio.to_thread(checkouts.discover, self.config)
             self._checkouts_at = now
+
+    def _detect(self) -> dict[str, dict]:
+        """The runtimes of the core, then those of the plugins the hub declared, as the heartbeat reports them."""
+        return {**detect_runtimes(self.adapters), **detect_adapters(self.plugin_adapters)}
 
     @property
     def free_slots(self) -> int:
@@ -363,11 +384,35 @@ class Daemon:
             self.slot_free.set()
         if answer.get("settings") is not None:
             self._take_settings(answer["settings"])
+        self._take_plugin_runtimes(answer.get("plugin_runtimes"))
+
+    def _take_plugin_runtimes(self, value) -> None:
+        """The declarations of the runtimes of the plugins the owner accepted, as the answer carries them: each one of
+        a plugin of the config's plugins gets its adapter of ACP, looked for at the next heartbeat when they changed. A
+        declaration this daemon cannot read is logged once and left out; an answer without any (a hub before 0039)
+        leaves none."""
+        found: dict[str, AcpRuntime] = {}
+        for item in value if isinstance(value, list) else []:
+            try:
+                declaration = AcpRuntime.from_json(item)
+            except ValueError as exc:
+                if str(exc) not in self._declarations_unread:
+                    self._declarations_unread.add(str(exc))
+                    log.warning("the hub declared a runtime this daemon cannot read", extra={"error": str(exc)})
+                continue
+            if declaration.plugin in self.config.plugins:
+                found[declaration.runtime] = declaration
+        if found == self.plugin_runtimes:
+            return
+        self.plugin_runtimes = found
+        self.plugin_adapters = {name: adapter_class(declaration) for name, declaration in found.items()}
+        self._runtimes_at = float("-inf")  # looked for at the next heartbeat
+        log.info("runtimes of plugins declared", extra={"runtimes": sorted(found)})
 
     def _take_settings(self, settings) -> None:
-        """Take the worker's settings the hub sent (slots, name, labels) when they differ from the config: in memory,
-        and in config.json, read again so a field set by hand since the start (checkouts) stays. Settings this daemon
-        cannot read are logged and left."""
+        """Take the worker's settings the hub sent (slots, name, labels, plugins) when they differ from the config: in
+        memory, and in config.json, read again so a field set by hand since the start (checkouts) stays. Settings this
+        daemon cannot read are logged and left."""
         wanted = _settings(settings)
         if wanted is None:
             if not self._settings_unread:  # once, not at each heartbeat
@@ -604,7 +649,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") in ("plan", "review", "judge", "author", "chat"):
+        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task"):
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)

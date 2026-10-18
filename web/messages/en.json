@@ -1798,6 +1798,8 @@
         "slotsValue": "{held} of {slots} in use",
         "labels": "Labels",
         "noLabels": "None",
+        "plugins": "Plugins",
+        "noPlugins": "None",
         "permissions": "Permissions",
         "permissionsValue": "Full, as {owner}",
         "dispatch": "Who dispatches",
@@ -1878,6 +1880,11 @@
       "labelsHint": "Optional. Separate them with commas or spaces.",
       "labelsInvalid": "Not a valid label: {labels}. A label starts with a letter or digit and holds letters, digits, dots, dashes or underscores, at most 40 in all.",
       "labelsTooMany": "At most {max} labels.",
+      "plugins": "Plugins",
+      "pluginsPlaceholder": "sandbox",
+      "pluginsHint": "Optional. The plugins whose runtimes this worker runs, by id, separated by commas or spaces. It reports a plugin's runtime once the program is on this machine's PATH, and takes no run of a plugin left out here.",
+      "pluginsInvalid": "Not a plugin id: {plugins}. An id starts with a lowercase letter and holds lowercase letters, digits and dashes, at most 63 in all.",
+      "pluginsTooMany": "At most {max} plugins.",
       "save": "Save",
       "saving": "Saving",
       "discard": "Discard changes",
@@ -2076,6 +2083,12 @@
         "noun": "runtimes",
         "hint": "The agent programs its runs may start.",
         "all": "Every runtime"
+      },
+      "environment": {
+        "title": "Environments",
+        "noun": "environments",
+        "hint": "Where its runs' agent runs, in order of preference: host, the worker's own machine, or a plugin's container.",
+        "all": "The worker's host"
       }
     },
     "tools": {
@@ -2179,7 +2192,8 @@
           "worker": "A worker's name, or label:name",
           "project": "A project's name",
           "model": "A model, as its runtime names it",
-          "runtime": "claude-code, opencode or codex"
+          "runtime": "claude-code, opencode or codex",
+          "environment": "host, or a plugin's environment: plugin/name"
         },
         "add": "Add",
         "invalid": {
@@ -2189,7 +2203,8 @@
           "worker": "A worker's name, or label: with a worker's label.",
           "project": "A project's name is lowercase letters, digits and hyphens.",
           "model": "A model is one line of at most 200 characters.",
-          "runtime": "A runtime is claude-code, opencode or codex."
+          "runtime": "A runtime is claude-code, opencode or codex.",
+          "environment": "An environment is host, or a plugin's id and the environment's name: plugin/name."
         },
         "nothing": "Nothing allowed: runs under this agent get no {axis}.",
         "count": "{count} allowed, of at most {max}.",
@@ -2201,7 +2216,23 @@
         "skillScope": {
           "global": "shared",
           "project": "this project"
-        }
+        },
+        "host": "the worker's own machine"
+      },
+      "packs": {
+        "title": "Agent packs",
+        "hint": "Skills, subagents, hooks, MCP servers and instructions from plugins the project enabled. Each is pinned at a version of its plugin, which changes only here; its skills and MCP servers count as allowed on Skills and Tools.",
+        "failed": "The project's agent packs could not be read: those attached stay as they are.",
+        "noneRead": "Nothing to pick from.",
+        "none": "No plugin enabled in {project} contributes an agent pack.",
+        "choices": "Agent packs to attach",
+        "version": "Version of {pack}",
+        "installed": "{version} (installed)",
+        "goneVersion": "{version} (no longer held)",
+        "gone": "No longer offered",
+        "noneAttached": "None attached.",
+        "count": "{count} attached, of at most {max}.",
+        "tooMany": "At most {max} agent packs."
       }
     },
     "detail": {
@@ -2273,7 +2304,9 @@
           "worker": "workers",
           "project": "projects",
           "model": "models",
-          "runtime": "runtimes"
+          "runtime": "runtimes",
+          "environment": "environments",
+          "packs": "agent packs"
         }
       },
       "delete": {
@@ -2293,6 +2326,12 @@
         "empty": "No run among the project's latest {searched} went under this agent.",
         "caption": "Runs under @{handle}",
         "scope": "From the project's latest {searched} runs."
+      },
+      "packs": {
+        "title": "Agent packs",
+        "hint": "Loaded into every run under this agent, each at the version it pins. Its skills and MCP servers count as allowed.",
+        "none": "None: its runs get no agent pack.",
+        "version": "v{version}"
       }
     }
   },
@@ -3592,6 +3631,7 @@
         "hubSays": "The hub says: {message}"
       },
       "chatSub": "A turn of @{agent} in a group chat, hop {hop}. <chatLink>Open the message it answers</chatLink>.",
+      "taskSub": "A task a plugin handed to @{agent}: one turn on branch {branch}, which the hub opens as a draft pull request.",
       "header": {
         "back": "Plan {plan}",
         "step": "Step {key}: {title}",
@@ -3800,6 +3840,11 @@
       "line": "A turn of @{agent} in a group chat",
       "lineProject": "{project}: a turn of @{agent} in a group chat"
     },
+    "taskRun": {
+      "kind": "Task run",
+      "line": "A task a plugin handed to @{agent}, on branch {branch}",
+      "lineProject": "{project}: a task a plugin handed to @{agent}, on branch {branch}"
+    },
     "account": {
       "label": "Account",
       "byRules": "Auto, by the rules of your policy",
@@ -3833,7 +3878,8 @@
         "worker": "workers",
         "project": "projects",
         "model": "models",
-        "runtime": "runtimes"
+        "runtime": "runtimes",
+        "environment": "environments"
       },
       "problem": {
         "deleted": "@{handle} was deleted and takes no new run.",
@@ -4009,7 +4055,8 @@
       "author_waiting": "An author run waits for your reply",
       "chat_mention": "Someone mentioned you in a chat",
       "chat_added": "Someone added you to a chat",
-      "plugin_disabled": "The hub turned off a plugin"
+      "plugin_disabled": "The hub turned off a plugin",
+      "builder_proposal": "@builder proposed a change for you to approve"
     },
     "item": {
       "unread": "Unread",

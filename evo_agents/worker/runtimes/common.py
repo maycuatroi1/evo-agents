@@ -194,12 +194,13 @@ def new_session_argv(pid_file: Path, program: str, *args: str) -> list[str]:
     return [sys.executable or "python3", "-I", "-c", _NEW_SESSION, str(pid_file), program, *args]
 
 
-def write_launcher(directory: Path, program: str, *, unset: Iterable[str] = ()) -> Path:
-    """An executable ``directory/launch`` that runs ``program`` with its own arguments as ``new_session_argv`` does,
-    the pid going to ``directory/pid``: for an SDK that takes the path of one executable. The variables in ``unset``
-    are removed first, from whatever environment the SDK gives it (its own process's, as a rule)."""
+def write_launcher(directory: Path, program: str, *args: str, unset: Iterable[str] = ()) -> Path:
+    """An executable ``directory/launch`` that runs ``program args`` with its own arguments after them as
+    ``new_session_argv`` does, the pid going to ``directory/pid``: for an SDK that takes the path of one executable.
+    The variables in ``unset`` are removed first, from whatever environment the SDK gives it (its own process's, as a
+    rule)."""
     path = directory / "launch"
-    command = " ".join(shlex.quote(part) for part in new_session_argv(directory / "pid", program))
+    command = " ".join(shlex.quote(part) for part in new_session_argv(directory / "pid", program, *args))
     removed = "".join(f"unset {name}\n" for name in unset if _VARIABLE.match(name))
     path.write_text(f'#!/bin/sh\n{removed}exec {command} "$@"\n', encoding="utf-8")
     path.chmod(0o700)
@@ -441,6 +442,14 @@ class QueueAdapter(Adapter):
     def _cleanup(self) -> None:
         """Remove what is left on disk, once the process group is gone."""
 
+    async def _release(self) -> None:
+        """Remove what is left of the containers of the run's environment, once the agent's process group is gone;
+        nothing on the host."""
+        environment = getattr(self.context, "environment", None)
+        if environment is not None and environment.container:
+            with contextlib.suppress(Exception):  # the engine's trouble never hides how the agent ended
+                await asyncio.to_thread(environment.release)
+
     def emit(self, events: Iterable[AgentEvent]) -> None:
         for event in events:
             self._queue.put_nowait(event)
@@ -459,6 +468,7 @@ class QueueAdapter(Adapter):
                 await asyncio.wait_for(self._close(), CLOSE_TIMEOUT)
             kill_group(pid)
             self._cleanup()
+            await self._release()
             raise
         self._task = asyncio.create_task(self._main())
         left = None if self.budget is None else curator.seconds_left(self.budget, self.context.spent_seconds)
@@ -502,6 +512,7 @@ class QueueAdapter(Adapter):
                 kill_group(pid)
                 kill_tree(tools)
                 self._cleanup()
+                await self._release()
                 if self._watchdog is not None:
                     self._watchdog.cancel()
                 if self._time_cap is not None:
