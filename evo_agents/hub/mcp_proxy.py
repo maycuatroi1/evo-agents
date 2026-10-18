@@ -18,13 +18,17 @@ The endpoint is stateless: each message is a request of its own. The requests go
 that restarted is reached on a new connection by the next message. A refused connection, as while the hub restarts, is
 tried RETRIES more times. When the hub gives no MCP answer (it cannot be reached, it refuses the token, or it answers
 something else), the proxy answers in its place: initialize, ping and tools/list from the tool list it carries
-(``evo_agents.hub.mcp_tools``), so the session still starts and sees its tools; every tool call with a short error
-naming the hub's URL; any other request with a JSON-RPC error saying the same. Credentials are read again for every
-message, so an ``evo-agents hub login`` made meanwhile counts at once.
+(``evo_agents.hub.mcp_tools``), and server/discover for a message of the 2026-07-28 revision, so the session still
+starts and sees its tools; every tool call with a short error naming the hub's URL; any other request with a JSON-RPC
+error saying the same. Its answers to a message of that revision have the fields the revision requires, and those a
+client may cache say they are stale at once, so the hub's own answers replace them. Credentials are read again for
+every message, so an ``evo-agents hub login`` made meanwhile counts at once.
 
 A Claude Code session that has the evo-kg plugin as well gets the kg_* tools from evo-kg alone (``claude_plugins``):
-the proxy then drops them from every tools/list, the hub's or its own, and answers initialize with the hub's
-instructions without the graph's paragraph (``mcp_tools.without_kg``). A session without it gets them from the hub.
+the proxy then drops them from every tools/list, the hub's or its own, and answers initialize and server/discover,
+the hub's or its own, with the hub's instructions without the graph's paragraph (``mcp_tools.without_kg``): a client
+of the 2026-07-28 revision takes the instructions from server/discover, one of an older revision from initialize. A
+session without it gets them from the hub.
 Either way, the labels of every kg_* result the hub answers join the session label, as the evo-kg PostToolUse hook
 joins those of evo-kg's (``evo_agents.kg.sessions``): a read of the graph counts whichever server answered it, and
 hiding the tools from a listing never leaves a call to them unlabelled. That label is the one of the Claude Code
@@ -57,6 +61,7 @@ from evo_agents.hub.mcp_tools import (
     INSTRUCTIONS,
     KG_TOOL_NAMES,
     LOCAL_RUN_HEADER,
+    MODERN_VERSIONS,
     PROJECT_HEADER,
     PROTOCOL_HEADER,
     PROTOCOL_VERSION,
@@ -77,6 +82,7 @@ WORKERS = 4
 PARSE_FAILED = {"code": -32700, "message": "parse error"}  # what kg serve answers to a line that is not JSON
 HUB_ERROR = -32000  # JSON-RPC's range for server errors: the hub gave no answer
 ENVELOPE_VERSION = "io.modelcontextprotocol/protocolVersion"  # params._meta key of a 2026-07-28 message
+SERVER_INFO = "io.modelcontextprotocol/serverInfo"  # result._meta key naming the server in a 2026-07-28 answer
 NAMED_BY = {"tools/call": "name", "prompts/get": "name", "resources/read": "uri"}  # the param Mcp-Name mirrors
 RUN_VARIABLE = "EVO_RUN_ID"  # set by the worker daemon for the agent of a run (evo_agents.worker.run)
 KG_PLUGIN = "evo-kg"  # the plugin that serves the kg_* tools of a session that has it
@@ -92,15 +98,23 @@ def header_value(value: str) -> str:
     return f"=?base64?{base64.b64encode(value.encode()).decode()}?="
 
 
-def routing_headers(message) -> dict:
-    """The headers of the 2026-07-28 HTTP binding for a message carrying that revision's envelope in params._meta;
-    empty for any other message."""
+def envelope_version(message) -> str | None:
+    """The protocol version a message of the 2026-07-28 revision carries in its params._meta; None for a message of
+    the handshake revisions, which has no such envelope."""
     params = message.get("params") if isinstance(message, dict) else None
     meta = params.get("_meta") if isinstance(params, dict) else None
     version = meta.get(ENVELOPE_VERSION) if isinstance(meta, dict) else None
+    return version if isinstance(version, str) else None
+
+
+def routing_headers(message) -> dict:
+    """The headers of the 2026-07-28 HTTP binding for a message carrying that revision's envelope in params._meta;
+    empty for any other message."""
+    version = envelope_version(message)
     method = message.get("method") if isinstance(message, dict) else None
-    if not isinstance(version, str) or not isinstance(method, str):
+    if version is None or not isinstance(method, str):
         return {}
+    params = message["params"]
     headers = {PROTOCOL_HEADER: header_value(version), "Mcp-Method": header_value(method)}
     name = params.get(NAMED_BY.get(method, ""))
     if isinstance(name, str):
@@ -375,7 +389,14 @@ class Proxy:
         if not isinstance(message, dict) or "id" not in message:
             return None
         method = message.get("method")
-        if method == "initialize":
+        modern = envelope_version(message) is not None
+        if method == "server/discover" and modern:
+            result = {
+                "supportedVersions": list(MODERN_VERSIONS),
+                "capabilities": {"tools": {"listChanged": False}},
+                "instructions": INSTRUCTIONS,
+            }
+        elif method == "initialize":
             params = message.get("params") if isinstance(message.get("params"), dict) else {}
             asked = params.get("protocolVersion")
             version = asked if asked in HANDSHAKE_VERSIONS else PROTOCOL_VERSION
@@ -394,6 +415,10 @@ class Proxy:
             result = {"content": [{"type": "text", "text": f"error: {reason}"}], "isError": True}
         else:
             return {"jsonrpc": "2.0", "id": message["id"], "error": {"code": HUB_ERROR, "message": reason}}
+        if modern:  # what the revision requires of every result, and of those a client may cache
+            if method in ("server/discover", "tools/list"):
+                result.update(cacheScope="private", ttlMs=0)  # stale at once: the hub's answer replaces it
+            result.update(resultType="complete", _meta={SERVER_INFO: {"name": SERVER_NAME, "version": __version__}})
         return {"jsonrpc": "2.0", "id": message["id"], "result": result}
 
     def _write(self, reply) -> None:

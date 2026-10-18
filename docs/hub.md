@@ -114,8 +114,11 @@ plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `p
 `tools/list` shows the agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, any
 other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
-the `kg_*` tools from the list and the graph's paragraph from the instructions, so the session sees each `kg_*` tool
-once, from evo-kg; without evo-kg it serves them from the hub's graph. Either way the proxy joins the labels of every
+the `kg_*` tools from the list and the graph's paragraph from the instructions, those of `initialize` and those of
+`server/discover`, where a client of MCP 2026-07-28 such as Claude Code 2.1.296 reads them, so the session sees each
+`kg_*` tool and that paragraph once, from evo-kg; without evo-kg it serves them from the hub's graph. While the hub
+does not answer, the proxy answers `initialize`, `server/discover`, `tools/list` and every tool call itself, the same
+way. Either way the proxy joins the labels of every
 `kg_*` result the hub answers into the session label of `~/.evo/kg/sessions/`, as evo-kg's PostToolUse hook does, a
 call to a tool the list hid included; when that fails, the answer still goes back and stderr gets one line naming the
 exception's type. A label record that exists but cannot be read is left as it is, never started again from one result.
