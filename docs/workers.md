@@ -1224,6 +1224,16 @@ model, as the stream's `assistant` messages carry them (a subagent's left out); 
 (`last.inputTokens` of `thread/tokenUsage/updated`, its cached part in it), with the model's `context_window`; for
 opencode a step's `input`, `cache.read` and `cache.write`. It is null, never 0, when the runtime reported none.
 
+It also holds `first_request_cache_read_input_tokens` and `first_request_cache_creation_input_tokens`: what the first
+request of the model in the session read from the cache and wrote to it, the figure that says whether a new session
+found its prefix cached. For Claude Code they are the `cache_read_input_tokens` and `cache_creation_input_tokens` of
+the first message of the model in the main thread; for Codex the `cachedInputTokens` and `cacheWriteInputTokens` of the
+first `last` that read any input; for opencode the `cache.read` and `cache.write` of the first step that read any
+context. Each is null when the runtime did not report it. When agents go on one after the other in a session (an
+answered decision, a move to another account), the keys stay those of the first one that reported them; they are null
+when the session started in the terminal UI, whose requests report no usage. A run that resumes a parked one reports
+the first request its own agent made in the session.
+
 A runtime is available when its binary answers `--version` with at least the version the adapter was checked with,
 and the package the adapter needs is installed at least at the version checked: Claude Code 2.1.289 with
 claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 0.160.0 (whose bundled codex is not
@@ -1414,9 +1424,10 @@ The run's record (`runs/<run>/run.json`) lists its sessions under `step_sessions
 started_at, ended_at, status, usage}`, the status being the step's after its session; a run that resumes a parked one
 takes over the parked run's list. The usage the run reports with its end adds up its sessions: each runtime's numbers
 summed (Claude Code's running `total_cost_usd` taken per session, then added up), the largest `peak_context_tokens`
-(null when no runtime reported one), and `sessions`, the latest 100 sessions, each `{step, session_id, run_id}` with
-the numbers of its usage (`sessions_left_out` counts the others). `GET .../runs/{id}` shows it in `usage`, and the run
-page lists it as the step sessions card. A worker whose daemon is older takes no such run (see [Claim](#claim)).
+(null when no runtime reported one), the first request of its first session, and `sessions`, the latest 100 sessions,
+each `{step, session_id, run_id}` with the numbers of its usage, its own first request among them
+(`sessions_left_out` counts the others). `GET .../runs/{id}` shows it in `usage`, and the run page lists it as the step
+sessions card. A worker whose daemon is older takes no such run (see [Claim](#claim)).
 
 ### A default branch the remote moved on
 

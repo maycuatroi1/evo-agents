@@ -955,8 +955,12 @@ no project, and the session of a run's agent, whose trace is on the hub already,
 Bash ran, and keeps what the person wrote, the Bash commands and the text of failed results, each cut short, with the
 model, the tokens, the session's id and its directory. It also holds the largest context one message of the model read
 (`peak_context_tokens`: its input, cache creation and cache read tokens), how many times the context was compacted
-(`compactions`, the `compact_boundary` lines of the transcript) and the characters of each tool's results
-(`tool_result_chars`); the hub keeps them, and `digest_show` returns them, null in a digest an older client pushed.
+(`compactions`, the `compact_boundary` lines of the transcript), the characters of each tool's results
+(`tool_result_chars`), and what the spool of the PostToolUse hook did: how many results it cut (`spool_results`, read
+from the note it leaves in a result's place), the characters they had before the cut (`spool_original_chars`) and the
+calls that named the spool directory, the agent reading a spool file again (`spool_reads`); only these counts leave
+the machine, never a spool file. The hub keeps them, and `digest_show` returns them, null in a digest an older client
+pushed.
 Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
@@ -1030,9 +1034,10 @@ machine and with the same fields as a Claude Code digest: `peak_context_tokens` 
 `last_token_usage.input_tokens` of the rollout's `token_count` lines (as the Codex runtime measures a run's peak), the
 usage comes from the running `total_token_usage` (the cached part moved to `cache_read_input_tokens`), the tools,
 commands, edits and errors from the normalized `item_completed` item stream (shell runs, MCP calls, file changes and web
-searches), and `compactions` from the `ContextCompaction` items. The `js`/node_repl and agent-spawning tools that the
-item stream does not normalize are not counted, and `files_read` is 0 since Codex reads files through the shell, which
-the commands already hold.
+searches), and `compactions` from the `ContextCompaction` items. The spool leaves a Codex result as it is, so
+`spool_results` and `spool_original_chars` are 0 and `spool_reads` counts the shell runs that name the spool directory.
+The `js`/node_repl and agent-spawning tools that the item stream does not normalize are not counted, and `files_read`
+is 0 since Codex reads files through the shell, which the commands already hold.
 
 What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
 source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in
