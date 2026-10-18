@@ -4,6 +4,7 @@ import os
 import re
 import sqlite3
 import stat
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -12,7 +13,7 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import spool
-from evo_agents.kg import grep_command, post_search, serve, sessions
+from evo_agents.kg import grep_command, hook_scope, post_search, serve, sessions
 from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import _git
 from evo_agents.kg.project import load_project_at
@@ -560,8 +561,10 @@ def test_post_search_past_the_deadline_prints_nothing_and_says_why_on_stderr(lin
     assert out == "" and "out of time" in err
     # The progress handler aborts a query that runs past the deadline.
     output = post_search.read_output(json.loads(event))
+    scope = hook_scope.scope_for(post_search.SINK)
+    assert scope.store == str(project.root / "graph.sqlite")
     with pytest.raises((post_search.Timeout, sqlite3.OperationalError)):
-        post_search.find_lines(project, output, deadline=time.monotonic() - 1)
+        post_search.find_lines(scope, output, deadline=time.monotonic() - 1)
 
 
 @pytest.mark.parametrize("value", ["0", "false", "OFF"])
@@ -614,6 +617,49 @@ def test_post_search_an_unexpected_error_is_one_line_on_stderr(linked, tmp_path,
     assert main(["kg", "hook", "post-search"]) == 0
     out, err = capsys.readouterr()
     assert out == "" and err == "evo-kg post-search hook skipped: RuntimeError\n"
+
+
+def test_post_search_reads_the_project_from_its_cache_until_a_file_it_read_changes(linked, tmp_path, monkeypatch):
+    project = linked()
+    event = bash(tmp_path / "demo-app", 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")
+    assert link_lines(post_search.post_search(event)) == [SEARCH]
+    assert (project.home / hook_scope.CACHE).is_file()
+
+    def no_resolve(*args, **kwargs):
+        raise AssertionError("the project was resolved again")
+
+    with monkeypatch.context() as patched:
+        patched.setattr("evo_agents.kg.project.resolve_project", no_resolve)
+        assert link_lines(post_search.post_search(event)) == [SEARCH]
+    # knowledge.yaml no longer declares the sink: the cache is stale, and the sink sees nothing.
+    knowledge = project.knowledge_path
+    knowledge.write_text(knowledge.read_text().replace(SINK, "  sinks:\n", 1))
+    assert post_search.post_search(event) is None
+    # A directory that belongs to no project is kept too.
+    monkeypatch.setenv("CLAUDE_PROJECT_DIR", str(tmp_path))
+    assert post_search.post_search(event) is None
+    with monkeypatch.context() as patched:
+        patched.setattr("evo_agents.kg.project.resolve_project", no_resolve)
+        assert post_search.post_search(event) is None
+
+
+def test_post_search_from_the_cache_imports_neither_the_harness_nor_yaml(linked, tmp_path, kg_env):
+    project = linked()
+    event = bash(tmp_path / "demo-app", 'grep -rn "def search" .', "./app/search.py:5:def search(query):\n")
+    code = (
+        "import sys\nfrom evo_agents.cli import main\nmain(['kg', 'hook', 'post-search', '--only', 'grep'])\n"
+        "print(','.join(m for m in ('yaml', 'evo_agents.harness', 'evo_agents.kg.project') if m in sys.modules),"
+        " file=sys.stderr)\n"
+    )
+    env = {**os.environ, "EVO_KG_HOME": str(kg_env), "CLAUDE_PROJECT_DIR": str(project.harness.root)}
+    runs = [
+        subprocess.run([sys.executable, "-c", code], input=event, capture_output=True, text=True, env=env, check=True)
+        for _ in range(2)
+    ]
+    assert runs[0].stderr.strip() == "yaml,evo_agents.harness,evo_agents.kg.project"  # the first run resolves
+    assert runs[1].stderr.strip() == ""
+    for run in runs:
+        assert json.loads(run.stdout)["hookSpecificOutput"]["additionalContext"].endswith(SEARCH)
 
 
 def test_kg_hooks_skip_the_parsers_of_every_other_command(linked, tmp_path, monkeypatch, capsys):

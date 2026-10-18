@@ -11,7 +11,9 @@ source (integrity U), and only nodes and edges whose label the sink may see.
 
 The checkout may differ from the commit the graph read, so a line number alone never places a match in a symbol
 (``FileSymbols``). The hook runs as ``evo-agents kg hook post-search``, which skips the parsers of every other command
-(``evo_agents.cli.main``): on a laptop on 2026-10-18, building them took 0.2 to 0.3 s, and ``uvx`` itself 0.03 s.
+(``evo_agents.cli.main``; on a laptop on 2026-10-18 building them took 0.2 to 0.3 s, and ``uvx`` itself 0.03 s), and
+which reads the bound project from a cache while the files it was resolved from stay as they were
+(``evo_agents.kg.hook_scope``), so it imports neither the harness loader nor PyYAML.
 
 At most MAX_NODES lines follow the header, one per matched node that has something to add: a symbol whose definition
 line matched comes first, then the other symbols with a matched line, then files matched outside any symbol (or named
@@ -22,14 +24,17 @@ reads only the store: no source file, no git, no network.
 
 from __future__ import annotations
 
+import argparse
 import json
 import os
 import re
+import sys
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 
 from evo_agents.kg import grep_command
-from evo_agents.kg.project import ProjectError, resolve_project
+from evo_agents.kg.hook_scope import Scope, scope_for
 from evo_agents.kg.refs import readable
 from evo_agents.kg.store import LIVE, Store
 
@@ -175,18 +180,6 @@ def parse_line(text: str, numbered: bool | None, count: bool) -> Line | None:
 
 
 # -- where its paths point -------------------------------------------------------------------------
-
-
-def repo_roots(project) -> list[tuple[str, str]]:
-    """(repo name, real directory) of the harness and each repo with a checkout, longest directory first: the
-    name a file node's ``props.repo`` carries."""
-    harness = project.harness
-    roots = [(harness.root.name, os.path.realpath(harness.root))]
-    for repo in harness.repos():
-        path = harness.repo_path(repo) if isinstance(repo, dict) and isinstance(repo.get("name"), str) else None
-        if path is not None:
-            roots.append((repo["name"], os.path.realpath(path)))
-    return sorted(roots, key=lambda r: -len(r[1]))
 
 
 class Paths:
@@ -472,35 +465,31 @@ def render_line(match: Match, callers: list[dict], tests: list[dict], steps: lis
     return f"- {own}: " + "; ".join(parts)
 
 
-def find_lines(project, output: Output, deadline: float, sink: str = SINK) -> list[str]:
+def find_lines(scope: Scope, output: Output, deadline: float) -> list[str]:
     """The lines the hook adds for one result, at most MAX_NODES."""
-    try:
-        clearance = project.policy.clearance(sink)
-    except KeyError:
-        return []  # the sink is not declared: it sees nothing
-    store = Store.open_readonly(project)
-    if store is None:
-        return []
+    if scope.ceiling is None or not os.path.exists(scope.store):
+        return []  # a sink the policy does not declare sees nothing; no store, nothing to read
+    store = Store.open_file(Path(scope.store))
     try:
         # SQLite calls this every thousand VM steps; a non-zero answer aborts the running query.
         store.db.set_progress_handler(lambda: int(time.monotonic() > deadline), 1000)
         b = store.latest_ready()
         if b is None:
             return []
-        return _lines_of(store, b, (clearance.level, clearance.location), project, output, deadline)
+        return _lines_of(store, b, scope, output, deadline)
     finally:
         store.close()
 
 
-def _lines_of(store: Store, b: int, ceiling, project, output: Output, deadline: float) -> list[str]:
-    paths = Paths(repo_roots(project), output.base)
+def _lines_of(store: Store, b: int, scope: Scope, output: Output, deadline: float) -> list[str]:
+    paths = Paths(scope.roots, output.base)
     parsed, wanted = parse_output(output, paths)
     if not wanted:
         return []
     files = file_nodes(store, b, wanted)
     hits = matched_lines(output, parsed, paths, files)
     _check(deadline)
-    links = Links(store, b, ceiling, deadline)
+    links = Links(store, b, scope.ceiling, deadline)
     lines: list[str] = []
     shown_files: set[str] = set()
     for match in find_matches(store, b, hits, files, links.visible):
@@ -519,6 +508,7 @@ def post_search(stdin_text: str, only: str | None = None, sink: str = SINK, env=
     """The additionalContext for one PostToolUse event, or None to add nothing. Raises Timeout past BUDGET and any
     other unexpected error; an unbound directory, a missing store or a result with no match return None."""
     deadline = time.monotonic() + BUDGET
+    env = os.environ if env is None else env
     if not enabled(env):
         return None
     try:
@@ -530,9 +520,40 @@ def post_search(stdin_text: str, only: str | None = None, sink: str = SINK, env=
     output = read_output(event, only)
     if output is None or not output.lines:
         return None
-    try:
-        project = resolve_project(None)
-    except ProjectError:
-        return None
-    lines = find_lines(project, output, deadline, sink)
+    scope = scope_for(sink, env)
+    lines = find_lines(scope, output, deadline) if scope is not None else []
     return "\n".join([NOTE, *lines]) if lines else None
+
+
+def run(args) -> int:
+    """Print the hook's answer to the event on stdin. Never changes the result and never blocks: an error is one line
+    on stderr, by type, and the exit status is 0."""
+    try:
+        note = post_search(sys.stdin.read(), only=args.only, sink=args.sink)
+    except Timeout:
+        print(f"evo-kg post-search hook skipped: out of time after {BUDGET:g}s", file=sys.stderr)
+        return 0
+    except Exception as exc:  # a hook must never break the session
+        print(f"evo-kg post-search hook skipped: {type(exc).__name__}", file=sys.stderr)
+        return 0
+    if note:
+        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": note}}))
+    return 0
+
+
+def add_arguments(parser: argparse.ArgumentParser) -> argparse.ArgumentParser:
+    parser.add_argument(
+        "--only", choices=["rg", "grep"], help="for Bash, answer only when this command leads (one handler per if)"
+    )
+    parser.add_argument("--sink", default=SINK, help="sink profile whose clearance applies")
+    return parser
+
+
+def main(argv: list[str]) -> int:
+    """``evo-agents kg hook post-search`` as ``evo_agents.cli.main`` runs it, without the rest of the command tree."""
+    parser = argparse.ArgumentParser(
+        prog="evo-agents kg hook post-search",
+        description="PostToolUse: what the graph links to a Grep, rg or grep match",
+    )
+    add_arguments(parser)
+    return run(parser.parse_args(argv))

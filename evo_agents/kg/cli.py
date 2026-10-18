@@ -298,32 +298,20 @@ def cmd_hook_post_tool(args) -> int:
 
 def cmd_hook_post_search(args) -> int:
     """PostToolUse hook for Grep and rg or grep in Bash: what the graph links to the matched lines, as
-    additionalContext. Never changes the result and never blocks: an error is one line on stderr, by type."""
-    from evo_agents.kg.post_search import BUDGET, Timeout, post_search
+    additionalContext (``evo_agents.kg.post_search``)."""
+    from evo_agents.kg.post_search import run
 
-    try:
-        note = post_search(sys.stdin.read(), only=args.only, sink=args.sink)
-    except Timeout:
-        print(f"evo-kg post-search hook skipped: out of time after {BUDGET:g}s", file=sys.stderr)
-        return 0
-    except Exception as exc:  # a hook must never break the session
-        print(f"evo-kg post-search hook skipped: {type(exc).__name__}", file=sys.stderr)
-        return 0
-    if note:
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PostToolUse", "additionalContext": note}}))
-    return 0
+    return run(args)
 
 
 def add_hooks(hsub) -> None:
     """The ``kg hook`` subcommands, which Claude Code runs."""
     hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
     hsub.add_parser("post-tool", help="add an evo-kg result to the session label").set_defaults(func=cmd_hook_post_tool)
+    from evo_agents.kg.post_search import add_arguments
+
     post_search = hsub.add_parser("post-search", help="PostToolUse: what the graph links to a Grep, rg or grep match")
-    post_search.add_argument(
-        "--only", choices=["rg", "grep"], help="for Bash, answer only when this command leads (one handler per if)"
-    )
-    post_search.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
-    post_search.set_defaults(func=cmd_hook_post_search)
+    add_arguments(post_search).set_defaults(func=cmd_hook_post_search)
 
 
 def run_hook(argv: list[str]) -> int:
