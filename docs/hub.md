@@ -1261,6 +1261,16 @@ axis of the project's agent profiles names. Schema 0040 adds the axis to every p
 `runs.environment`, the environment of a plugin a run's claim picked (NULL for the host); going back to 0039 drops the
 column and takes the axis out of every profile, whose runs then run on the host.
 
+Its agent types are listed there too (`docs/plugins.md`, Agent types): an admin of the project enables one with `PUT
+/v1/projects/{project}/agent-types/{plugin}/{name}`, which creates its agent profile the first time and names the
+member its runs go under (`run_as`), the workers of that member they may take and the cap of their cost in 24 hours.
+`DELETE` on the same path turns it off. The plugin, granted `runs:dispatch`, hands it tasks with its token
+(`/v1/plugin-api/`): each a run of kind `task` on the branch `task/<run>` of the project's repos. The hub refuses a
+task once the type's runs cost its cap, opens a draft pull request of each pushed branch and never merges it, and tells
+the plugin the end with the event `task.result`. Schema 0042 adds the table `project_agent_types`, the kind `task` of
+runs with `runs.agent_type_id` and `runs.pulls`, and the delivery kind `task.result`. Going back to 0041 deletes the
+task runs and their deliveries, and drops the columns and the table.
+
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the
 project (agent) and a run's own (`plugin_config` of `POST .../runs`, plain values only). A field takes its value from the
