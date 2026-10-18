@@ -108,7 +108,7 @@ evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg
 Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
 source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
 never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
-never their values.
+never their values. A build that finds nothing changed builds nothing and adds no line (see below).
 
 A corpus synced before its git connector redacted keeps the old copies: in the blobs of earlier runs, in memo rows,
 and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
@@ -137,6 +137,15 @@ has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent 
 `kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
 removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
 gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand).
+
+Syncs and builds do only what changed. A git source whose ref still resolves to the commit its last ok run read,
+with the same config and connector code, is not read again: the sync records the run, writes no run log and leaves
+the cursor, and `--due --build` builds only when a source read something. A harness source is always read, so
+files not yet committed in the harness still reach the graph. `kg build` skips a build whose corpus state, config,
+code and cursors are those of the latest build (`--force` builds anyway; the hub's worker skips the same way). A
+build that runs links again only the items whose text or structure changed or that looked up a name or path that
+now resolves elsewhere, and rewrites only the rows of the full-text index that changed. `kg serve` opens the store
+read-only.
 
 ## Using it from Claude Code
 

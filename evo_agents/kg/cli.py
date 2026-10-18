@@ -25,10 +25,13 @@ def _project(args):
 def _print_runs(results) -> None:
     for r in results:
         mark = "OK  " if r.ok else "FAIL"
-        print(
-            f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
-            f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
-        )
+        if r.unchanged:
+            print(f"{mark} {r.source:<20} unchanged: the commit and config it read last, nothing read, {r.seconds}s")
+        else:
+            print(
+                f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
+                f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
+            )
         if r.redactions:
             redacted = sum(sum(kinds.values()) for kinds in r.redactions.values())
             print(f"     redacted: {redacted} secret(s) in {len(r.redactions)} item(s), counted in audit.jsonl")

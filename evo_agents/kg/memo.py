@@ -3,6 +3,14 @@
 A memo key encodes the stage, the code version and every (input name, input version) pair, each part
 length-prefixed. Concatenating values without names or lengths lets two compensating changes collide:
 Dagster hit exactly that (issue #34184). A task without a code version is refused, never keyed by run.
+
+A traced task (``run_traced``) also reads entries of a table shared by every task of its stage, such as the
+identifier index of the link stage. Keying it by a digest of the whole table would recompute every task whenever
+one entry changes. It is keyed instead by the entries it read last time, as build systems with recorded
+dependencies do: the memo keeps, under the task's inputs, the keys it read, and its output under its inputs plus
+a digest of what those keys held. The next run looks the keys up again; the output counts only while every one of
+them holds what it held. A task is a function of its inputs and of what it reads, so the same values make it read
+the same keys and return the same output.
 """
 
 from __future__ import annotations
@@ -58,13 +66,35 @@ class Memo:
             return json.loads(gzip.decompress(row[0])), row[1]
         self.misses[stage] += 1
         output = fn()
+        return output, self._put(key, stage, output)
+
+    def run_traced(self, stage: str, code_version: str, inputs: dict[str, str], fn, held):
+        """Return ``(output, output_hash)`` of a task that reads a shared table (see the module). ``fn()`` returns
+        the output and the sorted list of the keys it read; ``held(keys)`` is the digest of what those keys hold
+        in the table now."""
+        reads_key = memo_key(f"{stage}:reads", code_version, inputs)
+        row = self.db.execute("SELECT output FROM memo WHERE key = ?", (reads_key,)).fetchone()
+        if row is not None:
+            keys = json.loads(gzip.decompress(row[0]))
+            key = memo_key(stage, code_version, {**inputs, "reads": held(keys)})
+            found = self.db.execute("SELECT output, output_hash FROM memo WHERE key = ?", (key,)).fetchone()
+            if found is not None:
+                self.hits[stage] += 1
+                return json.loads(gzip.decompress(found[0])), found[1]
+        self.misses[stage] += 1
+        output, keys = fn()
+        self._put(reads_key, f"{stage}:reads", keys)
+        key = memo_key(stage, code_version, {**inputs, "reads": held(keys)})
+        return output, self._put(key, stage, output)
+
+    def _put(self, key: str, stage: str, output) -> str:
         data = canonical_json(output)
         digest = sha256(data)
         self.db.execute(
             "INSERT OR REPLACE INTO memo VALUES (?, ?, ?, ?)",
             (key, stage, gzip.compress(data, compresslevel=5), digest),
         )
-        return output, digest
+        return digest
 
     def commit(self) -> None:
         self.db.commit()
