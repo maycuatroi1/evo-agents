@@ -5,7 +5,9 @@ A call answers the decoded JSON, or raises:
 
 - ``Unreachable`` when no answer came (refused, reset, timed out) or the hub answered 5xx or 429: the call may be
   sent again later, and ``Backoff`` says when (1 second, doubling up to 60, with a little jitter).
-- ``Refused`` for any other 4xx, with the status, the hub's error code and message, and ``Retry-After``.
+- ``Refused`` for any other 4xx, with the status, the hub's error code and message, and ``Retry-After``. A 4xx
+  without the hub's own error body (``HubProblem.from_hub``) came from a proxy in front of it, which answers 404 for a
+  moment while the hub is redeployed.
 - ``Outdated`` (a ``Refused``) for 426: the hub speaks another protocol version and this daemon must be upgraded.
 
 Redirects are not followed: they would hand the token to whatever host they name. The URL is https, or http to a
@@ -39,6 +41,16 @@ class HubProblem(Exception):
         self.code = code
         self.payload = payload
         self.retry_after: float | None = None
+
+    @property
+    def from_hub(self) -> bool:
+        """The answer is the hub's own error, ``{error, message}`` (``evo_agents.hub.server.errors``), and not a page
+        of a proxy in front of it."""
+        return (
+            isinstance(self.code, str)
+            and isinstance(self.payload, dict)
+            and isinstance(self.payload.get("message"), str)
+        )
 
 
 class Unreachable(HubProblem):
