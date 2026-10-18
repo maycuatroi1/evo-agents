@@ -56,6 +56,12 @@ from tests.plugins.backends import (
 )
 
 LINUX = sys.platform.startswith("linux")
+# The plugin host runs in the hub's Linux image. On Windows no backend starts: the host makes the empty directory venv
+# and pip run in read-only (environment._empty_dir), and Windows refuses to remove a read-only directory (WinError 5).
+STARTS_BACKENDS = pytest.mark.skipif(
+    os.name != "posix",
+    reason="no backend starts on Windows: the host cannot remove the read-only directory venv ran in",
+)
 
 
 def shared(root: Path, **options) -> Host:
@@ -90,6 +96,7 @@ def test_plugin_isolation_backend_env_carries_no_host_variable(tmp_path, monkeyp
 # The hostile backend reads nothing
 
 
+@STARTS_BACKENDS
 def test_plugin_hostile_backend_reads_no_hub_or_sibling_secret(plugin_root, monkeypatch):
     for name, value in HUB_SECRETS.items():
         monkeypatch.setenv(name, value)
@@ -192,6 +199,7 @@ def test_plugin_isolation_backend_proc_is_unreadable(plugin_root):
 # The token, minted at each start
 
 
+@STARTS_BACKENDS
 def test_plugin_isolation_token_is_minted_at_each_start_and_a_pull_again_restarts_nothing(plugin_root):
     minted: list[str] = []
 
@@ -241,6 +249,7 @@ def test_plugin_isolation_limits_hold_before_the_plugin_runs(plugin_root):
 
 
 @pytest.mark.skipif(importlib.util.find_spec("pip") is None, reason="the host installs requirements with pip")
+@STARTS_BACKENDS
 def test_plugin_isolation_requirements_install_from_the_bundles_wheels(plugin_root, tmp_path):
     directory = wheeled_plugin(tmp_path / "wheeled")
 
@@ -261,6 +270,7 @@ def test_plugin_isolation_requirements_install_from_the_bundles_wheels(plugin_ro
 # Crash, hang and a slow start
 
 
+@STARTS_BACKENDS
 def test_plugin_crash_fails_the_call_and_restarts_with_backoff(plugin_root):
     async def run() -> None:
         host = shared(plugin_root)
@@ -282,6 +292,7 @@ def test_plugin_crash_fails_the_call_and_restarts_with_backoff(plugin_root):
     asyncio.run(run())
 
 
+@STARTS_BACKENDS
 def test_plugin_crash_hang_times_out_within_the_timeout(plugin_root):
     async def run() -> float:
         host = shared(plugin_root)
@@ -298,6 +309,7 @@ def test_plugin_crash_hang_times_out_within_the_timeout(plugin_root):
     assert asyncio.run(run()) < 5.0
 
 
+@STARTS_BACKENDS
 def test_plugin_crash_slow_start_never_holds_a_call_past_its_timeout(plugin_root, monkeypatch):
     real = host_module.build_env
 
@@ -335,6 +347,7 @@ def test_plugin_isolation_a_backend_that_does_not_start_backs_off(plugin_root):
     asyncio.run(run())
 
 
+@STARTS_BACKENDS
 @pytest.mark.parametrize("where", ["spawn", "initialize"])
 def test_plugin_crash_any_error_of_a_start_backs_off_with_its_cause(where, plugin_root, monkeypatch, caplog):
     """On agents.omelet.tech uvloop's subprocess_exec refused the user, group and extra_groups arguments with a
@@ -398,6 +411,7 @@ def test_plugin_isolation_ready_marker_is_never_written_through_a_link(tmp_path)
     assert victim.read_text() == "intact" and not (tmp_path / "env").exists()
 
 
+@STARTS_BACKENDS
 def test_plugin_crash_stop_waits_for_the_placing_it_cancels(plugin_root, monkeypatch):
     """Cancelling a start left its placing running in its thread, writing into the plugin's directories after stop
     returned and while the backend that replaces it, under the same user, started. stop now waits for it."""
@@ -635,6 +649,7 @@ def _alive(pid: int) -> bool:
     return True
 
 
+@pytest.mark.skipif(os.name != "posix", reason="the killer is POSIX (SIGKILL)")
 def test_plugin_crash_a_killer_that_does_not_end_is_killed_and_its_round_fails(tmp_path, monkeypatch, caplog):
     """The review of PR #72: kill_user waited for its killer with no timeout, so a killer that never ended (one a
     process of the plugin's user had stopped) held the stop, the lock, the backend that replaces it and the reconcile
@@ -660,6 +675,7 @@ def test_plugin_crash_a_killer_that_does_not_end_is_killed_and_its_round_fails(t
     assert [record for record in caplog.records if "did not end in time" in record.getMessage()]
 
 
+@STARTS_BACKENDS
 def test_plugin_crash_a_plugins_stop_never_holds_the_host_and_its_next_backend_waits_for_it(plugin_root, monkeypatch):
     """The review of PR #72: the reconcile loop awaited the stop of a plugin no longer installed, so one stop that
     hung stopped the loop that keeps every other plugin running. ``Host.retire`` stops it in the background; the

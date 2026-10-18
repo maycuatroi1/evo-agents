@@ -107,8 +107,10 @@ def set_layer(hub, path: str, status: int = 200, **body) -> dict:
     return response.json()
 
 
-def project_layer(project: str = PROJECT) -> str:
-    return f"/v1/admin/projects/{project}/features"
+# PROJECT comes from test_runs, imported only with a database: the helpers read it when called, not at import, so
+# the tests of the catalogue above run without one (macOS and Windows in the full ci).
+def project_layer(project: str | None = None) -> str:
+    return f"/v1/admin/projects/{project or PROJECT}/features"
 
 
 def get(hub, path: str, who: str = "owner"):
@@ -126,7 +128,8 @@ def off(feature: str, project: str | None = None) -> str:
     return f"{feature} is turned off{where} on this hub; a hub admin turns it on in the administration, Features"
 
 
-ROUTES = (f"/v1/kg/{PROJECT}/builds", f"/v1/projects/{PROJECT}/curator", "/v1/chats")
+def routes() -> tuple[str, ...]:
+    return (f"/v1/kg/{PROJECT}/builds", f"/v1/projects/{PROJECT}/curator", "/v1/chats")
 
 
 @needs_pg
@@ -141,7 +144,7 @@ def test_with_nothing_set_every_feature_is_on_and_no_route_is_turned_away(toggle
         ],
         "projects": [],
     }
-    for path in ROUTES:
+    for path in routes():
         assert get(toggles, path).status_code == 200, path
     layer = get(toggles, "/v1/admin/features", "admin").json()
     assert (layer["kind"], layer["project"], layer["version"], layer["values"]) == ("features", None, 0, {})
@@ -186,7 +189,7 @@ def test_the_hubs_layer_turns_a_feature_off_everywhere_and_a_projects_layer_turn
     set_layer(toggles, project_layer(), unset=["kg"])
     turned_away(get(toggles, f"/v1/kg/{PROJECT}/builds"), off("kg", PROJECT))
     set_layer(toggles, "/v1/admin/features", unset=["kg", "chats", "monitor"])
-    for path in ROUTES:
+    for path in routes():
         assert get(toggles, path).status_code == 200, path
 
 
