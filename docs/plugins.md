@@ -117,8 +117,10 @@ backend's secrets arrive only in `initialize`, on its stdin, and are its own plu
 config fields where the key is and never puts another plugin's secret in a backend's payload.
 
 A backend starts through a **trampoline**, the host's own Python run isolated (`-I -S`, so no `.pth` file and nothing
-of the current directory runs) under the backend's user: it changes into the data directory and sets the resource
-limits before any code of the plugin runs, then execs the environment's Python (`-I`). The limits are no core file,
+of the current directory runs). It first takes the backend's user and group itself, with no other group, and exits
+unless it holds exactly them; the host passes no user to the event loop's `subprocess_exec`, which uvloop (the loop
+uvicorn picks when uvicorn[standard] is installed) would refuse. Then it changes into the data directory and sets the
+resource limits before any code of the plugin runs, and execs the environment's Python (`-I`). The limits are no core file,
 1024 open files, 4 GiB of address space per process and 256 processes and threads for the plugin's user. Then a
 **launcher** marks the backend **not dumpable** (`prctl(PR_SET_DUMPABLE, 0)`) and runs the entry; the host marks itself
 the same way at start. Stopping a backend kills its process group and then every process of its user (`kill(-1)` from
