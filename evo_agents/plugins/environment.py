@@ -28,9 +28,12 @@ that way unless it is told to (``Host(allow_shared_user=True)``, ``evo-agents hu
 for a developer's machine; ``evo-agents plugin test`` runs the author's own plugin that way.
 
 The backend starts through a trampoline and a launcher. The trampoline is the host's own Python, isolated
-(``-I -S``: no site, no current directory). Started by the host, it first takes the backend's user and group,
-dropping every supplementary group, and exits NO_USER_EXIT unless it holds exactly them; it does so itself, so the
-start needs no argument of the event loop's subprocess_exec that some loops lack (``backend_command``). Then it
+(``-I -S``: no site, no current directory). Started by the host, it first closes every file descriptor but 0, 1 and
+2, still as root (a loop may ignore ``close_fds``: uvloop does), then takes the backend's user and group, dropping
+every supplementary group, and exits NO_USER_EXIT unless it holds exactly them as its real, effective and saved IDs,
+with no capability left; it does so itself, so the start needs no argument of the event loop's subprocess_exec that
+some loops lack (``backend_command``). A backend that keeps the host's user (isolation ``process``) never runs as
+root, unless ``evo-agents plugin test`` says so for the author's own plugin (``KEEP_ROOT``). Then it
 changes into the backend's data directory, which root may not enter, and sets the resource limits
 (``backend_limits``: no core file, open files, address space, and in isolation ``uid`` the processes of the user), so
 they hold before any code of the plugin runs, then execs the environment's Python, isolated too (``-I``), with the
@@ -69,19 +72,57 @@ INSTALL_TIMEOUT = 600  # seconds for one venv and its requirements
 SYSTEM_PATH = "/usr/local/bin:/usr/bin:/bin"
 LIMITS = {"core": 0, "nofile": 1024, "as": 4 * 1024**3}  # per process: no core file (it would hold the secrets)
 NPROC = 256  # processes and threads of a backend's user, in isolation uid (RLIMIT_NPROC counts by real user)
-SAME_USER = "-"  # the trampoline's user argument when the backend keeps the host's user (isolation process)
-NO_USER_EXIT = 71  # the trampoline's exit code when it cannot take the backend's user
+SAME_USER = "-"  # the trampoline's user argument when the backend keeps the host's user, which must not be root
+KEEP_ROOT = "root"  # the same, root included: `evo-agents plugin test` only, which runs the author's own plugin
+NO_USER_EXIT = 71  # the exit code of the trampoline or the killer when it cannot take the user it is given
+KILLER_UID_BASE = 100_000  # the real user of the process that kills plugin id N's processes is KILLER_UID_BASE + N
+CLOSE_FDS = (  # every descriptor but 0, 1 and 2: uvloop's subprocess_exec ignores close_fds
+    "def close_fds():\n"
+    "    try:\n"
+    "        fds = [int(n) for n in os.listdir('/proc/self/fd' if os.path.isdir('/proc/self/fd') else '/dev/fd')]\n"
+    "    except (OSError, ValueError):\n"
+    "        fds = range(3, 65536)\n"
+    "    for fd in fds:\n"
+    "        if fd > 2:\n"
+    "            try:\n"
+    "                os.close(fd)\n"
+    "            except OSError:\n"
+    "                pass\n"
+)
+TAKE_USER = (  # take a user and group, no other group and no capability, or exit NO_USER_EXIT; never user 0
+    "def refuse(why):\n"
+    "    sys.stderr.write('evo-agents plugin: ' + why + '\\n')\n"
+    f"    sys.exit({NO_USER_EXIT})\n"
+    "def take_user(ruid, euid, suid, gid):\n"
+    "    if min(ruid, euid, suid, gid) <= 0:\n"
+    "        refuse('will not take user or group 0')\n"
+    "    linux = sys.platform.startswith('linux')\n"
+    "    try:\n"
+    "        os.setgroups([])\n"
+    "        os.setresgid(gid, gid, gid)\n"
+    "        os.setresuid(ruid, euid, suid)\n"
+    "        held = (os.getresuid(), os.getresgid(), os.getgroups())\n"
+    "        caps = []\n"
+    "        if linux:\n"
+    "            with open('/proc/self/status') as status:\n"
+    "                caps = [int(line.split()[1], 16) for line in status\n"
+    "                        if line.startswith(('CapPrm:', 'CapEff:', 'CapAmb:'))]\n"
+    "    except (OSError, ValueError, AttributeError) as exc:\n"
+    "        refuse('cannot take user %d: %s' % (euid, exc))\n"
+    "    if held != ((ruid, euid, suid), (gid, gid, gid), []) or any(caps) or (linux and len(caps) < 2):\n"
+    "        refuse('does not hold exactly user %d and group %d with no capability' % (euid, gid))\n"
+)
 TRAMPOLINE = (
-    "import os, sys\n"
-    "if sys.argv[1] != '-':\n"
-    "    uid, gid = (int(part) for part in sys.argv[1].split(':'))\n"
-    "    os.setgroups([])\n"
-    "    os.setgid(gid)\n"
-    "    os.setuid(uid)\n"
-    "    if uid <= 0 or (os.getuid(), os.geteuid(), os.getgid(), os.getegid()) != (uid, uid, gid, gid) "
-    "or os.getgroups():\n"
-    "        sys.stderr.write('evo-agents plugin trampoline: cannot take the user of the backend\\n')\n"
-    "        sys.exit(71)\n"
+    "import os, sys\n" + CLOSE_FDS + TAKE_USER + "close_fds()\n"
+    "if sys.argv[1] == '-':\n"
+    "    if os.getuid() == 0 or os.geteuid() == 0:\n"
+    "        refuse('will not run a backend under the host user root')\n"
+    "elif sys.argv[1] != 'root':\n"
+    "    try:\n"
+    "        uid, gid = (int(part) for part in sys.argv[1].split(':'))\n"
+    "    except ValueError:\n"
+    "        refuse('no user:group in %r' % sys.argv[1])\n"
+    "    take_user(uid, uid, uid, gid)\n"
     "os.chdir(os.environ['HOME'])\n"
     "if sys.platform.startswith('linux'):\n"
     "    import resource\n"
@@ -148,6 +189,15 @@ def identity(plugin_id: int) -> Identity | None:
     if not running_as_root():
         return None
     return Identity(UID_BASE + plugin_id, UID_BASE + plugin_id)
+
+
+def killer_uid(owner: Identity) -> int | None:
+    """The real user of the process that kills ``owner``'s processes (``process.kill_user``): one no process of the
+    plugin has, so none of them may signal or trace it, while its effective user, the plugin's, lets it signal them
+    all. None when ``owner`` is no user ``identity`` gives (a plugin id of KILLER_UID_BASE or more would meet the
+    users of the backends)."""
+    index = owner.uid - UID_BASE
+    return KILLER_UID_BASE + index if 0 <= index < UID_BASE - KILLER_UID_BASE else None
 
 
 def isolation() -> str:
@@ -428,20 +478,26 @@ def backend_cwd(where: Placement, owner: Identity | None) -> Path:
     return Path("/") if owner is not None and os.name == "posix" else where.data
 
 
-def user_argument(owner: Identity | None) -> str:
-    """The user the trampoline takes, ``uid:gid``, or SAME_USER for a backend that keeps the host's."""
-    return SAME_USER if owner is None else f"{owner.uid}:{owner.gid}"
+def user_argument(owner: Identity | None, keep_root: bool = False) -> str:
+    """The user the trampoline takes, ``uid:gid``; for a backend that keeps the host's user, SAME_USER, which the
+    trampoline refuses when that user is root, or KEEP_ROOT when ``keep_root`` says root may run it."""
+    if owner is not None:
+        return f"{owner.uid}:{owner.gid}"
+    return KEEP_ROOT if keep_root else SAME_USER
 
 
-def backend_command(where: Placement, entry: str, owner: Identity | None = None) -> list[str]:
-    """The command of a backend: on POSIX the trampoline (the host's Python, isolated, taking the backend's user,
-    changing into HOME and setting the limits), then the environment's Python, isolated from PYTHON* variables, the
-    user's site and the current directory, the launcher, then the entry.
+def backend_command(where: Placement, entry: str, owner: Identity | None = None, keep_root: bool = False) -> list[str]:
+    """The command of a backend: on POSIX the trampoline (the host's Python, isolated, closing every descriptor but
+    0, 1 and 2, taking the backend's user, changing into HOME and setting the limits), then the environment's Python,
+    isolated from PYTHON* variables, the user's site and the current directory, the launcher, then the entry.
 
-    The trampoline takes the user itself (setgroups, setgid, setuid, then a check), rather than the host passing
-    ``user``, ``group`` and ``extra_groups`` to the event loop's subprocess_exec: uvloop, which uvicorn runs the host
-    on when it is installed, refuses those arguments, so the backend starts the same whatever loop the host runs."""
+    The trampoline takes the user itself (setgroups, setresgid, setresuid, then a check of the real, effective and
+    saved IDs, the groups and the capabilities), rather than the host passing ``user``, ``group`` and ``extra_groups``
+    to the event loop's subprocess_exec: uvloop, which uvicorn runs the host on when it is installed, refuses those
+    arguments, and ignores ``close_fds``, so the trampoline closes the descriptors too, as root, before the drop.
+    Without ``owner`` it refuses to go on as root, unless ``keep_root`` (``evo-agents plugin test`` only)."""
     backend = [str(where.python), "-I", "-B", "-u", "-X", "utf8", "-c", LAUNCHER, str(where.code / entry)]
     if os.name != "posix":
         return backend
-    return [sys.executable, "-I", "-S", "-c", TRAMPOLINE, user_argument(owner), backend_limits(owner), *backend]
+    user = user_argument(owner, keep_root)
+    return [sys.executable, "-I", "-S", "-c", TRAMPOLINE, user, backend_limits(owner), *backend]
