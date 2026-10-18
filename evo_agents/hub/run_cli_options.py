@@ -47,6 +47,15 @@ ACCOUNT_HELP = (
 )
 
 
+KIND_TEXTS = {  # what `run show` says a run of each kind but step and plan is
+    "review": "review run: the Curator reads the project and proposes changes; it pushes nothing",
+    "judge": "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing",
+    "author": "author run: a plan written from your request with create-exec-plan; it pushes nothing",
+    "chat": "chat run: one turn of an agent mentioned in a group chat, on the branch of its session",
+    "task": "task run: one turn of a plugin's agent type on a task the plugin handed it, on the branch task/<run>; "
+    "it pushes that branch and the hub opens a draft pull request, never merged",
+    "local": "local run: a Claude Code session on a member's own machine, which the hub only watches",
+}
 AGENT_HELP = (
     "the agent profile the run goes under, by handle, as `hub agent list` shows it; the hub refuses what it does not "
     "allow (default: the project's default agent, which allows everything)"

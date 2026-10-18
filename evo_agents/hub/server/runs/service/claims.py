@@ -22,7 +22,7 @@ from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import BigInteger, Text, case, column, exists, func, literal, or_, select, true
+from sqlalchemy import BigInteger, Text, any_, case, column, exists, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -168,6 +168,7 @@ def _claimable(
     judge_runs: bool = False,
     author_runs: bool = False,
     chat_runs: bool = False,
+    task_runs: bool = False,
     step_sessions: bool = False,
     steady: bool = True,
     profile_gate=None,
@@ -181,12 +182,13 @@ def _claimable(
     (``review_runs``), and a judge run likewise (``judge_runs``); an author run one of its first repo, the project's
     harness, and a daemon that says it runs author runs (``author_runs``): the worker leaves out the other repos it has
     no checkout of. A chat run is pinned to the worker the hub picked for it and needs a daemon that says it runs chat
-    runs (``chat_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``). A
-    worker set to take runs dispatched from the web only (``web_only``) passes over the others, those dispatched before
-    schema 0011 included; and it takes only the runs whose agent profile lets it (``profile_gate``,
-    ``profiles.claim_clause``, with the plugins' ``environments`` it takes). Each row is the run's id, the runtime it
-    asked for, its kind, its profile's runtime axis, its project's id, its profile's environment axis and the agent
-    packs its profile attaches."""
+    runs (``chat_runs``). A task run needs a checkout of one of its repos when it has any, a daemon that says it runs
+    task runs (``task_runs``) and, when its agent type names workers, to be one of them. A plan run with a session per
+    step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs dispatched from the web
+    only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes only the runs
+    whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``, with the plugins' ``environments`` it
+    takes). Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis, its project's id,
+    its profile's environment axis and the agent packs its profile attaches."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -216,6 +218,7 @@ def _claimable(
             (r.c.kind.in_(("plan", "review", "judge")), every_repo),
             (r.c.kind == "author", harness),
             (r.c.kind == "chat", true()),  # pinned to the worker the hub picked, which works without a repo it lacks
+            (r.c.kind == "task", or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed))),
             else_=own_repo,
         ),
     )
@@ -233,11 +236,21 @@ def _claimable(
         query = query.where(r.c.kind != "author")
     if not chat_runs:
         query = query.where(r.c.kind != "chat")
+    query = query.where(or_(r.c.kind != "task", _task_worker(worker_id)) if task_runs else r.c.kind != "task")
     if not steady:
         query = query.where(~lost_here(worker_id))
     if profile_gate is not None:
         query = query.where(profile_gate)
     return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
+
+
+def _task_worker(worker_id: int):
+    """Whether worker ``worker_id`` may take the task run: its agent type names no worker, or names it."""
+    w, t, r = tables.workers, tables.project_agent_types, tables.runs
+    name = select(func.lower(w.c.name)).where(w.c.id == worker_id).scalar_subquery()
+    return exists().where(
+        t.c.id == r.c.agent_type_id, or_(func.cardinality(t.c.workers) == 0, name == any_(t.c.workers))
+    )
 
 
 class ClaimAbandoned(Exception):
@@ -352,6 +365,7 @@ async def _try_claim(
             judge_runs="judge" in (kinds or ()),
             author_runs="author" in (kinds or ()),
             chat_runs="chat" in (kinds or ()),
+            task_runs="task" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             steady=is_steady,
             profile_gate=claim_clause(name, labels, runtimes, features, offered, environments, plugins),
@@ -538,6 +552,11 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         from evo_agents.hub.server.chat_runs import chat_prompt  # it queues runs through this package
 
         prompt = await chat_prompt(conn, run_id, view.branch, [repo.model_dump() for repo in view.repos or []])
+        title = view.title
+    elif view.kind == "task":
+        from evo_agents.hub.server.task_dispatch import task_prompt  # it queues runs through this package
+
+        prompt = await task_prompt(conn, view)
         title = view.title
     elif view.kind == "judge":
         from evo_agents.hub.server.changes import judge_prompt  # it queues runs through this package

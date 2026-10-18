@@ -83,7 +83,7 @@ def test_the_table_covers_every_state_and_only_known_actors():
         "lost",
         "cancelled",
     )
-    assert runs.RUN_KINDS == ("step", "plan", "review", "judge", "author", "chat")
+    assert runs.RUN_KINDS == ("step", "plan", "review", "judge", "author", "chat", "task")
     assert ACTORS == ("worker", "owner", "reaper")
     assert set(TRANSITIONS) == set(RUN_STATES)
     assert set(HELD_STATES) | set(ACTIVE_STATES) | set(TERMINAL_STATES) == set(RUN_STATES)
@@ -775,3 +775,37 @@ def test_a_plan_run_step_session_prompt_stays_within_32_kib_whatever_the_plan_ho
     prompt = runs.build_step_session_prompt(plan, plan["steps"][0], repos, {}, huge)
     assert size(prompt) <= MAX_PROMPT_BYTES and "�" not in prompt
     assert "Rules for this session:" in prompt and "more repos, which .evo-run/plan.yaml lists" in prompt
+
+
+def test_a_task_dispatch_budget_is_what_is_left_of_the_cap_and_a_spent_cap_refuses_it():
+    from evo_agents.hub import task_runs
+
+    assert task_runs.run_budget(1.234567) == {"max_usd": 1.2346, "max_seconds": task_runs.TIME_CAP_SECONDS}
+    assert task_runs.run_budget(-2) == {"max_usd": 0.0, "max_seconds": task_runs.TIME_CAP_SECONDS}
+    assert task_runs.spent_problem(4.99, 5, "triager") is None
+    said = task_runs.spent_problem(5, 5, "triager")
+    assert said.startswith("the task runs of agent type triager cost $5.00 in the last 24 hours")
+    assert (task_runs.branch_of(41), task_runs.task_of("task/41"), task_runs.task_of("chat/41")) == (
+        "task/41",
+        41,
+        None,
+    )
+    for name in ("task/0", "task/041", "task/x", "task/41/x", "Task/41", None):
+        assert not task_runs.is_task_branch(name), name
+
+
+def test_a_task_dispatch_prompt_names_the_branch_and_repos_and_cuts_the_task_to_32_kib():
+    from evo_agents.hub import task_runs
+
+    agent = {"handle": "triager", "name": "Triager", "project": "demo", "description": "Fixes flaky tests."}
+    repos = [{"repo": "app", "branch": "task/7"}, {"repo": "docs", "branch": "task/7"}]
+    prompt = task_runs.build_task_prompt(
+        agent=agent, plugin="triage", agent_type="triager", login="owner", branch="task/7", task="Fix it.", repos=repos
+    )
+    assert prompt.startswith("You are @triager (Triager), agent type triager of plugin triage in project demo")
+    assert "never use a question tool" in prompt and "the hub opens a draft pull request of it" in prompt
+    assert "- app" in prompt and "- docs" in prompt and prompt.endswith("# The task\nFix it.\n")
+    huge = task_runs.build_task_prompt(
+        agent=agent, plugin="triage", agent_type="triager", login="owner", branch="task/7", task="đ" * 40_000
+    )
+    assert size(huge) <= MAX_PROMPT_BYTES and huge.startswith("You are @triager")

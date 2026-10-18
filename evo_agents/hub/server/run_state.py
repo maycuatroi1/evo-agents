@@ -518,6 +518,11 @@ async def record_move(
 
         await chat_run_moved(conn, run_id, new)
         return None
+    if found.kind == "task":  # it writes no step: its plugin gets the event task.result when it ends
+        from evo_agents.hub.server.task_dispatch import task_run_ended  # it queues runs through the routes too
+
+        await task_run_ended(conn, run_id, new)
+        return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await notify_plan_run_end(conn, found, old, new, reason=reason)
@@ -686,7 +691,8 @@ def _next_attempt(run_id: int):
     """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
     from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the schedule,
-    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config."""
+    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config; a
+    task run's agent type and pull requests."""
     r = tables.runs
     copied = (
         "kind",
@@ -714,6 +720,8 @@ def _next_attempt(run_id: int):
         "profile_id",
         "profile_version",
         "plugin_config",
+        "agent_type_id",
+        "pulls",
         *CHAT_COLUMNS,
     )
     source = select(

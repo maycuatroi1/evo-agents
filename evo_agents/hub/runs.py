@@ -17,11 +17,14 @@ checks, and says whether the change passes, without reading the Builder's transc
 skill, on one of the member's own workers, and changes no code (``evo_agents.hub.author``). A ``chat`` run is one turn
 of an agent someone mentioned in a group chat, which answers in the thread, may change code on a branch ``chat/<run>``
 and ends done with its turn; a reply in the thread starts the next turn as a new run in the same session
-(``evo_agents.hub.chat_runs``). A ``local`` run is a Claude Code session on a member's own machine, which no worker runs
-and the hub only watches and asks decisions for (LOCAL_STATES; ``evo_agents.hub.server.local_runs``). A worker takes a
-kind of run only once its heartbeat says its daemon runs that kind (``run_kinds``): a daemon older than the review
-run reads every run as a step or plan run. Likewise it takes a plan run with a session per step only once its
-heartbeat lists SESSION_PER_STEP among its ``features``, since an older daemon would run it in one session.
+(``evo_agents.hub.chat_runs``). A ``task`` run is the work a plugin hands an agent type of its own that a project
+enabled (``evo_agents.hub.task_runs``): one headless turn on a branch ``task/<run>``, whose pull request the hub opens
+as a draft, never merged, with its result told back to that plugin. A ``local`` run is a Claude Code session on a
+member's own machine, which no worker runs and the hub only watches and asks decisions for (LOCAL_STATES;
+``evo_agents.hub.server.local_runs``). A worker takes a kind of run only once its heartbeat says its daemon runs that
+kind (``run_kinds``): a daemon older than the review run reads every run as a step or plan run. Likewise it takes a plan
+run with a session per step only once its heartbeat lists SESSION_PER_STEP among its ``features``, since an older daemon
+would run it in one session.
 A run starts ``queued``; a worker
 claims it (``leased``), starts the agent (``running``, or ``interactive`` when a person drives the agent in a
 terminal), re-runs the agent's verify commands (``verifying``), and ends ``done``, ``failed`` or ``cancelled``, or in
@@ -113,10 +116,11 @@ MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
-# plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; a Claude
-# Code session on a member's own machine, which no worker runs (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker
-# runs are in it, and the kinds of run a daemon announces and a claim hands out)
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat")
+# plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
+# plugin hands an agent type of its own; a Claude Code session on a member's own machine, which no worker runs
+# (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a
+# claim hands out)
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task")
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)

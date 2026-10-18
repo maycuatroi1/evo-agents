@@ -222,7 +222,7 @@
           "$ref": "#/$defs/agent_packs"
         },
         "agent_types": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/agent_types"
         },
         "runtimes": {
           "$ref": "#/$defs/runtimes"
@@ -428,14 +428,15 @@
           "minimum": 1
         },
         "on": {
-          "description": "The events it takes; every event the plugin's grant lets it read when left out (run.state with runs:read, chat.message with chats:read, plan.step with plans:read).",
+          "description": "The events it takes; every event the plugin's grant lets it read when left out (run.state with runs:read, chat.message with chats:read, plan.step with plans:read, and task.result with runs:dispatch: the end of a task run of one of the plugin's own agent types).",
           "type": "array",
           "minItems": 1,
           "items": {
             "enum": [
               "run.state",
               "chat.message",
-              "plan.step"
+              "plan.step",
+              "task.result"
             ]
           }
         }
@@ -772,6 +773,107 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/agent_pack"
+      }
+    },
+    "agent_type": {
+      "description": "An agent type: a template of an agent profile, with the agent packs, the environment, the jobs, the events and the pages of this plugin it uses. An admin of a project that enabled the plugin enables the type there, which creates its profile in the project and names the member its runs go under, the workers they may run on and the cap of their cost per day; the plugin, granted runs:dispatch, then hands it tasks through the hub's API, each a run of kind task on a branch task/<run> whose draft pull request the hub opens, and gets the event task.result when one ends (docs/plugins.md, Agent types).",
+      "type": "object",
+      "required": [
+        "name",
+        "profile"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "profile": {
+          "description": "The agent profile the hub creates in a project that enables the type: its handle (taken as is when the project has no agent of that handle), name, description, instructions and permissions, by axis, as an agent profile has them.",
+          "type": "object",
+          "required": [
+            "handle"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "handle": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "instructions": {
+              "type": "string",
+              "maxLength": 8000
+            },
+            "permissions": {
+              "type": "object"
+            }
+          }
+        },
+        "packs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The agent packs of this plugin its profile attaches, by name, at the version the project enabled."
+        },
+        "environment": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+          "description": "The environment of this plugin its runs run in, by name."
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The jobs of this plugin that serve it, by name."
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The events contributions of this plugin that take its results, by name."
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The pages of this plugin that show it, by name."
+        }
+      }
+    },
+    "agent_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/agent_type"
       }
     }
   }
