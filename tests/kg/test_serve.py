@@ -586,6 +586,26 @@ def test_text_lines_carry_no_uri_and_print_a_shared_label_once(tmp_path, kg_env)
     assert any(f", {other})" in line for line in node_lines) and not any(f", {common})" in line for line in node_lines)
 
 
+def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg_env):
+    session = Session(built(tmp_path, kg_env), "agent")
+    result = session.call("kg_search", {"query": "Wire the server to search", "limit": 5})
+    lines = result["content"][0]["text"].splitlines()
+    assert lines[2].startswith("[plan:demo/step:2] PlanStep 'Server'")  # its words: the step first
+    assert lines[3] == "  mentions [app:app/server.py] File (parsed)"  # then the file its text names
+    data = result["structuredContent"]
+    assert [r["id"] for r in data["results"]][:2] == ["plan:demo/step:2", SERVER_PY]
+    assert data["mentioned_by"] == {SERVER_PY: "plan:demo/step:2"}
+    only_steps = session.call("kg_search", {"query": "Wire the server to search", "kinds": ["PlanStep"]})
+    assert {r["kind"] for r in only_steps["structuredContent"]["results"]} == {"PlanStep"}
+    assert only_steps["structuredContent"]["mentioned_by"] == {}
+
+    # The app is customer-level and the agent sink clears internal: the step shows, the file it mentions does not.
+    narrow = Session(built(tmp_path / "narrow", kg_env, app_level="customer"), "agent")
+    hidden = narrow.call("kg_search", {"query": "Wire the server to search"})["structuredContent"]
+    assert [r["id"] for r in hidden["results"]][:1] == ["plan:demo/step:2"]
+    assert hidden["mentioned_by"] == {} and all(not r["id"].startswith("app:") for r in hidden["results"])
+
+
 def test_context_keeps_nodes_and_edges_within_its_budget_and_counts_the_rest(tmp_path, kg_env):
     project = built_wider(tmp_path, kg_env)
     session = Session(project, "agent")

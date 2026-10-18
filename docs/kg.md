@@ -167,3 +167,35 @@ The text is what an agent's model reads, so it is kept short and readable:
   kg_context's `budget_tokens`, `source` and `target` for kg_path's `from` and `to`. Any other unknown name is an
   error that lists the tool's arguments. kg_impact reads a path that names no file as an id, and an id that names no
   node and looks like a path as a path.
+
+## Search
+
+`kg_search`, the seeds of `kg_context` and the search box of the hub's graph pages all go through `Store.search`
+(`evo_agents/kg/store.py`, `evo_agents/kg/search.py`):
+
+- A node whose id, alias or name is the query comes first, each found through an index (`nodes_tx`, `nodes_name`,
+  `node_alias`), never by reading the whole `nodes` table.
+- Then the full-text index (`node_fts`, SQLite FTS5, `unicode61 remove_diacritics 2`), read three ways, each filling
+  what the one before left: every word whole (AND), every word as a prefix (AND), then any word (OR). Words that only
+  ask (`where`, `does`, `the`, `của`, ...) are dropped from a query that has others, so a question whose words no
+  single node holds still gets ranked results.
+- Each way ranks by BM25 over the node's name (weight 6), path (2) and body (1), times a light prior by kind: a plan,
+  a step, a commit or a directory counts half, a section or a requirement 0.7, so at the same text score code and
+  documents come first. The best 300 by BM25 alone are scored again with the prior.
+- `kinds` is part of the query, so a search for sections gets as many sections as it asks for.
+- `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
+  it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
+  may see: a search that finds a step or a page of the docs also names the code they point at.
+
+What the index holds for a node: its name, with the parts of a camelCase word added (`HubSession` also holds `hub` and
+`session`; snake_case and paths come apart in the tokenizer); its path, a section's being its document's; and a body:
+the text of a section or of an item that is neither code nor a plan, the description of a plan (goal, context), a
+step (what, why, note) or a seam (notes), not their verify commands nor their evidence, the docstring of a Python
+symbol or module, the comment right above a definition in another language or at the top of its file, and a
+requirement's code. `đ` is indexed and searched as `d`. URIs and repo names are not indexed. A body longer than
+100,000 characters is cut there, and the build counts the cut ones in its coverage (`search.cut`, with samples).
+
+The index holds the latest build only and is rewritten with it. The build's content hash covers the store's schema and
+what the index holds, so two builds with the same hash answer searches alike. Store schema 3 added the index's
+`kind` and `path` columns, `nodes_name` and `node_alias`: an older store is rebuilt from the corpus log by the next
+`kg build` or `kg sync --build`, and readers refuse it until then.
