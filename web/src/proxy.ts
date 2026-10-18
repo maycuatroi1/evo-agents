@@ -48,7 +48,7 @@ export const config = {
   matcher: [
     {
       // Pages only: not the API (/v1, /mcp, served by FastAPI), build assets, or files from public/.
-      source: "/((?!v1/|mcp|_next/static|_next/image|favicon.ico|icon.svg|robots.txt).*)",
+      source: "/((?!v1/|mcp|_next/static|_next/image|favicon.ico|icon.svg|apple-icon.png|robots.txt).*)",
       missing: [
         { type: "header", key: "next-router-prefetch" },
         { type: "header", key: "purpose", value: "prefetch" },

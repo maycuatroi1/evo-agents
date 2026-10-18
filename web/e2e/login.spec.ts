@@ -14,7 +14,7 @@ test.describe("signed out", () => {
     for (const path of PROTECTED) {
       await page.goto(path);
       await expect(page, `${path} without a session`).toHaveURL(/\/login$/);
-      await expect(page.getByRole("heading", { level: 1, name: "Đăng nhập vào evo-agents hub" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "Đăng nhập vào Evo Agent Hub" })).toBeVisible();
     }
     await expect(page.getByTestId("login-github")).toHaveAttribute("href", "/v1/auth/web/login");
   });
