@@ -16,7 +16,6 @@ import dataclasses
 import re
 from importlib.metadata import EntryPoint
 
-import psycopg
 import pytest
 
 from tests.hub import pg
@@ -24,6 +23,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import func, insert, select, update
 
