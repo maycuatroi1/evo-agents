@@ -3,7 +3,7 @@
   "modules": {
     "evo_agents/hub/judge.py": 1251,
     "evo_agents/hub/memory.py": 1129,
-    "evo_agents/hub/run_cli.py": 1017,
+    "evo_agents/hub/run_cli.py": 1013,
     "evo_agents/hub/server/changes.py": 1568,
     "evo_agents/hub/server/curator.py": 1375,
     "evo_agents/hub/tables.py": 1281,
@@ -19,7 +19,7 @@
     "evo_agents/hub/judge.py::hack_signs": {"complexity": 35, "statements": 78},
     "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 22, "statements": 51},
     "evo_agents/hub/run_cli.py::_describe": {"complexity": 21, "statements": 58},
-    "evo_agents/hub/run_cli.py::register_runs": {"statements": 72},
+    "evo_agents/hub/run_cli.py::register_runs": {"statements": 67},
     "evo_agents/hub/server/app.py::create_app": {"statements": 96},
     "evo_agents/hub/server/blobs.py::commit_uploads": {"statements": 58},
     "evo_agents/hub/server/changes.py::_merge": {"complexity": 17, "statements": 77},

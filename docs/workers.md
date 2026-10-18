@@ -843,6 +843,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST .../runs/{id}/finish` | owner | end the chat of an author run: it ends done |
 | `POST .../runs/{id}/takeover`, `/handback` | owner | switch between headless and interactive |
 | `POST .../runs/{id}/cancel`, `/approve`, `/rerun` | owner | stop, approve a run in review, run the step again |
+| `GET .../runs/{id}/rerun-candidates` | owner | who could run a failed run again: each of the owner's workers and each agent profile of the project with why it fits or not, ranked, and the owner's accounts bound to the project |
 | websocket `/v1/projects/{p}/runs/{id}/terminal` | owner, on a worker of theirs | the browser's end of the terminal |
 
 ### Dispatching and the owner's controls
@@ -879,6 +880,20 @@ evidence the run got when it went to review. `.../rerun` queues the step of a ru
 current revision, with the same requested runtime, model, mode, approval, timeout and pinned worker, the account picked
 by hand for the old run unless its body names another one (`account`) or asks the rules (`account_by_rule`), attempt 1
 and `parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
+
+`.../rerun-candidates` (`evo-agents hub run candidates RUN [--json]`) answers, for a run that failed (409 otherwise, 403
+for another member), who could run it again, computed by the hub from its rows with no model. Each worker of the owner
+that serves the project has `fit`, a `rank` (1 is best; null when it is no fit) and `reasons`: what makes it fit, or
+each thing that makes it not. A worker is fit when it is online, not draining, runs the run's kind, takes the way the run
+was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run, has a runtime the
+run's agent profile allows, is one the profile allows, and, when the owner bound any account to the project, has one
+ready on it (not expired, paused or cooling). The fit workers are ranked by the run's `failure_cause`: the worker the
+run was on first for `missing_tool`, `checkout` and `branch_mismatch`, last for `worker_stopped`, `lease_lost` and
+`runtime`; a worker with an account the run did not use first for `rate_limit` and `account_auth`; then the most
+checkouts of the run's repos, the most free slots, the smallest id. Each agent profile of the project has `fit`, `rank`
+and `reasons` too: it is fit when the owner is a writer of the project, a worker can take a chat run of it, and, for
+`missing_tool`, it lets the agent run shell commands; the project's default comes first among the fit ones. The worker
+rules are the ones a chat run goes by (`pick_worker`, [Chat runs](#chat-runs)), kept in one place.
 
 ### Reading runs
 
