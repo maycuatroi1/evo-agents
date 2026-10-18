@@ -31,7 +31,7 @@ how decisions and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots and labels after it joined | `workers` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots, labels and plugins after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
 | run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
@@ -66,8 +66,9 @@ profiles), and a chat run its chat, the message that started it and its hop (`ch
   machine token that leaked cannot hand it work; a message or a decision answer sent with a token to a run on it, or
   that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
-- **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels and name, from a
-  web session with its CSRF header or with the owner's machine token. A hub admin who does not own the worker gets
+- **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels, name and plugins
+  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), from a web session with its CSRF
+  header or with the owner's machine token. A hub admin who does not own the worker gets
   403 and anyone else 404, and a revoked worker is 409. The projects a worker serves and whether it allows the web
   terminal are not settings: the machine sets them when it joins or registers, and changing them means registering
   again.
@@ -661,11 +662,12 @@ it holds:
   "runs": [12],
   "agent_version": "0.3.0",
   "run_kinds": ["step", "plan", "review", "judge"],
-  "features": ["session_per_step", "author_decisions"]
+  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes"]
 }
 ```
 
-`runtimes` is keyed `claude-code`, `opencode` or `codex`, each `{available, version, reason, models}`: `available`
+`runtimes` is keyed `claude-code`, `opencode`, `codex`, or `<plugin>/<name>` for a runtime of a plugin the hub
+declared to the worker ([Runtimes of plugins](#runtimes-of-plugins)), each `{available, version, reason, models}`: `available`
 is required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed
 for. `models` lists the models an available runtime offers on the machine, when the runtime lets them be read (see
 [Runtime adapters](#runtime-adapters)): at most 200, each one line of at most 200 characters, so the web can suggest
@@ -680,7 +682,8 @@ optional, lists what the daemon does besides its kinds of run (`runs.HUB_FEATURE
 with a new agent session for each step, `author_decisions`, an author run whose agent asks decisions with
 `evo-agents worker ask` and waits for every answer of its turn (the hub then builds the author prompt with the rules of
 decisions; without it, the rules of a chat alone), and `agent_profiles`, a daemon whose adapters apply a run's agent
-profile (tools, skills and model in the session, the instructions in its system prompt). The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
+profile (tools, skills and model in the session, the instructions in its system prompt), and `plugin_runtimes`, a daemon
+that runs the runtimes of plugins through its adapter of ACP. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
@@ -690,7 +693,10 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 ```json
 {
   "drain": false,
-  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"]},
+  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"]},
+  "plugin_runtimes": [{"runtime": "sandbox/gemini", "plugin": "sandbox", "version": "0.2.0", "title": "Gemini CLI",
+                       "command": ["gemini", "--experimental-acp"], "models": ["gemini-2.5-pro"],
+                       "secrets": ["GEMINI_API_KEY"]}],
   "runs": [{"id": 12, "held": true, "state": "running", "lease_expires_at": "...", "cancel": false,
             "takeover": false, "handback": false, "terminal_open": false, "park": false, "inbox": 0,
             "decisions": 0}]
@@ -699,8 +705,9 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
 (`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
-whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`), which the owner may change
-with `PATCH /v1/workers/{id}`. When they differ from `config.json`, the daemon takes them in memory, writes
+whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`), which the owner may
+change with `PATCH /v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
+those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon). When they differ from `config.json`, the daemon takes them in memory, writes
 `config.json` again (atomically, mode 0600, its other fields as they are on disk) and logs the old and new values. More
 slots are claimed at the next turn of the claim loop, without a restart; fewer stop no run, and the daemon only
 claims nothing until it holds fewer runs than the new slots. The hub counts the runs a worker holds against its slots
@@ -825,7 +832,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}` | member | create a pairing code, follow it |
 | `POST /v1/workers` | member (machine token) | register this machine directly |
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
-| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them) or `name` (unique among the owner's workers not revoked, 409 otherwise), at least one; the values it has already change nothing and are not audited |
+| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
@@ -1229,6 +1236,36 @@ and the package the adapter needs is installed at least at the version checked: 
 claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 0.160.0 (whose bundled codex is not
 used), opencode 1.18.34 with aiohttp. Otherwise the heartbeat reports it unavailable with the reason, and the hub
 hands it no run.
+
+### Runtimes of plugins
+
+A plugin may declare a runtime: the command of an agent that speaks the Agent Client Protocol (ACP), the models it
+offers and the variables its agent needs ([plugins.md](plugins.md#runtimes)). The hub registers it as
+`<plugin>/<name>` in each project that enabled the plugin, and a run asks for it by that name; `any` never takes it.
+
+The owner chooses which plugins' runtimes a worker takes: its `plugins`, on the worker's page or with
+`PATCH /v1/workers/{id}`, empty until set. The daemon keeps them in `config.json`, as it keeps its slots and labels,
+and lists `plugin_runtimes` in its heartbeat's `features`, so the answer carries the declarations of those plugins'
+runtimes in the projects the worker serves. For each one the daemon makes an adapter of ACP
+(`evo_agents.worker.runtimes.acp`) and reports the runtime at the next heartbeat: available when the program of its
+command is on the daemon's `PATH` (or is an absolute path to an executable), with the declared models; an ACP agent
+has no version option, so none is reported. The hub hands a run of a plugin's runtime only to a worker whose owner
+accepted the plugin, whose daemon lists `plugin_runtimes` and whose heartbeat reports the runtime available. A worker
+without them leaves the run queued for another, and the run does not fail; a dispatch pinned to such a worker is 409,
+saying which of the three it lacks. A run whose plugin a project admin disabled after it was dispatched fails at its
+claim, saying so.
+
+The claim carries the declaration as the plugin enabled on the project has it then (`plugin_runtime`), and the run's
+agent starts through the adapter made from it. The adapter starts the program in the run's worktree through the same
+launcher as the other runtimes, speaks ACP version 1 over its stdin and stdout, and asks for no file system or
+terminal of its own: the agent works with its own tools, every permission it asks is granted, and no MCP server is
+handed to it. The run's model goes to the agent through its config option of category `model`; an agent that offers
+none fails the start. ACP has no system prompt, so the headless note and the instructions of the run's agent profile
+are the first block of the first prompt. A message of the owner waits for the end of the turn and starts the next one.
+The turn completes only with the stop reason `end_turn`, and the agent's `session/update` notifications, already in
+the hub's shapes, become the run's events. A variable the declaration names (`secrets`) that neither the run's leases
+nor the daemon's environment set fails the run before the agent starts, with cause `credentials`. An agent profile
+that limits tools or skills fails the run before the agent starts too: an ACP agent's tools are its own.
 
 ### Agent profiles in the session
 

@@ -216,6 +216,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `events` | `name`, `on` | an async function of the `event` params | method `event` |
 | `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
 | `pages` | `name`, `title`, `icon`, `menu`, `entry` (isolated) | a native page of the hub's web, at `/p/<project>/x/<id>/<name>` | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
+| `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
 
 What a project does not enable is not there: every route, tool, job, event and channel of a plugin works in a project
 that enabled the plugin while the plugin is installed and turned on, and the hub checks it on each call, not once.
@@ -287,6 +288,61 @@ Telegram channel (`docs/notifications.md`), which left the core as it was: its c
 the paths they had (the empty `prefix`: its routers carry their own under `/v1`), its table `telegram_links` from
 migration 0015. Nothing of it is per project, so it runs hub-wide: `evo-agents hub plugin list` and Administration,
 Plugins show it as a core plugin installed with the image, and no project enables it.
+
+## Runtimes
+
+A plugin of either tier declares a runtime of agents with `acp`, the command of an agent that speaks the
+[Agent Client Protocol](https://agentclientprotocol.com) on its stdin and stdout:
+
+```json
+"contributes": {
+  "runtimes": [
+    {
+      "name": "gemini",
+      "title": "Gemini CLI",
+      "acp": {"command": ["gemini", "--experimental-acp"]},
+      "models": ["gemini-2.5-pro", "gemini-2.5-flash"],
+      "secrets": ["GEMINI_API_KEY"]
+    }
+  ]
+}
+```
+
+- `acp.command` is the program, looked for on the worker's `PATH` unless it is an absolute path, and its arguments: at
+  most 32 items, each one line. The plugin does not ship the program; the worker's owner installs it.
+- `models` (at most 200) are what the agent offers, which the worker reports for a dispatch to suggest; a run's model
+  reaches the agent through its ACP config option of category `model`.
+- `secrets` (at most 20, names such as `GEMINI_API_KEY`) are the variables the agent needs. The run's env leases give
+  them (`docs/credentials.md`), or the worker's own environment; a run whose agent would lack one fails before the
+  agent starts, with cause `credentials`.
+
+A runtime names one of `acp` and `python`. A core plugin's `python` is the older form: a subclass of
+`evo_agents.worker.adapter.Adapter` in the worker's process, the adapter of the runtime of the core its name gives.
+
+**The hub registers a plugin's runtime as `<plugin>/<name>`** (`sandbox/gemini`) in each project that enabled the
+plugin, while the plugin is installed and on, next to the core's `claude-code`, `opencode` and `codex`. A dispatch
+(step runs, a plan run, a rerun) whose runtime the project does not register is a 422 that lists what it takes; schema
+0039 holds a run's runtime only to that shape. A run asking for `any` takes a runtime of the core, never a plugin's. The
+runtime axis of an agent profile names plugins' runtimes as it names the core's, and a profile that allows only
+plugins' runtimes takes no run asking for `any`. A plugin that declares an ACP runtime is enabled per project, as an
+isolated plugin always is; it needs no permission for it.
+
+**A worker runs a plugin's runtime only once its owner accepts the plugin**, in the worker's plugins (its page, or
+`PATCH /v1/workers/{id}`), and only with a daemon that says it runs plugins' runtimes. The hub then sends the daemon
+the declaration with each heartbeat answer, the daemon looks for the program and reports the runtime, and a run of it
+goes only to a worker that reports it available; another worker never claims it, and the run waits rather than fails.
+The claim hands the worker the declaration as the project has the plugin then, and the worker runs the agent through
+the core adapter of ACP (`docs/workers.md`, Runtimes of plugins): ACP version 1, the run's worktree as the session's
+`cwd`, every permission the agent asks granted, no file system or terminal of the client, no MCP server. A run whose
+plugin was disabled in its project before a worker claimed it fails there, saying so. Each run records the plugin's
+version among the plugins of its project (`run_plugins`).
+
+To check a runtime by hand, enable the plugin on a project, add it to a worker's plugins, wait for the worker's page
+to list `<plugin>/<name>` under Runtimes, and dispatch to it:
+
+```sh
+evo-agents hub run dispatch rollout 2 --project evo-agents --runtime sandbox/gemini
+```
 
 ## Pages
 
