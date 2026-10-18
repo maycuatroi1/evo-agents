@@ -90,9 +90,10 @@ Coverage per language (docs/kg.md in the evo-agents repo gives the evidence each
 - At session start, a short note names the bound project and the snapshot age.
 - After every evo-kg call, the labels of what the result revealed join the session label, which only
   rises; `kg_status` shows it.
-- Before a Grep, Glob, `rg` or `grep`, a note may list graph ids named like the search. Treat those
-  ids as pointers to check with `kg_context` or `kg_node`, not as facts. `EVO_KG_GREP_HINTS=0` turns
-  the note off.
+- After a Grep, `rg` or `grep`, a note may follow the result: for a matched function, method or file,
+  its callers (or importers), tests and the plan steps that name it, by id, four lines at most. It
+  comes from the graph's snapshot: read the files before relying on it, and pass an id to
+  `kg_context` or `kg_impact` for more. `EVO_KG_GREP_HINTS=0` turns the note off.
 
 ## Tools
 
