@@ -227,7 +227,7 @@ def run_git(repo: Path) -> dict[str, dict]:
     source = {"id": "app", "connector": "git", "path": str(repo)}
     messages = list(ConnectorRun(ConnectorContext("p", source)))
     assert messages[-1] == {"type": "closed", "status": "ok"}
-    return {m["props"]["path"]: m for m in messages if m["type"] == "item"}
+    return {m["props"]["path"]: m for m in messages if m["type"] == "item" and m["kind"] != "commit"}
 
 
 def test_git_connector_redacts_secrets_before_the_item_and_keeps_the_structure(secret_project, tmp_path):

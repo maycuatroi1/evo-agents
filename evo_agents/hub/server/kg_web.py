@@ -1,6 +1,7 @@
 """Read-only routes of a project's knowledge graph for the hub's web pages.
 
-- GET /v1/kg/{project}/graph: the build the reads answer from, and how many visible nodes of each kind it holds.
+- GET /v1/kg/{project}/graph: the build the reads answer from, how many visible nodes of each kind it holds, and the
+  commit each git source the member can see read, with how far it was behind its remote's default branch.
 - GET /v1/kg/{project}/nodes?q=&kind=&limit=: search, as kg_search.
 - GET /v1/kg/{project}/node?id=: one node with its label, evidence (source, revision, span, uri) and its visible
   neighbours by edge type, as kg_node.
@@ -27,11 +28,11 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphUnavailable
+from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphOutdated, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import built_graphs
+from evo_agents.hub.server.kg import built_graphs, rebuild_outdated
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 
@@ -79,9 +80,23 @@ class KindCount(BaseModel):
     count: int
 
 
+class SourceRead(BaseModel):
+    source: str = Field(description="the source's id in knowledge.yaml")
+    commit: str = Field(description="the SHA of the commit the source read")
+    ref: str | None = Field(description="the ref the source names, HEAD when it names none")
+    base: str | None = Field(description="the remote's default branch the commit is compared with, e.g. origin/main")
+    behind: int | None = Field(
+        description="commits of base the commit read lacks, as the machine that synced it counted; null when unknown"
+    )
+    url: str | None = Field(description="the commit on its forge, when the repo's origin is on one")
+
+
 class GraphSummary(BaseModel):
     graph: GraphRef | None = Field(description="null until a build of the project succeeded")
     kinds: list[KindCount] = Field(description="visible nodes by kind, most first")
+    sources: list[SourceRead] = Field(
+        default_factory=list, description="the commit each git source the member can see read, by source"
+    )
 
 
 class NodeSearch(BaseModel):
@@ -176,6 +191,9 @@ async def _read(request: Request, user, project: str, reader):
         data, graph = await asyncio.to_thread(
             read, state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, graphs, reader
         )
+    except GraphOutdated as exc:
+        await rebuild_outdated(state, access.project_id, project)
+        raise HTTPException(503, str(exc)) from None
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     except ArtifactMismatch as exc:
@@ -203,9 +221,15 @@ def _text(value) -> str | None:
 
 @router.get("/{project}/graph", response_model=GraphSummary)
 async def graph_summary(request: Request, project: ProjectName, user: CurrentUser) -> GraphSummary:
-    """The build the knowledge graph pages read, and how many nodes of each kind the member can see in it."""
-    kinds, ref = await _read(request, user, project, WebSession.kinds)
-    return GraphSummary(graph=ref, kinds=[KindCount(**k) for k in kinds or []])
+    """The build the knowledge graph pages read, how many nodes of each kind the member can see in it, and the commit
+    each git source the member can see read."""
+    summary, ref = await _read(request, user, project, WebSession.summary)
+    summary = summary or {}
+    return GraphSummary(
+        graph=ref,
+        kinds=[KindCount(**k) for k in summary.get("kinds", [])],
+        sources=[SourceRead(**s) for s in summary.get("sources", [])],
+    )
 
 
 @router.get("/{project}/nodes", response_model=NodeSearch)

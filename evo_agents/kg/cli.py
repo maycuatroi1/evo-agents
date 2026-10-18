@@ -25,10 +25,13 @@ def _project(args):
 def _print_runs(results) -> None:
     for r in results:
         mark = "OK  " if r.ok else "FAIL"
-        print(
-            f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
-            f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
-        )
+        if r.unchanged:
+            print(f"{mark} {r.source:<20} unchanged: the commit and config it read last, nothing read, {r.seconds}s")
+        else:
+            print(
+                f"{mark} {r.source:<20} {r.items} item(s), {r.tombstones} tombstone(s), {r.removals} removed, "
+                f"{r.errors} error(s), {r.rejected} rejected, {r.seconds}s"
+            )
         if r.redactions:
             redacted = sum(sum(kinds.values()) for kinds in r.redactions.values())
             print(f"     redacted: {redacted} secret(s) in {len(r.redactions)} item(s), counted in audit.jsonl")
@@ -94,38 +97,61 @@ def _print_push(reports: list, error: str | None) -> None:
             print(f"     {line}")
 
 
-def _cmd_sync_due(args) -> int:
+def _hub_plans():
+    """What the harness connector reads the plans of the hub through, in a harness whose harness.yaml names a hub
+    project (``ConnectorContext.plans``); on a machine not signed in to a hub it reads the copies in plans/."""
+    from evo_agents.hub.kg_plans import reader
+
+    return reader()
+
+
+def _sync_due_all(args) -> int:
+    """``kg sync --due --all``, the LaunchAgent's command: sync every project, push with --push, then prune what the
+    retention schedule asks for (``evo_agents.kg.retention``; off until ``kg prune --schedule on``)."""
+    from evo_agents.kg import cli_prune
     from evo_agents.kg.ids import utc_now
-    from evo_agents.kg.sync import sync_all_due, sync_due
+    from evo_agents.kg.sync import sync_all_due
+
+    if args.project or args.accept_removals:
+        print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
+        return 2
+    outcomes = sync_all_due(build=args.build, plans=_hub_plans())
+    ok = all(o.ok for o in outcomes)
+    pushed = _push() if args.push else None
+    if pushed is not None:
+        ok = ok and _push_json(*pushed)["ok"]
+    pruned = cli_prune.scheduled()
+    prune = cli_prune.scheduled_json(*pruned)
+    ok = ok and (prune is None or prune["ok"])
+    if args.json:
+        body = {"ok": ok, "projects": [o.to_json() for o in outcomes]}
+        if pushed is not None:
+            body["push"] = _push_json(*pushed)
+        if prune is not None:
+            body["prune"] = prune
+        _print_json(body)
+    else:
+        print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
+        for outcome in outcomes:
+            _print_due(outcome)
+        if pushed is not None:
+            _print_push(*pushed)
+        cli_prune.print_scheduled(*pruned)
+    return 0 if ok else 1
+
+
+def _cmd_sync_due(args) -> int:
+    from evo_agents.kg.sync import sync_due
 
     if args.source:
         print("error: --due picks the sources itself; drop --source", file=sys.stderr)
         return 2
     if args.all:
-        if args.project or args.accept_removals:
-            print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
-            return 2
-        outcomes = sync_all_due(build=args.build)
-        ok = all(o.ok for o in outcomes)
-        pushed = _push() if args.push else None
-        if pushed is not None:
-            ok = ok and _push_json(*pushed)["ok"]
-        if args.json:
-            body = {"ok": ok, "projects": [o.to_json() for o in outcomes]}
-            if pushed is not None:
-                body["push"] = _push_json(*pushed)
-            _print_json(body)
-        else:
-            print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
-            for outcome in outcomes:
-                _print_due(outcome)
-            if pushed is not None:
-                _print_push(*pushed)
-        return 0 if ok else 1
+        return _sync_due_all(args)
 
     project = _project(args)
     try:
-        outcome = sync_due(project, build=args.build, accept=args.accept_removals)
+        outcome = sync_due(project, build=args.build, accept=args.accept_removals, plans=_hub_plans())
     except ProjectError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
@@ -152,7 +178,7 @@ def cmd_sync(args) -> int:
     if args.due:
         return _cmd_sync_due(args)
     project = _project(args)
-    results = sync_project(project, args.source or None, accept=args.accept_removals)
+    results = sync_project(project, args.source or None, accept=args.accept_removals, plans=_hub_plans())
     ok = all(r.ok and not r.held for r in results)
     report = None
     if args.build:
@@ -296,15 +322,31 @@ def cmd_hook_post_tool(args) -> int:
     return 0
 
 
-def cmd_hook_pre_search(args) -> int:
-    """PreToolUse hook for Grep, Glob and rg or grep in Bash: ids of graph nodes named like the search. Sets
-    no permissionDecision, since "allow" would skip the user's permission prompt; prints nothing when unsure."""
-    from evo_agents.kg.search_hint import pre_search
+def cmd_hook_post_search(args) -> int:
+    """PostToolUse hook for Grep and rg or grep in Bash: what the graph links to the matched lines, as
+    additionalContext (``evo_agents.kg.post_search``)."""
+    from evo_agents.kg.post_search import run
 
-    note = pre_search(sys.stdin.read(), only=args.only, sink=args.sink)
-    if note:
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}))
-    return 0
+    return run(args)
+
+
+def add_hooks(hsub) -> None:
+    """The ``kg hook`` subcommands, which Claude Code runs."""
+    hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
+    hsub.add_parser("post-tool", help="add an evo-kg result to the session label").set_defaults(func=cmd_hook_post_tool)
+    from evo_agents.kg.post_search import add_arguments
+
+    post_search = hsub.add_parser("post-search", help="PostToolUse: what the graph links to a Grep, rg or grep match")
+    add_arguments(post_search).set_defaults(func=cmd_hook_post_search)
+
+
+def run_hook(argv: list[str]) -> int:
+    """``evo-agents kg hook ...`` without the rest of the command tree. Claude Code runs a hook on every matching
+    tool call, and building every command group's parser costs about 0.2 s, more than the hook itself."""
+    parser = argparse.ArgumentParser(prog="evo-agents kg hook", description="Claude Code hook entry points")
+    add_hooks(parser.add_subparsers(dest="hook_name", required=True))
+    args = parser.parse_args(argv)
+    return int(args.func(args) or 0)
 
 
 def cmd_connector_test(args) -> int:
@@ -418,17 +460,10 @@ def register(sub) -> None:
     test.set_defaults(func=cmd_connector_test)
 
     hook = ksub.add_parser("hook", help="Claude Code hook entry points")
-    hsub = hook.add_subparsers(dest="hook_name", required=True)
-    hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
-    hsub.add_parser("post-tool", help="add an evo-kg result to the session label").set_defaults(func=cmd_hook_post_tool)
-    pre_search = hsub.add_parser("pre-search", help="PreToolUse: graph ids named like a Grep, Glob, rg or grep")
-    pre_search.add_argument(
-        "--only", choices=["rg", "grep"], help="for Bash, answer only when this command leads (one handler per if)"
-    )
-    pre_search.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
-    pre_search.set_defaults(func=cmd_hook_pre_search)
+    add_hooks(hook.add_subparsers(dest="hook_name", required=True))
 
-    from evo_agents.kg import cli_graph, cli_scrub
+    from evo_agents.kg import cli_graph, cli_prune, cli_scrub
 
     cli_graph.register(ksub, with_project)
     cli_scrub.register(ksub)
+    cli_prune.register(ksub)

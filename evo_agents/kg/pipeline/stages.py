@@ -6,6 +6,7 @@ Outputs are lists of facts (JSON-serializable dicts, memoized):
     {"t": "edge", "src", "rel", "dst", "props", "status", "conf", "units", "needs", "where"}
     {"t": "ref", "src", "rel", "target": {"type", "value", ...}, "status", "units", "where"}
     {"t": "text", "src", "unit", "text", "field"}       free text the link stage scans
+    {"t": "doc", "src", "text"}                           a docstring or leading comment, for search only
     {"t": "ident", "type", "key", "node", ...}            an identifier the index learns
     {"t": "issue", "message", "unit"}                     reported in coverage, never fatal
 
@@ -29,12 +30,15 @@ import yaml
 from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
-MAP_VERSION = "2"
-STRUCTURE_VERSION = "6"
+MAP_VERSION = "3"
+STRUCTURE_VERSION = "9"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
 GRAPHIFY_INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[graphify]'"
+
+# Props of a commit or a pull request item that its node keeps, besides path and repo (``map_item``).
+NODE_PROPS = {"commit": ("sha", "files", "merge"), "pr": ("number", "status", "head", "base", "merge_commit")}
 
 FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)^(?:---|\.\.\.)[ \t]*\r?$", re.S | re.M)
 
@@ -132,7 +136,7 @@ def map_item(record: dict, source_id: str, directories: bool = False) -> list[di
         if record.get(key):
             props[key] = record[key]
     extra = record.get("props") or {}
-    for key in ("path", "repo"):
+    for key in ("path", "repo", *NODE_PROPS.get(record["kind"], ())):
         if extra.get(key):
             props[key] = extra[key]
     name = record.get("title") or extra.get("path") or item_id
@@ -304,10 +308,43 @@ def _plan(item_id: str, data: dict, unit: str) -> list[dict]:
         facts.append({"t": "ident", "type": "step", "key": f"{plan_id}#{number}", "node": stid})
         for dep in step.get("depends_on") or []:
             facts.append(edge(stid, "depends_on", f"{pid}/step:{dep}", [unit]))
-        if isinstance(step.get("repo"), str):
-            facts.append(ref(stid, "in_repo", {"type": "repo", "value": step["repo"]}, [unit]))
+        repo = step["repo"] if isinstance(step.get("repo"), str) else None
+        if repo:
+            facts.append(ref(stid, "in_repo", {"type": "repo", "value": repo}, [unit]))
         for key, text in _step_text(step):
-            facts.append({"t": "text", "src": stid, "unit": unit, "text": text, "field": key})
+            # The step's repo: a bare commit SHA or "PR #57" in its text names a commit or pull request of that repo.
+            facts.append({"t": "text", "src": stid, "unit": unit, "text": text, "field": key, "repo": repo})
+    return facts
+
+
+def _commit(item_id: str, record: dict, unit: str) -> list[dict]:
+    """A commit read from a git source's history: the files it changed, and its SHA for the link stage, which links
+    a mention of the commit (``repo@sha``, a bare SHA in evidence) and a pull request's merge commit to it."""
+    props = record.get("props") or {}
+    repo, sha = props.get("repo"), props.get("sha")
+    if not isinstance(sha, str):
+        return [{"t": "issue", "message": f"{item_id}: a commit without its sha", "unit": unit}]
+    facts: list[dict] = [{"t": "ident", "type": "commit", "key": sha, "repo": repo, "node": item_id}]
+    for path in props.get("paths") or []:
+        if isinstance(path, str):
+            facts.append(ref(item_id, "changes", {"type": "paths", "values": [path], "repo": repo}, [unit]))
+    return facts
+
+
+def _pull(item_id: str, record: dict, unit: str) -> list[dict]:
+    """A pull request of a repo on GitHub: the keys a mention names it by (``repo#57`` with the repo's name in
+    harness.yaml, ``owner/repo#57``, "PR #57" in a step of that repo) and the commit that merged it."""
+    props = record.get("props") or {}
+    repo, number = props.get("repo"), props.get("number")
+    if type(number) is not int:
+        return [{"t": "issue", "message": f"{item_id}: a pull request without its number", "unit": unit}]
+    keys = {f"{repo}#{number}"} if repo else set()
+    if isinstance(props.get("github"), str):
+        keys.add(f"{props['github'].lower()}#{number}")
+    facts: list[dict] = [{"t": "ident", "type": "pr", "key": key, "node": item_id} for key in sorted(keys)]
+    if isinstance(props.get("merge_commit"), str):
+        target = {"type": "commit", "value": props["merge_commit"], "repo": repo}
+        facts.append(ref(item_id, "merged_as", target, [unit]))
     return facts
 
 
@@ -366,7 +403,8 @@ def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: d
     """The Symbol node of one definition, its ``member_of`` or ``defines`` edge, and its ident. The ident
     names the file, and the package the definition is in when its language has packages: the link stage
     finds a symbol by file or package and qualified name. A class's ident also carries its ``bases``, the
-    ``via`` lists the index resolves once every definition is known (``pipeline.hierarchy``)."""
+    ``via`` lists the index resolves once every definition is known (``pipeline.hierarchy``), and a Python function
+    the class its return annotation names, ``returns`` (``items`` for a tuple), resolved the same way."""
     item_id = record["id"]
     props = record.get("props") or {}
     path = props.get("path") or ""
@@ -388,6 +426,8 @@ def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: d
             where=[[unit, f"line {sym['line']}"]],
         )
     ]
+    if sym.get("doc"):
+        facts.append({"t": "doc", "src": sid, "text": sym["doc"]})
     parent = by_qual.get(sym["parent"]) if sym["parent"] else None
     if parent:
         facts.append(edge(sid, "member_of", parent, [unit]))
@@ -408,6 +448,7 @@ def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: d
             "node": sid,
             **({"package": sym["package"]} if sym.get("package") else {}),
             **({"bases": sym["bases"]} if sym.get("bases") else {}),
+            **{k: sym[k] for k in ("returns", "items") if sym.get(k)},
         }
     )
     return facts
@@ -434,7 +475,7 @@ def _python(record: dict, source_id: str, text: str) -> list[dict]:
     if result is None:
         return [{"t": "issue", "message": f"{path}: does not parse", "unit": item_unit(item_id)}]
     anchors = {f["anchor"] for f in record.get("fragments", [])}
-    facts = []
+    facts = [{"t": "doc", "src": item_id, "text": result["doc"]}] if result.get("doc") else []
 
     def unit_for(top: str) -> str:
         return frag_unit(item_id, top) if top in anchors else item_unit(item_id)
@@ -522,6 +563,34 @@ def code_coverage(backend: str, items: Sequence[tuple[dict, str]]) -> dict:
     }
 
 
+COMMENT_LINE = re.compile(r"(?:///?|/\*+|\*+/?|#(?![!\[])|--)\s?")  # a line of a comment, by how it starts
+ANNOTATION = re.compile(r"@|#\[")  # a decorator or an attribute between a comment and its definition
+
+
+def leading_comment(lines: list[str], line: int | None) -> str | None:
+    """The comment a definition at ``line`` (from 1) carries: the comment lines right above it, decorators and
+    attributes skipped; with ``line`` None, the comment that opens the file (after a shebang). Markers dropped."""
+    if line is None:
+        start = 1 if lines and lines[0].startswith("#!") else 0
+        block = []
+        for raw in lines[start:]:
+            if not COMMENT_LINE.match(raw.strip()):
+                break
+            block.append(raw.strip())
+    else:
+        i = min(line, len(lines) + 1) - 2
+        while i >= 0 and ANNOTATION.match(lines[i].strip()):
+            i -= 1
+        block = []
+        while i >= 0 and COMMENT_LINE.match(lines[i].strip()):
+            block.append(lines[i].strip())
+            i -= 1
+        block.reverse()
+    words = [re.sub(r"\*+/$", "", COMMENT_LINE.sub("", s, count=1)).strip() for s in block]
+    joined = "\n".join(w for w in words if w)
+    return joined or None
+
+
 def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
     from evo_agents.kg.extract import graphify as gfy
 
@@ -532,10 +601,13 @@ def _graphify(record: dict, source_id: str, text: str) -> list[dict]:
     unit = item_unit(item_id)
     if result is None:
         return [{"t": "issue", "message": f"{path}: graphify could not extract it", "unit": unit}]
-    facts: list[dict] = []
+    lines = text.splitlines()
+    head = leading_comment(lines, None)
+    facts: list[dict] = [{"t": "doc", "src": item_id, "text": head}] if head else []
     by_qual: dict[str, str] = {}
     for sym in result["symbols"]:
-        facts += _symbol_facts(record, source_id, sym, unit, by_qual)
+        doc = leading_comment(lines, sym["line"])
+        facts += _symbol_facts(record, source_id, {**sym, "doc": doc} if doc else sym, unit, by_qual)
     for call in result["calls"]:
         caller, callee = by_qual.get(call["caller"]), by_qual.get(call["callee"])
         if caller and callee and caller != callee:
@@ -622,6 +694,10 @@ def structure_item(
         if kind == "manifest":
             return _manifest(item_id, data, unit, record)
         return {"contracts": _contracts, "plan": _plan}[kind](item_id, data, unit)
+    if kind == "commit":
+        return _commit(item_id, record, unit)
+    if kind == "pr":
+        return _pull(item_id, record, unit)
     if kind == "config" and text is not None:
         name = PurePosixPath((record.get("props") or {}).get("path") or "").name
         return _tsconfig(record, text) if name in TSCONFIG_NAMES else []

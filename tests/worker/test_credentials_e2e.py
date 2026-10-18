@@ -675,7 +675,9 @@ def test_a_worker_without_credentials_of_its_own_runs_on_leases_and_gives_them_b
     assert not found.get("isError"), found
     assert "structuredContent" not in found  # the agent's model reads the text, the labels ride in its _meta
     assert found["content"][0]["_meta"][READ_META]["project"] == PROJECT
-    assert KG_QUERY in found["content"][0]["text"].splitlines()[1]
+    head, labels, first, *_ = found["content"][0]["text"].splitlines()  # the label all its nodes share comes once
+    assert f"for {KG_QUERY!r} in project {PROJECT}" in head and labels.startswith("label of every node")
+    assert KG_QUERY in first, first  # the first result
     projects = replies[3]["result"]["content"][0]["text"]
     assert projects.startswith(f"{PROJECT} (this session): ")
     assert OTHER_PROJECT not in projects, "the owner's other project is hidden"

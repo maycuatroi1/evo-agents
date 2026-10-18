@@ -343,7 +343,7 @@ class _Logs:
     items: dict[str, set[str]] = field(default_factory=dict)  # blob -> item ids
 
 
-def _winners(root: Path) -> tuple[dict[str, Key], set[str]]:
+def winners_of(root: Path) -> tuple[dict[str, Key], set[str]]:
     """The merged state of the corpus: the order key of the record it holds, by item id, and the blobs the live
     items refer to."""
     path = root / "corpus.sqlite"
@@ -373,7 +373,7 @@ def won(record: dict, run_id: str | None, epoch: str, winners: dict[str, Key]) -
     return key is not None and run_id is not None and key[RUN] == run_id and order_key(record, run_id, epoch) == key
 
 
-def _log_files(root: Path) -> list[Path]:
+def log_files(root: Path) -> list[Path]:
     directory = root / "log"
     if not directory.is_dir():
         return []
@@ -381,7 +381,7 @@ def _log_files(root: Path) -> list[Path]:
 
 
 def _read_logs(root: Path, winners: dict[str, Key]) -> _Logs:
-    logs = _Logs(files=_log_files(root))
+    logs = _Logs(files=log_files(root))
     for path in logs.files:
         run_id, refs = None, set()
         writing = path.suffix == ".jsonl"  # still being written by a sync, or left so by one that crashed
@@ -406,7 +406,7 @@ def _read_logs(root: Path, winners: dict[str, Key]) -> _Logs:
     return logs
 
 
-def _blob_files(root: Path) -> Iterator[tuple[str, Path]]:
+def blob_files(root: Path) -> Iterator[tuple[str, Path]]:
     directory = root / "blobs" / "sha256"
     if not directory.is_dir():
         return
@@ -424,7 +424,7 @@ def _read_text(path: Path) -> str | None:
 
 
 def _scan_blobs(scan: ProjectScan, logs: _Logs, live: set[str]) -> None:
-    for sha, path in _blob_files(scan.root):
+    for sha, path in blob_files(scan.root):
         text = _read_text(path)
         if text is None:
             continue
@@ -495,7 +495,7 @@ def scan_project(name: str, root: Path) -> ProjectScan:
     """Read the kg directory ``root`` of project ``name`` and say what holds a secret (see the module). Changes
     nothing."""
     scan = ProjectScan(name, root)
-    winners, live = _winners(root)
+    winners, live = winners_of(root)
     logs = _read_logs(root, winners)
     _scan_blobs(scan, logs, live)
     scan.pinned = {finding.sha256 for finding in scan.found(KEPT)} & logs.writing
@@ -524,7 +524,7 @@ def sources_of(root: Path) -> set[str]:
             pass
         finally:
             db.close()
-    for log in _log_files(root):
+    for log in log_files(root):
         with contextlib.closing(Corpus.read_log(log)) as records:
             header = next(records, {})
         if header.get("type") == "run" and header.get("source"):
@@ -621,7 +621,7 @@ def _rewrite_logs(scan: ProjectScan) -> tuple[int, int]:
     was keeps the blobs it refers to: they join ``scan.pinned``."""
     if not scan.rewrite:
         return 0, 0
-    winners, _ = _winners(scan.root)
+    winners, _ = winners_of(scan.root)
     by_run: dict[str, set[str]] = {}
     for item_id, key in winners.items():
         by_run.setdefault(key[RUN], set()).add(item_id)

@@ -198,6 +198,10 @@
         "fetch": {
           "type": "boolean"
         },
+        "pulls": {
+          "type": "boolean",
+          "description": "git: read the pull requests of a repo whose origin is on GitHub (default true)"
+        },
         "assets": {
           "type": "boolean"
         },

@@ -442,6 +442,9 @@ const PAGES: Entry[] = [
       await open(page, `${kgPath(kg.project)}?q=runbook`);
       await expect(page.getByTestId("kg-results")).toBeVisible();
       await expect(page.getByTestId("kg-latest-build")).toBeVisible();
+      // the commit each source read: a link out with its own name, a copy button, a badge for docs behind main
+      await expect(page.getByTestId("kg-commits").getByTestId("source-commit")).toHaveCount(2);
+      await expect(page.getByTestId("kg-commits").getByTestId("source-behind")).toBeVisible();
     },
   },
   {

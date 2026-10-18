@@ -1,9 +1,12 @@
-"""Graph subcommands: build, query, serve. ``query`` and ``serve`` read the local store or the hub (``--backend``)."""
+"""Graph subcommands: build, query, serve, eval and eval-questions. ``query``, ``serve`` and ``eval`` read the local
+store or the hub (``--backend``)."""
 
 from __future__ import annotations
 
+import argparse
 import json
 import sys
+from pathlib import Path
 
 
 def cmd_build(args) -> int:
@@ -12,7 +15,7 @@ def cmd_build(args) -> int:
     from evo_agents.kg.status import code_line
 
     project = _project(args)
-    report = build_project(project, verify=args.verify, cold=args.cold)
+    report = build_project(project, verify=args.verify, cold=args.cold, force=args.force)
     if args.json:
         _print_json(report.to_json())
     else:
@@ -75,10 +78,160 @@ def cmd_serve(args) -> int:
     return serve_stdio(session=open_session(args.backend, args.project, args.sink))
 
 
+def _repo_overrides(pairs: list[str] | None) -> dict[str, Path]:
+    found: dict[str, Path] = {}
+    for pair in pairs or []:
+        name, sep, path = pair.partition("=")
+        if not sep or not name.strip() or not path.strip():
+            raise ValueError(f"--repo takes NAME=PATH, not {pair!r}")
+        found[name.strip()] = Path(path.strip()).expanduser().resolve()
+    return found
+
+
+def cmd_eval(args) -> int:
+    from evo_agents.hub.kg_cli import open_session
+    from evo_agents.kg.evaluate import METHODS, evaluate, load_questions, project_checkouts, render
+
+    try:
+        overrides = _repo_overrides(args.repo)
+        questions = load_questions(args.questions)
+    except ValueError as exc:  # QuestionError is one
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    if args.type:
+        questions = [q for q in questions if q.type in args.type]
+        if not questions:
+            print(f"error: no question of type {', '.join(args.type)}", file=sys.stderr)
+            return 2
+    report = evaluate(
+        questions,
+        session_for=lambda project: open_session(args.backend, project or args.project, args.sink),
+        checkouts_for=lambda project: project_checkouts(project or args.project, overrides),
+        methods=[m for m in METHODS if m in args.method] if args.method else METHODS,
+        limit=args.limit,
+        budget_tokens=args.budget_tokens,
+        grep_ref=args.grep_ref,
+    )
+    report.settings.update(backend=args.backend, sink=args.sink)
+    if args.json:
+        print(json.dumps(report.to_json(), ensure_ascii=False, indent=2))
+    else:
+        print(render(report))
+    # A method that failed on every question it ran says the set or the backend is wrong, not the ranking.
+    broken = [r for r in report.rows if r["type"] == "all" and r["n"] and r["errors"] == r["n"]]
+    return 1 if broken else 0
+
+
+def cmd_eval_questions(args) -> int:
+    from evo_agents.hub.client import Hub, HubError, load_credentials
+    from evo_agents.hub.kg_eval import plan_questions
+    from evo_agents.kg.evaluate import project_checkouts
+    from evo_agents.kg.project import ProjectError, resolve_project
+
+    try:
+        overrides = _repo_overrides(args.repo)
+        name = resolve_project(args.project).name
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+    except ProjectError as exc:
+        if not args.project or "/" in args.project:
+            print(f"error: {exc}", file=sys.stderr)
+            return 2
+        name = args.project  # a hub project with no harness on this machine: give its checkouts with --repo
+    try:
+        credentials = load_credentials()
+        questions, skipped = plan_questions(
+            Hub(credentials.url, credentials.token),
+            name,
+            project_checkouts(args.project, overrides),
+            plans=args.plan or (),
+            text=args.text,
+            max_files=args.max_files,
+        )
+    except HubError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 1
+    for question in questions:
+        sys.stdout.write(json.dumps(question, ensure_ascii=False) + "\n")
+    print(f"{len(questions)} question(s) from the plans of {name}; {len(skipped)} step(s) left out", file=sys.stderr)
+    for why in skipped:
+        print(f"  left out {why}", file=sys.stderr)
+    return 0
+
+
+def _bounded(low: int, high: int):
+    def parse(text: str) -> int:
+        try:
+            value = int(text)
+        except ValueError:
+            raise argparse.ArgumentTypeError(f"{text!r} is not a whole number") from None
+        if not low <= value <= high:
+            raise argparse.ArgumentTypeError(f"{value} is not within {low} to {high}")
+        return value
+
+    return parse
+
+
+def _register_eval(ksub, with_project) -> None:
+    from evo_agents.kg import evaluate as ev
+
+    run = with_project(
+        ksub.add_parser("eval", help="Recall@k, MRR and tokens of kg_search, kg_context and grep on a question set")
+    )
+    run.add_argument("questions", help="JSONL file, one question a line (docs/kg-eval.md)")
+    run.add_argument("--method", action="append", choices=ev.METHODS, help="only this method (repeatable)")
+    run.add_argument("--type", action="append", help="only questions of this type (repeatable)")
+    run.add_argument(
+        "--limit",
+        type=_bounded(1, ev.MAX_LIMIT),
+        default=ev.DEFAULT_LIMIT,
+        help=f"kg_search's limit (default {ev.DEFAULT_LIMIT})",
+    )
+    run.add_argument(
+        "--budget-tokens",
+        type=_bounded(ev.MIN_BUDGET_TOKENS, ev.MAX_BUDGET_TOKENS),
+        default=ev.DEFAULT_BUDGET_TOKENS,
+        help=f"kg_context's budget and where grep's output is cut (default {ev.DEFAULT_BUDGET_TOKENS})",
+    )
+    run.add_argument(
+        "--repo", action="append", metavar="NAME=PATH", help="checkout of repo NAME for grep (default: the harness's)"
+    )
+    run.add_argument("--grep-ref", metavar="REF", help="grep the tree of REF (e.g. origin/main), not the working tree")
+    run.add_argument("--sink", default="cli", help="sink whose clearance applies (default: cli)")
+    run.add_argument(
+        "--backend",
+        choices=["auto", "local", "hub"],
+        default="local",
+        help="where the graph is read: this machine's store (default), the hub, or the hub when it has the project",
+    )
+    run.set_defaults(func=cmd_eval)
+
+    build = ksub.add_parser(
+        "eval-questions", help="print a question set for `kg eval` from the done steps of the hub's plans (JSONL)"
+    )
+    build.add_argument("--project", help="hub project (default: the project of the current directory)")
+    build.add_argument("--plan", action="append", help="only this plan (repeatable)")
+    build.add_argument("--text", choices=ev.PLAN_TEXTS, default="title", help="what of a step asks (default: title)")
+    build.add_argument(
+        "--max-files",
+        type=_bounded(1, 1000),
+        default=ev.DEFAULT_MAX_FILES,
+        help=f"leave out a step whose commits change more files (default {ev.DEFAULT_MAX_FILES})",
+    )
+    build.add_argument(
+        "--repo", action="append", metavar="NAME=PATH", help="checkout of repo NAME (default: the harness's)"
+    )
+    build.set_defaults(func=cmd_eval_questions)
+
+
 def register(ksub, with_project) -> None:
     build = with_project(ksub.add_parser("build", help="build the graph from the corpus"))
     build.add_argument("--verify", action="store_true", help="rebuild into an empty store and compare (P1)")
     build.add_argument("--cold", action="store_true", help="with --verify, also start from an empty memo")
+    build.add_argument(
+        "--force", action="store_true", help="build even when the corpus and the config are those of the latest build"
+    )
     build.set_defaults(func=cmd_build)
 
     query = with_project(ksub.add_parser("query", help="call a kg tool from the shell"))
@@ -106,3 +259,5 @@ def register(ksub, with_project) -> None:
         help="auto (default): the hub when signed in and it has a graph of the project, else this machine's store",
     )
     serve.set_defaults(func=cmd_serve)
+
+    _register_eval(ksub, with_project)

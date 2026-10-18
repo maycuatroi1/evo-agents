@@ -72,7 +72,19 @@ at any depth, and `state/` at the root only (a nested `src/state/` is ordinary c
 `fetch: true` on a git source whose `ref:` is `origin/<branch>` fetches that branch from `origin` (with a
 timeout) before each run, so the graph follows the remote without anyone fetching the clone. A failed
 fetch keeps the run ok: it logs a warning and reads the ref as the clone has it. Without the key nothing
-is fetched.
+is fetched. Without `ref:` a source reads HEAD of its checkout, whatever branch that has, and
+`harness validate` warns about it.
+A git source also reads the history of its ref, one `Commit` node per commit with `changes` edges to the files it
+changed, and, for a repo whose origin is on GitHub, the pull requests with their number, title, state, branches and
+merge commit, never their body or comments (`pulls: false` turns that off; the token comes from `GH_TOKEN`,
+`GITHUB_TOKEN` or `gh auth token`). A SHA or "PR #57" in a plan step's evidence then links the step to that commit
+or pull request, and through it to the files: `docs/kg.md`, section Plans of the hub, commits and pull requests.
+In a harness whose harness.yaml names a hub project, `kg sync` reads the plans at the revision the hub holds, with
+the hub's label, rather than the copies in `plans/`; a machine not signed in to a hub reads the copies.
+The graph says which commit each git source read and how many commits that is behind the remote's default
+branch (`origin/<default_branch>`, counted from the clone without fetching): `kg status`, `kg_status`, the
+SessionStart note and the hub's graph page show it, and `kg_node` links a file at that commit, so the lines
+of a span match what the link opens.
 Changing where a source reads from (a git source's `ref:`, `repo:` or `path:`, an exec source's `command:`)
 makes its next run replace what the source read before, even when the old ref has newer commits; within
 one ref, a file keeps the copy whose last commit is newest. Keys such as `refresh:`, `label:`, `include:`
@@ -97,12 +109,13 @@ evo-agents kg status                 # freshness, coverage and held deletions pe
 evo-agents kg build --verify         # rebuild from scratch and compare hashes
 evo-agents kg query kg_search "KB-01"
 evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
+evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg_context and grep (docs/kg-eval.md)
 ```
 
 Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
 source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
 never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
-never their values.
+never their values. A build that finds nothing changed builds nothing and adds no line (see below).
 
 A corpus synced before its git connector redacted keeps the old copies: in the blobs of earlier runs, in memo rows,
 and in free pages of the graph. `evo-agents kg scrub` (`--all` for every project directory of the kg home) reads
@@ -131,6 +144,34 @@ has synced on this machine. On macOS, `kg schedule install` loads a LaunchAgent 
 `kg sync --due --all --build` every hour (`kg schedule print` shows the plist, `kg schedule uninstall`
 removes it; output goes to `~/.evo/kg/schedule.log`). On a machine signed in to a hub, the command also
 gets `--push`, which sends the runs the hub lacks (`evo-agents hub kg push` does the same by hand).
+
+Syncs and builds do only what changed. A git source whose ref still resolves to the commit its last ok run read,
+with the same config and connector code, is not read again: the sync records the run, writes no run log and leaves
+the cursor, and `--due --build` builds only when a source read something. A harness source is always read, so
+files not yet committed in the harness still reach the graph. `kg build` skips a build whose corpus state, config,
+code and cursors are those of the latest build (`--force` builds anyway; the hub's worker skips the same way). A
+build that runs links again only the items whose text or structure changed or that looked up a name or path that
+now resolves elsewhere, and rewrites only the rows of the full-text index that changed. `kg serve` opens the store
+read-only.
+
+Old data on the machine goes by retention periods (`evo-agents kg prune`): `logs` (default 1d) for run logs, blobs
+and rows of the runs table, `history` (1d) for the builds of the graph, and `memo` (14d) for memo rows after their
+last use. An old run log is deleted once no record of it is the one the corpus holds, and one still in use is
+rewritten without the records the corpus no longer holds, as `kg scrub --purge` does. A log the hub has not received
+is never touched: `hub kg push` records which runs the hub holds, and a run of a source above the hub sink never goes
+there. A blob goes once no log left and no item refers to it, the graph keeps its latest two builds and the builds of
+the period, and a memo row goes when neither the period nor the latest build used it. None of it changes what a build
+makes: `kg build --verify --cold` gives the same hash before and after. `kg prune` counts and changes nothing,
+`--delete` deletes after a yes (`--yes` when no terminal can answer), and `--logs`, `--history` and `--memo` set the
+periods of one pass. `kg prune --schedule on` counts, asks, and saves the periods in `~/.evo/kg/retention.json`: from
+then on every `kg sync --due --all`, the LaunchAgent's command, prunes each project once a day and appends a `prune`
+line with the counts to its `audit.jsonl`. The schedule is off until the owner turns it on.
+
+```sh
+evo-agents kg prune --all                    # count, change nothing
+evo-agents kg prune --all --delete           # delete what the periods make old, after a yes
+evo-agents kg prune --schedule on            # count, ask, then prune with every scheduled sync
+```
 
 ## Using it from Claude Code
 
@@ -161,18 +202,24 @@ the machine ([docs/credentials.md](docs/credentials.md)).
 `kg_impact` walks back over callers, in other files too when the caller's imports say where the callee lives,
 importers, members, definers, subclasses (`inherits`), overriding methods (`overrides`), implementations and tests.
 Each result notes, per language of its seeds, whether calls across files, inheritance and overrides are covered, and
-names a seed with more incoming edges than it reads (2,000), with their number. [docs/kg.md](docs/kg.md) has the
-coverage table per language and the fields of the result.
+names a seed with more incoming edges than it reads (2,000), with their number. Its text lists the first 20 dependents
+of each hop and counts the rest (`limit` raises it). [docs/kg.md](docs/kg.md) has the coverage table per language, the
+fields of the result, and how the text of every tool is written.
 
 Hooks:
 
-- SessionStart prints a short note: the bound project and the snapshot age.
+- SessionStart prints a short note: the bound project, the snapshot age, and the commit each git source
+  read with how far behind its remote's default branch that is now (`commits read: app 1550c7a (3 behind
+  origin/main)`), counted from the checkout without the network.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
   label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
   `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
-- PreToolUse, before Grep, Glob, or `rg` or `grep` in Bash, may add a note with the ids of graph
-  nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
-  off.
+- PostToolUse, after Grep, or `rg` or `grep` at the head of a Bash command, adds a note beside the
+  result when a matched line falls in a symbol or file of the graph: at most four lines after its
+  header, each naming by id who calls it (or imports the file), its tests and the plan steps that
+  name it. It never changes, cuts or blocks the result, and says nothing when there is nothing to
+  add. Set `EVO_KG_GREP_HINTS=0` to turn it off. [docs/kg.md](docs/kg.md) says how it places a
+  matched line.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs, the version in its
 `plugin.json`: the server starts with `uvx --from evo-ak==<version> evo-agents`, which downloads and caches that version
@@ -422,8 +469,10 @@ scripts/      bump_version.py X.Y.Z: the release version in evo_agents/__init__.
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
-              and size budgets that CI checks, and how to split a module; kg.md: what kg_impact follows, and
-              its coverage per language; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
+              and size budgets that CI checks, and how to split a module; kg.md: the knowledge graph's tools
+              (what kg_impact follows and covers per language, the text of every tool, search, the note after
+              grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
+              retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
               hub for a client
 ```
 
