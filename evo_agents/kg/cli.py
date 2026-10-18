@@ -296,15 +296,31 @@ def cmd_hook_post_tool(args) -> int:
     return 0
 
 
-def cmd_hook_pre_search(args) -> int:
-    """PreToolUse hook for Grep, Glob and rg or grep in Bash: ids of graph nodes named like the search. Sets
-    no permissionDecision, since "allow" would skip the user's permission prompt; prints nothing when unsure."""
-    from evo_agents.kg.search_hint import pre_search
+def cmd_hook_post_search(args) -> int:
+    """PostToolUse hook for Grep and rg or grep in Bash: what the graph links to the matched lines, as
+    additionalContext (``evo_agents.kg.post_search``)."""
+    from evo_agents.kg.post_search import run
 
-    note = pre_search(sys.stdin.read(), only=args.only, sink=args.sink)
-    if note:
-        print(json.dumps({"hookSpecificOutput": {"hookEventName": "PreToolUse", "additionalContext": note}}))
-    return 0
+    return run(args)
+
+
+def add_hooks(hsub) -> None:
+    """The ``kg hook`` subcommands, which Claude Code runs."""
+    hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
+    hsub.add_parser("post-tool", help="add an evo-kg result to the session label").set_defaults(func=cmd_hook_post_tool)
+    from evo_agents.kg.post_search import add_arguments
+
+    post_search = hsub.add_parser("post-search", help="PostToolUse: what the graph links to a Grep, rg or grep match")
+    add_arguments(post_search).set_defaults(func=cmd_hook_post_search)
+
+
+def run_hook(argv: list[str]) -> int:
+    """``evo-agents kg hook ...`` without the rest of the command tree. Claude Code runs a hook on every matching
+    tool call, and building every command group's parser costs about 0.2 s, more than the hook itself."""
+    parser = argparse.ArgumentParser(prog="evo-agents kg hook", description="Claude Code hook entry points")
+    add_hooks(parser.add_subparsers(dest="hook_name", required=True))
+    args = parser.parse_args(argv)
+    return int(args.func(args) or 0)
 
 
 def cmd_connector_test(args) -> int:
@@ -418,15 +434,7 @@ def register(sub) -> None:
     test.set_defaults(func=cmd_connector_test)
 
     hook = ksub.add_parser("hook", help="Claude Code hook entry points")
-    hsub = hook.add_subparsers(dest="hook_name", required=True)
-    hsub.add_parser("session-start", help="print the SessionStart note").set_defaults(func=cmd_hook_session_start)
-    hsub.add_parser("post-tool", help="add an evo-kg result to the session label").set_defaults(func=cmd_hook_post_tool)
-    pre_search = hsub.add_parser("pre-search", help="PreToolUse: graph ids named like a Grep, Glob, rg or grep")
-    pre_search.add_argument(
-        "--only", choices=["rg", "grep"], help="for Bash, answer only when this command leads (one handler per if)"
-    )
-    pre_search.add_argument("--sink", default="claude-code@anthropic", help="sink profile whose clearance applies")
-    pre_search.set_defaults(func=cmd_hook_pre_search)
+    add_hooks(hook.add_subparsers(dest="hook_name", required=True))
 
     from evo_agents.kg import cli_graph, cli_scrub
 
