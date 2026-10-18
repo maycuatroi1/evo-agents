@@ -13,7 +13,13 @@ kind share one. A Symbol's key is ``[repo, path, qualname]``, so two sources rea
 same repo cannot both put the same function in the graph.
 
 Search (``evo_agents.kg.search``): the full-text index ``node_fts`` and the aliases ``node_alias`` hold the latest
-build only, rewritten with it. A node is found by its id, its name or an alias through an index, then by its words.
+build only. A build rewrites the aliases, and only the rows of ``node_fts`` whose content changed: ``node_fts_rows``
+keeps the rowid and digest of each node's row. A node is found by its id, its name or an alias through an index,
+then by its words.
+
+A build's ``stats`` also hold its ``size`` (live nodes, edges and units) and ``top_label``, the highest level and
+the highest location any of its nodes, edges and units carries: a reader whose clearance covers both sees everything,
+and need not test each label (``evo_agents.kg.serve``).
 """
 
 from __future__ import annotations
@@ -83,6 +89,9 @@ CREATE TABLE IF NOT EXISTS node_alias (alias TEXT PRIMARY KEY, node_id TEXT NOT 
 CREATE VIRTUAL TABLE IF NOT EXISTS node_fts USING fts5(
     node_id UNINDEXED, kind UNINDEXED, name, path, body, tokenize = 'unicode61 remove_diacritics 2'
 );
+CREATE TABLE IF NOT EXISTS node_fts_rows (
+    node_id TEXT PRIMARY KEY, fts_rowid INTEGER NOT NULL, digest TEXT NOT NULL
+) STRICT, WITHOUT ROWID;
 """
 
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
@@ -243,6 +252,16 @@ class Store:
         out["stats"] = json.loads(out["stats"] or "{}")
         return out
 
+    def top_label(self, build_id: int) -> tuple[int, int] | None:
+        """The highest level and location of build ``build_id``'s labels (its ``stats``); None for a build written
+        before builds recorded it."""
+        row = self.db.execute(
+            "SELECT json_extract(stats, '$.top_label[0]'), json_extract(stats, '$.top_label[1]') FROM builds"
+            " WHERE build_id = ?",
+            (build_id,),
+        ).fetchone()
+        return (row[0], row[1]) if row and isinstance(row[0], int) and isinstance(row[1], int) else None
+
     def write(self, graph: Graph, *, state_digest: str, coverage: dict, stats: dict, policy) -> int:
         """Write a graph as a new build, diffing against the previous one, in one transaction."""
         db = self.db
@@ -333,6 +352,7 @@ class Store:
             self._diff("where_prov", None, b, wheres, ["elem_id", "unit_id", "span"])
             searched = self._write_search(graph)
             content_hash = self.content_hash(b, searched)
+            stats = {**stats, "size": _size(graph), "top_label": _top_label(graph)}
             db.execute(
                 "UPDATE builds SET status = 'ready', finished_at = ?, content_hash = ?, coverage = ?, stats = ?"
                 " WHERE build_id = ?",
@@ -341,7 +361,8 @@ class Store:
         return b
 
     def _write_search(self, graph: Graph) -> str:
-        """Replace the full-text index and the aliases with ``graph``'s; the digest of what the index holds."""
+        """Bring the full-text index to ``graph``'s nodes, deleting and inserting only the rows that changed, and
+        replace the aliases; the digest of what the index holds."""
         rows = [
             (
                 nid,
@@ -352,14 +373,39 @@ class Store:
             )
             for nid, n in sorted(graph.nodes.items())
         ]
-        self.db.execute("DELETE FROM node_fts")
-        self.db.executemany("INSERT INTO node_fts (node_id, kind, name, path, body) VALUES (?, ?, ?, ?, ?)", rows)
+        self._update_fts(rows)
         self.db.execute("DELETE FROM node_alias")
         self.db.executemany(
             "INSERT OR IGNORE INTO node_alias (alias, node_id) VALUES (?, ?)",
             sorted((alias, nid) for nid, n in graph.nodes.items() for alias in n.get("aliases", [])),
         )
         return sha256(canonical_json(rows))
+
+    def _update_fts(self, rows: list[tuple]) -> None:
+        """Make ``node_fts`` hold ``rows`` and nothing else: the rows whose digest ``node_fts_rows`` does not hold go,
+        new and changed ones come in. An index whose rows ``node_fts_rows`` does not account for, written before it
+        existed, is written again whole."""
+        db = self.db
+        digests = {row[0]: sha256(canonical_json(row)) for row in rows}
+        held = {nid: (rowid, d) for nid, rowid, d in db.execute("SELECT node_id, fts_rowid, digest FROM node_fts_rows")}
+        if db.execute("SELECT count(*) FROM node_fts").fetchone()[0] != len(held):
+            db.execute("DELETE FROM node_fts")
+            db.execute("DELETE FROM node_fts_rows")
+            held = {}
+        gone = [(nid, rowid) for nid, (rowid, d) in held.items() if digests.get(nid) != d]
+        db.executemany("DELETE FROM node_fts WHERE rowid = ?", [(rowid,) for _, rowid in gone])
+        db.executemany("DELETE FROM node_fts_rows WHERE node_id = ?", [(nid,) for nid, _ in gone])
+        last = db.execute("SELECT rowid FROM node_fts ORDER BY rowid DESC LIMIT 1").fetchone()
+        start = (last[0] if last else 0) + 1
+        fresh = [row for row in rows if held.get(row[0], (0, None))[1] != digests[row[0]]]
+        db.executemany(
+            "INSERT INTO node_fts (rowid, node_id, kind, name, path, body) VALUES (?, ?, ?, ?, ?, ?)",
+            [(start + i, *row) for i, row in enumerate(fresh)],
+        )
+        db.executemany(
+            "INSERT INTO node_fts_rows VALUES (?, ?, ?)",
+            [(row[0], start + i, digests[row[0]]) for i, row in enumerate(fresh)],
+        )
 
     @staticmethod
     def _label(label) -> dict:
@@ -636,6 +682,17 @@ class Store:
                     alive.discard(elem)
                     changed = True
         return set(derivs) - alive
+
+
+def _size(graph: Graph) -> dict:
+    return {"nodes": len(graph.nodes), "edges": len(graph.edges), "units": len(graph.units)}
+
+
+def _top_label(graph: Graph) -> list[int]:
+    """The highest level and the highest location among the labels of ``graph``'s nodes, edges and units."""
+    pairs = [(e["label"].level, e["label"].location) for e in (*graph.nodes.values(), *graph.edges.values())]
+    pairs += [(u["label_lvl"], u["label_loc"]) for u in graph.units.values()]
+    return [max((p[0] for p in pairs), default=0), max((p[1] for p in pairs), default=0)]
 
 
 def _node_row(row) -> dict:

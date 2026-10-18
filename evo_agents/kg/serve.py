@@ -1,10 +1,11 @@
 """``evo-agents kg serve``: an MCP server over stdio, bound to one project for its whole life.
 
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
-session's sink. Results carry ids, labels, status and evidence; free text from sources (integrity U) is
-never returned by these tools. Each result stays under about 9,000 tokens; the rest waits behind a
-handle for ``kg_more``. The structured result of a call that reveals elements names the project and the
-join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
+session's sink. The store is opened read-only. When the highest label of the build (``Store.top_label``) flows to
+the sink, V_o is the whole build and no label is compared. Results carry ids, labels, status and evidence; free
+text from sources (integrity U) is never returned by these tools. Each result stays under about 9,000 tokens; the
+rest waits behind a handle for ``kg_more``. The structured result of a call that reveals elements names the project
+and the join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
 adds to the session label (sessions.py).
 
 The text is written to be read: a node is named by its readable id (``refs.readable``: ``repo:path``,
@@ -90,6 +91,7 @@ class Session:
         self.handles: dict[str, tuple[float, deque]] = {}
         self.policy = project.policy if project else None
         self.clearance = None
+        self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
         self.read: Label | None = None  # join of the labels the current call reveals
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -105,6 +107,8 @@ class Session:
     # -- visibility -----------------------------------------------------------------------------
 
     def visible(self, label: tuple) -> bool:
+        if self.sees_all:
+            return True
         level, location, _integrity = label
         return level <= self.clearance[0] and location <= self.clearance[1]
 
@@ -118,8 +122,17 @@ class Session:
         self.read = seen if self.read is None else self.read.join(seen)
 
     def _store(self) -> tuple[Store, int]:
+        """The graph this call reads and its latest ready build. When the highest label of that build is within the
+        clearance, every element is visible, and ``visible`` answers so without comparing labels."""
+        store, b = self._graph()
+        top = store.top_label(b)
+        self.sees_all = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
+        return store, b
+
+    def _graph(self) -> tuple[Store, int]:
+        """The project's store, opened read-only: serving never writes, so it never waits on a build."""
         try:
-            store = Store.open_existing(self.project)
+            store = Store.open_readonly(self.project)
         except StaleSchema as exc:
             raise ToolError(str(exc)) from None
         b = store.latest_ready() if store else None
@@ -133,6 +146,7 @@ class Session:
         if self.error:
             return _error(self.error)
         self.read = None
+        self.sees_all = False
         try:
             handler = getattr(self, f"tool_{name}", None)
             if handler is None:

@@ -15,7 +15,7 @@ def cmd_build(args) -> int:
     from evo_agents.kg.status import code_line
 
     project = _project(args)
-    report = build_project(project, verify=args.verify, cold=args.cold)
+    report = build_project(project, verify=args.verify, cold=args.cold, force=args.force)
     if args.json:
         _print_json(report.to_json())
     else:
@@ -229,6 +229,9 @@ def register(ksub, with_project) -> None:
     build = with_project(ksub.add_parser("build", help="build the graph from the corpus"))
     build.add_argument("--verify", action="store_true", help="rebuild into an empty store and compare (P1)")
     build.add_argument("--cold", action="store_true", help="with --verify, also start from an empty memo")
+    build.add_argument(
+        "--force", action="store_true", help="build even when the corpus and the config are those of the latest build"
+    )
     build.set_defaults(func=cmd_build)
 
     query = with_project(ksub.add_parser("query", help="call a kg tool from the shell"))

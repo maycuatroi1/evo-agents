@@ -126,7 +126,7 @@ def test_pg_key_holder_can_change_between_builds(tmp_path, kg_env):
 def test_schema_upgrade_rebuilds_from_the_log_and_replaces_the_file(tmp_path, kg_env):
     project = make_project(tmp_path, kg_env)
     first = sync_build(project)
-    second = sync_build(project)  # two builds, so the old file has history the rebuild drops
+    second = sync_build(project, force=True)  # two builds, so the old file has history the rebuild drops
     path = project.root / "graph.sqlite"
     make_schema_1(path)
 
@@ -144,7 +144,7 @@ def test_schema_upgrade_rebuilds_from_the_log_and_replaces_the_file(tmp_path, kg
         "graph.sqlite"
     ]
 
-    again = sync_build(project)
+    again = sync_build(project, force=True)
     assert again.rebuilt_from is None
     assert again.build_id == 2 and again.content_hash == report.content_hash
 
@@ -342,6 +342,53 @@ def test_the_content_hash_covers_the_schema_and_what_search_reads(tmp_path, kg_e
     assert before != store.content_hash(b, "b")
     monkeypatch.setattr(store_module, "SCHEMA_VERSION", "99")
     assert store.content_hash(b, "a") != before  # the hub never serves a file of one schema for another
+
+
+def fts_rows(store: Store) -> dict[str, int]:
+    return dict(store.db.execute("SELECT node_id, rowid FROM node_fts").fetchall())
+
+
+def fts_content(store: Store) -> list[tuple]:
+    return store.db.execute("SELECT node_id, kind, name, path, body FROM node_fts ORDER BY node_id").fetchall()
+
+
+def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    before = fts_rows(store)
+    app = tmp_path / "demo-app"
+    write(app / "docs/plain.md", "# Ghi chu\n\nDuong ong du lieu chay moi zebracorn.\n")
+    commit(app, "plain")
+    report = sync_build(project, verify=True, cold=True)
+    assert report.verify["match"], report.verify
+
+    after = fts_rows(store)
+    moved = {nid for nid, rowid in after.items() if before.get(nid) != rowid}
+    assert moved and all(nid.startswith("app:file:docs/plain.md") for nid in moved)
+    assert dict(store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows").fetchall()) == after
+    assert any(nid.startswith("app:file:docs/plain.md") for nid in found(store, "zebracorn"))
+    fresh = Store(tmp_path / "fresh.sqlite")
+    assert build_project(project, store=fresh).content_hash == report.content_hash
+    assert fts_content(store) == fts_content(fresh)  # the index holds what a store written whole holds
+
+    # An index written before node_fts_rows existed is written again whole by the next build.
+    with store.db:
+        store.db.execute("DELETE FROM node_fts_rows")
+    forced = build_project(project, force=True)
+    assert forced.content_hash == report.content_hash
+    assert fts_content(store) == fts_content(fresh)
+    assert len(fts_rows(store)) == store.db.execute("SELECT count(*) FROM node_fts_rows").fetchone()[0]
+
+
+def test_a_build_records_its_size_and_its_highest_label(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env, level="internal", app_level="customer")
+    report = sync_build(project)
+    store = Store.for_project(project)
+    stats = store.build_row(report.build_id)["stats"]
+    assert stats["size"] == {"nodes": report.nodes, "edges": report.edges, "units": report.units}
+    assert store.top_label(report.build_id) == (2, 0)  # customer, any location
+    assert stats["inputs"].startswith("sha256:")
 
 
 def test_leading_comments_are_the_docstrings_of_other_languages():
