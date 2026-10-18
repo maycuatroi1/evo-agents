@@ -111,6 +111,12 @@ answer. It takes a machine token, or the worker token of the agent of a run (bel
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
 `ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
 `digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
+`tools/list` shows the agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, any
+other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
+plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
+the `kg_*` tools from the list and the graph's paragraph from the instructions, so the session sees each `kg_*` tool
+once, from evo-kg; without evo-kg it serves them from the hub's graph and joins the labels of each result into the
+session label of `~/.evo/kg/sessions/`, as evo-kg's PostToolUse hook does.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
 sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
