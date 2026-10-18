@@ -109,6 +109,47 @@ def test_plugin_host_client_crash_is_unavailable_without_a_host_and_within_the_t
     asyncio.run(unreachable())
 
 
+def test_plugin_isolation_client_keeps_a_failed_start_out_of_what_members_read(tmp_path):
+    """The review of PR #72: the host's 503 says why a backend is down, a failed start's text included (a path, a
+    line of the plugin's stderr), and the api passes the client's message on to a project member's route, tool or
+    delivery. The client now raises a fixed message; a hub admin reads the cause in the backend's status."""
+    import httpx
+    from fastapi.testclient import TestClient
+
+    from evo_agents.hub.plugin_host_service import create_host_app
+    from evo_agents.hub.server.plugin_host import PluginHostClient, PluginHostUnavailable
+    from evo_agents.plugins.host import BackendUnavailable
+
+    cause = "plugin sample could not start: PlacementError: /plugins/envs/sample/1.0.0; stderr: evo-sibling-secret"
+
+    class DownHost:
+        async def call(self, *args, **kwargs):
+            raise BackendUnavailable(cause)
+
+        def status(self) -> list[dict]:
+            return []
+
+    token = "plugin-host-" + secrets.token_urlsafe(32)
+    host_app = TestClient(create_host_app(DownHost(), token))
+    said = host_app.post(
+        "/v1/host/plugins/sample/call", json={"method": "ping"}, headers={"Authorization": f"Bearer {token}"}
+    )
+    assert said.status_code == 503 and cause in said.text  # the host tells the api, which is the hub's own
+
+    async def call() -> str:
+        client = PluginHostClient("http://plugins:8090", token)
+        client._client = httpx.AsyncClient(
+            base_url=client.url, transport=httpx.MockTransport(lambda request: httpx.Response(503, json=said.json()))
+        )
+        with pytest.raises(PluginHostUnavailable) as raised:
+            await client.call("sample", "ping", {}, timeout=1.0)
+        await client.aclose()
+        return str(raised.value)
+
+    message = asyncio.run(call())
+    assert "not running now" in message and "could not start" not in message and "evo-sibling-secret" not in message
+
+
 def _host_args(**changes) -> argparse.Namespace:
     values = {"hub_url": "http://api:8080", "data_dir": None, "host": "127.0.0.1", "port": None}
     return argparse.Namespace(**{**values, **changes})
