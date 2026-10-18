@@ -206,3 +206,36 @@ The index holds the latest build only and is rewritten with it. The build's cont
 what the index holds, so two builds with the same hash answer searches alike. Store schema 3 added the index's
 `kind` and `path` columns, `nodes_name` and `node_alias`: an older store is rebuilt from the corpus log by the next
 `kg build` or `kg sync --build`, and readers refuse it until then.
+
+## After grep
+
+The evo-kg plugin runs `evo-agents kg hook post-search` after Grep, and after a Bash command whose pipeline starts with
+`rg` or `grep` (`evo_agents/kg/post_search.py`, `evo_agents/kg/grep_command.py`). When a matched line falls in a node
+of the graph, it adds a note beside the result, never in it:
+
+```
+evo-kg: what the project graph links to the code this search matched (callers, tests, plan steps); kg_context or kg_impact with an id gives more:
+- evo-agents:evo_agents/kg/store.py::Store.search: callers evo-agents:evo_agents/kg/serve.py::Session.tool_kg_context, evo-agents:evo_agents/kg/serve.py::Session.tool_kg_search (+1 more); tests evo-agents:tests/kg/test_store.py, evo-agents:tests/kg/test_audit.py (+9 more); plan steps plan:kg-fresh-and-useful/step:5, plan:kg-fresh-and-useful/step:4 (+2 more)
+```
+
+- It reads the lines of the result: `path:line:text`, `path:text`, `path` (`-l`), `path:count` (`-c`), `line:text`
+  of a search in one file, and the headings of `rg --heading`; the Grep tool's `content` and `filenames` too. A path is
+  taken relative to where the command runs, after any `cd` before it, and must name a file the graph has.
+- A matched line is placed in a symbol only when the graph agrees, since the checkout may differ from the commit the
+  graph read: a line that defines a name (`def`, `class`, `function`, `func`, `const x =`, ...) goes to the symbol of
+  that name in the file; any other line goes to the symbol around its line number only when that symbol calls a name
+  the line holds. When a definition sits at another line than the graph has it, no other line of that file is placed
+  by number. A line placed in no symbol stands for its file.
+- For a symbol it names the callers (edges `calls`), the tests (test functions that call it and test files that
+  import its file, those named after the file first) and the plan steps that name it or its file (`mentions`,
+  `touches`, `implements`, `verifies`; steps not done first); for a file, the files that import it, the tests among
+  them and the plan steps that name it. Two of each, then a count. A symbol whose definition matched comes first,
+  then other symbols, then files, at most four lines after the header; a file whose symbol has a line gets no line of
+  its own.
+- Only edges of status `parsed` or `resolved` (never `proposed`) and nodes and edges the sink may see; only ids, no
+  name or text of a source. Nothing to add, an unbound directory, no store, a result past 0.35 s of lookup, `-v`,
+  `-L`, `--json`, `--files`, or a `grep` that filters another command's output: no note. Errors go to stderr as one
+  line naming their type; the exit status is always 0.
+- The note is `additionalContext`, so evo-hub's PostToolUse hook, which cuts a long result to its head and tail, cuts
+  none of it, and both hooks read the same whole result. `evo-agents kg hook ...` skips building the parsers of every
+  other command, about 0.2 s of start-up. `EVO_KG_GREP_HINTS=0` turns the note off.

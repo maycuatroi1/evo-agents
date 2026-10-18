@@ -84,13 +84,24 @@ def _utf8_streams() -> None:
 
 def main(argv: list[str] | None = None) -> int:
     _utf8_streams()
-    parser = build_parser()
-    args = parser.parse_args(argv)
-    if args.group == "worker" and os.name == "nt":
-        print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
-        return 2
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv[:2] == ["kg", "hook"]:
+        # Claude Code runs these on every matching tool call: they skip the parsers of every other command.
+        from evo_agents.kg.cli import run_hook
+
+        def run() -> int:
+            return run_hook(argv[2:])
+    else:
+        args = build_parser().parse_args(argv)
+        if args.group == "worker" and os.name == "nt":
+            print(f"error: {WORKER_ON_WINDOWS}", file=sys.stderr)
+            return 2
+
+        def run() -> int:
+            return int(args.func(args) or 0)
+
     try:
-        return int(args.func(args) or 0)
+        return run()
     except KeyboardInterrupt:
         return 130
     except BrokenPipeError:
