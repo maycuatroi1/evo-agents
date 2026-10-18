@@ -35,6 +35,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from evo_agents import __version__
 from evo_agents.hub import mcp_tools
 from evo_agents.hub.client import Credentials, HubError, NotSignedIn, Unreachable
 from evo_agents.hub.mcp_proxy import McpClient, Proxy, hub_project
@@ -347,14 +348,37 @@ def test_while_the_hub_does_not_answer_the_proxy_answers_for_it_and_tools_name_t
     assert TOKEN not in report and SECRET not in report
 
 
+STAMP = {"io.modelcontextprotocol/serverInfo": {"name": "evo-hub", "version": __version__}}
+CACHEABLE = {"cacheScope": "private", "ttlMs": 0, "resultType": "complete", "_meta": STAMP}
+# What the hub answers to the server/discover of a 2026-07-28 session: the instructions arrive here, not in initialize.
+DISCOVERED = {
+    "capabilities": {
+        "prompts": {"listChanged": False},
+        "resources": {"listChanged": False, "subscribe": False},
+        "tools": {"listChanged": False},
+    },
+    "instructions": mcp_tools.INSTRUCTIONS,
+    "supportedVersions": ["2026-07-28"],
+    **CACHEABLE,
+}
+
+
 def hub_like(message, headers):
-    """``mcp_reply`` with the handshake and the tool list the hub gives."""
+    """``mcp_reply`` with the handshake, the discovery and the tool list the hub gives."""
     if message.get("method") == "initialize":
         result = {"protocolVersion": "2025-06-18", "instructions": mcp_tools.INSTRUCTIONS, "capabilities": {}}
         return 200, {"jsonrpc": "2.0", "id": message["id"], "result": result}
+    if message.get("method") == "server/discover" and "mcp-method" in headers:
+        return 200, {"jsonrpc": "2.0", "id": message["id"], "result": DISCOVERED}
     if message.get("method") == "tools/list":
-        return 200, {"jsonrpc": "2.0", "id": message["id"], "result": {"tools": mcp_tools.TOOLS}}
+        modern = CACHEABLE if "mcp-method" in headers else {}
+        return 200, {"jsonrpc": "2.0", "id": message["id"], "result": {"tools": mcp_tools.TOOLS, **modern}}
     return mcp_reply(message, headers)
+
+
+def modern(id_, method, params=None) -> dict:
+    """A request of the 2026-07-28 revision, which has no handshake: its version rides in every message's _meta."""
+    return request(id_, method, {**(params or {}), "_meta": MODERN})
 
 
 def test_a_session_with_evo_kg_gets_no_kg_tool_and_no_graph_paragraph_from_the_proxy():
@@ -520,6 +544,74 @@ def test_hub_mcp_started_by_the_evo_hub_plugin_leaves_the_kg_tools_to_evo_kg(tmp
         assert [t["name"] for t in alone[2]["result"]["tools"]] == [t["name"] for t in mcp_tools.TOOLS]
     finally:
         hub.stop()
+
+
+def test_a_2026_session_with_evo_kg_gets_the_short_instructions_from_server_discover_too():
+    hub = FakeHub(hub_like)
+    session = [
+        request(1, "initialize", HELLO),
+        modern(2, "server/discover"),
+        modern(3, "tools/list"),
+        modern(4, "tools/call", {"name": "kg_search", "arguments": {"query": "x"}}),
+    ]
+    try:
+        both = by_id(run_proxy(Proxy("alpha", kg=False, credentials=signed_in(hub.url), err=io.StringIO()), *session))
+        alone = by_id(run_proxy(Proxy("alpha", credentials=signed_in(hub.url), err=io.StringIO()), *session))
+    finally:
+        hub.stop()
+    assert both[1]["result"]["instructions"] == both[2]["result"]["instructions"] == mcp_tools.HUB_INSTRUCTIONS
+    assert {**both[2]["result"], "instructions": mcp_tools.INSTRUCTIONS} == DISCOVERED  # the rest as the hub wrote it
+    assert [t["name"] for t in both[3]["result"]["tools"]] == HUB_TOOL_NAMES
+    assert {k: v for k, v in both[3]["result"].items() if k != "tools"} == CACHEABLE
+    assert both[4]["result"]["content"][0]["text"] == "called kg_search"  # a call still goes through
+    assert alone[2]["result"] == DISCOVERED  # without evo-kg: as the hub wrote it
+    assert alone[3]["result"] == {"tools": mcp_tools.TOOLS, **CACHEABLE}
+
+
+@pytest.mark.parametrize("kg", [False, True])
+def test_while_the_hub_does_not_answer_a_2026_session_still_discovers_the_proxy_and_its_tools(kg):
+    dead = f"http://127.0.0.1:{pg.free_port()}"
+    proxy = Proxy("alpha", kg=kg, credentials=signed_in(dead), err=io.StringIO(), sleep=lambda seconds: None)
+    replies = by_id(
+        run_proxy(
+            proxy,
+            modern(1, "server/discover"),
+            modern(2, "tools/list"),
+            modern(3, "tools/call", {"name": "memory_search", "arguments": {"query": "x"}}),
+            request(4, "server/discover"),  # no envelope: no 2026-07-28 message, which the hub refuses as well
+            modern(5, "prompts/list"),
+        )
+    )
+    discovered, listed, called = (replies[n]["result"] for n in (1, 2, 3))
+    assert discovered["instructions"] == (mcp_tools.INSTRUCTIONS if kg else mcp_tools.HUB_INSTRUCTIONS)
+    assert discovered["supportedVersions"] == ["2026-07-28"]
+    assert discovered["capabilities"] == {"tools": {"listChanged": False}}  # so no prompts/list or resources/list
+    assert [t["name"] for t in listed["tools"]] == ([t["name"] for t in mcp_tools.TOOLS] if kg else HUB_TOOL_NAMES)
+    for result in (discovered, listed):
+        assert (result["cacheScope"], result["ttlMs"]) == ("private", 0)  # stale at once: the hub's answer replaces it
+    for result in (discovered, listed, called):
+        assert result["resultType"] == "complete" and result["_meta"] == STAMP
+    assert called["isError"] and dead in called["content"][0]["text"]
+    assert replies[4]["error"]["code"] == replies[5]["error"]["code"] == -32000
+
+
+def test_the_proxy_s_own_2026_answers_have_what_that_revision_requires():
+    pytest.importorskip("mcp_types")
+    from mcp_types.methods import validate_server_result
+    from mcp_types.version import HANDSHAKE_PROTOCOL_VERSIONS, MODERN_PROTOCOL_VERSIONS
+
+    assert mcp_tools.MODERN_VERSIONS == MODERN_PROTOCOL_VERSIONS  # the versions the hub's SDK serves
+    assert mcp_tools.HANDSHAKE_VERSIONS == HANDSHAKE_PROTOCOL_VERSIONS
+    dead = f"http://127.0.0.1:{pg.free_port()}"
+    for kg in (False, True):
+        proxy = Proxy("alpha", kg=kg, credentials=signed_in(dead), err=io.StringIO(), sleep=lambda seconds: None)
+        messages = [
+            modern(1, "server/discover"),
+            modern(2, "tools/list"),
+            modern(3, "tools/call", {"name": "kg_status", "arguments": {}}),
+        ]
+        for message, reply in zip(messages, sorted(run_proxy(proxy, *messages), key=lambda r: r["id"]), strict=True):
+            validate_server_result(message["method"], "2026-07-28", reply["result"])  # raises when a field is missing
 
 
 def test_a_hub_that_restarts_is_reached_again_and_says_so_once():
@@ -1811,6 +1903,37 @@ def test_printf_tools_list_into_evo_agents_hub_mcp_prints_the_twenty_three_tools
     for output in (listed.stdout + listed.stderr, ran.stdout + ran.stderr, down.stdout + down.stderr, served.log()):
         assert token not in output
     assert SECRET not in served.log() and SECRET not in ran.stderr
+
+
+@needs_pg
+def test_hub_mcp_in_a_2026_session_with_evo_kg_hands_on_the_hub_s_discovery_without_the_graph(hub_db, tmp_path):
+    # What Claude Code 2.1.296 sends to a server it starts: server/discover, then the lists, each with the envelope.
+    session = [modern(1, "server/discover"), modern(2, "prompts/list"), modern(3, "tools/list")]
+    lines = "".join(json.dumps(m) + "\n" for m in [*session, request(4, "initialize", HELLO)])
+
+    def started(env: dict) -> dict:
+        ran = hub_mcp(env, lines, cwd=tmp_path)
+        assert ran.returncode == 0, ran.stderr
+        assert "the hub at" not in ran.stderr  # the hub answered: these are its answers, not the proxy's
+        return by_id([json.loads(line) for line in ran.stdout.splitlines()])
+
+    with live.running_hub(hub_db, tmp_path) as served:
+        home = sign_in(tmp_path / "home", served.url, "alice", live.insert_token(hub_db, "alice"))
+        plugin = claude_config(tmp_path, {"evo-kg@evo-agents": True, "evo-hub@evo-agents": True})
+        env = pg.clean_env(HOME=str(home), EVO_KG_HOME=str(tmp_path / "kg-home"), **plugin)
+        both = started(env)
+        env.pop("CLAUDE_PLUGIN_ROOT")  # no plugin's server: the hub's answers as they are
+        alone = started(env)
+    discovered = both[1]["result"]
+    assert discovered["instructions"] == mcp_tools.HUB_INSTRUCTIONS
+    assert serve.INSTRUCTIONS not in json.dumps([both[n]["result"] for n in sorted(both)], ensure_ascii=False)
+    assert discovered["supportedVersions"] == ["2026-07-28"] and discovered["_meta"] == STAMP
+    assert [t["name"] for t in both[3]["result"]["tools"]] == HUB_TOOL_NAMES
+    assert both[3]["result"]["resultType"] == "complete" and both[2]["result"]["prompts"] == []
+    assert both[4]["result"]["instructions"] == mcp_tools.HUB_INSTRUCTIONS  # a client of an older revision
+    assert alone[1]["result"] == {**discovered, "instructions": mcp_tools.INSTRUCTIONS}
+    assert [t["name"] for t in alone[3]["result"]["tools"]] == [t["name"] for t in mcp_tools.TOOLS]
+    assert alone[4]["result"]["instructions"] == mcp_tools.INSTRUCTIONS
 
 
 @needs_pg
