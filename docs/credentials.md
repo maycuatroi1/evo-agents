@@ -197,6 +197,16 @@ So the run is leased that person's secrets, on that person's worker, narrowed by
 never those of another member of the chat, or of whoever added the agent to it. That person must hold writer on the
 profile's project when the hub makes the run and on every ask after, as for any run.
 
+A **task run** ([plugins.md](plugins.md), Agent types) is leased as any run too: its repos are every repo of its
+project when the plugin handed the task, each on the branch `task/<id>` of the run the dispatch made (a lost run's
+next attempt keeps it), and its GitHub token has `GITHUB_PERMISSIONS`, as a step run's. Its owner is the agent type's
+`run_as`, the member the project's admin named when enabling the type, never the plugin: the plugin's token opens the
+plugin API alone and leases nothing. So the run is leased `run_as`'s secrets, on a worker of `run_as`, narrowed by the
+type's profile, and `run_as` must hold writer on the project at the dispatch and on every ask after. The worker
+pushes only the run's branch, never a default branch and never forced, and no run merges; the hub opens the draft
+pull request with the workers' App. The variables an ACP runtime of a plugin names (`secrets`, [plugins.md](plugins.md),
+Runtimes) come from these `env` leases, or the worker's own environment, in a task run as in any other.
+
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
 secrets by id (`secrets=12,15`), the App's accounts, the repos and, unless it is the project's default, the run's
 profile (`profile=@<handle>:v<version>`), never a value; each lease row records the profile and version too.
@@ -428,6 +438,25 @@ or console.anthropic.com, no refresh token kept and nothing refreshed. `hub acco
 the one-year token that command prints, as it would get it from a paste, and leases it to that member's runs alone.
 A token that ends is renewed the same way, by its owner. Whether a given use of an account fits Anthropic's terms is for
 its owner to check against that page; the hub only keeps the sign-in itself out of its code.
+
+## Plugins
+
+A plugin holds two kinds of credential, and neither reaches a worker ([plugins.md](plugins.md)).
+
+- **Its token.** The hub mints a backend's token only when the plugin host is about to start it
+  (`POST /internal/plugin-host/plugins/{name}/token`, over the host's shared secret): `evp_` and 32 random bytes in
+  base64url, of which Postgres keeps only the SHA-256 (`plugin_tokens`, schema 0036). Minting revokes the plugin's
+  older tokens, so a token lives as long as the backend it was made for; removing the plugin or the hub turning it off
+  revokes them at once. It never signs in: only the plugin API under `/v1/plugin-api/` takes it, for what the plugin's
+  installed version asks for and the project granted (`evo_agents/hub/server/plugin_tokens.py`).
+- **The secret fields of its config.** A field its schema marks `"x-secret": true` is sealed with
+  `EVO_HUB_SECRETS_KEY`, bound to the plugin, the layer, the project and the agent profile and the field's name
+  (`plugin_config_aad`), and never shown again: answers name it as set, and the digest of an effective config counts
+  it by a fingerprint of its sealed value. Without the key, setting one is a 503. The hub opens them only for the
+  plugin host's pull of its own plugin's payload, which reaches the backend in `initialize` on its stdin, never in its
+  environment or arguments; a hub without the key leaves the field out and names it in `missing_secrets`. The audit
+  row `plugin.config` names the fields that changed, never a value. A worker gets neither: a run records only the
+  version and digest of each plugin's effective config (`run_plugins`).
 
 ## What a run got
 

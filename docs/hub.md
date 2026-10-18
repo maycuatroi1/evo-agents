@@ -1323,6 +1323,12 @@ the plugin the end with the event `task.result`. Schema 0042 adds the table `pro
 runs with `runs.agent_type_id` and `runs.pulls`, and the delivery kind `task.result`. Going back to 0041 deletes the
 task runs and their deliveries, and drops the columns and the table.
 
+The core plugin builder (`docs/plugins.md`, Builder) keeps what its agent proposes until an admin decides it. Schema
+0043 adds the table `builder_proposals` (each proposal's kind, target, change, summary, the setting's version it was
+proposed at, the run, chat and thread it came from, and once decided its state, `applied_version`, `error` or
+`rollback_version`) and the notice kind `builder_proposal`. Going back to 0042 deletes those notices and drops the
+table.
+
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the
 project (agent) and a run's own (`plugin_config` of `POST .../runs`, plain values only). A field takes its value from the
