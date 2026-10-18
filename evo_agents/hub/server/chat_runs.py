@@ -113,6 +113,7 @@ def _workers(user_id: int, project_id: int):
             w.c.dispatch_from,
             w.c.agent_version,
             w.c.drained_at,
+            w.c.plugins,
             (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
             holding.label("holding"),
         )
@@ -125,6 +126,9 @@ def unfit_worker(row, profile: Profile, via: str) -> str | None:
     """Why worker ``row`` (``_workers``) cannot take a chat run of ``profile`` dispatched with ``via`` now, or None."""
     allow = profiles.allowed(profile.permissions, "runtime")
     usable = [name for name in runs.RUNTIMES if available((row.runtimes or {}).get(name))]
+    packs = profiles.packs_unfit(
+        profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
+    )
     checks = (
         (not row.online, "is offline"),
         (row.drained_at is not None, "is draining"),
@@ -142,6 +146,7 @@ def unfit_worker(row, profile: Profile, via: str) -> str | None:
             and runs.AGENT_PROFILES not in (row.features or ()),
             "has a daemon that does not apply agent profiles",
         ),
+        (packs is not None, f"cannot build the agent packs of @{profile.handle}: {packs}"),
     )
     return next((why for failed, why in checks if failed), None)
 

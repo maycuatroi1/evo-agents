@@ -643,6 +643,14 @@
         },
         {
           "flags": [
+            "--pack"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--avatar"
           ],
           "value": "string",
@@ -680,6 +688,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -731,6 +740,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -819,6 +829,14 @@
         },
         {
           "flags": [
+            "--pack"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
             "--all"
           ],
           "value": "string",
@@ -834,6 +852,14 @@
             "runtime",
             "environment"
           ]
+        },
+        {
+          "flags": [
+            "--no-packs"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
         },
         {
           "flags": [
@@ -890,6 +916,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -941,6 +968,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -992,6 +1020,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -23745,6 +23774,84 @@
           }
         }
       },
+      "/v1/projects/{project}/agent-packs": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "List Agent Packs",
+          "description": "The agent packs a profile of the project may attach, by plugin, then in its manifest's order.",
+          "operationId": "list_agent_packs_v1_projects__project__agent_packs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AgentPack"
+                    },
+                    "title": "Response List Agent Packs V1 Projects  Project  Agent Packs Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats": {
         "get": {
           "tags": [
@@ -29469,6 +29576,14 @@
               "title": "Restricted",
               "description": "the axes that are allowlists, in the order of the eight"
             },
+            "packs": {
+              "items": {
+                "$ref": "#/components/schemas/PinnedPack"
+              },
+              "type": "array",
+              "title": "Packs",
+              "description": "the agent packs it attaches, in order, each at the version it pins"
+            },
             "version": {
               "type": "integer",
               "title": "Version"
@@ -29514,6 +29629,7 @@
             "is_default",
             "permissions",
             "restricted",
+            "packs",
             "version",
             "created_by",
             "created_at",
@@ -29621,6 +29737,15 @@
             },
             "permissions": {
               "$ref": "#/components/schemas/AgentPermissions"
+            },
+            "packs": {
+              "items": {
+                "$ref": "#/components/schemas/AgentPackPin"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Packs",
+              "description": "the agent packs it attaches, in order; see GET .../agent-packs"
             }
           },
           "additionalProperties": false,
@@ -29694,6 +29819,22 @@
                 }
               ],
               "description": "the eight axes whole; an axis left out allows all"
+            },
+            "packs": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentPackPin"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Packs",
+              "description": "the agent packs it attaches, whole, in order; [] for none"
             },
             "if_version": {
               "anyOf": [
@@ -29844,6 +29985,107 @@
             "body"
           ],
           "title": "AgentMessageIn"
+        },
+        "AgentPack": {
+          "properties": {
+            "pack": {
+              "type": "string",
+              "title": "Pack",
+              "description": "<plugin>/<name>"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "installed_version": {
+              "type": "string",
+              "title": "Installed Version",
+              "description": "the plugin's version installed now, which a pin without one takes"
+            },
+            "versions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Versions",
+              "description": "the versions of the plugin the hub holds that declare the pack and run on this release, the newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "pack",
+            "plugin",
+            "name",
+            "title",
+            "description",
+            "installed_version",
+            "versions"
+          ],
+          "title": "AgentPack",
+          "description": "A pack a profile of the project may attach: of a plugin the project enabled, at one of ``versions``."
+        },
+        "AgentPackPin": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "title": "Plugin",
+              "description": "the plugin's id"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+              "title": "Name",
+              "description": "the pack, as the plugin's manifest names it"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]{1,40}))?$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "a version of the plugin the hub holds; left out: the one installed now, which the profile pins"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "plugin",
+            "name"
+          ],
+          "title": "AgentPackPin",
+          "description": "A pack a profile attaches: pack ``name`` of plugin ``plugin`` at version ``version`` of the plugin."
         },
         "AgentPermissions": {
           "properties": {
@@ -38741,6 +38983,36 @@
           ],
           "title": "PathIn"
         },
+        "PinnedPack": {
+          "properties": {
+            "pack": {
+              "type": "string",
+              "title": "Pack",
+              "description": "<plugin>/<name>"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          "type": "object",
+          "required": [
+            "pack",
+            "plugin",
+            "name",
+            "version"
+          ],
+          "title": "PinnedPack",
+          "description": "A pack a profile attaches, at the version of its plugin it pins."
+        },
         "Plan": {
           "properties": {
             "project": {
@@ -44366,6 +44638,60 @@
           "title": "RunMount",
           "description": "A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``)."
         },
+        "RunPack": {
+          "properties": {
+            "pack": {
+              "type": "string",
+              "title": "Pack",
+              "description": "<plugin>/<name>"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the version of the plugin the profile pins"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256",
+              "description": "what the downloaded bundle must hash to"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "presigned GET of the plugin's bundle; a bearer credential until it expires"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "pack",
+            "plugin",
+            "name",
+            "version",
+            "sha256",
+            "size",
+            "url",
+            "expires_at"
+          ],
+          "title": "RunPack",
+          "description": "An agent pack the run's profile attaches (``evo_agents.plugins.agent_packs``), as the hub holds the version of\nits plugin the profile pins: the worker downloads the plugin's bundle, checks it, and builds the pack from its\n``packs/<name>/`` into the run's directory for the agent's runtime."
+        },
         "RunPlugin": {
           "properties": {
             "name": {
@@ -44832,6 +45158,14 @@
                 }
               ],
               "description": "the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host"
+            },
+            "packs": {
+              "items": {
+                "$ref": "#/components/schemas/RunPack"
+              },
+              "type": "array",
+              "title": "Packs",
+              "description": "the agent packs the run's profile attaches, in its order, each at the version it pins, which the worker builds into the run's directory for its runtime; empty for a profile that attaches none"
             }
           },
           "type": "object",

@@ -30,6 +30,13 @@ its container provider the environment (``evo_agents.worker.environments``). A w
 profile limits tool, skill or model, or adds instructions. Every edit of a profile raises its version; a run records
 the profile and version it was dispatched under, and the hub applies that version's rules to it.
 
+A profile may also attach agent packs of plugins (``evo_agents.plugins.agent_packs``), at most MAX_PACKS, each pinned at
+a version of its plugin: ``{"plugin", "name", "version"}``. A pack it attaches counts as named on its skill and tool
+axes: the skills of the pack pass the skill axis and its MCP servers the tool axis (``mcp:<server>``), since pinning
+the pack at a version is the admin's consent to what that version holds; the axes still limit everything else, and a
+pack widens no other axis. Only a worker whose daemon builds packs (``runs.AGENT_PACKS``) and whose owner accepted
+each plugin takes such a run (``packs_unfit``).
+
 Standard library only: the command line and the worker import this module on a core install.
 """
 
@@ -38,7 +45,7 @@ from __future__ import annotations
 import hashlib
 import re
 
-from evo_agents.hub.runs import MAX_MODEL_CHARS, RUNTIMES
+from evo_agents.hub.runs import AGENT_PACKS, MAX_MODEL_CHARS, RUNTIMES
 from evo_agents.plugins.run_environments import HOST, is_environment
 from evo_agents.plugins.runtimes import is_plugin_runtime
 
@@ -52,6 +59,7 @@ MAX_NAME_CHARS = 80
 MAX_DESCRIPTION_CHARS = 1000
 MAX_INSTRUCTIONS_CHARS = 8000
 MAX_ALLOW = 200  # items in one allowlist
+MAX_PACKS = 16  # agent packs one profile attaches; the check agent_profiles_packs_check of schema 0041 holds it too
 COLOR_PATTERN = r"^#[0-9a-f]{6}$"
 DEFAULT_COLOR = "#475569"  # the default profile of every project
 PALETTE = ("#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#16a34a", "#0891b2", "#4f46e5")
@@ -198,3 +206,27 @@ def needs_worker(permissions: dict | None, instructions: str | None) -> bool:
 def restricted_axes(permissions: dict | None) -> list[str]:
     """The axes of ``permissions`` that are allowlists, in AXES order."""
     return [axis for axis in AXES if limited(permissions, axis)]
+
+
+def pack_plugins(packs: list | None) -> list[str]:
+    """The plugins whose agent packs ``packs`` (a profile's, each ``{"plugin", "name", "version"}``) attach, sorted."""
+    return sorted({pack["plugin"] for pack in packs or ()})
+
+
+def packs_unfit(packs: list | None, *, worker_id: int, agent_version: str | None, features, plugins) -> str | None:
+    """What keeps a worker (as its last heartbeat reported it, and its owner set it) from ever claiming a run whose
+    profile attaches ``packs``; None when nothing does, and always for a profile that attaches none."""
+    if not packs:
+        return None
+    if AGENT_PACKS not in set(features or ()):
+        return (
+            f"its daemon (evo-agents {agent_version or 'of an unknown version'}) does not say it builds agent packs, "
+            "and the run's agent attaches some: upgrade it and restart its daemon"
+        )
+    missing = [name for name in pack_plugins(packs) if name not in set(plugins or ())]
+    if missing:
+        return (
+            f"its owner has not let it take the agent packs of plugin {', '.join(missing)}: add it to the worker's "
+            f"plugins, on its page or with PATCH /v1/workers/{worker_id}"
+        )
+    return None
