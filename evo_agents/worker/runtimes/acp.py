@@ -70,7 +70,6 @@ from evo_agents.worker.runtimes.common import (
     raw,
     text_block,
     token_sum,
-    which,
     with_peak,
 )
 
@@ -285,10 +284,17 @@ class AcpAdapter(QueueAdapter):
 
     @classmethod
     def environment_refusal(cls, context: RunContext) -> str | None:
-        missing = [name for name in cls.declaration.secrets if not context.env.get(name)]
+        visible = context.environment.visible(context)
+        missing = [name for name in cls.declaration.secrets if not visible.get(name)]
         if not missing:
             return None
         names = ", ".join(missing)
+        if context.environment.container:
+            return (
+                f"the agent of {cls.runtime} needs {names}, which the run's leases do not set, and the agent runs in "
+                f"environment {context.environment.name}, a container that gets none of the worker's own environment: "
+                "bind a secret of that name to the project"
+            )
         return (
             f"the agent of {cls.runtime} needs {names}, which neither the run's leases nor the worker's environment "
             f"set: bind a secret of that name to the project, or set it in the daemon's environment"
@@ -324,11 +330,13 @@ class AcpAdapter(QueueAdapter):
 
     async def _open(self) -> None:
         declaration = self.declaration
-        program = which(declaration.program, self.context.env)
+        environment = self.context.environment
+        program = environment.program(declaration.program, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-acp-"))
         self.pid_file = self._dir / "pid"
+        command = environment.command(program, declaration.command[1:], context=self.context, directory=self._dir)
         self._process = await asyncio.create_subprocess_exec(
-            *new_session_argv(self.pid_file, program, *declaration.command[1:]),
+            *new_session_argv(self.pid_file, *command),
             stdin=asyncio.subprocess.PIPE,
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,

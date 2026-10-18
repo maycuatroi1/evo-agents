@@ -54,6 +54,10 @@ Rules every adapter keeps, from what the runtimes do (research_notes/worker-runt
   that the run's leases set; ``environment_notes`` says what the runtime leaves out of it because of them, and
   ``environment_refusal`` why the agent cannot start without what it lacks (a variable a plugin's runtime needs),
   which fails the run before its agent starts.
+- ``context.environment`` is where the agent runs (``evo_agents.worker.environments``): the host, as always, or a
+  container of a plugin's environment. An adapter finds its program with ``context.environment.program`` and builds
+  its command with ``context.environment.command``, which on the host is the program and its arguments as they are;
+  ``context.environment.visible(context)`` is what of ``context.env`` the agent gets there.
 - A run under an agent profile (``context.run["profile"]``, ``evo_agents.hub.profiles``) that limits tool, skill or
   model, or has instructions, gets them in the session (``evo_agents.worker.runtimes.profiles``). Before any of the
   run's work the daemon asks ``profile_refusal`` whether the adapter can: one that cannot fails the run, with the
@@ -92,6 +96,7 @@ from typing import TYPE_CHECKING, ClassVar
 from evo_agents import __version__
 from evo_agents.hub import profiles, runs
 from evo_agents.plugins.core import python_contributions
+from evo_agents.worker.environments import HOST_ENVIRONMENT, Environment
 
 if TYPE_CHECKING:
     from evo_agents.worker.interactive import Tui
@@ -199,6 +204,7 @@ class RunContext:
     # cost of the session it goes on in, and the agent time it used.
     spent_usd: float = 0.0
     spent_seconds: float = 0.0
+    environment: Environment = HOST_ENVIRONMENT  # where the agent runs: the host, or a container of a plugin's
 
     @property
     def run_id(self) -> int:
