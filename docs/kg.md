@@ -237,5 +237,10 @@ evo-kg: what the project graph links to the code this search matched (callers, t
   `-L`, `--json`, `--files`, or a `grep` that filters another command's output: no note. Errors go to stderr as one
   line naming their type; the exit status is always 0.
 - The note is `additionalContext`, so evo-hub's PostToolUse hook, which cuts a long result to its head and tail, cuts
-  none of it, and both hooks read the same whole result. `evo-agents kg hook ...` skips building the parsers of every
-  other command, about 0.2 s of start-up. `EVO_KG_GREP_HINTS=0` turns the note off.
+  none of it, and both hooks read the same whole result. `EVO_KG_GREP_HINTS=0` turns the note off.
+- It runs on every grep, so it starts lean: `evo-agents kg hook post-search` skips building the parsers of every other
+  command (0.2 to 0.3 s), and reads the bound project from `hook-scope.json` under the kg home while the bindings,
+  the project index, the harness registries, the harness.yaml above the directory and the project's harness.yaml and
+  knowledge.yaml stay as they were (`evo_agents/kg/hook_scope.py`), so it imports neither the harness loader nor
+  PyYAML. On 50 grep commands in the evo-agents checkout with the machine loaded (load average 21, 2026-10-18), the
+  hook took 71 ms at the median and 109 ms at p95.
