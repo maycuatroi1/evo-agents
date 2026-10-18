@@ -649,7 +649,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") in ("plan", "review", "judge", "author", "chat"):
+        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task"):
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)
