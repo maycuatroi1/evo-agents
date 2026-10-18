@@ -59,7 +59,7 @@ An MCP client gets the text alone, which is what its model reads; the structured
 | --- | --- |
 | `build`, `depth` | the build read and the hops walked (1 to 3, default 2) |
 | `seeds` | the nodes the ids, paths and diff named |
-| `coverage` | one row per language of the code among the seeds: `calls_across_files`, `inheritance`, `overrides`, each `{"supported", "note"}` |
+| `coverage` | one row per language of the code among the seeds: `calls_across_files`, `inheritance`, `overrides`, each `{"supported", "note", "missing"}` |
 | `impacted` | per dependent: `hop`, `node`, `rel`, `rels`, `status`, `to` (the node it depends on), `hub` |
 | `documents` | per document or section: `node` and the reached nodes it `mentions` |
 | `cut` | the seeds with more edges than were read, with how many there are |
@@ -68,7 +68,8 @@ An MCP client gets the text alone, which is what its model reads; the structured
 
 The text says the same coverage in one line per language, for example
 `coverage of swift seeds: calls across files no (the files of one Swift module ...); inheritance no (...); overrides no (...)`.
-A `no` means callers of that kind are missing from the result: grep for them.
+A `no` means callers of that kind are missing from the result: grep for them. A `yes` can still name what it leaves
+out, `calls across files yes, not: ...` for Python: grep for those callers too.
 
 ## Coverage per language
 
@@ -97,7 +98,17 @@ What each row takes as evidence:
 
 - Python: `from m import f`, `import m [as x]` then `x.f()`, relative imports, imports inside a function, star
   imports; a parameter or local of the same name hides the import. Bases through the file's imports; `self.m()`,
-  `cls.m()`, `super().m()` and `super(C, self).m()`.
+  `cls.m()`, `super().m()` and `super(C, self).m()`. A method called through a receiver whose class the file states:
+  an annotated parameter or variable (`Optional[C]`, `C | None`, `"C"` and `Self` too), `x = C(...)`, `x = f()` or
+  `a, b = f()` where `f`'s return is annotated (`-> C`, `-> tuple[C, int]`, in any file), a `self` attribute that an
+  annotation or an assignment in the class types, a property with a return annotation, `f().m()` and `C.m()`; the
+  method is looked up the chain of that class, so an inherited one is found. A name gets a type only when every
+  binding of it in its function agrees on the class (an assignment of `None` does not count). `C(...)` also calls the
+  `__init__` nearest up `C`'s chain. Not covered, so grep for these callers: a receiver nothing in the file types (an
+  unannotated parameter or return, a loop, `with` or `except` variable, an item of a container, `x.a.m()` through
+  another class's attribute or an attribute a base class sets), `isinstance` narrowing, `getattr` and other dynamic
+  calls, and an override reached through `self.m()` in its base class. Receiver types come from the `python-ast`
+  backend, the default for Python; a source that sets `graphify-ast` gets none of them.
 - TypeScript, JavaScript and Vue: named, default and namespace imports and `require()`, relative or through the
   `paths` and `baseUrl` of the nearest `tsconfig.json`; a receiver typed with an imported class. `extends` and
   `implements` are read off the class header, since graphify reports none for JS and TS; `this.m()` and `super.m()`.

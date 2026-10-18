@@ -30,7 +30,7 @@ from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
 MAP_VERSION = "2"
-STRUCTURE_VERSION = "6"
+STRUCTURE_VERSION = "7"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
@@ -366,7 +366,8 @@ def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: d
     """The Symbol node of one definition, its ``member_of`` or ``defines`` edge, and its ident. The ident
     names the file, and the package the definition is in when its language has packages: the link stage
     finds a symbol by file or package and qualified name. A class's ident also carries its ``bases``, the
-    ``via`` lists the index resolves once every definition is known (``pipeline.hierarchy``)."""
+    ``via`` lists the index resolves once every definition is known (``pipeline.hierarchy``), and a Python function
+    the class its return annotation names, ``returns`` (``items`` for a tuple), resolved the same way."""
     item_id = record["id"]
     props = record.get("props") or {}
     path = props.get("path") or ""
@@ -408,6 +409,7 @@ def _symbol_facts(record: dict, source_id: str, sym: dict, unit: str, by_qual: d
             "node": sid,
             **({"package": sym["package"]} if sym.get("package") else {}),
             **({"bases": sym["bases"]} if sym.get("bases") else {}),
+            **{k: sym[k] for k in ("returns", "items") if sym.get(k)},
         }
     )
     return facts
