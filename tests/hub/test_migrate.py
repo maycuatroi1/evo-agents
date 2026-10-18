@@ -84,6 +84,7 @@ TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0035
 TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0036
 TABLES |= pg.SETTINGS_TABLES  # migration 0037
 TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0038
+TABLES |= pg.TRIAGE_TABLES  # migration 0039
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -158,8 +159,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_nine_tables(hub_db):
-    assert len(TABLES) == 69  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_seventy_one_tables(hub_db):
+    assert len(TABLES) == 71  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -818,6 +819,27 @@ def test_0038_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_the
     assert "plugin_deliveries" not in tables(hub_db)
     assert query(hub_db, select(t.plugins.c.name)) == [("sandbox",)]  # the image's plugin went with its versions
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0038") :]
+
+
+def test_0039_keeps_triage_threads_and_a_project_switch_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0038")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    move_to(hub_db, "0039")
+    with live.connect(hub_db) as conn:
+        assert one(conn, select(t.projects.c.triage_enabled).where(t.projects.c.id == ids["project"])) is True
+        chat = one(conn, insert(t.chats).values(title="Triage: p", created_by=ids["user"]).returning(t.chats.c.id))
+        row = {"project_id": ids["project"], "chat_id": chat}
+        conn.execute(insert(t.triage_chats).values({**row, "plan_id": "p"}))
+        other = one(conn, insert(t.chats).values(title="Triage: demo", created_by=ids["user"]).returning(t.chats.c.id))
+        conn.execute(insert(t.triage_chats).values({**row, "chat_id": other, "plan_id": None}))
+        with pytest.raises(errors.UniqueViolation):  # a project without a plan has one triage chat, NULL counting once
+            conn.execute(insert(t.triage_chats).values({**row, "plan_id": None, "chat_id": chat}))
+    move_to(hub_db, "0038", down=True)
+    assert not {"triage_chats", "run_triage"} & tables(hub_db)
+    assert "triage_enabled" not in columns(hub_db, "projects")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0039") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
