@@ -3192,6 +3192,110 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/agent-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Types
+         * @description The agent types of the plugins the project enabled, by plugin, then in its manifest's order.
+         */
+        get: operations["list_agent_types_v1_projects__project__agent_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agent-types/{plugin}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Enable Agent Type
+         * @description Enable agent type ``name`` of ``plugin`` in the project, creating its profile the first time, or change how.
+         */
+        put: operations["enable_agent_type_v1_projects__project__agent_types__plugin___name__put"];
+        post?: never;
+        /**
+         * Disable Agent Type
+         * @description Turn agent type ``name`` of ``plugin`` off in the project: the plugin's tasks are refused; its profile stays.
+         */
+        delete: operations["disable_agent_type_v1_projects__project__agent_types__plugin___name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/agent-types/{name}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Task
+         * @description Hand a task to agent type ``name`` of the plugin whose token the request carries: a run of kind task.
+         */
+        post: operations["dispatch_task_v1_plugin_api_projects__project__agent_types__name__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/tasks/{task}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Task
+         * @description A task the plugin whose token the request carries handed, as its latest run has it.
+         */
+        get: operations["show_task_v1_plugin_api_projects__project__tasks__task__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/task/pulls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pushed
+         * @description The worker pushed the task run's branch of a repo: its draft pull request, kept on the run.
+         */
+        post: operations["pushed_v1_worker_runs__run_id__task_pulls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats": {
         parameters: {
             query?: never;
@@ -4744,6 +4848,78 @@ export interface components {
              * @default false
              */
             remove: boolean;
+        };
+        /**
+         * AgentType
+         * @description An agent type a plugin the project enabled contributes, and how the project enabled it (null: never).
+         */
+        AgentType: {
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Handle
+             * @description its profile's handle: the one the hub made, or the one its template names
+             */
+            handle: string;
+            /**
+             * Environment
+             * @description <plugin>/<name>, the environment its runs take
+             */
+            environment: string | null;
+            /**
+             * Packs
+             * @description the agent packs of the plugin it attaches, <plugin>/<name>
+             */
+            packs: string[];
+            /**
+             * Enabled
+             * @description enabled in the project and not turned off: the plugin may hand it tasks
+             */
+            enabled: boolean;
+            /** Run As */
+            run_as: string | null;
+            /** Workers */
+            workers: string[];
+            /** Daily Usd */
+            daily_usd: number | null;
+            /**
+             * Spent Usd
+             * @description what its task runs cost in the last 24 hours
+             */
+            spent_usd: number;
+            /** Enabled By */
+            enabled_by: string | null;
+            /** Enabled At */
+            enabled_at: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+        };
+        /**
+         * AgentTypeIn
+         * @description How a project runs an agent type: under whose name, on which of that member's workers, at what cost a day.
+         */
+        AgentTypeIn: {
+            /**
+             * Run As
+             * @description the member whose name its runs go under: a writer or an admin of the project
+             */
+            run_as: string;
+            /**
+             * Workers
+             * @description the workers of run_as its runs may take, by name; none: any the profile allows
+             */
+            workers?: string[];
+            /**
+             * Daily Usd
+             * @description what its task runs may cost in 24 hours; a task past it is refused
+             */
+            daily_usd: number;
         };
         /** AgentVersion */
         AgentVersion: {
@@ -8362,7 +8538,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -10276,7 +10452,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
             /** Project */
             project: string;
             /**
@@ -11268,7 +11444,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task";
             /** Project */
             project: string;
             /**
@@ -12297,6 +12473,163 @@ export interface components {
             pending_deletions: number;
             /** Pending Bytes */
             pending_bytes: number;
+        };
+        /**
+         * Task
+         * @description A task a plugin handed one of its agent types, as its latest run has it: ids and states only.
+         */
+        Task: {
+            /**
+             * Task Id
+             * @description the run its dispatch made, which names its branch
+             */
+            task_id: number;
+            /**
+             * Run Id
+             * @description its latest run: a run its worker lost goes on in the next attempt
+             */
+            run_id: number;
+            /** Attempt */
+            attempt: number;
+            /** Project */
+            project: string;
+            /** Agent Type */
+            agent_type: string;
+            /** State */
+            state: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Pulls
+             * @description the draft pull requests the hub opened, {repo, url, number} each
+             */
+            pulls: {
+                [key: string]: unknown;
+            }[];
+            /** Failure Cause */
+            failure_cause: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** TaskBudget */
+        TaskBudget: {
+            /**
+             * Max Usd
+             * @description what is left of the agent type's cap, the run's cost cap
+             */
+            max_usd: number;
+            /** Max Seconds */
+            max_seconds: number;
+        };
+        /** TaskIn */
+        TaskIn: {
+            /**
+             * Task
+             * @description what the agent is to do, at most 16384 bytes in UTF-8
+             */
+            task: string;
+            /**
+             * Title
+             * @description one line the run's list shows; default: the task's
+             */
+            title?: string | null;
+        };
+        /** TaskPull */
+        TaskPull: {
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Url
+             * @description the draft pull request, or the branch; null when the hub knows neither
+             */
+            url: string | null;
+            /**
+             * Number
+             * @description the pull request's number on GitHub
+             */
+            number: number | null;
+            /**
+             * Opened
+             * @description the hub opened it now; false for one open already, or none
+             */
+            opened: boolean;
+            /**
+             * Problem
+             * @description why GitHub opened none, when it refused
+             */
+            problem: string | null;
+        };
+        /** TaskPushed */
+        TaskPushed: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description the run's branch, task/<id>
+             */
+            branch: string;
+            /**
+             * Head
+             * @description the commit the branch has now
+             */
+            head: string;
+        };
+        /** TaskQueued */
+        TaskQueued: {
+            /**
+             * Task Id
+             * @description the run its dispatch made, which names its branch
+             */
+            task_id: number;
+            /**
+             * Run Id
+             * @description its latest run: a run its worker lost goes on in the next attempt
+             */
+            run_id: number;
+            /** Attempt */
+            attempt: number;
+            /** Project */
+            project: string;
+            /** Agent Type */
+            agent_type: string;
+            /** State */
+            state: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Pulls
+             * @description the draft pull requests the hub opened, {repo, url, number} each
+             */
+            pulls: {
+                [key: string]: unknown;
+            }[];
+            /** Failure Cause */
+            failure_cause: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            budget: components["schemas"]["TaskBudget"];
+            /**
+             * Spent Usd
+             * @description what its agent type's task runs cost in the last 24 h
+             */
+            spent_usd: number;
+            /**
+             * Daily Usd
+             * @description the agent type's cap, which the project's admins set
+             */
+            daily_usd: number;
         };
         /** TelegramLink */
         TelegramLink: {
@@ -17749,7 +18082,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -24305,6 +24638,450 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_types_v1_projects__project__agent_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentType"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_agent_type_v1_projects__project__agent_types__plugin___name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the plugin's id */
+                plugin: string;
+                /** @description the agent type, as the manifest names it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTypeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentType"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disable_agent_type_v1_projects__project__agent_types__plugin___name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the plugin's id */
+                plugin: string;
+                /** @description the agent type, as the manifest names it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentType"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dispatch_task_v1_plugin_api_projects__project__agent_types__name__tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent type, as the manifest names it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueued"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_task_v1_plugin_api_projects__project__tasks__task__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the id the task's dispatch answered */
+                task: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pushed_v1_worker_runs__run_id__task_pulls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPushed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPull"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };

@@ -6,6 +6,7 @@ installed, it agrees with ``evo_agents.schema`` on every sample."""
 from __future__ import annotations
 
 import json
+import re
 
 import pytest
 
@@ -219,3 +220,32 @@ def test_plugin_pages_isolated_name_an_html_entry_under_pages_and_core_ones_are_
     for data, problem in cases:
         with pytest.raises(ManifestError, match=problem):
             read_manifest(data)
+
+
+def test_plugin_agent_types_name_the_plugins_own_parts_each_once_and_their_handles_once():
+    triager = {
+        "name": "triager",
+        "title": "Issue triager",
+        "profile": {"handle": "triager", "name": "Triager", "instructions": "Fix what the task names."},
+        "jobs": ["tick"],
+        "events": ["results"],
+    }
+    parts = {"jobs": [{"name": "tick"}], "events": [{"name": "results", "on": ["task.result"]}]}
+    read = read_manifest(manifest(permissions=["runs:dispatch"], contributes={**parts, "agent_types": [triager]}))
+    assert read.contributions("agent_types") == (triager,) and read.per_project()
+    other = {**triager, "name": "other", "jobs": [], "events": []}
+    cases = [
+        ({**triager, "jobs": ["nightly"]}, "agent_types[0].jobs: 'nightly' is not one of the plugin's jobs"),
+        ({**triager, "events": ["results", "results"]}, "agent_types[0].events: 'results' is named twice"),
+        ({**triager, "packs": ["triage"]}, "agent_types[0].packs: 'triage' is not one of the plugin's agent_packs"),
+        ({**triager, "pages": ["board"]}, "agent_types[0].pages: 'board' is not one of the plugin's pages"),
+        ({**triager, "environment": "box"}, "agent_types[0].environment: 'box' is not one of the plugin's environ"),
+        ({**triager, "profile": {"handle": "Triager"}}, "agent_types[0].profile.handle"),
+        ({**triager, "profile": {"name": "Triager"}}, "agent_types[0].profile.handle: is required"),
+        ({**triager, "model": "large"}, "model"),
+    ]
+    for item, problem in cases:
+        with pytest.raises(ManifestError, match=re.escape(problem)):
+            read_manifest(manifest(contributes={**parts, "agent_types": [item]}))
+    with pytest.raises(ManifestError, match="two agent types have the handle 'triager'"):
+        read_manifest(manifest(contributes={**parts, "agent_types": [triager, other]}))

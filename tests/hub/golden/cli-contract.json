@@ -5328,6 +5328,7 @@
             "judge",
             "author",
             "chat",
+            "task",
             "local"
           ]
         },
@@ -14103,6 +14104,7 @@
                       "judge",
                       "author",
                       "chat",
+                      "task",
                       "local"
                     ],
                     "type": "string"
@@ -23852,6 +23854,636 @@
           }
         }
       },
+      "/v1/projects/{project}/agent-types": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "List Agent Types",
+          "description": "The agent types of the plugins the project enabled, by plugin, then in its manifest's order.",
+          "operationId": "list_agent_types_v1_projects__project__agent_types_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AgentType"
+                    },
+                    "title": "Response List Agent Types V1 Projects  Project  Agent Types Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agent-types/{plugin}/{name}": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Enable Agent Type",
+          "description": "Enable agent type ``name`` of ``plugin`` in the project, creating its profile the first time, or change how.",
+          "operationId": "enable_agent_type_v1_projects__project__agent_types__plugin___name__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                "description": "the agent type, as the manifest names it",
+                "title": "Name"
+              },
+              "description": "the agent type, as the manifest names it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTypeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentType"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Disable Agent Type",
+          "description": "Turn agent type ``name`` of ``plugin`` off in the project: the plugin's tasks are refused; its profile stays.",
+          "operationId": "disable_agent_type_v1_projects__project__agent_types__plugin___name__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                "description": "the agent type, as the manifest names it",
+                "title": "Name"
+              },
+              "description": "the agent type, as the manifest names it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentType"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/agent-types/{name}/tasks": {
+        "post": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Dispatch Task",
+          "description": "Hand a task to agent type ``name`` of the plugin whose token the request carries: a run of kind task.",
+          "operationId": "dispatch_task_v1_plugin_api_projects__project__agent_types__name__tasks_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                "description": "the agent type, as the manifest names it",
+                "title": "Name"
+              },
+              "description": "the agent type, as the manifest names it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskQueued"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/tasks/{task}": {
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Show Task",
+          "description": "A task the plugin whose token the request carries handed, as its latest run has it.",
+          "operationId": "show_task_v1_plugin_api_projects__project__tasks__task__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "task",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "the id the task's dispatch answered",
+                "title": "Task"
+              },
+              "description": "the id the task's dispatch answered"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/task/pulls": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Pushed",
+          "description": "The worker pushed the task run's branch of a repo: its draft pull request, kept on the run.",
+          "operationId": "pushed_v1_worker_runs__run_id__task_pulls_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPushed"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskPull"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            }
+          }
+        }
+      },
       "/v1/chats": {
         "get": {
           "tags": [
@@ -30154,6 +30786,194 @@
             "emoji"
           ],
           "title": "AgentReactionIn"
+        },
+        "AgentType": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "handle": {
+              "type": "string",
+              "title": "Handle",
+              "description": "its profile's handle: the one the hub made, or the one its template names"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "<plugin>/<name>, the environment its runs take"
+            },
+            "packs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Packs",
+              "description": "the agent packs of the plugin it attaches, <plugin>/<name>"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "enabled in the project and not turned off: the plugin may hand it tasks"
+            },
+            "run_as": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run As"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers"
+            },
+            "daily_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Daily Usd"
+            },
+            "spent_usd": {
+              "type": "number",
+              "title": "Spent Usd",
+              "description": "what its task runs cost in the last 24 hours"
+            },
+            "enabled_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled By"
+            },
+            "enabled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled At"
+            },
+            "disabled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "name",
+            "title",
+            "description",
+            "handle",
+            "environment",
+            "packs",
+            "enabled",
+            "run_as",
+            "workers",
+            "daily_usd",
+            "spent_usd",
+            "enabled_by",
+            "enabled_at",
+            "disabled_at"
+          ],
+          "title": "AgentType",
+          "description": "An agent type a plugin the project enabled contributes, and how the project enabled it (null: never)."
+        },
+        "AgentTypeIn": {
+          "properties": {
+            "run_as": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+              "title": "Run As",
+              "description": "the member whose name its runs go under: a writer or an admin of the project"
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Workers",
+              "description": "the workers of run_as its runs may take, by name; none: any the profile allows"
+            },
+            "daily_usd": {
+              "type": "number",
+              "maximum": 1000.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Daily Usd",
+              "description": "what its task runs may cost in 24 hours; a task past it is refused"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "run_as",
+            "daily_usd"
+          ],
+          "title": "AgentTypeIn",
+          "description": "How a project runs an agent type: under whose name, on which of that member's workers, at what cost a day."
         },
         "AgentVersion": {
           "properties": {
@@ -38458,6 +39278,7 @@
                 "judge",
                 "author",
                 "chat",
+                "task",
                 "local"
               ],
               "title": "Kind"
@@ -42854,6 +43675,7 @@
                 "judge",
                 "author",
                 "chat",
+                "task",
                 "local"
               ],
               "title": "Kind",
@@ -44889,7 +45711,8 @@
                 "review",
                 "judge",
                 "author",
-                "chat"
+                "chat",
+                "task"
               ],
               "title": "Kind"
             },
@@ -47252,6 +48075,338 @@
             "pending_bytes"
           ],
           "title": "StorageCounts"
+        },
+        "Task": {
+          "properties": {
+            "task_id": {
+              "type": "integer",
+              "title": "Task Id",
+              "description": "the run its dispatch made, which names its branch"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its latest run: a run its worker lost goes on in the next attempt"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "agent_type": {
+              "type": "string",
+              "title": "Agent Type"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "pulls": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Pulls",
+              "description": "the draft pull requests the hub opened, {repo, url, number} each"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "task_id",
+            "run_id",
+            "attempt",
+            "project",
+            "agent_type",
+            "state",
+            "branch",
+            "pulls",
+            "failure_cause",
+            "queued_at",
+            "finished_at"
+          ],
+          "title": "Task",
+          "description": "A task a plugin handed one of its agent types, as its latest run has it: ids and states only."
+        },
+        "TaskBudget": {
+          "properties": {
+            "max_usd": {
+              "type": "number",
+              "title": "Max Usd",
+              "description": "what is left of the agent type's cap, the run's cost cap"
+            },
+            "max_seconds": {
+              "type": "integer",
+              "title": "Max Seconds"
+            }
+          },
+          "type": "object",
+          "required": [
+            "max_usd",
+            "max_seconds"
+          ],
+          "title": "TaskBudget"
+        },
+        "TaskIn": {
+          "properties": {
+            "task": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Task",
+              "description": "what the agent is to do, at most 16384 bytes in UTF-8"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "one line the run's list shows; default: the task's"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "task"
+          ],
+          "title": "TaskIn"
+        },
+        "TaskPull": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the draft pull request, or the branch; null when the hub knows neither"
+            },
+            "number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number",
+              "description": "the pull request's number on GitHub"
+            },
+            "opened": {
+              "type": "boolean",
+              "title": "Opened",
+              "description": "the hub opened it now; false for one open already, or none"
+            },
+            "problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problem",
+              "description": "why GitHub opened none, when it refused"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "url",
+            "number",
+            "opened",
+            "problem"
+          ],
+          "title": "TaskPull"
+        },
+        "TaskPushed": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Branch",
+              "description": "the run's branch, task/<id>"
+            },
+            "head": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Head",
+              "description": "the commit the branch has now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "head"
+          ],
+          "title": "TaskPushed"
+        },
+        "TaskQueued": {
+          "properties": {
+            "task_id": {
+              "type": "integer",
+              "title": "Task Id",
+              "description": "the run its dispatch made, which names its branch"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its latest run: a run its worker lost goes on in the next attempt"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "agent_type": {
+              "type": "string",
+              "title": "Agent Type"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "pulls": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Pulls",
+              "description": "the draft pull requests the hub opened, {repo, url, number} each"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/TaskBudget"
+            },
+            "spent_usd": {
+              "type": "number",
+              "title": "Spent Usd",
+              "description": "what its agent type's task runs cost in the last 24 h"
+            },
+            "daily_usd": {
+              "type": "number",
+              "title": "Daily Usd",
+              "description": "the agent type's cap, which the project's admins set"
+            }
+          },
+          "type": "object",
+          "required": [
+            "task_id",
+            "run_id",
+            "attempt",
+            "project",
+            "agent_type",
+            "state",
+            "branch",
+            "pulls",
+            "failure_cause",
+            "queued_at",
+            "finished_at",
+            "budget",
+            "spent_usd",
+            "daily_usd"
+          ],
+          "title": "TaskQueued"
         },
         "TelegramLink": {
           "properties": {

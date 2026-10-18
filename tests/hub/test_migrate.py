@@ -84,6 +84,7 @@ TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0035
 TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0036
 TABLES |= pg.SETTINGS_TABLES  # migration 0037
 TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0038
+TABLES |= pg.AGENT_TYPE_TABLES  # migration 0042
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -158,8 +159,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_nine_tables(hub_db):
-    assert len(TABLES) == 69  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_seventy_tables(hub_db):
+    assert len(TABLES) == 70  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -927,6 +928,72 @@ def test_0041_gives_every_profile_an_empty_list_of_agent_packs_and_going_back_dr
         with pytest.raises(errors.CheckViolation):  # the check of schema 0040 is back
             conn.execute(update(ap).values(instructions="be brief").where(ap.c.id == default))
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0041") :]
+
+
+def _task_run(ids, agent_type_id: int | None, **extra):
+    """The INSERT of a queued task run of the seeded user in demo for agent type ``agent_type_id``."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "task", "request": "Fix the wait."}
+    row |= {"requested_runtime": "any", "runtime": "any", "mode": "headless", "approval": "auto", "timeout_s": 3600}
+    row |= {"state": "queued", "branch": "task/1", "agent_type_id": agent_type_id, "pulls": []}
+    return insert(runs).values(row | extra).returning(runs.c.id)
+
+
+def test_0042_takes_agent_types_and_task_runs_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0041")
+    t = hub_tables
+    eight = {
+        axis: {"mode": "all"}
+        for axis in ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+    }
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        profile_id = one(conn, _profile_row(ids, "triager", eight))
+        author = one(conn, _author_run(ids))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "task.result", "contribution": "runs"}
+        delivery["payload"] = {"task_id": 1}
+        with pytest.raises(errors.CheckViolation):  # no event task.result before 0042
+            conn.execute(insert(t.plugin_deliveries).values(delivery))
+    move_to(hub_db, "0042")
+    agent_types = t.project_agent_types
+    row = {"project_id": ids["project"], "plugin_id": plugin_id, "name": "triage", "profile_id": profile_id}
+    row |= {"run_as": ids["user"], "daily_usd": 5.0, "enabled_by": ids["user"]}
+    pull = {"repo": "app", "url": "https://github.com/acme/app/pull/1", "number": 1}
+    with live.connect(hub_db) as conn:
+        type_id = one(conn, insert(agent_types).values(row).returning(agent_types.c.id))
+        first = one(conn, _task_run(ids, type_id))
+        one(conn, _task_run(ids, type_id, attempt=2, parent_run_id=first, pulls=[pull], repos=null()))
+        conn.execute(insert(t.plugin_deliveries).values(delivery))
+        conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": "run.state"}))
+        for bad in (
+            _task_run(ids, None),  # a task run names its agent type
+            _task_run(ids, type_id, request=None),  # and its task
+            _author_run(ids, agent_type_id=type_id),  # and only a task run names one
+            _task_run(ids, type_id, pulls={"repo": "app"}),  # a list of pull requests only
+            _task_run(ids, type_id, pulls=[pull] * 51),  # at most 50
+            insert(agent_types).values({**row, "name": "other", "daily_usd": 0}),
+            insert(agent_types).values({**row, "name": "other", "daily_usd": 1000.5}),
+            insert(agent_types).values({**row, "name": "Other"}),
+            insert(agent_types).values({**row, "name": "other", "workers": [f"w{n}" for n in range(17)]}),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+        with pytest.raises(errors.UniqueViolation):  # a project enables a type once
+            conn.execute(insert(agent_types).values(row))
+    assert query(hub_db, select(t.runs.c.kind).order_by(t.runs.c.id)) == [("author",), ("task",), ("task",)]
+
+    # Going back deletes the task runs, the retry included, and the deliveries of task.result; the rest stays.
+    move_to(hub_db, "0041", down=True)
+    assert "project_agent_types" not in tables(hub_db)
+    assert not {"agent_type_id", "pulls"} & columns(hub_db, "runs")
+    assert query(hub_db, select(t.runs.c.id, t.runs.c.kind)) == [(author, "author")]
+    assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # the checks of schema 0041 are back
+            conn.execute(insert(t.plugin_deliveries).values(delivery))
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0042") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
