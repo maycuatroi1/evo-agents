@@ -115,8 +115,10 @@ plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `p
 other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
 the `kg_*` tools from the list and the graph's paragraph from the instructions, so the session sees each `kg_*` tool
-once, from evo-kg; without evo-kg it serves them from the hub's graph and joins the labels of each result into the
-session label of `~/.evo/kg/sessions/`, as evo-kg's PostToolUse hook does.
+once, from evo-kg; without evo-kg it serves them from the hub's graph. Either way the proxy joins the labels of every
+`kg_*` result the hub answers into the session label of `~/.evo/kg/sessions/`, as evo-kg's PostToolUse hook does, a
+call to a tool the list hid included; when that fails, the answer still goes back and stderr gets one line naming the
+exception's type. A label record that exists but cannot be read is left as it is, never started again from one result.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
 sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
