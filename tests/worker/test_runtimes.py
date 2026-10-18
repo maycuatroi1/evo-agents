@@ -1167,7 +1167,7 @@ async def _codex_samples(codex: FakeCodex, turn: FakeTurn) -> None:
 
 
 def test_codex_starts_a_thread_with_full_access_in_the_worktree_through_its_app_server(tmp_path):
-    adapter = _codex(tmp_path, _codex_samples, effort="low")
+    adapter = _codex(tmp_path, _codex_samples, effort="low", env={"CODEX_HOME": str(tmp_path / "codex-home")})
     events, outcome = asyncio.run(_collect(adapter))
     from openai_codex import ApprovalMode, Sandbox
 
@@ -1181,7 +1181,11 @@ def test_codex_starts_a_thread_with_full_access_in_the_worktree_through_its_app_
         "cwd": worktree,
         "developer_instructions": codex_module.DEVELOPER_NOTE,
         "model": None,
-        "config": {"model_reasoning_effort": "low"},
+        "config": {
+            "model_auto_compact_token_limit": 200_000,
+            "tool_output_token_limit": 8_000,
+            "model_reasoning_effort": "low",
+        },
     }
     # On the wire these are what --dangerously-bypass-approvals-and-sandbox sets: no approval asked, no sandbox.
     from openai_codex import ApprovalMode, Sandbox
