@@ -9,6 +9,11 @@ runs, and what the Curator's review run reads: the night's figures, session dige
 decisions. Those about a project take an optional ``project``; without it the session's project counts (X-Evo-Project,
 which the proxy sends). Their arguments are checked against these schemas before anything is read.
 
+``offered`` says which of them ``tools/list`` shows the agent of a run: a judge run JUDGE_TOOLS alone, any other run
+all but ask_member, which only a local session can call. A session that has the evo-kg plugin gets the kg_* tools
+from evo-kg alone, so the proxy hands it the hub's answers ``without_kg``: no kg_* tool, and HUB_INSTRUCTIONS, which
+leave the graph's paragraph to evo-kg's instructions.
+
 Standard library only, besides ``evo_agents.kg.serve`` and the hub's pure modules: the proxy runs on a core install.
 """
 
@@ -40,15 +45,21 @@ LOGIN_PATTERN = r"^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"  # as evo_agents.hub.server.
 MAX_REVISION = 2**31 - 1
 MAX_ID = 2**63 - 1
 
-INSTRUCTIONS = (
-    "Team hub of the session's project: its knowledge graph, memories, plans and skills, read with your grant on the "
-    "hub and the clearance of this session's sink. "
-    + KG_INSTRUCTIONS
-    + " Use memory_search before relying on what you remember about the project or the person, and memory_get for a "
+_HUB_USE = (
+    "Use memory_search before relying on what you remember about the project or the person, and memory_get for a "
     "memory's whole text. In a harness whose plans the hub manages, the YAML files under plans/ are read-only "
     "copies: read a plan with plan_show and mark a step with plan_step, never by editing the file. memory_write and "
     "plan_step write to the hub only; nothing is written on this machine."
 )
+_SINK = "read with your grant on the hub and the clearance of this session's sink."
+INSTRUCTIONS = (
+    f"Team hub of the session's project: its knowledge graph, memories, plans and skills, {_SINK} "
+    + KG_INSTRUCTIONS
+    + " "
+    + _HUB_USE
+)
+# The instructions of a session whose kg_* tools come from evo-kg, whose own instructions hold the graph's paragraph.
+HUB_INSTRUCTIONS = f"Team hub of the session's project: its memories, plans and skills, {_SINK} {_HUB_USE}"
 
 _PROJECT = {
     "type": "string",
@@ -381,8 +392,8 @@ REVIEW_TOOLS = [
     {
         "name": "decision_list",
         "description": (
-            "The decisions the agents of the project's plan runs and author runs asked their owners, newest first, "
-            "with the answer; one an author run asked before it put a plan has no plan."
+            "The decisions the agents of the project's plan runs, author runs and local sessions asked their owners, "
+            "newest first, with the answer; one asked by a run that has put no plan has no plan."
         ),
         "inputSchema": {
             "type": "object",
@@ -401,3 +412,30 @@ REVIEW_TOOLS = [
 TOOLS = [*KG_TOOLS, *HUB_TOOLS, *REVIEW_TOOLS]
 KG_TOOL_NAMES = frozenset(tool["name"] for tool in KG_TOOLS)
 SCHEMAS = {tool["name"]: tool["inputSchema"] for tool in TOOLS}
+# What the agent of a judge run may call: the code graph, never what the Builder wrote (its run's events, the plan's
+# evidence, memories, digests) nor what a Builder could have written for it to read.
+JUDGE_TOOLS = frozenset({*KG_TOOL_NAMES, "hub_projects"})
+# What only a local session can call: the agent of a run asks its owner through the run's decisions.
+LOCAL_ONLY = frozenset({"ask_member"})
+
+
+def offered(name: str, run_kind: str | None) -> bool:
+    """Whether ``tools/list`` shows tool ``name``, the hub's or a plugin's, to the agent of a run of kind ``run_kind``
+    (None for a caller that is no run's agent): a tool the hub refuses that caller whatever its arguments is left out,
+    and the order of the others stays as it is."""
+    if run_kind is None:
+        return True
+    if run_kind == "judge":
+        return name in JUDGE_TOOLS
+    return name not in LOCAL_ONLY
+
+
+def without_kg(method: str, result: dict) -> dict:
+    """The result of an ``initialize`` or ``tools/list`` for a session whose kg_* tools come from evo-kg: no kg_*
+    tool, and HUB_INSTRUCTIONS in place of the instructions; any other result as it is."""
+    if method == "initialize" and "instructions" in result:
+        return {**result, "instructions": HUB_INSTRUCTIONS}
+    tools = result.get("tools")
+    if method == "tools/list" and isinstance(tools, list):
+        return {**result, "tools": [t for t in tools if not (isinstance(t, dict) and t.get("name") in KG_TOOL_NAMES)]}
+    return result

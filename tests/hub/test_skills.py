@@ -3,6 +3,7 @@ bundle over 10 MiB refused before any URL, a version only for a bundle committed
 who reads, and ``hub skills sync`` into the skills directories of the runtimes and harnesses: links, synced/, learned/
 and directories the hub did not write stay as they are, --adopt saves a directory before replacing it, --check writes
 and downloads nothing, and a bundle that does not hash to what the hub recorded stops the sync before any write.
+Every transfer to and from the blob store names evo-agents as its User-Agent.
 
 No test touches the real ~/.claude, ~/.agents, ~/.codex, ~/.cursor, ~/.gemini or ~/.evo: every test runs with a home
 directory of its own, without CLAUDE_CONFIG_DIR or CODEX_HOME. The bundle checks run without Postgres; everything that
@@ -10,6 +11,7 @@ needs the hub skips without EVO_HUB_TEST_DSN and gets a database and a moto buck
 
 import gzip
 import hashlib
+import http.server
 import io
 import json
 import os
@@ -17,22 +19,26 @@ import stat
 import subprocess
 import sys
 import tarfile
+import threading
 import uuid
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from evo_agents import __version__
 from evo_agents.hub import skills as hub_skills
-from evo_agents.hub.client import HubError
+from evo_agents.hub.client import HubError, put_presigned
 from evo_agents.hub.skill_sync import (
     MANAGED_BEGIN,
     MANAGED_END,
     SkillSync,
+    get_bundle,
     gitignore_text,
     list_skills,
     parse_scope,
     publish,
+    put_bundle,
     sync,
 )
 from evo_agents.hub.skills import (
@@ -336,6 +342,53 @@ def test_scopes_and_the_managed_gitignore_block():
     replaced = f"{MANAGED_BEGIN}\n/c/\n{MANAGED_END}\n"
     assert gitignore_text(own + "\n" + block + "tail\n", ["c"]) == own + "\n" + replaced + "tail\n"
     assert gitignore_text(own + "\n" + block, []) == own + "\n"
+
+
+# Transfers
+
+
+class RecordingStore(http.server.BaseHTTPRequestHandler):
+    """A blob store on a local port that answers every PUT and GET and records each request's User-Agent."""
+
+    seen: list = []
+    body = b"bundle"
+
+    def do_PUT(self):
+        self.seen.append(("PUT", self.headers.get("User-Agent")))
+        self.rfile.read(int(self.headers["Content-Length"]))
+        self.send_response(200)
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
+    def do_GET(self):
+        self.seen.append(("GET", self.headers.get("User-Agent")))
+        self.send_response(200)
+        self.send_header("Content-Length", str(len(self.body)))
+        self.end_headers()
+        self.wfile.write(self.body)
+
+    def log_message(self, *args):  # the presigned query string stays out of the test output
+        pass
+
+
+def test_every_transfer_to_the_blob_store_names_evo_agents_as_its_user_agent(tmp_path, monkeypatch):
+    """Cloudflare's Browser Integrity Check in front of a store answers 403 (error 1010) to urllib's own User-Agent,
+    Python-urllib: a bundle's PUT and GET, and the presigned PUT of a file, each say evo-agents/<version>."""
+    monkeypatch.setattr(RecordingStore, "seen", [])
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), RecordingStore)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        url = f"http://127.0.0.1:{server.server_port}/bucket/key?X-Amz-Signature=x"
+        put_bundle(url, RecordingStore.body)
+        assert get_bundle(url, len(RecordingStore.body)) == RecordingStore.body
+        graph = tmp_path / "graph.sqlite"
+        graph.write_bytes(b"a graph")
+        put_presigned(url, graph)
+    finally:
+        server.shutdown()
+        server.server_close()
+    agent = f"evo-agents/{__version__}"
+    assert RecordingStore.seen == [("PUT", agent), ("GET", agent), ("PUT", agent)]
 
 
 # The hub

@@ -10,6 +10,15 @@ here.
 - The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) load as local plugins
   (``plugins``, ``--plugin-dir``), with their skills, subagents and hooks; their MCP servers go in ``mcp_servers`` by
   their own names, and their instructions after the profile's in the appended system prompt.
+- The system prompt holds nothing of the machine, the worktree or the step, so a new session reads it from the cache a
+  session in another worktree, run or step wrote: the preset leaves its dynamic sections out
+  (``exclude_dynamic_sections``, sent in the SDK's initialize request; the CLI's
+  ``--exclude-dynamic-system-prompt-sections``). Claude Code 2.1.296 then moves its auto memory section, whose path
+  names the worktree, into the first user message, which already holds CLAUDE.md, the git status snapshot and the
+  prompt; the working directory and the platform come in the context it sends after the prompt. Measured on 2026-10-18
+  with one-turn sessions: the first request in a second worktree read 11,504 tokens from the cache instead of 10,488,
+  the tools and the system prompt; the rest, from the first user message on, was written anew, even in the same
+  worktree with a prompt that differed only in its last words.
 - The input stream the client is connected with stays open while the agent may take input: the prompt and each of
   the owner's messages go in with ``query()``. Claude Code takes a message that arrives mid-turn at the next tool
   boundary, and may fold it into the same ``result`` (research_notes/worker-runtimes.md of the harness).
@@ -46,7 +55,9 @@ here.
   the exit code: Claude Code exits 0 when it is interrupted.
 - The run's usage adds up the ``result`` of each turn, with the session's ``total_cost_usd``, and holds
   ``peak_context_tokens``: the largest context a message of the model read in the main thread, its usage's input,
-  cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``).
+  cache creation and cache read tokens, as the stream's ``assistant`` messages carry it (``context_of``); and the
+  cache read and cache creation tokens of the first of those messages, the agent's first request
+  (``first_request_of``, ``common.FIRST_REQUEST``).
 - The CLI is ``claude`` on PATH, started through the launcher of ``common`` (a session of its own).
 - Claude Code authenticates with the machine's own login, unless the environment says otherwise. A lease of the run
   may set CLAUDE_CODE_OAUTH_TOKEN, a token of ``claude setup-token`` (docs/credentials.md). Claude Code takes
@@ -128,6 +139,7 @@ from evo_agents.worker.runtimes.common import (
     add_numbers,
     cut,
     detect_runtime,
+    first_request,
     larger,
     message_chunk,
     plan,
@@ -525,6 +537,15 @@ def context_of(message) -> int | None:
     return digest.context_tokens(getattr(message, "usage", None))
 
 
+def first_request_of(message) -> dict | None:
+    """The FIRST_REQUEST keys of the run's usage from a message ``context_of`` reads, the first of which is the agent's
+    first request: the tokens it read from the cache and wrote to it. None for any other message."""
+    if context_of(message) is None:
+        return None
+    usage = message.usage
+    return first_request(usage.get("cache_read_input_tokens"), usage.get("cache_creation_input_tokens"))
+
+
 def events_of(message) -> list[AgentEvent]:
     """The hub's events for one message of ``ClaudeSDKClient.receive_messages()``."""
     from claude_agent_sdk import types as sdk
@@ -621,6 +642,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         self._end_input = asyncio.Event()
         self._results: list = []
         self._peak: int | None = None  # the largest context of a message of the model in the main thread
+        self._first: dict | None = None  # the cache tokens of the first of those messages (FIRST_REQUEST)
         self._error: str | None = None
         self._stderr: collections.deque[str] = collections.deque(maxlen=20)
         self._dir: Path | None = None
@@ -651,7 +673,12 @@ class ClaudeCodeAdapter(QueueAdapter):
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
             "permission_mode": "bypassPermissions",
-            "system_prompt": {"type": "preset", "preset": "claude_code", "append": append},
+            "system_prompt": {
+                "type": "preset",
+                "preset": "claude_code",
+                "append": append,
+                "exclude_dynamic_sections": True,  # the same system prompt in every worktree (module docstring)
+            },
             "env": {key: value for key, value in self.context.env.items() if key not in dropped},
             "stderr": self._stderr.append,
         }
@@ -741,6 +768,7 @@ class ClaudeCodeAdapter(QueueAdapter):
                         self._session = session
                 self.emit(events_of(message))
                 self._peak = larger(self._peak, context_of(message))
+                self._first = self._first or first_request_of(message)
                 ended = self.background.see(message)
                 if isinstance(message, sdk.ResultMessage):
                     self._results.append(message)
@@ -760,7 +788,7 @@ class ClaudeCodeAdapter(QueueAdapter):
             add_numbers(usage, result.usage)
         if self._results and self._results[-1].total_cost_usd is not None:
             usage["total_cost_usd"] = self._results[-1].total_cost_usd  # the session's, counted by the CLI
-        usage = with_peak(usage, self._peak)
+        usage = with_peak(usage, self._peak, self._first)
         if not self._results:
             why = self._error or "the CLI ended without finishing its turn"
             tail = " | ".join(list(self._stderr)[-3:])

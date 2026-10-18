@@ -13,7 +13,7 @@ unchanged plugin is never restarted for a new one. ``call`` sends one request an
 ``BackendGone``, stops the backend and schedules a restart, raising ``BackendUnavailable`` so the caller answers an
 error within the timeout rather than waiting. Restarts back off (``BACKOFF``), capped at ``MAX_BACKOFF``; ``status``
 says the state, the process id, how many restarts, since when it runs, the last failure and when it is tried again,
-for an admin to read.
+for an admin to read. Whatever a start raises is a failed start that backs off, a bug of the host's included.
 
 A backend starts only under a user of its own, which the host can give it as root (``environment.identity``). A host
 that is not root refuses to start one, unless it was made with ``allow_shared_user`` for a developer's machine: then
@@ -30,6 +30,7 @@ Standard library only (asyncio).
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import time
 from collections.abc import Awaitable, Callable
@@ -37,6 +38,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.plugins.environment import (
+    MAX_PLUGIN_ID,
     Identity,
     PlacementError,
     backend_command,
@@ -46,11 +48,19 @@ from evo_agents.plugins.environment import (
     extract,
     identity,
     isolation,
+    killer_uid,
     placement,
     prepare_data,
 )
 from evo_agents.plugins.manifest import Manifest
-from evo_agents.plugins.process import BackendGone, BackendProcess, BackendTimeout, describe_exit, kill_user
+from evo_agents.plugins.process import (
+    BackendGone,
+    BackendProcess,
+    BackendTimeout,
+    describe_exit,
+    kill_user,
+    processes_of,
+)
 from evo_agents.plugins.protocol import RemoteError
 
 log = logging.getLogger(__name__)
@@ -61,6 +71,7 @@ CALL_TIMEOUT = 30.0  # seconds one call to a backend may take
 INIT_TIMEOUT = 30.0
 KILL_INTERVAL = 0.5  # seconds between kills of a plugin's user while its placing winds down
 STATES = ("placing", "starting", "running", "backoff")
+MAX_ERROR = 2000  # characters of a failure kept in the status
 MIN_HOST_TOKEN = 32  # characters of the secret the api and the plugin host share
 EXAMPLE_HOST_TOKENS = frozenset({"dev-only-plugin-host-secret-change-me-000000"})  # once in deploy/hub/.env.example
 SHARED_USER_REFUSED = (
@@ -73,6 +84,14 @@ SHARED_USER_REFUSED = (
 LINGERING = (
     "processes of plugin {name}'s user ({uid}) are still running after the host killed them; it starts no backend "
     "beside them"
+)
+RETIRED_LINGERING = (
+    "plugin {name} is no longer installed, but {count} processes of its user ({uid}) are still running after the host "
+    "killed them; it kills them again until none is left"
+)
+NO_KILLER_USER = (
+    "plugin {name} has id {plugin_id} on the hub; the plugin host gives a user of its own only to a plugin whose id is "
+    "below {limit}, so it runs no backend for this one"
 )
 
 Mint = Callable[[str], Awaitable[str]]  # a fresh hub token for the backend of the named plugin
@@ -155,10 +174,14 @@ class Backend:
         return self.process is not None and self.process.alive
 
     def _owner(self) -> Identity | None:
-        """The user the backend runs under; PlacementError when the host can give it none and may not share its own."""
-        owner = identity(self.init.get("plugin_id", 0))
+        """The user the backend runs under; PlacementError when the host can give it none and may not share its own,
+        or when the plugin's id is too high for its killer to have a user of its own (``environment.killer_uid``)."""
+        plugin_id = self.init.get("plugin_id", 0)
+        owner = identity(plugin_id)
         if owner is None and not self.allow_shared_user:
             raise PlacementError(SHARED_USER_REFUSED)
+        if owner is not None and killer_uid(owner) is None:
+            raise PlacementError(NO_KILLER_USER.format(name=self.name, plugin_id=plugin_id, limit=MAX_PLUGIN_ID))
         return owner
 
     async def _place(self, owner: Identity | None) -> None:
@@ -172,6 +195,12 @@ class Backend:
         extract(self.bundle, self.where.code, owner)
         prepare_data(self.where, owner)
         build_env(self.where, self.manifest.backend.get("requirements"), owner)
+
+    async def _replaced(self) -> None:
+        """Wait for the stop of the backend this one replaces, whatever it ends with. Shielded: cancelling this start
+        must not cancel that stop half way, which would leave its processes running under the same user."""
+        if self._after is not None:
+            await asyncio.gather(asyncio.shield(self._after), return_exceptions=True)
 
     async def _built(self) -> None:
         """Wait for a placing under way, whatever it ends with."""
@@ -201,7 +230,7 @@ class Backend:
         if self.manifest.backend is None:
             raise PlacementError(f"plugin {self.name} has no backend to run")
         if self._after is not None:  # the backend this one replaces shares its user: let it stop first
-            await asyncio.gather(self._after, return_exceptions=True)
+            await self._replaced()
             self._after = None
         owner = self._owner()
         await self._built()  # the placing of a start that was cancelled, which runs on in its thread
@@ -230,6 +259,7 @@ class Backend:
         log.info("plugin backend running", extra={"contribution": self.name, "pid": process.pid})
 
     async def _start_once(self) -> None:
+        """One start; whatever it raises is a failed start, which backs off with its cause in the status."""
         async with self._lock:
             if self.alive:
                 return
@@ -237,6 +267,20 @@ class Backend:
                 await self._start()
             except (PlacementError, OSError) as exc:
                 self._schedule_retry(str(exc))
+            except Exception as exc:  # a bug, or a call the event loop refuses: still a failed start, never a loop
+                await self._failed_unexpectedly(exc)
+
+    async def _failed_unexpectedly(self, exc: Exception) -> None:
+        """Stop what the start spawned and back off. The traceback is logged once for as long as the cause stays the
+        same, so a cause that lasts adds a warning per try, not a traceback."""
+        error = f"{type(exc).__name__}: {exc}"[:MAX_ERROR]
+        if error != self.status.error:
+            log.error("plugin backend start failed", exc_info=exc, extra={"contribution": self.name})
+        if self.process is not None:
+            process, self.process = self.process, None
+            with contextlib.suppress(Exception):
+                await process.stop(grace=2.0)
+        self._schedule_retry(error)
 
     def in_backoff(self) -> bool:
         return self.status.retry_at is not None and time.time() < self.status.retry_at
@@ -269,7 +313,7 @@ class Backend:
         self.status.state = "backoff"
         self.status.pid = None
         self.status.started_at = None
-        self.status.error = error[:2000]
+        self.status.error = error[:MAX_ERROR]
         self.status.retry_at = time.time() + _backoff(self.status.restarts - 1)
         log.warning(
             "plugin backend scheduled for restart",
@@ -294,14 +338,20 @@ class Backend:
                     self._schedule_retry(f"{exc} ({describe_exit(process.returncode)})")
             raise BackendUnavailable(f"plugin {self.name} did not answer: {exc}") from None
 
-    async def stop(self) -> None:
-        """Stop the backend: a start under way is cancelled, what runs under the plugin's user killed (pip's install
-        included), the placing it was doing waited for, the process stopped, and in isolation uid every process of
-        the plugin's user killed again. Only then may the backend that replaces this one, under the same user, start."""
+    def user(self) -> Identity | None:
+        """The plugin's user in isolation uid, whatever a start made of it; None when backends share the host's."""
+        return identity(self.init.get("plugin_id", 0))
+
+    async def stop(self) -> bool:
+        """Stop the backend: a start under way is cancelled, the stop of the backend it replaced waited for, what runs
+        under the plugin's user killed (pip's install included), the placing it was doing waited for, the process
+        stopped, and in isolation uid every process of the plugin's user killed again. Only then may the backend that
+        replaces this one, under the same user, start. False when processes of that user still run afterwards."""
         if self._starting is not None and not self._starting.done():
             self._starting.cancel()
             await asyncio.gather(self._starting, return_exceptions=True)
-        owner = identity(self.init.get("plugin_id", 0))
+        await self._replaced()  # a start cancelled while it waited for it
+        owner = self.user()
         await self._wind_down(owner)
         async with self._lock:
             if self.process is not None:
@@ -311,23 +361,31 @@ class Backend:
                 self.process = None
             if owner is not None and not await kill_user(owner):
                 log.warning("plugin backend stopped, processes of its user remain", extra={"contribution": self.name})
+                return False
+        return True
 
 
 @dataclass
 class Host:
     """The backends of the isolated plugins this host runs, by plugin name. ``mint`` asks the hub for a backend's
-    token at each start; ``allow_shared_user`` lets a host that is not root run backends under its own user."""
+    token at each start; ``allow_shared_user`` lets a host that is not root run backends under its own user.
+    ``stopping`` holds the stops of the backends ``retire`` let go of, until they end; ``lingering`` the status of
+    each of those whose user still has processes after its stop, which the host kills again until none is left."""
 
     root: Path
     mint: Mint | None = None
     allow_shared_user: bool = False
     backends: dict[str, Backend] = field(default_factory=dict)
+    stopping: dict[str, asyncio.Future] = field(default_factory=dict)
+    lingering: dict[str, BackendStatus] = field(default_factory=dict)
+    closing: asyncio.Event = field(default_factory=asyncio.Event)
 
     def place(self, manifest: Manifest, bundle: bytes, init: dict) -> Backend:
         """Register (or replace) the backend of ``manifest``; its version or ``initialize`` changing replaces it, the
-        new one starting only once the old one has stopped, since both run under the plugin's user."""
+        new one starting only once the old one has stopped, since both run under the plugin's user. So does a backend
+        placed again while the stop of a retired one of the same plugin still runs."""
         existing = self.backends.get(manifest.id)
-        stopping = None
+        stopping = self.stopping.get(manifest.id) if existing is None else None
         if existing is not None and (existing.manifest.version != manifest.version or existing.init != init):
             stopping = asyncio.ensure_future(existing.stop())
             existing = None
@@ -355,11 +413,66 @@ class Host:
         for backend in self.backends.values():
             backend.kick()
 
+    def retire(self, name: str) -> asyncio.Future | None:
+        """Forget the backend of ``name`` and stop it in the background, so the stop of one plugin, however long it
+        takes, never holds the caller (the reconcile loop) nor any other plugin; the stop, or None. While processes of
+        its user outlive the stop, the host kills them again, with a backoff, until /proc shows none, and its status
+        says so (``lingering``); a backend placed again under that name starts only then."""
+        backend = self.backends.pop(name, None)
+        if backend is None:
+            return None
+        stopping = asyncio.ensure_future(self._retire(backend))
+        self.stopping[name] = stopping
+        stopping.add_done_callback(lambda done: self._stopped(name, done))
+        return stopping
+
+    async def _retire(self, backend: Backend) -> None:
+        clean, owner, tries = await backend.stop(), backend.user(), 0
+        try:
+            while not clean and owner is not None:
+                wait = _backoff(tries)
+                tries += 1
+                self.lingering[backend.name] = BackendStatus(
+                    backend.name,
+                    backend.manifest.version,
+                    "backoff",
+                    isolation(),
+                    restarts=tries,
+                    error=RETIRED_LINGERING.format(
+                        name=backend.name, count=len(processes_of(owner.uid)), uid=owner.uid
+                    ),
+                    retry_at=time.time() + wait,
+                )
+                log.warning(
+                    "processes of a retired plugin's user remain: killing them again",
+                    extra={"contribution": backend.name, "uid": owner.uid, "tries": tries},
+                )
+                closing = self.closing.is_set()
+                with contextlib.suppress(TimeoutError):
+                    await asyncio.wait_for(self.closing.wait(), wait)
+                clean = await kill_user(owner)
+                if closing:  # the host is closing: one more kill, then it leaves the rest to the container's end
+                    break
+        finally:
+            self.lingering.pop(backend.name, None)
+
+    def _stopped(self, name: str, done: asyncio.Future) -> None:
+        if self.stopping.get(name) is done:
+            del self.stopping[name]
+        if not done.cancelled() and done.exception() is not None:
+            log.warning("plugin backend stop failed", extra={"contribution": name, "error": repr(done.exception())})
+
     def status(self) -> list[dict]:
-        return [backend.status.as_dict() for backend in sorted(self.backends.values(), key=lambda b: b.name)]
+        """The state of each backend, by plugin name; where processes of a retired plugin's user still run, that, as
+        nothing of that plugin starts until they are gone."""
+        shown = {name: backend.status.as_dict() for name, backend in self.backends.items()}
+        shown.update({name: status.as_dict() for name, status in self.lingering.items()})
+        return [shown[name] for name in sorted(shown)]
 
     async def stop_all(self) -> None:
-        await asyncio.gather(*(backend.stop() for backend in self.backends.values()), return_exceptions=True)
+        self.closing.set()
+        stops = [backend.stop() for backend in self.backends.values()]
+        await asyncio.gather(*stops, *self.stopping.values(), return_exceptions=True)
 
 
 __all__ = [

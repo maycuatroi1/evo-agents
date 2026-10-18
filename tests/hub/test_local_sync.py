@@ -42,6 +42,9 @@ def own_home(tmp_path, monkeypatch) -> Path:
         local_sync.DISABLE_VARIABLE,
         local_sync.SESSION_VARIABLE,
         local_account.FOLDERS_VARIABLE,
+        local_account.EMAIL_VARIABLE,
+        local_account.ACCOUNT_VARIABLE,
+        local_account.BINARY_VARIABLE,
         hooks.RUN_VARIABLE,
     ):
         monkeypatch.delenv(variable, raising=False)
@@ -265,9 +268,21 @@ def test_events_wait_on_disk_while_the_hub_is_down_and_go_in_order_afterwards(ow
     fire("local-tool", tool_data(own_home, 3), monkeypatch, capsys)
     assert len(fake.calls) == asked  # a hub that did not answer is left alone for a while
     fake.down = False
-    monkeypatch.setattr(hooks, "COOLDOWN", 0.0)
+    monkeypatch.setattr(local_sync, "COOLDOWN", 0.0)
     fire("local-tool", tool_data(own_home, 4), monkeypatch, capsys)
     assert [e["seq"] for e in fake.events] == list(range(1, 9)) and session_file(own_home)["events"] == []
+
+
+def test_a_hub_another_hook_found_silent_holds_local_sync_back_for_its_own_short_cooldown(
+    own_home, fake, monkeypatch, capsys
+):
+    no_throttle(monkeypatch)
+    fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
+    now = time.time()
+    hooks.HookState(own_home / ".evo" / "hub").mark_down(URL, now - local_sync.COOLDOWN - 1)  # Stop's 120 s still run
+    assert hooks.HookState(own_home / ".evo" / "hub").down_since(URL, now) is not None
+    fire("local-tool", tool_data(own_home, 1), monkeypatch, capsys)
+    assert [e["seq"] for e in fake.events] == [1, 2] and session_file(own_home)["events"] == []
 
 
 def test_a_hub_that_hangs_costs_a_hook_at_most_its_own_limits(own_home, monkeypatch, capsys):
@@ -347,6 +362,52 @@ def test_an_account_that_cannot_be_read_is_unknown_and_blocks_nothing(own_home):
     broken.write_text(f"{SESSION} but not json")
     env = {local_account.FOLDERS_VARIABLE: str(own_home / "d")}
     assert local_account.read_account(SESSION, env, own_home) == local_account.Account("unknown", None)
+
+
+def _claude_profiles(home: Path, shared: str) -> dict[str, Path]:
+    """Three profiles as claude-profiles keeps them, the default one with no folder, each with a copy of the shared
+    session record (which holds no email) under its own account."""
+    own = home / "Library" / "Application Support" / "Claude"
+    company = home / "ClaudeCompany"
+    third = home / "Library" / "Application Support" / "tech.omelet.ClaudeProfiles" / "Profiles" / "third"
+    profiles = [
+        {"color": 0, "id": "default", "name": "Personal", "shareSessions": True},
+        {"color": 1, "dataDir": "~/ClaudeCompany", "id": "company", "name": "Company", "shareSessions": True},
+        {"color": 2, "dataDir": str(third), "id": "third", "name": "Third", "shareSessions": True},
+    ]
+    folders = {"Personal": own, "Company": company, "Third": third}
+    for name, folder in folders.items():
+        record = folder / "claude-code-sessions" / f"acct-{name}" / "org" / "local_s.json"
+        record.parent.mkdir(parents=True)
+        record.write_text(json.dumps({"sessionId": "local_s", "cliSessionId": shared}), encoding="utf-8")
+        (folder / "claude-code" / "2.1.299").mkdir(parents=True)
+    third.parent.parent.joinpath("profiles.json").write_text(json.dumps({"profiles": profiles}), encoding="utf-8")
+    return folders
+
+
+def test_a_desktop_session_is_the_account_desktop_names_in_the_profile_whose_binary_runs_it(own_home):
+    folders = _claude_profiles(own_home, SESSION)
+    (own_home / ".claude.json").write_text(json.dumps({"oauthAccount": {"emailAddress": "cli@example.com"}}))
+    for name, folder in folders.items():
+        env = {
+            local_account.EMAIL_VARIABLE: f"{name.lower()}@example.com",
+            local_account.ACCOUNT_VARIABLE: f"acct-{name}",
+            local_account.BINARY_VARIABLE: str(folder / "claude-code" / "2.1.299" / "claude"),
+        }
+        assert local_account.read_account(SESSION, env, own_home) == local_account.Account(
+            f"{name.lower()}@example.com", name
+        )
+        del env[local_account.BINARY_VARIABLE]  # the account's records are in one folder only
+        assert local_account.read_account(SESSION, env, own_home).profile == name
+    env = {local_account.EMAIL_VARIABLE: "x@example.com", local_account.ACCOUNT_VARIABLE: "../acct-Company"}
+    assert local_account.read_account(SESSION, env, own_home) == local_account.Account("x@example.com", None)
+
+
+def test_without_desktop_variables_the_record_names_the_profile_when_only_one_folder_has_it(own_home):
+    folders = _claude_profiles(own_home, SESSION)
+    for name in ("Company", "Third"):
+        (folders[name] / "claude-code-sessions" / f"acct-{name}" / "org" / "local_s.json").unlink()
+    assert local_account.read_account(SESSION, {}, own_home) == local_account.Account("unknown", "Personal")
 
 
 def test_the_profiles_of_claude_profiles_are_read_whatever_key_names_the_folder(own_home):

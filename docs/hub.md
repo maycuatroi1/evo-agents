@@ -112,6 +112,14 @@ answer. It takes a machine token, or the worker token of the agent of a run (bel
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
 `ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
 `digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
+`tools/list` shows the agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, any
+other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
+plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
+the `kg_*` tools from the list and the graph's paragraph from the instructions, so the session sees each `kg_*` tool
+once, from evo-kg; without evo-kg it serves them from the hub's graph. Either way the proxy joins the labels of every
+`kg_*` result the hub answers into the session label of `~/.evo/kg/sessions/`, as evo-kg's PostToolUse hook does, a
+call to a tool the list hid included; when that fails, the answer still goes back and stderr gets one line naming the
+exception's type. A label record that exists but cannot be read is left as it is, never started again from one result.
 
 The agent of a run on a worker reaches `/mcp` with its worker's token. Inside a run (`EVO_RUN_ID`, which the daemon
 sets, and a token in the worker's state, `$EVO_WORKER_HOME` or `~/.evo/worker`) `evo-agents hub mcp` sends that
@@ -189,6 +197,23 @@ evo-agents hub logout                                 # revokes this machine's t
 
 The token and the hub URL stay in `~/.evo/hub` (mode 0700, files 0600). A hub URL must be https, or http to a
 loopback address. No command prints a token.
+
+One machine can be signed in to two hubs. `EVO_HUB_HOME` names the directory of a second login, and every command,
+hook and the MCP proxy then read the token, the hub URL and their state files (`hook-state.json`, `memory-state.json`,
+`digest-state.json`, `local/`, `backups/`) from there instead of `~/.evo/hub`. A harness whose project lives on the
+other hub sets it in the `env` of its `.claude/settings.json`, so only the sessions of that harness go there:
+
+```json
+{ "env": { "EVO_HUB_HOME": "~/.evo/hub-m1" } }
+```
+
+```sh
+EVO_HUB_HOME=~/.evo/hub-m1 evo-agents hub login --url https://hub.other.example
+```
+
+A leading `~/` is expanded, since Claude Code passes the value as written; a blank value counts as unset, and a
+relative path is refused, because hooks start in whatever directory the session is in. The worker doctor still checks
+`~/.evo/hub/token` only.
 
 In the browser, the web sends you to GitHub (`/v1/auth/web/login`, with state and PKCE), and the callback sets the
 session cookie (HttpOnly, Secure, SameSite=Lax). Web sign-in needs four variables: the client id and secret, the
@@ -517,7 +542,9 @@ evo-agents hub plan step rollout 2 done --evidence "pytest: 12 passed"
 evo-agents hub plan patch rollout --step 2 --set note="merged at abc1234"
 evo-agents hub plan history rollout
 evo-agents hub plan handoff rollout --step 3          # what a new session needs to take step 3 up
-evo-agents hub plan complete rollout                  # every step done: move it to completed
+evo-agents hub plan complete rollout                  # every step done or descoped: move it to completed
+evo-agents hub plan abandon rollout --reason "replaced" [--superseded-by rollout-v2]  # completed as abandoned/superseded
+evo-agents hub plan reopen rollout                    # an abandoned plan back to active
 evo-agents hub plan export . --commit                 # write the copies, commit exactly the ones that changed
 ```
 
@@ -657,8 +684,8 @@ hub as you. `--plan ID` revises that plan instead; `--model` and `--timeout-h` (
 default) as for `run plan`; `--runtime` is claude-code, the one runtime an author run takes. You need the writer role.
 The agent asks and reports in the run's chat: `run chat` prints it, `run send` replies, and `run finish` ends it once
 the plan is as you want it (`docs/workers.md`, Author runs). On a worker whose daemon says `author_decisions`, the
-agent asks a question with options as a decision instead, which `hub decision list` shows as `author run #N` while
-the run has no plan and `hub decision answer` answers; the run waits for every decision of the turn, or a reply. The web does the same from New plan, Revise with agent and
+agent asks a question with options as a decision instead, which `hub decision list` shows with its run and no plan while
+the run has none and `hub decision answer` answers; the run waits for every decision of the turn, or a reply. The web does the same from New plan, Revise with agent and
 the run's Chat tab.
 
 Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
@@ -996,8 +1023,15 @@ no project, and the session of a run's agent, whose trace is on the hub already,
 Bash ran, and keeps what the person wrote, the Bash commands and the text of failed results, each cut short, with the
 model, the tokens, the session's id and its directory. It also holds the largest context one message of the model read
 (`peak_context_tokens`: its input, cache creation and cache read tokens), how many times the context was compacted
-(`compactions`, the `compact_boundary` lines of the transcript) and the characters of each tool's results
-(`tool_result_chars`); the hub keeps them, and `digest_show` returns them, null in a digest an older client pushed.
+(`compactions`, the `compact_boundary` lines of the transcript), the characters of each tool's results
+(`tool_result_chars`), and what the spool of the PostToolUse hook did: how many results it cut (`spool_results`, read
+from the note it leaves in a result's place), the characters they had before the cut (`spool_original_chars`) and the
+calls that named the spool directory, the agent reading a spool file again (`spool_reads`); only these counts leave
+the machine, never a spool file. The hub keeps them, and `digest_show` returns them, null in a digest an older client
+pushed. The text of `digest_show`, like that of `run_events`, stays under 24,000 characters, below the 25,000 at which
+the hub's tools cut a text for `kg_more`: `digest_show` leaves out the last items of its longest lists and says how
+many (a kept item keeps the index that `session:ID:FIELD:INDEX` evidence names), and `run_events` stops before the
+event that would go past it and says after which seq to call again; one event's line holds at most 500 characters.
 Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
@@ -1010,20 +1044,36 @@ the hub pushes it, with up to three others that waited. `hub.prune_digests` dele
 days.
 
 **Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
-result out of the model's context. A successful result of Bash, Read, Grep or an MCP tool longer than 10,000
+result out of the model's context. A successful result of Bash, Grep, WebFetch or an MCP tool longer than 10,000
 characters is written whole to `~/.evo/tool-output/<session>/<tool_use_id>.txt` (directories 0700, file 0600), and
 the model gets, in the tool's own output shape, its first and last 1,500 characters around one line that names the
-size and the file. A Read keeps whole first lines instead, since Claude Code numbers them, and its line says from which
-line to Read on. The threshold sits near the 95th percentile of the tool results on one laptop over 30 days
-(2026-10-11: 104,186 results, median 830 characters, 95th percentile 11,080): about 6% of the results go to a file,
-and they hold about 41% of the characters. `EVO_SPOOL_THRESHOLD` changes it (`0` or `off` turns the hook off) and
-`EVO_SPOOL_DAYS` how long a file is kept (7 days); the hook deletes older files, at most once an hour. A Bash output
-over 30,000 characters, which Claude Code already saves in its session directory with a 2,000-character preview, is
-copied from that file, so the spool file holds all of it. A failed call (PostToolUseFailure, whose output Claude Code
-already cuts to about 10,000 characters of head and tail), an image, a Read with an offset or a limit, and a call that
+size and the file. A Read without an offset or a limit is cut only past 40,000 characters, and keeps its first 20,000
+characters of whole lines, with no tail, since Claude Code numbers the lines; its line says from which line to Read on
+if the rest is needed. The tools of evo-hub and evo-kg pass whole: they cut their own text at 25,000 characters and
+give the rest through `kg_more`, and Claude Code saves an MCP text over 50,000 characters to a file itself. So does a
+Bash call that prints a plan's handoff (`evo-agents hub plan handoff`), sized by its own budget.
+
+The numbers come from the Claude Code transcripts of one laptop from 2026-10-13 07:41 to 2026-10-18 (669 transcripts,
+353 of them subagents, 50,255 tool calls), measured with the scripts of the harness's
+`research_notes/Rà soát quản lý context/`. A result counts as saved after the agent's reads of its spool file, and
+its reruns of the same call within 10 calls, are taken off:
+
+| Tool | Results | Size | What the numbers decided |
+|---|---|---|---|
+| Bash | 38,087 | 95th percentile 10,729 | spooled at 10,000, 67% of their characters saved; the band from 10,000 to 15,000 still saved 38%, so the threshold, head and tail stay |
+| Read without offset or limit | 914 | median 4,528, 90th percentile 24,307, 95th 32,311 | of 287 cut at 10,000 with a 1,500 head, 91% were read again, 95% of those from the line the note named and 59% to the end, in every size band: 8% saved, 338 extra model calls. No head short of the file avoids that, so more reads stay whole: at 40,000, 36 reads are cut (21% of all Read characters), each keeping 20,000, and the same calls replayed make 74 extra model calls |
+| WebFetch | 861 | median 1,382, 95th percentile 23,858 | the 58 over 10,000 held 59% of WebFetch's characters and were never cut, since WebFetch was not in the matcher |
+| evo-hub and evo-kg | 440 | 95th percentile 23,514 | cutting them at 10,000 hid what `kg_more` and `plan_handoff` give whole |
+
+`EVO_SPOOL_THRESHOLD` changes the threshold (`0` or `off` turns the hook off), `EVO_SPOOL_READ_THRESHOLD` that of a Read
+(`0` or `off` leaves every Read whole; the head is half of it, at most 20,000), and `EVO_SPOOL_DAYS` how long a file is
+kept (7 days); the hook deletes older files, at most once an hour. A Bash output over 30,000 characters, which Claude
+Code already saves in its session directory with a 2,000-character preview, is copied from that file, so the spool
+file holds all of it. A failed call (PostToolUseFailure, whose output Claude Code already cuts to about 10,000
+characters of head and tail, enough to see why it failed), an image, a Read with an offset or a limit, and a call that
 names `~/.evo/tool-output` pass unchanged. The hook runs in worker runs too, talks to no hub, never sends a spool
-file anywhere, and adds the start of `uvx` and the interpreter, about 0.15 seconds, to each Bash, Read, Grep or MCP
-call.
+file anywhere, and adds the start of `uvx` and the interpreter, about 0.15 seconds, to each Bash, Read, Grep,
+WebFetch or MCP call.
 
 Codex does not take this hook. Tried with codex-cli 0.153.4 on 2026-10-12: a command that printed 51,013 characters
 reached the model as about 40,000, cut in the middle (`Warning: truncated output (original token count: 13026)` and
@@ -1071,9 +1121,10 @@ machine and with the same fields as a Claude Code digest: `peak_context_tokens` 
 `last_token_usage.input_tokens` of the rollout's `token_count` lines (as the Codex runtime measures a run's peak), the
 usage comes from the running `total_token_usage` (the cached part moved to `cache_read_input_tokens`), the tools,
 commands, edits and errors from the normalized `item_completed` item stream (shell runs, MCP calls, file changes and web
-searches), and `compactions` from the `ContextCompaction` items. The `js`/node_repl and agent-spawning tools that the
-item stream does not normalize are not counted, and `files_read` is 0 since Codex reads files through the shell, which
-the commands already hold.
+searches), and `compactions` from the `ContextCompaction` items. The spool leaves a Codex result as it is, so
+`spool_results` and `spool_original_chars` are 0 and `spool_reads` counts the shell runs that name the spool directory.
+The `js`/node_repl and agent-spawning tools that the item stream does not normalize are not counted, and `files_read`
+is 0 since Codex reads files through the shell, which the commands already hold.
 
 What Codex requires and does not allow (tried with codex-cli 0.153.4 on 2026-10-12): Codex runs a hook only after its
 source is trusted, persisted as a `trusted_hash` under `[hooks.state."evo-hub@evo-agents:hooks/hooks.json:..."]` in
@@ -1541,6 +1592,7 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it |
 | `EVO_HUB_PUBLIC_URL` | api | the URL browsers use, such as `https://hub.example.org` |
 | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, `EVO_HUB_S3_ACCESS_KEY_ID`, `EVO_HUB_S3_SECRET_ACCESS_KEY` | api, worker | the blob store, all four or none; for R2 the endpoint is `https://<account id>.r2.cloudflarestorage.com` |
+| `EVO_HUB_S3_INTERNAL_ENDPOINT` | api, worker | optional: where the hub itself calls the same store, such as `http://seaweedfs:8333` on the platform's network when `EVO_HUB_S3_ENDPOINT` is a public hostname behind a proxy that caps a request's body (Cloudflare takes 100 MB); presigned URLs keep `EVO_HUB_S3_ENDPOINT`; set without the four, the hub does not start |
 | `EVO_HUB_SENTRY_DSN` | api, worker | optional error reporting |
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
@@ -1560,7 +1612,7 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
-| `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `512` |
+| `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `2048` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |

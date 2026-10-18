@@ -4,6 +4,7 @@ first answer wins, a 409 is left alone), and UserPromptSubmit gives the agent wh
 the session stopped waiting. The hub is a function, as in test_local_sync.py."""
 
 import json
+import time
 
 from evo_agents.hub import client as hub_client
 from evo_agents.hub import local_sync
@@ -104,6 +105,31 @@ def test_the_answer_given_in_the_dialog_is_reported_to_its_decisions(own_home, m
     assert hub.state == "running"
 
 
+def test_the_picks_of_a_multiselect_question_are_reported_as_text_and_a_single_pick_as_its_option(
+    own_home, monkeypatch, capsys
+):
+    hub = ask_hub(monkeypatch)
+    several = {
+        "questions": [
+            {
+                "question": "Which plugins?",
+                "multiSelect": True,
+                "options": [{"label": "SRS, tasks (core)"}, {"label": "Isolated"}, {"label": "Runtime"}],
+            },
+            {"question": "Which hub?", "multiSelect": True, "options": [{"label": "M1"}, {"label": "Omelet"}]},
+        ]
+    }
+    asked = payload(own_home, tool_name="AskUserQuestion", tool_use_id="toolu_ask", tool_input=several)
+    fire("local-ask", asked, monkeypatch, capsys)
+    answers = {"Which plugins?": ["SRS, tasks (core)", "Isolated"], "Which hub?": ["Omelet"]}
+    assert fire("local-tool", {**asked, "tool_response": {"answers": answers}}, monkeypatch, capsys) == (0, "", "")
+    reported = [(p, b) for m, p, b in hub.calls if p.endswith("/answered")]
+    assert reported == [
+        (f"{BASE}/decisions/101/answered", {"text": "SRS, tasks (core); Isolated"}),
+        (f"{BASE}/decisions/102/answered", {"option": "2"}),
+    ]
+
+
 def test_a_dialog_the_hub_answered_first_gets_a_409_that_is_left_alone(own_home, monkeypatch, capsys):
     hub = ask_hub(monkeypatch)
     hub.answered = {101: 409, 102: 409}
@@ -144,6 +170,32 @@ def test_sync_off_and_a_worker_run_ask_nothing(own_home, monkeypatch, capsys):
     monkeypatch.setenv("EVO_RUN_ID", "9")
     assert fire("local-ask", dialog(own_home), monkeypatch, capsys) == (0, "", "")
     assert hub.calls == []
+
+
+def test_a_dialog_tries_a_hub_marked_silent_and_its_answer_waits_until_a_hook_reaches_the_hub(
+    own_home, monkeypatch, capsys
+):
+    from evo_agents.hub import hooks
+
+    hub = ask_hub(monkeypatch)
+    hooks.HookState(own_home / ".evo" / "hub").mark_down(URL, time.time())
+    fire("local-ask", dialog(own_home), monkeypatch, capsys)
+    assert len(hub.of("POST", "/decisions")) == 2  # a question is put whatever an earlier hook found
+    hub.down = True
+    answers = {"Run the migration?": "Yes"}
+    assert fire("local-tool", dialog(own_home, tool_response={"answers": answers}), monkeypatch, capsys) == (0, "", "")
+    assert session_file(own_home)["answers"] == {"toolu_ask": answers}
+    hub.down = False
+    monkeypatch.setattr(local_sync, "COOLDOWN", 0.0)
+    monkeypatch.setattr(local_sync, "FLUSH_EVERY", 0.0)
+    fire("local-tool", payload(own_home, tool_name="Bash", tool_input={"command": "ls"}), monkeypatch, capsys)
+    reported = [(p, b) for m, p, b in hub.calls if p.endswith("/answered")]
+    assert reported == [
+        (f"{BASE}/decisions/101/answered", {"text": "answered in the session"}),
+        (f"{BASE}/decisions/102/answered", {"option": "1"}),
+    ]
+    assert session_file(own_home)["answers"] == {} and session_file(own_home)["asks"] == {}
+    assert hub.state == "running"
 
 
 def test_unreachable_is_not_a_failure(own_home, monkeypatch, capsys):

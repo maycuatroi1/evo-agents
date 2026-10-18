@@ -19,7 +19,8 @@ the CLI prints is parsed here.
   interrupts the turn once the agent used the budget's ``max_seconds``, and the outcome names the cap ``time``.
 - The run's usage is the thread's total of the last ``thread/tokenUsage/updated``, in snake_case, with
   ``peak_context_tokens``, the largest ``last.inputTokens`` (the input of one request of the model, the cached part
-  in it), and ``context_window``, the model's (``modelContextWindow``).
+  in it), ``context_window``, the model's (``modelContextWindow``), and the first request's cache tokens, the
+  ``cachedInputTokens`` and ``cacheWriteInputTokens`` of the first ``last`` (``common.FIRST_REQUEST``).
 - The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. For the
   heartbeat, ``models`` reads the owner's codex home (``$CODEX_HOME``, ``~/.codex`` by default): the ``model`` of
   ``config.toml`` and of each of its profiles, then the models codex offers in its picker, from the cache it keeps
@@ -37,6 +38,13 @@ stdio and http MCP servers and their instructions: each pack's ``skills/`` is an
 (``skills/extraRoots/set``, before the thread starts), each server an entry of ``mcp_servers`` in the thread's
 ``config``, and the instructions follow the profile's in the developer instructions. A pack with subagents, hooks or an
 SSE server fails the run before its agent starts (``pack_refusal``).
+
+The thread compacts its history as it nears ``model_auto_compact_token_limit`` and keeps ``tool_output_token_limit``
+tokens of each tool output in it: the thread's ``config`` gets both from ``compact_config``, the daemon's
+EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT and EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT (``off`` or ``0`` leaves codex's
+own), else COMPACT_SETTINGS' defaults, 200,000 and 8,000 (docs/workers.md says why). A key the owner's codex config
+sets (``owner_compact_keys``) is left out, since the thread's ``config`` overrides ``config.toml``; the profile's
+``config`` is merged last.
 
 Checked with openai-codex 0.160.0 and codex-cli 0.153.4 as the app-server (``evo-agents worker selftest --runtime
 codex``); the SDK bundles a codex binary of its own version, which the adapter does not use.
@@ -67,6 +75,7 @@ from evo_agents.worker.runtimes.common import (
     QueueAdapter,
     cut,
     detect_runtime,
+    first_request,
     larger,
     message_chunk,
     new_session_argv,
@@ -112,6 +121,14 @@ SKIPPED = frozenset(
 )
 _CAMEL = re.compile(r"(?<!^)(?=[A-Z])")
 MODELS_CACHE = "models_cache.json"
+# What the thread's config gets for compaction (``compact_config``): each key of codex's config, the variable of the
+# daemon's environment that changes it, and its default, in tokens.
+AUTO_COMPACT_LIMIT = "model_auto_compact_token_limit"
+TOOL_OUTPUT_LIMIT = "tool_output_token_limit"
+COMPACT_SETTINGS = (
+    (AUTO_COMPACT_LIMIT, "EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT", 200_000),
+    (TOOL_OUTPUT_LIMIT, "EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT", 8_000),
+)
 
 
 def codex_home(env: Mapping[str, str]) -> Path:
@@ -159,6 +176,55 @@ def home_models(home: Path) -> list[str]:
             continue
         found += read(text)
     return list(dict.fromkeys(found))
+
+
+def owner_compact_keys(home: Path, worktree: Path) -> set[str]:
+    """The keys of COMPACT_SETTINGS the owner's codex config sets: at the top of ``config.toml`` in ``home`` or in the
+    profile its ``profile`` names, or in the worktree's ``.codex/config.toml``."""
+    keys = {key for key, _, _ in COMPACT_SETTINGS}
+    found: set[str] = set()
+    for path in (home / "config.toml", worktree / ".codex" / "config.toml"):
+        try:
+            data = tomllib.loads(path.read_text(encoding="utf-8"))
+        except (OSError, UnicodeDecodeError, ValueError):
+            continue
+        tables = [data]
+        named, tables_by_name = data.get("profile"), data.get("profiles")
+        if isinstance(named, str) and isinstance(tables_by_name, dict) and isinstance(tables_by_name.get(named), dict):
+            tables.append(tables_by_name[named])
+        found |= {key for table in tables for key in keys if key in table}
+    return found
+
+
+def compact_config(env: Mapping[str, str], owned: set[str] | frozenset[str] = frozenset()) -> dict[str, int]:
+    """What the thread's ``config`` gains for compaction: each key of COMPACT_SETTINGS that ``owned`` (the owner's
+    config) leaves unset, at its variable's value when that is a whole number of tokens, else at its default; nothing
+    for a key whose variable is ``off`` or ``0``, which leaves codex's own. Codex caps the compaction limit at 90% of
+    the model's context window."""
+    found: dict[str, int] = {}
+    for key, setting, default in COMPACT_SETTINGS:
+        if key in owned:
+            continue
+        value = env.get(setting, "").strip().lower()
+        if value in ("off", "0"):
+            continue
+        found[key] = int(value) if value.isascii() and value.isdigit() else default
+    return found
+
+
+def thread_compaction(context: RunContext) -> dict[str, int]:
+    """``compact_config`` for the run of ``context``, the keys its owner's codex config sets left out; the terminal UI
+    passes the same with ``-c``."""
+    owned = owner_compact_keys(codex_home(context.env), Path(context.worktree))
+    return compact_config(context.env, owned)
+
+
+def config_args(context: RunContext, effort: str | None) -> list[str]:
+    """The ``-c`` options of the terminal UI on the run of ``context``: the reasoning effort ``effort``, then
+    ``thread_compaction``, as the headless thread's config has them."""
+    settings: dict[str, object] = {"model_reasoning_effort": json.dumps(effort)} if effort else {}
+    settings.update(thread_compaction(context))
+    return [part for key, value in settings.items() for part in ("-c", f"{key}={value}")]
 
 
 def wire(payload) -> dict:
@@ -288,6 +354,7 @@ class CodexAdapter(QueueAdapter):
         self._error: str | None = None
         self._usage: dict | None = None
         self._peak: int | None = None  # the largest context of one request of the model: ``last.inputTokens``
+        self._first: dict | None = None  # the cache tokens of the first ``last`` (FIRST_REQUEST)
         self._window: int | None = None  # the model's context window, as the app-server reports it
         self._summary: str | None = None
         self._dir: Path | None = None
@@ -347,7 +414,10 @@ class CodexAdapter(QueueAdapter):
             self.server_version = self._codex.metadata.serverInfo.version.split()[0]
         effort = run_setting(self.context, self.runtime, "effort")
         profile = profiles.profile_of(self.context)
-        config = profiles.codex_config(profile, self.mcp_servers() if profile is not None else ())
+        config = {
+            **thread_compaction(self.context),
+            **profiles.codex_config(profile, self.mcp_servers() if profile is not None else ()),
+        }
         if effort:
             config["model_reasoning_effort"] = effort
         await self.add_packs(config)
@@ -407,16 +477,19 @@ class CodexAdapter(QueueAdapter):
 
     def _tokens(self, usage: dict) -> None:
         """A ``thread/tokenUsage/updated``: the thread's total so far, and the context of its last request
-        (``last.inputTokens``, the cached part counted in it) for the peak."""
+        (``last.inputTokens``, the cached part counted in it) for the peak; the cache tokens of the first request that
+        read any context for FIRST_REQUEST."""
         total, last = usage.get("total"), usage.get("last")
         if isinstance(total, dict):
             self._usage = snake(total)
         if isinstance(last, dict):
             self._peak = larger(self._peak, token_sum(last.get("inputTokens")))
+            if self._first is None and token_sum(last.get("inputTokens")):
+                self._first = first_request(last.get("cachedInputTokens"), last.get("cacheWriteInputTokens"))
         self._window = token_sum(usage.get("modelContextWindow")) or self._window
 
     def _outcome(self) -> Outcome:
-        usage, summary = with_peak(self._usage, self._peak, context_window=self._window), self._summary
+        usage, summary = with_peak(self._usage, self._peak, self._first, context_window=self._window), self._summary
         if self.interrupted:
             return Outcome(False, "interrupted", usage, summary)
         if self._error:

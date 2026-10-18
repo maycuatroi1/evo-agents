@@ -339,7 +339,7 @@ function RunPage({ run }: { run: Run }) {
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
       {/* Under 768 px: the decision, the trace's latest rows, then the details as flat sections, in the page's order. */}
       {overview ? decisionCard : null}
-      {overview ? <TracePreview events={log.events} active={active} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}
+      {overview ? <TracePreview events={log.events} active={active} loading={log.status === "connecting"} label={authoring ? tPreview("openChat") : undefined} onOpen={() => openScreen(firstTab)} /> : null}
       {overview && details ? <div id={detailsId}>{side}</div> : null}
       {overview ? null : (
         /* From xl, two regions that scroll on their own, side by side and as tall as each other once Details is open:

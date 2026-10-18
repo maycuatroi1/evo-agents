@@ -7,7 +7,9 @@ result the hub cannot use never reaches a caller (``checked``). A core plugin's 
 (``python``, ``module:attribute``), which runs here: ``handler(params, context)``, awaited when it returns an
 awaitable, with a ``CoreContext`` (the plugin, the hub's engine and config, the project). An isolated plugin's runs in
 its backend, which the plugin host runs apart from the hub (``PluginHostClient``): the host answers within the
-timeout, a 503 when the backend is down (``PluginHostUnavailable``), the backend's error as ``PluginCallError``.
+timeout, a 503 when the backend is down (``PluginHostUnavailable``), the backend's error as ``PluginCallError``. The
+503 carries why a backend is down, a failed start's text included; the client keeps it out of the message a project
+member reads (``DOWN``), and a hub admin reads it in the backend's status.
 
 The core plugins of this process are those of the entry point group ``evo_agents.plugins``
 (``evo_agents.plugins.core``), read once (``core_registry``; a test that installs others clears it). A plugin is
@@ -39,6 +41,7 @@ from evo_agents.plugins.protocol import INTERNAL_ERROR, POINT_METHODS, result_pr
 log = logging.getLogger(__name__)
 
 DEFAULT_TIMEOUT = 30.0  # seconds one call to a plugin may take
+DOWN = "its backend is not running now; a hub admin sees why in the plugin's backend status"
 NAMESPACE = "__"  # between a plugin's id and its tool's name on /mcp: sample__echo
 
 
@@ -86,8 +89,8 @@ class PluginHostClient:
             )
         except httpx.HTTPError as exc:
             raise PluginHostUnavailable(f"the plugin host did not answer: {exc}") from None
-        if response.status_code == 503:
-            raise PluginHostUnavailable(_json(response).get("message", "the backend is unavailable"))
+        if response.status_code == 503:  # what the host says may hold a start's error: for an admin, not a member
+            raise PluginHostUnavailable(DOWN)
         payload = _json(response)
         if response.status_code >= 400 or "error" in payload:
             error = payload.get("error") or {}

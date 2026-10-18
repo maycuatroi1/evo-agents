@@ -29,6 +29,7 @@ x-hub-environment: &hub-environment
   EVO_HUB_S3_BUCKET: ${EVO_HUB_S3_BUCKET:-}
   EVO_HUB_S3_ACCESS_KEY_ID: ${EVO_HUB_S3_ACCESS_KEY_ID:-}
   EVO_HUB_S3_SECRET_ACCESS_KEY: ${EVO_HUB_S3_SECRET_ACCESS_KEY:-}
+  EVO_HUB_S3_INTERNAL_ENDPOINT: ${EVO_HUB_S3_INTERNAL_ENDPOINT:-}
   EVO_HUB_SENTRY_DSN: ${EVO_HUB_SENTRY_DSN:-}
   EVO_HUB_LOG_LEVEL: ${EVO_HUB_LOG_LEVEL:-INFO}
   EVO_HUB_BLOB_CONCURRENCY: ${EVO_HUB_BLOB_CONCURRENCY:-32}
@@ -129,7 +130,9 @@ services:
   # backend's user too, from the wheels of the bundle only. The volume is mounted at /plugins, a directory of the image
   # that root owns, because root here has neither CAP_DAC_OVERRIDE nor CAP_FOWNER and cannot enter /cache (hub's,
   # 0750). Without EVO_HUB_PLUGIN_HOST_TOKEN it runs no backend and answers only its health check. Its limits bound
-  # every backend together; each backend also has limits of its own (open files, memory, processes of its user).
+  # every backend together; each backend also has limits of its own (open files, memory, 128 processes of its user).
+  # 2048 pids: fifteen backends at their own limit leave 128 to the host, which kills a plugin's processes without
+  # starting one of its own.
   plugins:
     <<: *hardening
     image: ghcr.io/maycuatroi1/evo-agents-hub:${EVO_HUB_VERSION:-unset-EVO_HUB_VERSION}
@@ -151,7 +154,7 @@ services:
     expose: ["8090"]
     cpus: ${EVO_HUB_PLUGINS_CPUS:-1}
     mem_limit: ${EVO_HUB_PLUGINS_MEMORY:-2g}
-    pids_limit: ${EVO_HUB_PLUGINS_PIDS:-512}
+    pids_limit: ${EVO_HUB_PLUGINS_PIDS:-2048}
     healthcheck:
       test:
         - CMD

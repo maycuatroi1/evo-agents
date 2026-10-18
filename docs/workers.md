@@ -419,7 +419,7 @@ that does not match plan.schema.json, 413 over the size the hub keeps, the label
 and the warnings of the semantic checks in the answer. The dispatcher's writer role is checked again at each write:
 403 once it is lost, or the grant is gone. Without `--if-revision` a plan the hub holds is never replaced (409
 `revision_conflict`, with the plan as held). Each revision records the run (`run_id` of the revisions, which
-`evo-agents hub plan history` shows as `owner (author run #N)`), and the run points to the plan it wrote at its
+`evo-agents hub plan history` shows as `owner (run #N)`), and the run points to the plan it wrote at its
 latest revision (`plan_id` and `plan_revision` of the run, and a system event per revision).
 
 An author run writes one plan. `evo-agents hub run author REQUEST --plan ID` (`plan_id` of the dispatch) aims it at a
@@ -1227,14 +1227,55 @@ environment already has is passed on as it is. Why 200,000: the 33 sessions of w
 2026-10-11 peaked at a median of 41,950 tokens of context and none compacted; the six that passed 200,000 (219,000
 to 297,000) were runs of 105 to 188 model calls, each re-reading 17 to 31 million cached tokens, since every call
 reads the whole context again. Under this window those six would have
-compacted as they neared it, and the other 27 stayed below it. Codex keeps its own compaction.
+compacted as they neared it, and the other 27 stayed below it.
+
+Codex compacts the thread of a run's agent as it nears 200,000 tokens and keeps at most 8,000 tokens of each tool
+output in the thread's history: the thread's config, on `thread/start` and `thread/resume` and with `-c` in the
+terminal UI, gets `model_auto_compact_token_limit=200000` and `tool_output_token_limit=8000`.
+`EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT` and `EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT` in the daemon's environment
+set other values, and `off` or `0` leaves Codex's own. A key the owner's codex config sets, at the top of
+`$CODEX_HOME/config.toml`, in the profile its `profile` names, or in the worktree's `.codex/config.toml`, stays as the
+owner set it, since the thread's config would override it; an agent profile's config (features, MCP servers) is merged
+last. Codex 0.153.4 takes both keys from the thread's config: a thread given a limit of 20,000 compacted after its
+first request of 31,594 tokens, and one given 64 tokens for tool output grew by 176 tokens of input after a command
+that printed 3,000 lines (the rollout keeps the whole output). Why these values:
+
+- 200,000 for compaction. The models codex 0.153.4 offers have a context window of 272,000 tokens
+  (`models_cache.json`), of which Codex counts 95% usable (258,400). With no limit set it compacts at 90% of the
+  window (244,800), and it caps a limit it is given at that 90% too, so a model with a smaller window compacts earlier
+  anyway (`auto_compact_token_limit` in `codex-rs/protocol/src/openai_models.rs` of codex's main branch, read on
+  2026-10-18). 200,000 is the window of a Claude Code run, so runs on both runtimes compare, and it leaves 58,400
+  usable tokens for the compaction itself. Codex sessions on the laptop up to 2026-10-17 peaked at a median of 190,000
+  tokens of context (15 sessions, p90 437,000, under the owner's own limit of 800,000; report Rà soát quản lý context
+  of the harness): a session of median length ends before it compacts, and the long ones compact instead of
+  re-reading 400,000 tokens a request.
+- 8,000 for a tool output. The models' own budget is 10,000 tokens (`truncation_policy` in `models_cache.json`);
+  Codex counts 4 bytes a token and, past the budget, keeps the head and the tail of the output with a note of how many
+  tokens it cut. Of 6,845 text outputs in the laptop's Codex rollouts from 2026-10-01 to 2026-10-18, the median was
+  1,955 characters, p95 31,990, and 5.8% passed 30,000. 8,000 tokens, about 32,000 bytes, keep an evo-hub or evo-kg
+  result at its cap of 25,000 characters whole when it is ASCII, and cut about the largest 5% of outputs a little
+  earlier. A model codex has no metadata for gets 10,000 bytes by default (the same source), and keeps more under this
+  budget.
+
+opencode drops old tool outputs as a run goes on: the run's `opencode serve`, headless and for the terminal UI, gets
+`compaction.prune` on in `OPENCODE_CONFIG_CONTENT`, merged into what the variable held (opencode's default is off).
+At the end of each turn opencode 1.18.34 then clears the outputs of finished tools beyond the newest 40,000 tokens of
+them, leaving the last two turns and the `skill` tool alone, once that frees more than 20,000 tokens; the model sees
+`[Old tool result content cleared]` in their place (read in the 1.18.34 binary, `SessionCompaction.prune`).
+`EVO_WORKER_OPENCODE_COMPACTION_PRUNE` set to `off`, `false` or `0` leaves opencode's own, and so does a
+`compaction.prune` the owner's config sets: in the daemon's `OPENCODE_CONFIG_CONTENT`, in `opencode.json`,
+`opencode.jsonc` or `config.json` of `$XDG_CONFIG_HOME/opencode` (else `~/.config/opencode`), in the file
+`OPENCODE_CONFIG` names, or in the worktree's `opencode.json[c]` or `.opencode/opencode.json[c]`. opencode keeps its
+own compaction when the context is full (`compaction.auto`).
 
 A long tool result stays out of the agent's context as in a session on a laptop: the PostToolUse hook of the evo-hub
-plugin runs in a Claude Code run too, and gives the agent the head and tail of a Bash, Read, Grep or MCP result longer
-than 10,000 characters with the path of a file under `~/.evo/tool-output/` that holds all of it (`EVO_SPOOL_THRESHOLD`
-in the daemon's environment changes the threshold; [hub.md](hub.md), Long tool output). That file, mode 0600 and kept 7
-days, is not the daemon's spool of events, and nothing sends it to the hub. A Codex run keeps Codex's own limit,
-`tool_output_token_limit` in its `config.toml`, since Codex ignores a hook's replacement of a tool's output.
+plugin runs in a Claude Code run too, and gives the agent the head and tail of a Bash, Grep, WebFetch or MCP result
+longer than 10,000 characters, or the head of a Read longer than 40,000, with the path of a file under
+`~/.evo/tool-output/` that holds all of it (`EVO_SPOOL_THRESHOLD` and `EVO_SPOOL_READ_THRESHOLD` in the daemon's
+environment change the thresholds; the tools of evo-hub and evo-kg and a plan's handoff pass whole; [hub.md](hub.md),
+Long tool output). That file, mode 0600 and kept 7
+days, is not the daemon's spool of events, and nothing sends it to the hub. A Codex run has Codex's own limit
+instead, `tool_output_token_limit` (above), since Codex ignores a hook's replacement of a tool's output.
 
 For the heartbeat, each adapter lists the models its runtime offers on the machine, looked at with the runtime itself
 every 5 minutes: Claude Code, which has no command that lists them, gives the aliases its `--model` help names
@@ -1261,6 +1302,25 @@ read in the agent's main thread: for Claude Code the input, cache creation and c
 model, as the stream's `assistant` messages carry them (a subagent's left out); for Codex the input of a request
 (`last.inputTokens` of `thread/tokenUsage/updated`, its cached part in it), with the model's `context_window`; for
 opencode a step's `input`, `cache.read` and `cache.write`. It is null, never 0, when the runtime reported none.
+
+It also holds `first_request_cache_read_input_tokens` and `first_request_cache_creation_input_tokens`: what the first
+request of the model in the session read from the cache and wrote to it, the figure that says whether a new session
+found its prefix cached. For Claude Code they are the `cache_read_input_tokens` and `cache_creation_input_tokens` of
+the first message of the model in the main thread; for Codex the `cachedInputTokens` and `cacheWriteInputTokens` of the
+first `last` that read any input; for opencode the `cache.read` and `cache.write` of the first step that read any
+context. Each is null when the runtime did not report it. When agents go on one after the other in a session (an
+answered decision, a move to another account), the keys stay those of the first one that reported them; they are null
+when the session started in the terminal UI, whose requests report no usage. A run that resumes a parked one reports
+the first request its own agent made in the session.
+
+A Claude Code session of a run asks for the preset system prompt without its dynamic sections
+(`exclude_dynamic_sections`), so the system prompt holds nothing of the machine, the worktree or the step and a new
+session reads it from the cache that a session of another run, step or worktree wrote. Claude Code 2.1.296 moves its
+auto memory section, whose path names the worktree, into the first user message, next to CLAUDE.md and the git status
+snapshot, so the agent still gets its memory. With one-turn sessions on 2026-10-18, the first request in a second
+worktree read 11,504 tokens from the cache (the tools and the whole system prompt) where it read 10,488 before. The
+rest of a first request, from the first user message on, is the session's own: it was written anew even in the same
+worktree with a prompt that differed only in its last words, so the order of a step's prompt does not change it.
 
 A runtime is available when its binary answers `--version` with at least the version the adapter was checked with,
 and the package the adapter needs is installed at least at the version checked: Claude Code 2.1.289 with
@@ -1564,9 +1624,10 @@ The run's record (`runs/<run>/run.json`) lists its sessions under `step_sessions
 started_at, ended_at, status, usage}`, the status being the step's after its session; a run that resumes a parked one
 takes over the parked run's list. The usage the run reports with its end adds up its sessions: each runtime's numbers
 summed (Claude Code's running `total_cost_usd` taken per session, then added up), the largest `peak_context_tokens`
-(null when no runtime reported one), and `sessions`, the latest 100 sessions, each `{step, session_id, run_id}` with
-the numbers of its usage (`sessions_left_out` counts the others). `GET .../runs/{id}` shows it in `usage`, and the run
-page lists it as the step sessions card. A worker whose daemon is older takes no such run (see [Claim](#claim)).
+(null when no runtime reported one), the first request of its first session, and `sessions`, the latest 100 sessions,
+each `{step, session_id, run_id}` with the numbers of its usage, its own first request among them
+(`sessions_left_out` counts the others). `GET .../runs/{id}` shows it in `usage`, and the run page lists it as the step
+sessions card. A worker whose daemon is older takes no such run (see [Claim](#claim)).
 
 ### A default branch the remote moved on
 

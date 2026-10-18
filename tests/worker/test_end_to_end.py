@@ -32,6 +32,7 @@ checkout's.
 from __future__ import annotations
 
 import asyncio
+import functools
 import json
 import os
 import shutil
@@ -129,8 +130,20 @@ class Hub:
         )
 
     def start_api(self) -> None:
-        command = [sys.executable, "-m", "evo_agents", "hub", "serve", "--host", "127.0.0.1", "--port", str(self.port)]
-        self.api = _spawn(command, self.env, self.api_log)
+        """``hub serve`` on a port of its own. free_port gives the port back, and hub serve binds it only after its
+        migrations: in between, another test's hub can take it and answer the health check in this one's place, with
+        a fake GitHub that issued none of this test's tokens. So the start waits for its own process to say it runs
+        on the port, and takes a new port when another hub had it."""
+        for _ in range(3):
+            start = self.api_log.stat().st_size if self.api_log.exists() else 0
+            command = ["hub", "serve", "--host", "127.0.0.1", "--port", str(self.port)]
+            self.api = _spawn([sys.executable, "-m", "evo_agents", *command], self.env, self.api_log)
+            if wait_until(functools.partial(self._bound, start), "hub serve to listen", 60, self.logs) == "running":
+                break
+            self.port = pg.free_port()
+            self.url = f"http://127.0.0.1:{self.port}"
+        else:
+            pytest.fail(f"hub serve found its port taken three times\n{self.logs()}")
 
         def live_now() -> bool:
             assert self.api.poll() is None, f"hub serve exited {self.api.returncode}:\n{self.logs()}"
@@ -141,6 +154,19 @@ class Hub:
                 return False
 
         wait_until(live_now, "hub serve to answer", 60, self.logs)
+
+    def _bound(self, start: int) -> str | None:
+        """``running`` once the hub serve started last says it listens on its port, ``taken`` when it exited because
+        another process had the port; what it wrote before ``start`` belongs to an earlier try."""
+        with open(self.api_log, "rb") as log:
+            log.seek(start)
+            written = log.read().decode("utf-8", errors="replace")
+        if f"Uvicorn running on {self.url} " in written:
+            return "running"
+        if self.api.poll() is None:
+            return None
+        assert "address already in use" in written.lower(), f"hub serve exited {self.api.returncode}:\n{self.logs()}"
+        return "taken"
 
     def start_jobs(self) -> None:
         self.jobs = _spawn([sys.executable, "-m", "evo_agents", "hub", "worker"], self.env, self.jobs_log)

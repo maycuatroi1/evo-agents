@@ -150,6 +150,8 @@ def test_plugin_manifest_lists_every_problem_of_a_manifest_at_once():
         (b"[1, 2]", f"{MANIFEST_FILE} holds list, not an object"),
         (b" " * (MAX_MANIFEST + 1), f"{MANIFEST_FILE} is over 256 KiB"),
     ],
+    # Ids of their own: pytest puts the id in the variable PYTEST_CURRENT_TEST, and Windows refuses one of 256 KiB.
+    ids=["unclosed", "not-utf-8", "a-list", "over-256-kib"],
 )
 def test_plugin_manifest_that_is_not_an_object_of_json_is_refused(source, problem):
     with pytest.raises(ManifestError, match=problem):

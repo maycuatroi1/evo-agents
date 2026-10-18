@@ -69,7 +69,7 @@ export function RunHeader({
   const tRun = useTranslations("runs.detail");
   const line = useStatusLine(run);
   const plan = run.kind === "plan";
-  const { counts, current } = usePlanProgress(run);
+  const { pending, counts, current } = usePlanProgress(run);
   return (
     // The controls wrap under the line when the width leaves them no room, so the page never scrolls sideways.
     <header className="flex min-w-0 flex-wrap items-start gap-x-3 gap-y-2" data-testid="run-header">
@@ -94,6 +94,9 @@ export function RunHeader({
                   {t("step", { key: current.key, title: stepLabel(current) || current.key })}
                 </Link>
               </>
+            ) : pending ? (
+              // The step's place while the plan is read, so the line does not grow under the reader.
+              <span className="ml-1 block h-3.5 w-40 max-w-full animate-pulse rounded-md bg-muted" data-testid="run-header-loading" />
             ) : null}
           </span>
         ) : sub ? (
@@ -120,6 +123,8 @@ export function RunHeader({
               <span data-testid="run-progress-text">{t("progressShort", { done: counts.done, total: counts.total })}</span>
             </span>
           </>
+        ) : pending ? (
+          <span className="block h-3.5 w-24 animate-pulse rounded-md bg-muted" />
         ) : null}
         {/* A run going as it should (running, verifying) needs no words: the line says only what is not usual. */}
         <span className={cn("tabular-nums", STATE_TONE[run.state], (run.state === "running" || run.state === "verifying") && "sr-only")} data-testid="run-status-line">

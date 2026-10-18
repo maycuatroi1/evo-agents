@@ -79,10 +79,10 @@ Paper lies flat: `elevation-raised` is none, so a card is its 1 px rule; menus, 
 | `brand` | `brand` | `#2f4bd8` (6.7:1 on surface, 5.8:1 on brand-soft and surface-selected) | `#8c9dff` (7.9:1, 6.2:1) | links, the selected tab underline, the selected nav icon, running |
 | `brand-hover` | `brand-hover` | `#263fba` (8.4:1) | `#a3b0ff` (9.7:1) | link hover |
 | `brand-soft` | `brand-soft` | `#ebeefd` | `#19204a` | ground of the running pill and brand tags |
-| `on-brand` | `on-brand` | `#ffffff` (6.7:1 on brand) | `#09090b` (7.9:1) | glyphs on a brand fill: the logo tile |
+| `on-brand` | `on-brand` | `#ffffff` (6.7:1 on brand) | `#09090b` (7.9:1) | glyphs on a brand fill |
 | `focus-ring` | `ring` | = `brand` (6.7:1 on canvas) | = `brand` (7.9:1) | the 2 px keyboard focus outline |
 
-Cobalt is never a large fill; the logo tile is the one exception.
+Cobalt is never a large fill.
 
 **Branding.** A hub admin may set `brand`, `brand-hover`, `brand-soft` and `on-brand` for each theme
 (Administration, Branding; `evo_agents.hub.branding`), and no other token. The hub refuses a colour that leaves a pair
@@ -106,8 +106,8 @@ token; dots, bars and progress segments use the solid one. Ratios are text on th
 
 `on-danger` (`#ffffff` light, 4.6:1; `#09090b` dark, 5.9:1) is the label on a `danger-solid` fill, which darkens on
 hover (`hover:brightness-94`) and never lightens, so the label keeps its ratio. `danger-solid` is
-a mark and a fill, not text: error text is `text-danger`. Amber is the same idea as
-the mark's third node, the person in the loop; it is not a warning colour for anything else.
+a mark and a fill, not text: error text is `text-danger`. Amber means a person is
+needed; it is not a warning colour for anything else.
 
 **Terminal.** The log, tool output and the web terminal sit on `term-bg` in both themes. Every colour below is
 measured on `term-bg` and holds at least 5.9:1 on the hovered row (`term-row`, `#141820`).
@@ -262,11 +262,14 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
 
-The mark (`components/brand.tsx`, `public/icon.svg`) is three linked nodes on a rounded tile: the tile in `brand`
-(`#2f4bd8` in the favicon), two nodes and the edges in `on-brand`, the third node amber `#fbbf24` in both themes. It
-shows at 20 px or larger beside the name in Plex Sans 600, and is never recoloured. A hub's branding (Administration,
+The mark (`components/brand.tsx`) is a brush-weight lowercase e drawn as an ensō, heavy at the lower left with a
+tapered tail, a sibling of omelet.tech's mark. In the shell it has no tile and takes `foreground`: ink `#09090b` in
+light, white in dark; branding colours never change it. The favicon (`public/icon.svg`) puts it on a rounded tile
+that follows the system theme, an ink tile with a white e in light and the reverse in dark; the home screen icon
+(`public/apple-icon.png`, 180 px) is the ink tile, square, for the phone to round. The mark shows at 16 px or larger
+beside the name in Plex Sans 600, and is never recoloured. A hub's branding (Administration,
 Branding) may put its own logo in the mark's place (`HubMark`), its own favicon in the browser's tab and its own
-product name beside them; without one the shell shows the mark, the favicon and "evo-agents hub".
+product name beside them; without one the shell shows the mark, the favicon and "Evo Agent Hub".
 
 ## Spacing and layout
 
@@ -438,7 +441,7 @@ Shared pieces built on them:
   corners, never round. `NAME_LINK` is the name in a table's first column or a list's primary cell: text colour,
   `brand` on hover.
 - `components/shell`: the kit's AppShell. The sidebar (`app-sidebar.tsx`, links in `nav.ts`) carries the mark and
-  "evo-agents hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
+  "Evo Agent Hub" (Plex Sans 600, the mark at 24 px), the project switcher, then Home, Inbox and Monitor, the current project
   (Overview, Plans, Runs, Insights, Curator, Agents, Memories, Skills, Knowledge graph, then the pages its enabled plugins add
   and Plugins; section Plugins below), the hub (Workers, My memories, Shared
   skills, Administration for a hub admin), and at the foot the fleet line and the account. Inbox counts the decisions
