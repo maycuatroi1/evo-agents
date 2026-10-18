@@ -5,8 +5,8 @@ over GET, POST, PATCH and DELETE /v1/projects/{p}/agents.
 deleted ones. ``show`` prints one profile whole, each axis with its allowlist. Every member of the project may read
 them. ``create``, ``edit`` and ``delete`` need the admin role on the project.
 
-A profile's permissions are seven axes (credential, tool, skill, worker, project, model, runtime), each ``all`` or an
-allowlist. ``--allow AXIS:ITEM`` (repeatable) makes AXIS an allowlist of the items given for it, such as ``--allow
+A profile's permissions are eight axes (credential, tool, skill, worker, project, model, runtime, environment), each
+``all`` or an allowlist; an axis a profile does not name, as a hub older than the axis answers, reads as ``all``. ``--allow AXIS:ITEM`` (repeatable) makes AXIS an allowlist of the items given for it, such as ``--allow
 tool:read --allow tool:edit --allow credential:github-app``; ``--none AXIS`` makes AXIS an allowlist of nothing, and
 ``--all AXIS`` (``edit`` only) makes it allow everything again. ``edit`` changes only the axes named, sending the
 profile's other axes as they are, with ``if_version`` set to the version it read, so a change made meanwhile is a
@@ -96,7 +96,8 @@ def _show(agent: dict) -> None:
     instructions = agent["instructions"]
     print(f"  instructions: {f'{len(instructions)} characters' if instructions else 'none'}")
     for axis in AXES:
-        print(f"  {axis + ':':<12}{_axis_text(agent['permissions'][axis])}")
+        label = f"{axis}:".ljust(12) if len(axis) < 11 else f"{axis}: "
+        print(f"  {label}{_axis_text(agent['permissions'].get(axis) or {})}")
     print(f"  created by {agent['created_by']} at {when(agent['created_at'])} UTC, changed {when(agent['updated_at'])}")
 
 
@@ -157,8 +158,9 @@ def _avatar(path: str) -> dict:
 
 
 def permissions_from(args, current: dict | None = None) -> dict | None:
-    """The permissions to send: ``current`` (all axes ``all`` when None) with the axes ``--allow``, ``--none`` and
-    ``--all`` name changed; None when none is named and there is nothing to send."""
+    """The permissions to send: ``current`` (none when None) with the axes ``--allow``, ``--none`` and ``--all`` name
+    changed; None when none is named and there is nothing to send. An axis left out allows all, so a hub that does not
+    know one of AXES is never sent it unless the command names it."""
     named: dict[str, list[str]] = {}
     for entry in args.allow or ():
         axis, sep, item = entry.partition(":")
@@ -177,7 +179,7 @@ def permissions_from(args, current: dict | None = None) -> dict | None:
     for axis in AXES:
         if axis in named:
             rules[axis] = {"mode": "allowlist", "allow": named[axis]}
-        elif axis in reset or axis not in rules:
+        elif axis in reset:
             rules[axis] = {"mode": "all"}
     return rules
 

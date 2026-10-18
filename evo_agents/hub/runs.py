@@ -74,7 +74,7 @@ OFFLINE_AFTER_SECONDS = 300  # a worker with no heartbeat for longer than this i
 LEASE_SECONDS = 300  # a claim and each heartbeat set a held run's lease to expire this long after now
 CLAIM_WAIT_SECONDS = 25  # the longest a claim waits for a run before answering that there is none
 MAX_SLOTS = 16  # runs a worker holds at once at most (workers.slots, as schema 0026 bounds it); 1 is the least
-MAX_WORKER_PLUGINS = 16  # plugins whose runtimes a worker takes (workers.plugins, as schema 0039 bounds it)
+MAX_WORKER_PLUGINS = 16  # plugins whose runtimes and environments a worker takes (workers.plugins, schema 0039)
 MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's expired lease fails it
 # The next attempt of a run lost on a worker goes back to that worker only once it is steady: its heartbeats have
 # come for STEADY_SECONDS, none more than STEADY_GAP_SECONDS after the one before (unlike a laptop that slept, or one
@@ -100,8 +100,9 @@ FAILURE_CAUSES = (
     "worker_stopped",  # the daemon was stopped, or failed, while the run was held
     "rate_limit",  # the agent's account hit its usage limit and the run could not move to another one
     "account_auth",  # the agent's account failed to authenticate (its token refused) and the run could not move
+    "environment",  # preflight: the worker cannot run the agent in the environment its claim names (no container engine)
 )
-PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool")  # what a run checks before its agent starts
+PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
 
 MAX_BATCH_EVENTS = 500  # events in one POST of a run's events
@@ -129,8 +130,11 @@ AGENT_PROFILES = "agent_profiles"
 # a daemon that takes the runtimes of the plugins its owner accepted, each an ACP agent run by its adapter of ACP
 # (evo_agents.plugins.runtimes, evo_agents.worker.runtimes.acp); the hub hands a run of such a runtime to no other
 PLUGIN_RUNTIMES = "plugin_runtimes"
+# a daemon that runs a run's agent in the environment its claim names (evo_agents.worker.environments): a container of
+# a plugin's environment, through Docker or Podman; the hub hands a run of such an environment to no other
+ENVIRONMENTS = "environments"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
-WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES, PLUGIN_RUNTIMES)
+WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES, PLUGIN_RUNTIMES, ENVIRONMENTS)
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
 # A runtime's name, any included: one of RUNTIMES, or a plugin's <plugin>/<name> (evo_agents.plugins.runtimes). The hub

@@ -3,8 +3,12 @@ worker may take now, its lease, and the RunSpec it is handed, prompt, plan, budg
 profile included. The run's agent profile, at the version the run went under, decides which workers may take it and
 the runtime of a run that asks for any (``service.profiles``). A run of a plugin's runtime goes only to a worker that
 claims runs of it (``plugin_runtimes.claimable``), with the runtime's declaration as the plugin enabled on the run's
-project has it now; one whose plugin is no longer enabled there fails at the claim, saying why. A claim records the
-plugins of the run's project, each with its version and the digest of the run's effective config
+project has it now; one whose plugin is no longer enabled there fails at the claim, saying why. The run's
+environment is the first of its profile's environment axis that the worker takes (``plugin_environments.picked``):
+the host for an axis that allows all, else host or a plugin's environment the worker's owner accepted and its daemon
+runs (``runs.ENVIRONMENTS``), recorded in runs.environment and handed with its declaration; a run whose allowlist
+names no environment its project still registers fails at the claim, saying why. A claim records the plugins of the
+run's project, each with its version and the digest of the run's effective config
 (``plugin_configs.record_run_plugins``)."""
 
 from __future__ import annotations
@@ -12,7 +16,7 @@ from __future__ import annotations
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
@@ -34,14 +38,17 @@ from evo_agents.hub.server.runs.models import (
     PlanCopy,
     PluginRuntime,
     Run,
+    RunEnvironment,
     RunSkill,
     RunSpec,
     available,
 )
-from evo_agents.hub.server.runs.service import plugin_runtimes
+from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
 from evo_agents.hub.server.runs.service.profiles import claim_clause, pick_runtime, run_profile, runtime_rule
 from evo_agents.hub.server.runs.service.views import current_plan, lost_here, run_view, steady, text_or_none
 from evo_agents.hub.server.security import Principal
+from evo_agents.plugins.run_environments import ContainerEnvironment
+from evo_agents.plugins.runtimes import AcpRuntime
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 
@@ -144,6 +151,7 @@ def _claimable(
     pairs: list[tuple[int, str]],
     *,
     offered: tuple[str, ...] = (),
+    environments: tuple[str, ...] = (),
     plan_runs: bool,
     web_only: bool,
     review_runs: bool = False,
@@ -166,8 +174,8 @@ def _claimable(
     runs (``chat_runs``). A plan run with a session per step needs a daemon that says it runs one (``step_sessions``). A
     worker set to take runs dispatched from the web only (``web_only``) passes over the others, those dispatched before
     schema 0011 included; and it takes only the runs whose agent profile lets it (``profile_gate``,
-    ``profiles.claim_clause``). Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis
-    and its project's id."""
+    ``profiles.claim_clause``, with the plugins' ``environments`` it takes). Each row is the run's id, the runtime it
+    asked for, its kind, its profile's runtime axis, its project's id and its profile's environment axis."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -186,7 +194,7 @@ def _claimable(
     asked = [r.c.runtime.in_([*runtimes, *offered])]
     if runtimes:  # any takes a runtime of the core, never a plugin's
         asked.append(r.c.runtime == "any")
-    query = select(r.c.id, r.c.runtime, r.c.kind, runtime_rule(), r.c.project_id).where(
+    query = select(r.c.id, r.c.runtime, r.c.kind, runtime_rule(), r.c.project_id, runtime_rule("environment")).where(
         r.c.state == "queued",
         r.c.project_id.in_(projects),
         r.c.dispatched_by == owner_id,
@@ -311,17 +319,13 @@ async def _try_claim(
         if not runtimes and not offered:
             return None
         served = {row.project_id: row.name for row in await conn.execute(_served(worker_id, owner_id))}
-        by_name = {project: project_id for project_id, project in served.items()}
-        pairs = []
-        for checkout in checkouts or {}:
-            project, _, repo = checkout.partition("/")
-            if project in by_name and repo:
-                pairs.append((by_name[project], repo))
+        pairs = _checkout_pairs(served, checkouts)
         if not pairs:
             return None
         w = tables.workers
         steadiness = select(func.coalesce(steady(w), False)).where(w.c.id == worker_id)
         is_steady = (await conn.execute(steadiness)).scalar_one()
+        environments = await plugin_environments.offered(conn, worker_id, plugins, features)
         query = _claimable(
             worker_id,
             owner_id,
@@ -329,6 +333,7 @@ async def _try_claim(
             runtimes,
             pairs,
             offered=tuple(offered),
+            environments=tuple(environments),
             plan_runs=runs.takes_plan_runs(version),
             web_only=dispatch_from == "web",
             review_runs="review" in (kinds or ()),
@@ -337,17 +342,18 @@ async def _try_claim(
             chat_runs="chat" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             steady=is_steady,
-            profile_gate=claim_clause(name, labels, runtimes, features, offered),
+            profile_gate=claim_clause(name, labels, runtimes, features, offered, environments),
         )
         row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None
-        run_id, asked, kind, rule, project_id = row
-        declaration = None
-        if asked in offered:
-            declaration = await _declared_or_failed(conn, run_id, asked, project_id, served[project_id])
-            if declaration is None:
-                return None
+        run_id, asked, kind, rule, project_id, environment_rule = row
+        project = served[project_id]
+        placed = await _placed_or_failed(conn, run_id, asked if asked in offered else None, project_id, project)
+        if placed is not None:
+            placed = await _environment_or_failed(conn, run_id, placed, environment_rule, environments, project_id)
+        if placed is None:
+            return None
         skill = None
         if kind == "author":
             skill = await author_skill(conn)
@@ -364,7 +370,7 @@ async def _try_claim(
             "leased",
             "worker",
             reason=f"worker {name} claimed it",
-            columns={"worker_id": worker_id, "runtime": runtime},
+            columns={"worker_id": worker_id, "runtime": runtime, "environment": placed.environment},
             token_id=user.token_id,
             lease=lease,
         )
@@ -372,12 +378,68 @@ async def _try_claim(
         spec = await _run_spec(conn, run_id, tuple(features or ()))
         if skill is not None:
             spec.skills = [await _skill_ticket(blobs, skill)]
-        if declaration is not None:
-            spec.plugin_runtime = PluginRuntime(**declaration.to_json())
+        if placed.runtime is not None:
+            spec.plugin_runtime = PluginRuntime(**placed.runtime.to_json())
+        if placed.container is not None:
+            spec.environment = RunEnvironment(**placed.container.to_json())
         if gone is not None and await gone():
             raise ClaimAbandoned(run_id)  # leaving the block rolls the transaction back
     log.info("run claimed", extra={"run_id": run_id, "worker_id": worker_id, "runtime": runtime})
     return spec
+
+
+def _checkout_pairs(served: dict[int, str], checkouts) -> list[tuple[int, str]]:
+    """(project id, repo) of each of the worker's ``checkouts`` (keyed <project>/<repo>) in a project it ``served``."""
+    by_name = {project: project_id for project_id, project in served.items()}
+    pairs = []
+    for checkout in checkouts or {}:
+        project, _, repo = checkout.partition("/")
+        if project in by_name and repo:
+            pairs.append((by_name[project], repo))
+    return pairs
+
+
+@dataclass(frozen=True)
+class Placed:
+    """Where a claimed run's agent runs, beyond the core: the declaration of the plugin's runtime it asked for, and
+    the environment of a plugin its claim picked with its declaration (None for both: the host)."""
+
+    project: str
+    runtime: AcpRuntime | None = None
+    environment: str | None = None
+    container: ContainerEnvironment | None = None
+
+
+async def _placed_or_failed(
+    conn: AsyncConnection, run_id: int, runtime: str | None, project_id: int, project: str
+) -> Placed | None:
+    """Placed with the declaration of the plugin's runtime ``runtime`` (None for a runtime of the core) that run
+    ``run_id`` asks for; None once the run failed for want of one (``_declared_or_failed``)."""
+    if runtime is None:
+        return Placed(project)
+    declaration = await _declared_or_failed(conn, run_id, runtime, project_id, project)
+    return None if declaration is None else Placed(project, declaration)
+
+
+async def _environment_or_failed(
+    conn: AsyncConnection, run_id: int, placed: Placed, rule: dict | None, environments: list[str], project_id: int
+) -> Placed | None:
+    """``placed`` with the environment run ``run_id`` runs in, picked from its profile's environment axis ``rule``
+    among host and the ``environments`` of plugins the worker takes, with the declaration its project has now; None
+    once the run failed, as the reaper, for want of one: the plugin was disabled there since."""
+    place = await plugin_environments.picked(conn, project_id, rule, environments)
+    if place is not None:
+        environment, container = place
+        return replace(placed, environment=None if container is None else environment, container=container)
+    allow = ", ".join(plugin_environments.allowlist({"environment": rule}) or [])
+    refused = (
+        f"no environment the run's agent profile allows ({allow}) is registered in project {placed.project} now: the "
+        "plugin was disabled there, turned off or removed since the run was dispatched, or its version declares the "
+        "environment no more; enable it and dispatch the run again"
+    )
+    await move_run(conn, run_id, "queued", "failed", "reaper", reason=refused, error=refused)
+    log.warning("run of a plugin's environment failed at its claim", extra={"run_id": run_id})
+    return None
 
 
 async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, project_id: int, project: str):

@@ -317,6 +317,11 @@ class Run(BaseModel):
     )
     profile_id: int | None = Field(None, description="that profile's id, which its handle names for good")
     profile_version: int | None = Field(None, description="the version of the profile whose rules apply to the run")
+    environment: str | None = Field(
+        None,
+        description="the environment of a plugin, <plugin>/<name>, its claim picked from the environment axis of its "
+        "profile, a container its agent runs in; null for a run on the worker's host, and before a claim",
+    )
     chat_id: int | None = Field(None, description="a chat run's group chat; null for any other run")
     chat_message_id: int | None = Field(
         None, description="the message of the chat that started a chat run: the mention, or the reply that woke it"
@@ -391,7 +396,10 @@ class RunProfile(BaseModel):
     version: int
     name: str
     instructions: str = Field(description="to add to the agent's system prompt; empty for none")
-    permissions: dict = Field(description="the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}")
+    permissions: dict = Field(
+        description="the eight axes, each {mode: all} or {mode: allowlist, allow: [...]}; an axis a version from "
+        "before the axis does not name allows all"
+    )
 
 
 class PluginRuntime(BaseModel):
@@ -409,6 +417,32 @@ class PluginRuntime(BaseModel):
     secrets: list[str] = Field(
         description="the variables the agent needs, from the run's leases or the worker's environment"
     )
+
+
+class RunMount(BaseModel):
+    """A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``)."""
+
+    type: Literal["tmpfs", "volume"]
+    target: str = Field(description="the absolute path in the container")
+    name: str | None = Field(
+        None, description="a volume's name within the plugin; the worker names it evo-<plugin>-<name>"
+    )
+    read_only: bool = False
+    size_mb: int | None = Field(None, description="a tmpfs's size; null: the engine's default")
+
+
+class RunEnvironment(BaseModel):
+    """An environment a plugin enabled on a project declares (``evo_agents.plugins.run_environments``): a container
+    image pinned by its digest, at the plugin's version the hub has installed."""
+
+    environment: str = Field(description="<plugin>/<name>, as the environment axis of a profile names it")
+    plugin: str
+    version: str = Field(description="the plugin's installed version")
+    title: str
+    provider: Literal["container"] = "container"
+    image: str = Field(description="[registry/]repository[:tag]@sha256:<digest>, pulled and run by that digest")
+    network: Literal["none", "outbound"]
+    mounts: list[RunMount] = Field(default_factory=list, description="besides the worktree and the run's home")
 
 
 class RunSpec(BaseModel):
@@ -471,6 +505,11 @@ class RunSpec(BaseModel):
         description="for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the "
         "worker runs through its adapter of ACP; null for a runtime of the core",
     )
+    environment: RunEnvironment | None = Field(
+        None,
+        description="the environment of a plugin the claim picked from the run's profile, at the plugin's version "
+        "installed now, which the worker's container provider runs the agent in; null: the worker's host",
+    )
 
 
 class Claim(BaseModel):
@@ -530,7 +569,8 @@ class HeartbeatRequest(BaseModel):
         description="what the daemon does besides its kinds of run: session_per_step, a plan run with a session for "
         "each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; "
         "agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the "
-        "agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP. One that says none "
+        "agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run "
+        "whose agent runs in a container of a plugin's environment. One that says none "
         "takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is "
         "left out",
     )
@@ -589,7 +629,8 @@ class WorkerSettings(BaseModel):
     name: str
     labels: list[str]
     plugins: list[str] = Field(
-        default_factory=list, description="the plugins whose runtimes the worker takes; a hub before 0039 sends none"
+        default_factory=list,
+        description="the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none",
     )
 
 

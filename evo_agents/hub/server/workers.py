@@ -36,8 +36,8 @@ worker gets 403, and anyone else 404. Setting the value it has changes nothing a
 
 PATCH /v1/workers/{id} changes the worker's slots (1 to ``runs.MAX_SLOTS``), labels (as a pairing takes them), name
 (unique among the owner's workers that are not revoked, 409 otherwise) or plugins (the ids of at most
-``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes it takes, ``docs/plugins.md``), each field optional but at least one
-given. Only its owner changes them, from a web session with its CSRF header or with their machine token: a hub admin
+``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes and environments it takes, ``docs/plugins.md``), each field optional
+but at least one given. Only its owner changes them, from a web session with its CSRF header or with their machine token: a hub admin
 who does not own the worker gets 403, anyone else 404, and a revoked worker 409. Giving the values it has changes
 nothing and is not audited. The daemon learns the new settings from the answer to its next heartbeat (``settings``),
 and the hub's claim counts the runs a worker holds against its slots as they are now.
@@ -276,7 +276,9 @@ class Worker(BaseModel):
     agent_version: str
     slots: int
     labels: list[str]
-    plugins: list[str] = Field(description="the plugins whose runtimes it takes, as its owner set them")
+    plugins: list[str] = Field(
+        description="the plugins whose runtimes and environments it takes, as its owner set them"
+    )
     projects: list[str]
     runtimes: dict = Field(
         description="the runtimes its last heartbeat reported, keyed claude-code, opencode, codex or <plugin>/<name>, "
@@ -318,7 +320,9 @@ class WorkerUpdate(BaseModel):
     labels: list[Annotated[str, Field(pattern=LABEL)]] | None = Field(None, max_length=MAX_LABELS)
     name: str | None = Field(None, pattern=WORKER_NAME, description="unique among the owner's workers not revoked")
     plugins: list[Annotated[str, Field(pattern=PLUGIN_ID)]] | None = Field(
-        None, max_length=runs.MAX_WORKER_PLUGINS, description="the plugins whose runtimes it takes; [] for none"
+        None,
+        max_length=runs.MAX_WORKER_PLUGINS,
+        description="the plugins whose runtimes and environments it takes; [] for none",
     )
 
     @model_validator(mode="after")

@@ -104,6 +104,7 @@ def run_select():
             ap.c.handle.label("profile"),
             r.c.profile_id,
             r.c.profile_version,
+            r.c.environment,
             r.c.chat_id,
             r.c.chat_message_id,
             r.c.hop,

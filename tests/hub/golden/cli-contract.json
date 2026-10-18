@@ -637,7 +637,8 @@
             "worker",
             "project",
             "model",
-            "runtime"
+            "runtime",
+            "environment"
           ]
         },
         {
@@ -812,7 +813,8 @@
             "worker",
             "project",
             "model",
-            "runtime"
+            "runtime",
+            "environment"
           ]
         },
         {
@@ -829,7 +831,8 @@
             "worker",
             "project",
             "model",
-            "runtime"
+            "runtime",
+            "environment"
           ]
         },
         {
@@ -4496,6 +4499,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -4662,6 +4666,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -4761,6 +4766,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5031,6 +5037,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5130,6 +5137,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5229,6 +5237,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5618,6 +5627,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5733,6 +5743,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5881,6 +5892,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5980,6 +5992,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -29454,7 +29467,7 @@
               },
               "type": "array",
               "title": "Restricted",
-              "description": "the axes that are allowlists, in the order of the seven"
+              "description": "the axes that are allowlists, in the order of the eight"
             },
             "version": {
               "type": "integer",
@@ -29680,7 +29693,7 @@
                   "type": "null"
                 }
               ],
-              "description": "the seven axes whole; an axis left out allows all"
+              "description": "the eight axes whole; an axis left out allows all"
             },
             "if_version": {
               "anyOf": [
@@ -29860,13 +29873,17 @@
             },
             "runtime": {
               "$ref": "#/components/schemas/AgentAxis",
-              "description": "claude-code, opencode, codex"
+              "description": "claude-code, opencode, codex, and plugins' runtimes <plugin>/<name>"
+            },
+            "environment": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "where the agent runs, in order of preference: host, the worker's own machine, and plugins' environments <plugin>/<name>, each a container; all runs on the host"
             }
           },
           "additionalProperties": false,
           "type": "object",
           "title": "AgentPermissions",
-          "description": "What the runs of a profile may use, on seven axes; an axis left out allows all."
+          "description": "What the runs of a profile may use, on eight axes; an axis left out allows all."
         },
         "AgentReactionIn": {
           "properties": {
@@ -35476,7 +35493,7 @@
                 }
               ],
               "title": "Features",
-              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
+              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run whose agent runs in a container of a plugin's environment. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
             }
           },
           "type": "object",
@@ -43137,6 +43154,18 @@
               "title": "Profile Version",
               "description": "the version of the profile whose rules apply to the run"
             },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "the environment of a plugin, <plugin>/<name>, its claim picked from the environment axis of its profile, a container its agent runs in; null for a run on the worker's host, and before a claim"
+            },
             "chat_id": {
               "anyOf": [
                 {
@@ -43871,6 +43900,66 @@
           ],
           "title": "RunDay"
         },
+        "RunEnvironment": {
+          "properties": {
+            "environment": {
+              "type": "string",
+              "title": "Environment",
+              "description": "<plugin>/<name>, as the environment axis of a profile names it"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the plugin's installed version"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "provider": {
+              "type": "string",
+              "const": "container",
+              "title": "Provider",
+              "default": "container"
+            },
+            "image": {
+              "type": "string",
+              "title": "Image",
+              "description": "[registry/]repository[:tag]@sha256:<digest>, pulled and run by that digest"
+            },
+            "network": {
+              "type": "string",
+              "enum": [
+                "none",
+                "outbound"
+              ],
+              "title": "Network"
+            },
+            "mounts": {
+              "items": {
+                "$ref": "#/components/schemas/RunMount"
+              },
+              "type": "array",
+              "title": "Mounts",
+              "description": "besides the worktree and the run's home"
+            }
+          },
+          "type": "object",
+          "required": [
+            "environment",
+            "plugin",
+            "version",
+            "title",
+            "image",
+            "network"
+          ],
+          "title": "RunEnvironment",
+          "description": "An environment a plugin enabled on a project declares (``evo_agents.plugins.run_environments``): a container\nimage pinned by its digest, at the plugin's version the hub has installed."
+        },
         "RunEvent": {
           "properties": {
             "seq": {
@@ -44224,6 +44313,59 @@
           ],
           "title": "RunList"
         },
+        "RunMount": {
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "tmpfs",
+                "volume"
+              ],
+              "title": "Type"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "the absolute path in the container"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "a volume's name within the plugin; the worker names it evo-<plugin>-<name>"
+            },
+            "read_only": {
+              "type": "boolean",
+              "title": "Read Only",
+              "default": false
+            },
+            "size_mb": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size Mb",
+              "description": "a tmpfs's size; null: the engine's default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "type",
+            "target"
+          ],
+          "title": "RunMount",
+          "description": "A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``)."
+        },
         "RunPlugin": {
           "properties": {
             "name": {
@@ -44278,7 +44420,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Permissions",
-              "description": "the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}"
+              "description": "the eight axes, each {mode: all} or {mode: allowlist, allow: [...]}; an axis a version from before the axis does not name allows all"
             }
           },
           "type": "object",
@@ -44679,6 +44821,17 @@
                 }
               ],
               "description": "for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunEnvironment"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host"
             }
           },
           "type": "object",
@@ -47982,7 +48135,7 @@
               },
               "type": "array",
               "title": "Plugins",
-              "description": "the plugins whose runtimes it takes, as its owner set them"
+              "description": "the plugins whose runtimes and environments it takes, as its owner set them"
             },
             "projects": {
               "items": {
@@ -48274,7 +48427,7 @@
               },
               "type": "array",
               "title": "Plugins",
-              "description": "the plugins whose runtimes the worker takes; a hub before 0039 sends none"
+              "description": "the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none"
             }
           },
           "type": "object",
@@ -48345,7 +48498,7 @@
                 }
               ],
               "title": "Plugins",
-              "description": "the plugins whose runtimes it takes; [] for none"
+              "description": "the plugins whose runtimes and environments it takes; [] for none"
             }
           },
           "type": "object",

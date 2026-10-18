@@ -87,7 +87,7 @@ class AgentAxis(BaseModel):
 
 
 class AgentPermissions(BaseModel):
-    """What the runs of a profile may use, on seven axes; an axis left out allows all."""
+    """What the runs of a profile may use, on eight axes; an axis left out allows all."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -99,7 +99,14 @@ class AgentPermissions(BaseModel):
     worker: AgentAxis = Field(default_factory=AgentAxis, description="worker names, or label:<label>")
     project: AgentAxis = Field(default_factory=AgentAxis, description="the other projects whose runs it may take")
     model: AgentAxis = Field(default_factory=AgentAxis, description="model names, as a runtime names them")
-    runtime: AgentAxis = Field(default_factory=AgentAxis, description="claude-code, opencode, codex")
+    runtime: AgentAxis = Field(
+        default_factory=AgentAxis, description="claude-code, opencode, codex, and plugins' runtimes <plugin>/<name>"
+    )
+    environment: AgentAxis = Field(
+        default_factory=AgentAxis,
+        description="where the agent runs, in order of preference: host, the worker's own machine, and plugins' "
+        "environments <plugin>/<name>, each a container; all runs on the host",
+    )
 
     @model_validator(mode="after")
     def _known_items(self) -> AgentPermissions:
@@ -145,7 +152,7 @@ class AgentEdit(BaseModel):
     description: Description | None = None
     instructions: Instructions | None = None
     color: Color | None = None
-    permissions: AgentPermissions | None = Field(None, description="the seven axes whole; an axis left out allows all")
+    permissions: AgentPermissions | None = Field(None, description="the eight axes whole; an axis left out allows all")
     if_version: int | None = Field(None, ge=1, description="409 unless the profile is at this version now")
 
 
@@ -181,7 +188,7 @@ class Agent(BaseModel):
     avatar_sha256: str | None
     is_default: bool = Field(description="the project's default profile, @<project>: every permission")
     permissions: AgentPermissions
-    restricted: list[str] = Field(description="the axes that are allowlists, in the order of the seven")
+    restricted: list[str] = Field(description="the axes that are allowlists, in the order of the eight")
     version: int
     created_by: str
     created_at: datetime
