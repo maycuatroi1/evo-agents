@@ -823,8 +823,9 @@ Shared pieces built on them:
   the Chat run tag (`MessagesSquare`) and links back to the message it answers; the runs list shows it with that tag
   and "A turn of @handle in a group chat". A task run (one turn of a plugin's agent type on a task the plugin handed
   it; docs/plugins.md, Agent types) carries the Task run tag (`Puzzle`), says under its title that it works on the
-  branch `task/<run>` the hub opens as a draft pull request, and the runs list shows it with that tag and "A task a
-  plugin handed to @handle, on branch task/N", linked to the run's page.
+  branch the hub recorded for it (`task/<id of the run the dispatch made>`, a later attempt's too), which the hub opens
+  as a draft pull request, and the runs list shows it with that tag and "A task a plugin handed to @handle, on branch
+  task/N", linked to the run's page.
 - The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
   the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
   picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are

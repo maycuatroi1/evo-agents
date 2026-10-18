@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils";
 
 import { AuthorRunKindBadge, ChatRunKindBadge, PlanRunKindBadge, TaskRunKindBadge } from "./badges";
 import { LocalRunKindBadge, localAccount } from "@/components/local-run";
-import { durationParts, runTiming } from "./model";
+import { durationParts, runTiming, taskBranch } from "./model";
 import { isActiveState, type Run, runHref } from "./queries";
 
 /** Who reads the table: a worker links to its page only for the member who owns it (or a hub admin). */
@@ -117,8 +117,8 @@ function StepCell({ run, showProject }: { run: Run; showProject: boolean }) {
       : t("chatRun.line", { agent: run.profile ?? run.project })
     : task
     ? showProject
-      ? t("taskRun.lineProject", { project: run.project, agent: run.profile ?? run.project, id: run.id })
-      : t("taskRun.line", { agent: run.profile ?? run.project, id: run.id })
+      ? t("taskRun.lineProject", { project: run.project, agent: run.profile ?? run.project, branch: taskBranch(run) })
+      : t("taskRun.line", { agent: run.profile ?? run.project, branch: taskBranch(run) })
     : authorNew
     ? showProject
       ? t("author.newPlanLineProject", { project: run.project })
@@ -188,7 +188,7 @@ function useMobileRun(variant: RunsTableVariant) {
         : chat
           ? t(variant === "worker" ? "chatRun.lineProject" : "chatRun.line", { project: run.project, agent: run.profile ?? run.project })
         : task
-          ? t(variant === "worker" ? "taskRun.lineProject" : "taskRun.line", { project: run.project, agent: run.profile ?? run.project, id: run.id })
+          ? t(variant === "worker" ? "taskRun.lineProject" : "taskRun.line", { project: run.project, agent: run.profile ?? run.project, branch: taskBranch(run) })
           : authorNew
           ? t(variant === "worker" ? "author.newPlanLineProject" : "author.newPlanLine", { project: run.project })
           : plan
