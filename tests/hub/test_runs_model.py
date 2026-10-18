@@ -344,6 +344,7 @@ def test_decisions_and_notices_the_plan_names():
         "chat_mention",
         "chat_added",
         "plugin_disabled",
+        "builder_proposal",
     )
     assert runs.NOTIFICATION_KINDS == ("decision", "notice", "proposal")
     assert runs.DECISION_STATES == ("open", "answered", "expired", "cancelled")

@@ -174,7 +174,9 @@ def test_plugin_consent_shows_what_it_asks_for_and_an_admin_enables_it_by_granti
     for who in ("owner", "other", "reader"):
         listed = client.get(path(), headers=hub[who])
         assert listed.status_code == 200, listed.text
-        (plugin,) = listed.json()
+        by_name = {item["name"]: item for item in listed.json()}
+        assert sorted(by_name) == sorted(["sandbox", *live.image_plugins()]), "with the core plugins of the image"
+        plugin = by_name["sandbox"]
         assert (plugin["name"], plugin["version"], plugin["state"], plugin["enabled"]) == (
             "sandbox",
             "1.0.0",

@@ -244,7 +244,8 @@ WORKER_NOTICE_KINDS = ("push_default_branch", "merge_default_branch", "plan_fini
 # curator_paused: the circuit breaker of a project's night shift paused it, which the hub alone sends too;
 # author_waiting: an author run waits for its owner's reply in its chat, which the hub alone sends as the run waits;
 # chat_mention and chat_added: someone mentioned the member in a group chat, or added them to one (``chats``);
-# plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``)
+# plugin_disabled: the hub turned off an installed plugin that no longer runs on its release (``server.plugin_store``);
+# builder_proposal: @builder proposed a change of settings that waits for the member's approval (core plugin builder)
 NOTICE_KINDS = (
     *WORKER_NOTICE_KINDS,
     "curator_brief",
@@ -253,6 +254,7 @@ NOTICE_KINDS = (
     "chat_mention",
     "chat_added",
     "plugin_disabled",
+    "builder_proposal",
 )
 NOTIFICATION_KINDS = ("decision", "notice", "proposal")  # proposal: a tier 2 proposal of the Curator, in the Inbox
 DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on one channel

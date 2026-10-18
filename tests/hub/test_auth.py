@@ -67,6 +67,7 @@ HUB_TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0036
 HUB_TABLES |= pg.SETTINGS_TABLES  # migration 0037
 HUB_TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0038
 HUB_TABLES |= pg.AGENT_TYPE_TABLES  # migration 0042
+HUB_TABLES |= pg.BUILDER_TABLES  # migration 0043
 
 
 @pytest.fixture
@@ -86,6 +87,7 @@ def audit_rows(db) -> list[tuple]:
         db,
         select(users.c.login, audit.c.token_id, audit.c.action, audit.c.target)
         .select_from(audit.outerjoin(users, users.c.id == audit.c.actor_id))
+        .where(live.not_by_the_image())
         .order_by(audit.c.id),
     )
 
@@ -416,7 +418,8 @@ def test_admin_stats_counts_the_rows_of_every_table(client, github, hub_db):
     admin = sign_in(client, github, ADMIN, 302)
     stats = client.get("/v1/admin/stats", headers=bearer(admin["token"])).json()
     assert set(stats) == HUB_TABLES
-    assert stats["users"] == 2 and stats["tokens"] == 1 and stats["projects"] == 1 and stats["audit"] == 1
+    assert stats["users"] == 2 and stats["tokens"] == 1 and stats["projects"] == 1
+    assert stats["audit"] == 1 + live.image_installs()
     assert stats["memories"] == 0
 
 

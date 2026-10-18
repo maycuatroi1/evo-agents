@@ -177,19 +177,20 @@ def _read_file(where: Path, left: int) -> tuple[bytes, bool]:
     return data, executable
 
 
-def pack(directory: str | os.PathLike) -> Bundle:
-    """The bundle of plugin directory ``directory``; BundleError naming what to fix when it cannot be one."""
+def directory_entries(directory: str | os.PathLike, prefix: str = "") -> list[Entry]:
+    """The files of ``directory`` as entries of a bundle, each path under ``prefix``, in path order; BundleError naming
+    what to fix when one cannot be in a bundle."""
     root = Path(os.path.abspath(Path(directory).expanduser()))
     if not root.is_dir():
         raise BundleError(f"{root} is not a directory")
     entries: list[Entry] = []
     total = 0
     try:
-        walked = list(_walk(root))
+        walked = list(_walk(root, prefix))
     except OSError as exc:
         raise BundleError(f"cannot read {root}: {exc.strerror or exc}") from None
     for path, entry in walked:
-        where = root / path
+        where = root / path[len(prefix) :]
         if entry.is_symlink() or not entry.is_file(follow_symlinks=False):
             raise BundleError(f"{where} is not a regular file; a bundle holds regular files only")
         problem = path_problem(path)
@@ -205,13 +206,29 @@ def pack(directory: str | os.PathLike) -> Bundle:
         if total > MAX_UNPACKED:
             raise BundleError(f"the files of {root} are over {MAX_UNPACKED // MiB} MiB together")
         entries.append(Entry(path, executable, data))
-    entries.sort(key=lambda entry: entry.path)
+    return sorted(entries, key=lambda entry: entry.path)
+
+
+def bundle_of(entries: Iterable[Entry], where: str = "the plugin") -> Bundle:
+    """The bundle of ``entries``, the manifest among them, checked as ``read_bundle`` checks one; BundleError naming
+    what is wrong with them otherwise."""
+    entries = sorted(entries, key=lambda entry: entry.path)
+    if len(entries) > MAX_FILES:
+        raise BundleError(f"{where} holds over {MAX_FILES} files")
+    if sum(len(entry.data) for entry in entries) > MAX_UNPACKED:
+        raise BundleError(f"the files of {where} are over {MAX_UNPACKED // MiB} MiB together")
     _check_paths([entry.path for entry in entries])
     contents = Contents(_manifest_of(entries), tuple(entries))
     data = compress(contents.files)
     if len(data) > MAX_BUNDLE:
-        raise BundleError(f"the bundle of {root} is {len(data)} bytes, over the {MAX_BUNDLE // MiB} MiB it may have")
+        raise BundleError(f"the bundle of {where} is {len(data)} bytes, over the {MAX_BUNDLE // MiB} MiB it may have")
     return Bundle(contents, data, hashlib.sha256(data).hexdigest())
+
+
+def pack(directory: str | os.PathLike) -> Bundle:
+    """The bundle of plugin directory ``directory``; BundleError naming what to fix when it cannot be one."""
+    root = Path(os.path.abspath(Path(directory).expanduser()))
+    return bundle_of(directory_entries(root), str(root))
 
 
 def compress(files: Iterable[Entry]) -> bytes:

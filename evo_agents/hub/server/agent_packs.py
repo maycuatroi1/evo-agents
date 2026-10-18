@@ -5,8 +5,11 @@ version it pins, with a presigned GET of its plugin's bundle for the worker (``t
 
 A profile attaches a pack of a plugin its project enabled (installed and turned on, ``plugin_calls.enabled_query``),
 at a version of that plugin the hub holds as a bundle: one that runs on this release (``compat.problem``) and whose
-manifest declares the pack. A core plugin that comes with the hub's image has no bundle a worker could build a pack
-from. Each pack once, at most ``profiles.MAX_PACKS``; a pin left without a version takes the version installed now.
+manifest declares the pack. A core plugin that comes with the hub's image (builder's @builder) holds its packs in its
+package: the version the image ships now backs them, its bundle built from the package at a claim
+(``plugins.core.image_bundle``) and put in the blob store when it is not there yet; a version the image no longer
+ships backs none. Each pack once, at most ``profiles.MAX_PACKS``; a pin left without a version takes the version
+installed now.
 The pin holds when the plugin moves to another version: only an edit of the profile moves it, as a new version of
 the profile. The default profile attaches none, so a run that names no agent runs as before.
 
@@ -17,8 +20,11 @@ longer holds, or that the hub cannot hand out for want of a blob store, fails as
 from __future__ import annotations
 
 import asyncio
+import os
+import tempfile
 from collections.abc import Iterable
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request
@@ -27,20 +33,22 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import profiles, tables
-from evo_agents.hub.blobs import BLOB_PREFIX, MAX_GET_TTL
-from evo_agents.hub.plugin_calls import enabled_in, enabled_plugins
+from evo_agents.hub.blobs import BLOB_PREFIX, MAX_GET_TTL, BlobStoreUnavailable
+from evo_agents.hub.plugin_calls import core_registry, enabled_in, enabled_plugins
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.runs.models import RunPack
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.plugins import compat
+from evo_agents.plugins import compat, core
 from evo_agents.plugins.agent_packs import pack_name
+from evo_agents.plugins.bundle import Bundle, BundleError
 from evo_agents.plugins.manifest import PLUGIN_ID
 from evo_agents.plugins.runtimes import CONTRIBUTION
 
 POINT = "agent_packs"
 NOTHING = "nothing changed"
+IMAGE_KEY = "image:"  # plugin_versions.r2_key of a core plugin of the hub's image: image:<entry point>
 
 router = APIRouter(prefix="/v1/projects", tags=["agents"], responses={401: {"model": ErrorBody}})
 
@@ -102,7 +110,7 @@ def _declared(manifest: dict, name: str) -> dict | None:
 
 def _unfit(row, name: str, hub_version: str) -> str | None:
     """Why version ``row`` (of plugin_versions) cannot back pack ``name``; None when it can."""
-    if not _bundled(row):
+    if not _bundled(row) and image_plugin(row) is None:
         return "comes with the hub's image, with no bundle a worker could build the pack from"
     manifest = row.manifest
     if _declared(manifest, name) is None:
@@ -115,6 +123,16 @@ def _bundled(row) -> bool:
     """Whether version ``row`` of a plugin is a bundle in the blob store; a core plugin that comes with the hub's image
     (``plugin_store.IMAGE``) is none."""
     return row.r2_key == BLOB_PREFIX + row.sha256
+
+
+def image_plugin(row) -> core.CorePlugin | None:
+    """The core plugin of this process that version ``row`` of a plugin of the hub's image stands for, when the
+    image ships that very version; None otherwise."""
+    if not row.r2_key.startswith(IMAGE_KEY):
+        return None
+    value = row.r2_key[len(IMAGE_KEY) :]
+    found = (plugin for plugin in core_registry().plugins if plugin.value == value)
+    return next((plugin for plugin in found if plugin.manifest.version == row.version), None)
 
 
 def _versions(plugin_id: int):
@@ -207,12 +225,36 @@ async def _held(conn: AsyncConnection, project_id: int, project: str, pack: dict
             "disabled there, turned off or removed since the run was dispatched; enable it and dispatch the run again"
         )
     row = await _version(conn, enabled.id, version)
-    if row is None or not _bundled(row) or _declared(row.manifest, name) is None:
+    usable = row is not None and (_bundled(row) or image_plugin(row) is not None)
+    if not usable or _declared(row.manifest, name) is None:
         return None, (
             f"the hub no longer holds version {version} of plugin {plugin} with agent pack {name}, which the run's "
             "agent profile pins: attach a version it holds to the profile, then dispatch the run again"
         )
     return row, None
+
+
+def _put_image(blobs, plugin: core.CorePlugin) -> Bundle:
+    """The bundle of core plugin ``plugin``'s packs, in the blob store ``blobs`` once this returns."""
+    built = core.image_bundle(plugin)
+    if blobs.has_blob(built.sha256):
+        return built
+    handle, path = tempfile.mkstemp(prefix="evo-image-bundle-", suffix=".tar.gz")
+    try:
+        with os.fdopen(handle, "wb") as out:
+            out.write(built.data)
+        blobs.put_file(built.sha256, Path(path))
+    finally:
+        os.unlink(path)
+    return built
+
+
+async def _blob_of(blobs, row) -> tuple[str, int]:
+    """(SHA-256, size) of the bundle that backs version ``row``: its own, or the one built from the image's package."""
+    if _bundled(row):
+        return row.sha256, row.size
+    built = await asyncio.to_thread(_put_image, blobs, image_plugin(row))
+    return built.sha256, len(built.data)
 
 
 async def tickets(
@@ -233,17 +275,24 @@ async def tickets(
         )
     found = []
     for pack, row in held:
+        try:
+            sha256, size = await _blob_of(blobs, row)
+        except (BundleError, BlobStoreUnavailable) as exc:
+            return [], (
+                f"the hub cannot hand out the packs of core plugin {pack['plugin']} {pack['version']} of its image: "
+                f"{exc}; dispatch the run again once the hub's image or blob store is fixed"
+            )
         expires_at = datetime.now(UTC) + MAX_GET_TTL  # taken before signing, so never later than the URL
         filename = f"{pack['plugin']}-{pack['version']}.tar.gz"
-        url = await asyncio.to_thread(blobs.presign_get, row.sha256, MAX_GET_TTL, filename=filename)
+        url = await asyncio.to_thread(blobs.presign_get, sha256, MAX_GET_TTL, filename=filename)
         found.append(
             RunPack(
                 pack=pack_name(pack["plugin"], pack["name"]),
                 plugin=pack["plugin"],
                 name=pack["name"],
                 version=pack["version"],
-                sha256=row.sha256,
-                size=row.size,
+                sha256=sha256,
+                size=size,
                 url=url,
                 expires_at=expires_at,
             )
