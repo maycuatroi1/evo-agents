@@ -33,7 +33,7 @@ const CONTROL = /[\u0000-\u001f\u007f]/;
 
 function allAxes(): Record<Axis, AxisDraft> {
   const all = (): AxisDraft => ({ mode: "all", allow: [] });
-  return { credential: all(), tool: all(), skill: all(), worker: all(), project: all(), model: all(), runtime: all() };
+  return { credential: all(), tool: all(), skill: all(), worker: all(), project: all(), model: all(), runtime: all(), environment: all() };
 }
 
 export function emptyDraft(): AgentDraft {
@@ -98,7 +98,7 @@ export function hasProblems(problems: DraftProblems): boolean {
   return Object.values(fields).some(Boolean) || Object.values(axes).some(Boolean);
 }
 
-/** The seven axes as the API takes them: `{mode: "all"}`, or the mode with its list. */
+/** The eight axes as the API takes them: `{mode: "all"}`, or the mode with its list. */
 export function permissionsBody(permissions: Record<Axis, AxisDraft>): AgentPermissions {
   return Object.fromEntries(
     AXES.map((axis) => {

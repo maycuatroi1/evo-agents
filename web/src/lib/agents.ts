@@ -2,7 +2,7 @@ import type { components } from "@/lib/api/schema";
 
 /**
  * Agent profiles of a project (docs/hub.md, Agent profiles; `evo_agents.hub.profiles` of the API): who an agent is
- * (handle, name, colour, avatar, description, instructions) and what its runs may use on seven axes, each every value
+ * (handle, name, colour, avatar, description, instructions) and what its runs may use on eight axes, each every value
  * (`all`) or an allowlist. The project's default agent, @<project>, keeps every permission and no instructions; a run
  * dispatched without naming an agent goes under it. The hub enforces the rules again on every dispatch and claim: what
  * this module checks in the browser only spares a refusal.
@@ -16,7 +16,7 @@ export type AgentEdit = Schemas["AgentEdit"];
 export type AgentVersion = Schemas["AgentVersion"];
 
 /** `profiles.AXES`, in the API's order. */
-export const AXES = ["credential", "tool", "skill", "worker", "project", "model", "runtime"] as const satisfies readonly (keyof AgentPermissions)[];
+export const AXES = ["credential", "tool", "skill", "worker", "project", "model", "runtime", "environment"] as const satisfies readonly (keyof AgentPermissions)[];
 export type Axis = (typeof AXES)[number];
 
 export const LABEL_PREFIX = "label:";

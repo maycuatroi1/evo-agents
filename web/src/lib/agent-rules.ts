@@ -9,6 +9,8 @@ import { type Agent, type Axis, LABEL_PREFIX } from "@/lib/agents";
 export const TOOLS = ["read", "edit", "bash", "web", "agent"] as const;
 export const AGENT_RUNTIMES = ["claude-code", "opencode", "codex"] as const;
 export const GITHUB_APP = "github-app";
+/** `run_environments.HOST`: the worker's own machine, beside the environments of plugins, `<plugin>/<name>`. */
+export const HOST_ENVIRONMENT = "host";
 export const MCP_PREFIX = "mcp:";
 
 /** `profiles.HANDLE_PATTERN` and the limits of the API's fields. */
@@ -32,6 +34,7 @@ const WORKER = /^[a-z0-9][a-z0-9._-]{0,99}$/;
 const LABEL = /^[a-z0-9][a-z0-9._-]{0,39}$/;
 const MCP_SERVER = /^[A-Za-z0-9][A-Za-z0-9_.-]{0,63}$/;
 const LINE = /^[^\u0000-\u001f\u007f]+$/;
+const PLUGIN_ENVIRONMENT = /^[a-z][a-z0-9-]{0,62}\/[a-z][a-z0-9_-]{0,62}$/;
 
 /** An allowlist item as the hub keeps it: trimmed, and lowered for the worker axis. */
 export function normalizedItem(axis: Axis, item: string): string {
@@ -56,6 +59,8 @@ export function validItem(axis: Axis, item: string): boolean {
       return LINE.test(item) && [...item].length <= MAX_MODEL_CHARS;
     case "runtime":
       return (AGENT_RUNTIMES as readonly string[]).includes(item);
+    case "environment":
+      return item === HOST_ENVIRONMENT || PLUGIN_ENVIRONMENT.test(item);
   }
 }
 

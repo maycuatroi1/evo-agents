@@ -2073,6 +2073,12 @@
         "noun": "runtimes",
         "hint": "The agent programs its runs may start.",
         "all": "Every runtime"
+      },
+      "environment": {
+        "title": "Environments",
+        "noun": "environments",
+        "hint": "Where its runs' agent runs, in order of preference: host, the worker's own machine, or a plugin's container.",
+        "all": "The worker's host"
       }
     },
     "tools": {
@@ -2176,7 +2182,8 @@
           "worker": "A worker's name, or label:name",
           "project": "A project's name",
           "model": "A model, as its runtime names it",
-          "runtime": "claude-code, opencode or codex"
+          "runtime": "claude-code, opencode or codex",
+          "environment": "host, or a plugin's environment: plugin/name"
         },
         "add": "Add",
         "invalid": {
@@ -2186,7 +2193,8 @@
           "worker": "A worker's name, or label: with a worker's label.",
           "project": "A project's name is lowercase letters, digits and hyphens.",
           "model": "A model is one line of at most 200 characters.",
-          "runtime": "A runtime is claude-code, opencode or codex."
+          "runtime": "A runtime is claude-code, opencode or codex.",
+          "environment": "An environment is host, or a plugin's id and the environment's name: plugin/name."
         },
         "nothing": "Nothing allowed: runs under this agent get no {axis}.",
         "count": "{count} allowed, of at most {max}.",
@@ -2198,7 +2206,8 @@
         "skillScope": {
           "global": "shared",
           "project": "this project"
-        }
+        },
+        "host": "the worker's own machine"
       }
     },
     "detail": {
@@ -2270,7 +2279,8 @@
           "worker": "workers",
           "project": "projects",
           "model": "models",
-          "runtime": "runtimes"
+          "runtime": "runtimes",
+          "environment": "environments"
         }
       },
       "delete": {
@@ -3830,7 +3840,8 @@
         "worker": "workers",
         "project": "projects",
         "model": "models",
-        "runtime": "runtimes"
+        "runtime": "runtimes",
+        "environment": "environments"
       },
       "problem": {
         "deleted": "@{handle} was deleted and takes no new run.",

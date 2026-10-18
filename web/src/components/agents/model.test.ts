@@ -66,7 +66,10 @@ describe("what the form sends", () => {
     expect(body).not.toHaveProperty("color");
     expect(body.permissions?.runtime).toEqual({ mode: "allowlist", allow: ["claude-code"] });
     expect(body.permissions?.tool).toEqual({ mode: "all" });
+    expect(body.permissions?.environment).toEqual({ mode: "all" });
     expect(createBody({ ...draft, color: "#16a34a" }).color).toBe("#16a34a");
+    draft.permissions.environment = { mode: "allowlist", allow: ["sandbox/box", "host"] };
+    expect(createBody(draft).permissions?.environment).toEqual({ mode: "allowlist", allow: ["sandbox/box", "host"] });
   });
 
   it("edits only what changed, against the version the form opened on", () => {
@@ -141,6 +144,7 @@ describe("the form's choices", () => {
     expect(options.byAxis.project.map((option) => option.value)).toEqual(["docs"]);
     expect(options.byAxis.tool.map((option) => option.value)).toEqual(["read", "edit", "bash", "web", "agent"]);
     expect(options.byAxis.runtime.map((option) => option.value)).toEqual(["claude-code", "opencode", "codex"]);
+    expect(options.byAxis.environment).toEqual([{ value: "host", tag: "host" }]);
   });
 
   it("names the lists the hub did not answer, and still offers the App's token and the API's words", () => {
