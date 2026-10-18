@@ -2,7 +2,8 @@
 author runs ask you, and what the hub tells you.
 
 ``decision list`` and ``decision show`` read a project's decisions (GET /v1/projects/{p}/decisions, .../{id}), as any
-reader of the run may; a decision an author run asked before it put a plan has none, and shows as ``author run #N``.
+reader of the run may; a decision of a run that has put no plan (an author run before its plan, a local session)
+has none, and shows its run alone.
 ``decision answer ID`` answers one (POST .../decisions/{id}/answer) with an option of the decision (``--option KEY``),
 words of your own (``--text``, ``-`` reads them from stdin), or both; only the member who dispatched the run may, and
 the answer goes to the agent through the run's inbox, or resumes a parked run on its worker. ``docs/notifications.md``
@@ -180,10 +181,10 @@ def _print_options(decision: dict) -> None:
 
 
 def _run_line(decision: dict, step: str) -> str:
-    """The run of a decision, with its plan and step, or for one an author run asked before it put a plan, the run."""
+    """The run of a decision, with its plan and step, or the run alone when it has put no plan."""
     run = f"#{decision['run_id']} ({decision['run_state']})"
     if decision["plan_id"] is None:
-        return f"author run {run}, before it put a plan"
+        return f"{run}, no plan"
     return f"{run} of plan {decision['plan_id']}{step}"
 
 
