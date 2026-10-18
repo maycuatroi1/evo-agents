@@ -1,12 +1,20 @@
-# What kg_impact follows
+# The knowledge graph
+
+How the graph of a project answers an agent: what `kg_impact` follows and covers per language, how the text of every
+tool is written, how `kg_search` finds nodes, what the note after a grep adds, how plans of the hub, commits and pull
+requests enter the graph, which commit each git source read and when a sync or a build does anything, how long this
+machine keeps old data, and how `kg eval` measures retrieval. The README shows how to build a graph and call the
+tools.
+
+## What kg_impact follows
 
 `kg_impact` answers "what does this change reach": give it node ids, `repo:path` files or a unified diff, and it walks
-back from those seeds to everything that depends on them, hop by hop. This page says which relations it follows, how
-it reads a seed with many dependents, what each result carries, and which languages it covers. The README shows how to
-build a graph and call the tools; `evo_agents/kg/extract/languages.py` holds the coverage tables this page prints, and
-`tests/kg/test_serve.py` fails when the two disagree.
+back from those seeds to everything that depends on them, hop by hop. This part says which relations it follows, how
+it reads a seed with many dependents, what each result carries, and which languages it covers.
+`evo_agents/kg/extract/languages.py` holds the coverage tables this page prints, and `tests/kg/test_serve.py` fails
+when the two disagree.
 
-## Relations
+### Relations
 
 Whoever has an edge into a reached node depends on it. `kg_impact` follows these relations, never through an edge of
 status `proposed`:
@@ -33,7 +41,7 @@ A call into another file needs evidence: an import of the caller's file binds th
 the callee's file in scope without one (the same Go directory, Java or Kotlin package, C# namespace). A call that only
 shares its name with a symbol elsewhere gets no edge.
 
-## Seeds with many dependents
+### Seeds with many dependents
 
 `kg_impact` reads the edges into a seed 500 at a time, up to 2,000: only edges of the relations above, of a status it
 follows, that the session's sink may see. A seed with more says so instead of dropping the rest in silence: `cut`
@@ -56,7 +64,7 @@ since the Curator's tier check reads them all, and says in `left_out` what the t
 A text over about 25,000 characters ends with a handle for `kg_more`; the structured result then keeps only its
 `summary`.
 
-## The result
+### The result
 
 The structured result only gains fields: a client written for an older one reads `seeds` and `impacted` as before.
 An MCP client gets the text alone, which is what its model reads; the structured result comes from
@@ -81,7 +89,7 @@ The text says the same coverage in one line per language, for example
 A `no` means callers of that kind are missing from the result: grep for them. A `yes` can still name what it leaves
 out, `calls across files yes, not: ...` for Python: grep for those callers too.
 
-## Coverage per language
+### Coverage per language
 
 The languages the git connector marks as code. Measured on graphify 0.9.73 with a two-file fixture per language in
 `tests/kg/test_cross_file.py` and `tests/kg/test_inheritance.py`; a `no` is checked there to give no such edge.
@@ -288,3 +296,91 @@ goes only into the request's header, never into an item, a log or an error, and 
 followed with it. Without a token no pull request is read (a line in the run's log). Since a git source whose ref
 did not move is not read again, a pull request opened or closed meanwhile shows once the ref moves. `pulls: false`
 on a source, or `EVO_KG_PULLS=0` on the machine, turns the reading off; the test suite sets the latter.
+
+## Freshness
+
+The graph is a snapshot of what its sources held when they synced. It says which snapshot, and it is built again only
+when a source read something new.
+
+**The commit read.** A git source ends each run with a cursor that names what it read (`evo_agents/kg/freshness.py`):
+the commit, the ref, the remote's default branch it compares with (`base`: `origin/<default_branch>` of harness.yaml,
+else the clone's `origin/HEAD`), how many commits of that branch the commit read lacks (`behind`), and, for an origin
+on a forge, a link to the commit. `behind` is counted from the clone's remote-tracking branch without fetching; a
+clone without that branch has no `base` and no `behind`. A build copies the read into the source's coverage, so the
+graph says what it holds wherever it is read:
+
+- `kg status`, `kg_status` and the SessionStart note (`commits read: app 1550c7a (3 behind origin/main)`) name, per
+  git source, the commit read and how far behind it is. On a machine with the checkout they count `behind` again with
+  `git rev-list --count`, still without the network, and fall back to the count stored at sync.
+- The hub has no checkout: it shows the count of the machine that synced the source, from the cursor of the newest run
+  among those it merged. Its graph page has a card, Commits read, with a row per git source the member may see: the
+  commit (a link to it on the forge, and a button that copies the SHA), the ref, and a badge when the commit is
+  behind.
+- `kg_node` gives a file's link at the commit read (`.../blob/<sha>/path`), so the lines of a span match what the
+  link opens. The corpus keeps the link by branch, which does not change an item's hash on every commit.
+
+Cursors come from connectors, and on the hub from any member's push, so a value that does not look like a commit, a
+ref, a count or an https link is dropped before it reaches a tool's text or the SessionStart note. Nothing is fetched
+beyond what `fetch: true` on a source already fetches.
+
+**Syncs and builds do only what changed.** A git source whose ref still resolves to the commit its last ok run read,
+with the same config and connector code, is not read again: the sync records an ok run, writes no run log and leaves
+the cursor as it is, and `kg sync --due --build` builds only when a source read something. A harness source is always
+read, so files not yet committed in the harness still reach the graph. `kg build` skips a build whose corpus state,
+config, ontology, code and cursors are those of the latest build, names that build, and adds no line to the audit log
+(`--force` builds anyway); the hub's build job skips the same way. A build that does run links again only the items
+whose text or structure changed or that looked up a name or path that now resolves elsewhere, and rewrites only the
+rows of the full-text index that changed (`node_fts_rows`, under Search). The first build after an upgrade that
+changes the structure or link versions is cold.
+
+## Retention on this machine
+
+`evo-agents kg prune` deletes what this machine no longer needs from its kg home (`evo_agents/kg/retention.py`). Three
+periods, each `0` or a number with `m`, `h`, `d` or `w`, say what is old:
+
+| Period | Default | What it ages |
+| --- | --- | --- |
+| `logs` | `1d` | run logs, blobs and rows of the runs table |
+| `history` | `1d` | the builds of `graph.sqlite` and the rows only they read |
+| `memo` | `14d` | memo rows, from their last use |
+
+What a pass deletes in a project directory:
+
+- A finished run log of a run that started before the logs period, when no record of it is the one the corpus holds;
+  one that still holds some is rewritten without the others, as `kg scrub --purge` does, so the logs left replay to
+  the same state. A log the hub has not received is never touched: `hub kg push` records which runs the hub holds,
+  and a run whose source's label is above the project's hub sink, or of a project that declares no hub sink and never
+  pushed, goes to no hub. A project whose knowledge config does not load keeps every log no push recorded.
+- Blobs older than the logs period that no log left and no item refers to.
+- Rows of the runs table older than the logs period whose log is gone or never was, except the newest run and the
+  newest ok run of each source (`kg sync --due` and `kg status` read them) and runs whose records the corpus holds.
+- Builds that finished before the history period, except the latest two, so a reader that opened the previous build
+  just before a new one landed still reads it whole.
+- Memo rows that no key used within the memo period nor in the latest build; a corpus that stays the same keeps the
+  rows of its latest build. `--all` also prunes the memo the projects share.
+
+None of it changes what a build makes: `kg build --verify --cold` gives the same hash before and after. A SQLite file
+is compacted only when at least a tenth of its pages are free.
+
+```sh
+evo-agents kg prune                          # the project of the current directory: count, change nothing
+evo-agents kg prune --all --delete           # every project: say what goes, ask, delete (--yes when no terminal)
+evo-agents kg prune --logs 3d --memo 30d     # other periods for this pass
+evo-agents kg prune --schedule on            # count, ask, then prune with every kg sync --due --all
+evo-agents kg prune --schedule off
+```
+
+The schedule is off until the owner turns it on. `--schedule on` saves the periods in `<kg home>/retention.json`;
+from then on `kg sync --due --all`, the command the LaunchAgent of `kg schedule install` runs, prunes each project at
+most once a day, after its sync and push, holding every source's lock so no sync writes meanwhile. Each pass that
+deletes appends a `prune` line with the counts to the project's `audit.jsonl`. `--json` prints the counts for a
+script.
+
+## Measuring retrieval
+
+`evo-agents kg eval questions.jsonl` asks `kg_search` and `kg_context` each question of a set as an agent would,
+greps the same checkouts for comparison, and prints Recall@1 and @5, MRR, the share of empty answers, answers per
+1,000 tokens of output and the time per call, by question type and method. `kg eval-questions` turns the done steps
+of the hub's plans into questions whose answers are the files their commits changed. The command ships without
+questions: a team keeps its set in its harness and runs it before and after a change to search or to the text of the
+tools. [docs/kg-eval.md](kg-eval.md) gives the format of the set, the methods and the columns.

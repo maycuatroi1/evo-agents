@@ -87,7 +87,9 @@ def _plan_line(total: dict, projects: int) -> str:
     kept = total["to_delete"] - total[OLD]
     rewrite = f", after rewriting {total['rewrite']} run log(s) in use" if total["rewrite"] else ""
     return (
-        f"{total[OLD]} old blob(s)" + (f" and {kept} kept blob(s)" if kept else "") + f" ({size_text(total['bytes'])}), "
+        f"{total[OLD]} old blob(s)"
+        + (f" and {kept} kept blob(s)" if kept else "")
+        + f" ({size_text(total['bytes'])}), "
         f"{total['logs']} run log(s) of old runs and {total['memo']} memo row(s) in {projects} project(s){rewrite}"
     )
 

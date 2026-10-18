@@ -57,7 +57,8 @@ node and edge carries a status, a sensitivity label and evidence: source item, r
   that overrides its parent's and calls it through `super` shows `calls` and `(also overrides)`.
 - Every result has a coverage note per language of its seeds: whether calls across files,
   inheritance and overrides are covered, and why not. Where it says `no`, those callers are missing:
-  grep for them.
+  grep for them. A `yes` can name what it still leaves out (`calls across files yes, not: ...` for
+  Python, such as a call through a receiver nothing in the file types): grep for those too.
 - Each hop lists its first 20 dependents, strongest edge first, then a line such as `... 6 more at
   hop 2`; the documents to re-check list 5. Pass `limit` (up to 500) to list more, or pass the
   symbols you change instead of their file.
@@ -87,7 +88,9 @@ Coverage per language (docs/kg.md in the evo-agents repo gives the evidence each
 
 ## Hooks
 
-- At session start, a short note names the bound project and the snapshot age.
+- At session start, a short note names the bound project, the snapshot age, and the commit each git
+  source read with how many commits it is behind the remote's default branch: a source far behind
+  means the graph lags the code you read.
 - After every evo-kg call, the labels of what the result revealed join the session label, which only
   rises; `kg_status` shows it.
 - After a Grep, `rg` or `grep`, a note may follow the result: for a matched function, method or file,
