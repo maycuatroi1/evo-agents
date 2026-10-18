@@ -19,7 +19,8 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
   the owner's grant there capped at writer, and never a hub admin, so ``projects.project_access`` holds every tool to
   it. Once the run leaves the held states, its id opens nothing. The agent of a judge run gets the code graph's tools
   and hub_projects alone (JUDGE_TOOLS): never a run's events, a plan, a memory or a digest, which the Builder it judges
-  wrote or could have written for it. X-Evo-Run with a machine token is 400;
+  wrote or could have written for it. ``tools/list`` shows a run's agent only what it may call (``mcp_tools.offered``):
+  a judge run JUDGE_TOOLS, any other run all but ask_member. X-Evo-Run with a machine token is 400;
 - X-Evo-Project names the session's project and X-Evo-Sink its sink (default claude-code@anthropic); a malformed one is
   400. The session of a run's agent is the run's project: X-Evo-Project naming another is 403.
 
@@ -74,6 +75,7 @@ from evo_agents.hub.config import HubConfig
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
 from evo_agents.hub.mcp_tools import (
     INSTRUCTIONS,
+    JUDGE_TOOLS,
     KG_TOOL_NAMES,
     LOCAL_RUN_HEADER,
     PROJECT_HEADER,
@@ -82,6 +84,7 @@ from evo_agents.hub.mcp_tools import (
     SERVER_NAME,
     SINK_HEADER,
     TOOLS,
+    offered,
 )
 from evo_agents.hub.memory import AGENT_SINK, FRONTMATTER, HARNESS, frontmatter, memory_type
 from evo_agents.hub.mirror import ordered_plan, render
@@ -164,10 +167,7 @@ def _held_run(token_id: int, run_id: int):
     )
 
 
-# What the agent of a judge run may call: the code graph, never what the Builder wrote (its run's events, the plan's
-# evidence, memories, digests) nor what a Builder could have written for it to read.
-JUDGE_TOOLS = frozenset({*KG_TOOL_NAMES, "hub_projects"})
-JUDGE_ONLY = (
+JUDGE_ONLY = (  # what a judge run may call is mcp_tools.JUDGE_TOOLS
     "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is not for "
     "a judge run"
 )
@@ -444,15 +444,16 @@ class HubMcp(MCPServer):
         return list(self._tools)
 
     async def _handle_list_tools(self, ctx, params) -> ListToolsResult:
-        """The hub's tools, then the plugins' tools the caller may see in the session's project
-        (``plugin_tools``): the SDK's handler, pinned with the SDK, knows no caller."""
+        """The hub's tools, then the plugins' tools the caller may see in the session's project (``plugin_tools``),
+        each one the caller may call (``mcp_tools.offered``): the SDK's handler, pinned with the SDK, knows no caller."""
         request = getattr(ctx, "request", None)
         state = request.scope.get("state", {}) if isinstance(request, Request) else {}
         user, session = state.get("principal"), state.get(SESSION)
-        tools = await self.list_tools()
+        kind = user.scope.kind if user is not None and user.scope is not None else None
+        tools = [tool for tool in await self.list_tools() if offered(tool.name, kind)]
         if user is not None and session is not None:
             found = await plugin_tools.listed(self.hub.state, user, session.project)
-            tools += [McpTool.model_validate(tool) for tool in found]
+            tools += [McpTool.model_validate(tool) for tool in found if offered(tool["name"], kind)]
         return ListToolsResult(tools=tools)
 
     async def call_tool(self, name: str, arguments: dict, context=None) -> CallToolResult:

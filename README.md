@@ -166,7 +166,8 @@ Hooks:
 
 - SessionStart prints a short note: the bound project and the snapshot age.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
-  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it.
+  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
+  `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
 - PreToolUse, before Grep, Glob, or `rg` or `grep` in Bash, may add a note with the ids of graph
   nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
   off.
@@ -186,7 +187,8 @@ claude plugin install evo-hub@evo-agents
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
 hub's `/mcp`), a `using-agent-hub` skill, and six hooks. Its tools are the seven `kg_*` tools and `memory_search`,
 `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `skill_list`, `hub_projects` and
-`run_tool_stats`. In a harness
+`run_tool_stats`. A session that has the evo-kg plugin too gets the `kg_*` tools and the graph's instructions from
+evo-kg alone: evo-hub leaves them out (it reads `enabledPlugins` of Claude Code's settings). In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
 mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML. To hand a
 plan to a new session or a subagent, give it `plan_handoff` (or `evo-agents hub plan handoff PLAN --step KEY`) rather
