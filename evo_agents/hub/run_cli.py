@@ -49,6 +49,7 @@ from evo_agents.hub.cli_client import _client_command, _print_json, _project_pat
 from evo_agents.hub.client import _OPENER, HubError, Unreachable, _json, _origin
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
+from evo_agents.hub.run_cli_candidates import register_candidates
 from evo_agents.hub.run_cli_options import (
     account_option,
     author_options,
@@ -890,13 +891,13 @@ def register_runs(hsub) -> None:
     )
     rsub = run.add_subparsers(dest="run_command", required=True)
     project_help = "hub project (default: hub.project in the harness.yaml around the current directory)"
-    run_help = "the run's id, as `hub run list` shows it"
 
     def with_project(parser) -> None:
         parser.add_argument("--project", help=project_help)
 
     def with_run(parser) -> None:
-        parser.add_argument("run", metavar="RUN", type=int, help=run_help)
+        parser.add_argument("run", metavar="RUN", type=int, help="the run's id, as `hub run list` shows it")
+        with_project(parser)
 
     def with_model(parser) -> None:
         parser.add_argument(
@@ -951,7 +952,6 @@ def register_runs(hsub) -> None:
 
     show = rsub.add_parser("show", help="one run: state, step, worker, commit, verify results, evidence")
     with_run(show)
-    with_project(show)
     json_option(show, RUN)
     show.set_defaults(func=cmd_show)
 
@@ -959,7 +959,6 @@ def register_runs(hsub) -> None:
         "logs", help="a run's events: what its agent said and did, and its moves; --follow prints them as they come"
     )
     with_run(logs)
-    with_project(logs)
     logs.add_argument(
         "-f", "--follow", action="store_true", help="keep reading the run's live stream until the run ends"
     )
@@ -985,7 +984,6 @@ def register_runs(hsub) -> None:
     )
     with_run(send)
     send.add_argument("text", metavar="TEXT", help="at most 8 KiB; - reads it from stdin")
-    with_project(send)
     json_option(send, returns_object(*MESSAGE_KEYS, schema="Message"))
     send.set_defaults(func=cmd_send)
 
@@ -993,7 +991,6 @@ def register_runs(hsub) -> None:
         "chat", help="the chat of an author run: its agent's messages and its owner's, oldest first, and whose turn"
     )
     with_run(chat)
-    with_project(chat)
     json_option(chat, returns_object(*CHAT_KEYS, schema="RunChat"))
     chat.set_defaults(func=cmd_chat)
 
@@ -1003,14 +1000,13 @@ def register_runs(hsub) -> None:
         "value (owner only)",
     )
     with_run(credentials)
-    with_project(credentials)
     json_option(credentials, returns_array(*LEASE_KEYS, schema="RunLease"))
     credentials.set_defaults(func=cmd_credentials)
 
+    register_candidates(rsub, with_run, _project)
     for action, (help_text, said) in CONTROLS.items():
         parser = rsub.add_parser(action, help=f"{help_text} (owner only)")
         with_run(parser)
-        with_project(parser)
         if action == "rerun":
             rerun_options(parser)
         json_option(parser, RUN)

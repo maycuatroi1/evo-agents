@@ -4902,6 +4902,49 @@
         "schema": "Run"
       }
     },
+    "hub run candidates": {
+      "positionals": [
+        {
+          "name": "run",
+          "metavar": "RUN",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "run_id",
+          "project",
+          "kind",
+          "state",
+          "failure_cause",
+          "workers",
+          "agents",
+          "accounts"
+        ],
+        "schema": "RerunCandidates"
+      }
+    },
     "hub run chat": {
       "positionals": [
         {
@@ -14284,6 +14327,101 @@
                 }
               },
               "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/runs/{run_id}/rerun-candidates": {
+        "get": {
+          "tags": [
+            "runs"
+          ],
+          "summary": "Run Candidates",
+          "description": "The workers of the run's owner and the agent profiles of the project that could run a failed run again, each\nwith why it fits or why not, the best first; the owner's alone (403 for another member), 409 for a run that did\nnot fail.",
+          "operationId": "run_candidates_v1_projects__project__runs__run_id__rerun_candidates_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RerunCandidates"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
             },
             "422": {
               "description": "Validation Error",
@@ -29357,6 +29495,39 @@
           "title": "Account",
           "description": "One of the caller's env secrets as an account: everything but its value."
         },
+        "AccountCandidate": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "ready, cooling, paused or expired"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers",
+              "description": "the workers it is bound to for the project; any for every worker"
+            },
+            "used_by_run": {
+              "type": "boolean",
+              "title": "Used By Run"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "state",
+            "workers",
+            "used_by_run"
+          ],
+          "title": "AccountCandidate"
+        },
         "AccountChange": {
           "properties": {
             "weight": {
@@ -29917,6 +30088,60 @@
           "type": "object",
           "title": "AgentAxis",
           "description": "One axis of a profile's permissions: every value (all), or those of ``allow`` alone (allowlist)."
+        },
+        "AgentCandidate": {
+          "properties": {
+            "profile_id": {
+              "type": "integer",
+              "title": "Profile Id"
+            },
+            "handle": {
+              "type": "string",
+              "title": "Handle"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "is_default": {
+              "type": "boolean",
+              "title": "Is Default"
+            },
+            "fit": {
+              "type": "boolean",
+              "title": "Fit"
+            },
+            "rank": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rank",
+              "description": "1 for the best fit agent; null for one that is no fit"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Reasons"
+            }
+          },
+          "type": "object",
+          "required": [
+            "profile_id",
+            "handle",
+            "name",
+            "is_default",
+            "fit",
+            "rank",
+            "reasons"
+          ],
+          "title": "AgentCandidate"
         },
         "AgentChatIn": {
           "properties": {
@@ -42582,6 +42807,70 @@
           "title": "Rerun",
           "description": "What a rerun may change of the run it reruns; no body keeps everything."
         },
+        "RerunCandidates": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause"
+            },
+            "workers": {
+              "items": {
+                "$ref": "#/components/schemas/WorkerCandidate"
+              },
+              "type": "array",
+              "title": "Workers"
+            },
+            "agents": {
+              "items": {
+                "$ref": "#/components/schemas/AgentCandidate"
+              },
+              "type": "array",
+              "title": "Agents"
+            },
+            "accounts": {
+              "items": {
+                "$ref": "#/components/schemas/AccountCandidate"
+              },
+              "type": "array",
+              "title": "Accounts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "project",
+            "kind",
+            "state",
+            "failure_cause",
+            "workers",
+            "agents",
+            "accounts"
+          ],
+          "title": "RerunCandidates"
+        },
         "Results": {
           "properties": {
             "items": {
@@ -48535,6 +48824,103 @@
             "revoked_at"
           ],
           "title": "Worker"
+        },
+        "WorkerCandidate": {
+          "properties": {
+            "worker_id": {
+              "type": "integer",
+              "title": "Worker Id"
+            },
+            "worker": {
+              "type": "string",
+              "title": "Worker"
+            },
+            "fit": {
+              "type": "boolean",
+              "title": "Fit"
+            },
+            "rank": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rank",
+              "description": "1 for the best fit worker; null for one that is no fit"
+            },
+            "reasons": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Reasons",
+              "description": "what makes it fit, or each thing that makes it not"
+            },
+            "is_run_worker": {
+              "type": "boolean",
+              "title": "Is Run Worker",
+              "description": "the worker the failed run was on"
+            },
+            "online": {
+              "type": "boolean",
+              "title": "Online"
+            },
+            "free_slots": {
+              "type": "integer",
+              "title": "Free Slots",
+              "description": "slots left, the runs queued for the worker counted"
+            },
+            "runtimes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Runtimes",
+              "description": "the runtimes it reports available that the run's profile allows"
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Models",
+              "description": "the models those runtimes list on the machine"
+            },
+            "labels": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Labels"
+            },
+            "accounts": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Accounts",
+              "description": "the accounts bound to the project that are ready on it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "worker_id",
+            "worker",
+            "fit",
+            "rank",
+            "reasons",
+            "is_run_worker",
+            "online",
+            "free_slots",
+            "runtimes",
+            "models",
+            "labels",
+            "accounts"
+          ],
+          "title": "WorkerCandidate"
         },
         "WorkerCounts": {
           "properties": {

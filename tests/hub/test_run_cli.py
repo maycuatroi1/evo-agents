@@ -29,7 +29,7 @@ from types import SimpleNamespace
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.hub import run_cli
+from evo_agents.hub import run_cli, run_cli_candidates
 from evo_agents.hub.client import Hub, HubError, Unreachable
 from evo_agents.hub.run_cli import follow, format_event, sse_messages
 from tests.hub import live, pg
@@ -69,6 +69,86 @@ def ok(result: SimpleNamespace) -> SimpleNamespace:
 
 def as_json(result: SimpleNamespace):
     return json.loads(ok(result).out)
+
+
+# Candidates to run a failed run again
+
+
+CANDIDATES = {
+    "run_id": 161,
+    "project": "demo",
+    "kind": "step",
+    "state": "failed",
+    "failure_cause": "missing_tool",
+    "workers": [
+        {
+            "worker_id": 4,
+            "worker": "studio",
+            "fit": True,
+            "rank": 1,
+            "reasons": ["online with a free slot", "the worker the run failed on"],
+            "is_run_worker": True,
+            "online": True,
+            "free_slots": 1,
+            "runtimes": ["claude-code"],
+            "models": [],
+            "labels": [],
+            "accounts": [],
+        },
+        {
+            "worker_id": 5,
+            "worker": "laptop",
+            "fit": False,
+            "rank": None,
+            "reasons": ["is offline", "has no checkout of evo-lms"],
+            "is_run_worker": False,
+            "online": False,
+            "free_slots": 0,
+            "runtimes": [],
+            "models": [],
+            "labels": [],
+            "accounts": [],
+        },
+    ],
+    "agents": [
+        {
+            "profile_id": 1,
+            "handle": "demo",
+            "name": "demo",
+            "is_default": True,
+            "fit": True,
+            "rank": 1,
+            "reasons": ["a worker of yours can take it"],
+        }
+    ],
+    "accounts": [{"name": "claude-main", "state": "ready", "workers": ["any"], "used_by_run": True}],
+}
+
+
+class AnswersCandidates:
+    url = HUB_URL
+
+    def __init__(self):
+        self.calls = []
+
+    def call(self, method, path, body=None):
+        self.calls.append((method, path))
+        return CANDIDATES
+
+
+def test_candidates_prints_the_workers_agents_and_accounts_with_why(monkeypatch, capsys, tmp_path):
+    hub = AnswersCandidates()
+    monkeypatch.setattr(run_cli_candidates, "signed_in", lambda: (hub, None))
+    result = ok(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo"))
+    assert hub.calls == [("GET", "/v1/projects/demo/runs/161/rerun-candidates")]
+    assert "Run #161 (step) failed, cause missing_tool: who can run it again" in result.out
+    assert "studio  #1   claude-code" in result.out and "is offline; has no checkout of evo-lms" in result.out
+    assert "@demo  #1" in result.out and "claude-main  ready  any" in result.out
+    assert (
+        as_json(cli(monkeypatch, capsys, tmp_path, "hub", "run", "candidates", "161", "--project", "demo", "--json"))
+        == CANDIDATES
+    )
+    assert_json_keys("hub run candidates", CANDIDATES)
 
 
 # Reading server-sent events

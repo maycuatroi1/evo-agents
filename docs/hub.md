@@ -612,6 +612,7 @@ evo-agents hub run approve 41                                 # a run in review:
 evo-agents hub run cancel 41
 evo-agents hub run rerun 41                                   # the step again, after a run that ended
 evo-agents hub run rerun 41 --account-by-rule                # the same, the rules picking the account
+evo-agents hub run candidates 41                              # after it failed: which worker or agent could run it again, and why
 evo-agents hub run credentials 41                             # the leases the run got, never their values
 evo-agents hub run author "a plan to move the hub's blobs to R2" --worker mac-mini  # an agent writes a new plan
 evo-agents hub run author "split step 3 in two" --plan rollout --worker mac-mini   # or revises one
