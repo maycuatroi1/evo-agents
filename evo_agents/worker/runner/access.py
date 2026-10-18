@@ -2,9 +2,10 @@
 
 Once its leases are taken, and before anything is fetched or the agent starts, a run checks what it needs
 (``preflight``): the project lists an origin for each of its repos, git reads it (and pushes to it, for a repo the run
-pushes) with what the run holds, and each program its verify commands call is on the run's PATH. A check that does not
-pass fails the run before the agent starts, with its cause (the report's ``failure_cause``: origin, credentials or
-missing_tool).
+pushes) with what the run holds, each program its verify commands call is on the run's PATH, and the environment its
+claim names can run its agent here (``environment_problems``: a container engine that answers and the image, for a
+plugin's environment). A check that does not pass fails the run before the agent starts, with its cause (the report's
+``failure_cause``: origin, credentials, missing_tool or environment).
 
 The leases stay in the daemon's memory (``credentials.RunCredentials``): the run's git gets them through
 ``credentials.ticketed``, its agent through ``Agent.env``, each event goes through ``credentials.scrub`` before the
@@ -17,11 +18,13 @@ command.
 
 from __future__ import annotations
 
+import asyncio
 import contextlib
 from collections.abc import Collection, Iterable
 from typing import TYPE_CHECKING
 
 from evo_agents.worker import gitops, preflight
+from evo_agents.worker.environments import Container
 from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.transitions import MAX_ERROR_CHARS
 
@@ -82,6 +85,7 @@ async def check(
                 problems.append(found)
     problems += preflight.verify_problems(verify, path)
     problems += preflight.hidden_problems(hidden or [], path)
+    problems += await environment_problems(run, names)
     if problems:
         for problem in problems:
             run.note(f"Preflight: {problem.message}.", cause=problem.cause)
@@ -89,7 +93,29 @@ async def check(
     checked = [f"{len(names)} repo(s)"]
     if verify or hidden:
         checked.append(f"the programs of {len(verify) + len(hidden or [])} command(s)")
+    if run.agent.environment.container:
+        checked.append(f"environment {run.agent.environment.name}, its engine and image")
     run.note(f"Preflight passed: {' and '.join(checked)}.")
+
+
+async def environment_problems(run: Run, names: list[str]) -> list[preflight.Problem]:
+    """Why the run's agent cannot run in the environment its claim names, each with cause environment: none for the
+    host; for a plugin's environment, what ``Container.preflight`` finds (which may pull its image)."""
+    try:
+        environment = run.agent.environment
+    except ValueError as exc:
+        return [preflight.Problem("environment", f"the claim names an environment this worker does not read: {exc}")]
+    if not isinstance(environment, Container):
+        return []
+    checkouts = [run.daemon.checkout_for(run.project, name) for name in names]
+    said = await asyncio.to_thread(
+        environment.preflight,
+        kind=str(run.spec.get("kind") or "step"),
+        mode=run.mode,
+        runtime=run.runtime,
+        core_paths=[run.daemon.home.root, *(path for path in checkouts if path is not None)],
+    )
+    return [preflight.Problem("environment", text) for text in said]
 
 
 async def reach(run: Run, name: str, *, push: bool) -> preflight.Problem | None:

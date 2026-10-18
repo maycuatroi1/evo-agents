@@ -14,7 +14,9 @@ backend to shut down, closes its stdin, then sends SIGTERM and SIGKILL to its wh
 has a user of its own, it then kills every process of that user (``kill_user``), so a child that left the group with
 setsid() goes too. The host does that itself, as root: it stops every process of the user, then kills them all
 (``sweep_user``), and no process of the plugin may signal, renice or pin the host. A killer under a user of its own
-then goes after what the sweep could not catch; it is killed after KILLER_WAIT, so a stop never waits on it for long.
+then goes after what the sweep could not catch; it is killed after KILLER_WAIT, and ``kill_user`` gives up after
+KILL_DEADLINE in all, so a stop never waits on it for long. ``reap_zombies`` reaps what a backend made the host's child
+with clone(CLONE_PARENT), which the event loop never waits for.
 
 Standard library only (asyncio).
 """
@@ -31,6 +33,7 @@ import signal
 import subprocess
 import sys
 import time
+import weakref
 from collections import deque
 from pathlib import Path
 
@@ -44,6 +47,7 @@ STOP_GRACE = 5.0  # seconds a backend has to exit after shutdown
 KILL_WAIT = 2.0  # seconds after SIGTERM before SIGKILL
 KILL_ROUNDS = 10  # kill(-1) rounds before kill_user gives up on a user that keeps forking
 KILLER_WAIT = 10.0  # seconds one killer may take, its Python's start included, on a CPU the plugin keeps busy
+KILL_DEADLINE = 30.0  # seconds kill_user goes on in all; its callers try again later, so one stop never waits long
 FREEZE_PASSES = 200  # passes of sweep_user over /proc before it kills what it holds, all stopped or not
 FREEZE_PAUSE = 0.002  # seconds between two passes
 SETTLE = 1.0  # seconds the processes a sweep killed have to end before a killer goes after what is left
@@ -63,6 +67,8 @@ KILLER = (  # real and saved user the killer's own, effective user the plugin's,
 PROC = Path("/proc")
 
 log = logging.getLogger(__name__)
+
+_STARTED: weakref.WeakSet[BackendProcess] = weakref.WeakSet()  # the backends started here, which the loop waits for
 
 
 class BackendGone(RuntimeError):
@@ -111,6 +117,7 @@ class BackendProcess:
             close_fds=True,
             limit=protocol.MAX_LINE,
         )
+        _STARTED.add(self)
         self._readers = [asyncio.create_task(self._read_stdout()), asyncio.create_task(self._read_stderr())]
 
     def _violation(self, text: str) -> None:
@@ -389,27 +396,35 @@ async def kill_user(owner: Identity) -> bool:
     its user itself (KILLER), like the trampoline of a backend: its effective user is the plugin's, so it may signal
     every process of the plugin, while its real and saved user is one of its own (``killer_uid``), so no process of the
     plugin may signal or trace it. It kills nothing unless it holds exactly those IDs and no capability. A killer that
-    has not ended after KILLER_WAIT is SIGKILLed and its round fails, so a stop or a start never waits on one for long.
+    has not ended after KILLER_WAIT is SIGKILLed and its round fails. The rounds stop at KILL_DEADLINE, each killer's
+    wait cut to what is left of it, so a process that escapes every round holds a stop or a start about KILL_DEADLINE
+    and one KILL_WAIT, where KILL_ROUNDS rounds of SETTLE, KILLER_WAIT and KILL_WAIT took over two minutes; the caller
+    tries again on its own schedule (``Host.retire``, a start's backoff).
     The host needs CAP_SETUID, CAP_SETGID and CAP_KILL, which it has when it gives backends users of their own."""
-    killer = killer_uid(owner)
+    killer, deadline = killer_uid(owner), time.monotonic() + KILL_DEADLINE
     for _ in range(KILL_ROUNDS):
         if PROC.is_dir() and not processes_of(owner.uid):
             return True
         await _off_loop(sweep_user, owner.uid)
         if not PROC.is_dir():  # nothing to look at (not Linux): the killer's word is all there is
-            return killer is not None and await _kill_round(killer, owner) == 0
-        if await _gone(owner.uid, SETTLE):
+            return killer is not None and await _kill_round(killer, owner, KILLER_WAIT) == 0
+        if await _gone(owner.uid, min(SETTLE, deadline - time.monotonic())):
             return True
+        left = deadline - time.monotonic()
+        if left <= 0:
+            break
         if killer is None:
             log.error("no killer user for this plugin user", extra={"uid": owner.uid})
         else:
-            await _kill_round(killer, owner)
+            await _kill_round(killer, owner, min(KILLER_WAIT, left))
+        if time.monotonic() >= deadline:
+            break
         await asyncio.sleep(0.05)
     return not processes_of(owner.uid)
 
 
-async def _kill_round(real: int, owner: Identity) -> int | None:
-    """One killer, waited for at most KILLER_WAIT: its exit code, None when it could not start or did not end."""
+async def _kill_round(real: int, owner: Identity, wait: float) -> int | None:
+    """One killer, waited for at most ``wait`` seconds: its exit code, None when it could not start or did not end."""
     try:
         killer = await asyncio.create_subprocess_exec(
             sys.executable,
@@ -431,7 +446,7 @@ async def _kill_round(real: int, owner: Identity) -> int | None:
         log.warning("cannot start the killer of a plugin user", extra={"uid": owner.uid, "error": str(exc)})
         return None
     try:
-        _, said = await asyncio.wait_for(killer.communicate(), KILLER_WAIT)
+        _, said = await asyncio.wait_for(killer.communicate(), wait)
     except TimeoutError:
         with contextlib.suppress(ProcessLookupError):
             killer.kill()
@@ -446,6 +461,31 @@ async def _kill_round(real: int, owner: Identity) -> int | None:
             extra={"uid": owner.uid, "exit": describe_exit(killer.returncode), "error": why},
         )
     return killer.returncode
+
+
+def reap_zombies(uid: int) -> list[int]:
+    """Reap the zombies whose parent is this process and whose real or saved user is ``uid``; their pids.
+
+    A backend may make a child with clone(CLONE_PARENT), whose parent is then the backend's own: the host. The event
+    loop waits only for the processes it started, so once such a child ends (``kill_user`` kills it), nothing reaps it:
+    it holds its pid, and one of the processes RLIMIT_NPROC lets the plugin's user have, for as long as the host runs.
+    A backend this module started and the loop still waits for is left to the loop. Call it only when nothing else the
+    host started under ``uid`` runs: pip, which ``subprocess.run`` waits for, would read as having exited 0."""
+    if uid <= 0 or not PROC.is_dir():
+        return []
+    me = str(os.getpid())
+    waited = {backend.pid for backend in list(_STARTED) if backend.pid is not None and backend.returncode is None}
+    reaped = []
+    for pid in _pids():
+        if pid in waited:
+            continue
+        status = _status(PROC / str(pid))
+        if _state(status) != "Z" or status.get("PPid", "").strip() != me or not _belongs(status, uid):
+            continue
+        with contextlib.suppress(ChildProcessError):  # not this process's child after all
+            if os.waitpid(pid, os.WNOHANG)[0] == pid:
+                reaped.append(pid)
+    return reaped
 
 
 def describe_exit(code: int | None) -> str:

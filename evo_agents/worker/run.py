@@ -14,13 +14,16 @@ it, and the parts every kind of run shares. The run's kind is composed into it, 
 - ``runner.author``, ``AuthorRun``: an execution plan written from its owner's request, in the run's chat.
 - ``runner.chat``, ``ChatRun``: one turn of an agent mentioned in a group chat, its reply in the thread and the branch
   of each repo it changed pushed.
+- ``runner.task``, ``TaskRun``: one headless turn of a plugin's agent type on the task the plugin handed it, the
+  branch of each repo it changed pushed for a draft pull request.
 
 The parts they share, each a module of ``runner``: ``sender`` (the events on their way to the hub), ``reports`` (the
 moves of the run and the blobs of its log and diff), ``agent`` and ``terminal`` (the agent, headless or in its
 terminal UI), ``inbox`` (the owner's messages), ``access`` (the leases and the preflight), ``origin`` (fetching and
 the branch a worktree works on), ``verify`` (the result file and the verify commands), ``push`` (the commit and the
 owner's notices), ``watchdog`` (the budget and the watchdog of a run of the Curator), ``directory`` (the directory of
-a run over several repos) and ``conversation`` (the turns of its agent and the waits for its owner). The decisions
+a run over several repos), ``branch_work`` (the worktrees of a chat run or a task run on its branch, and their push)
+and ``conversation`` (the turns of its agent and the waits for its owner). The decisions
 that need no I/O are pure functions in ``runner.transitions``.
 """
 
@@ -38,6 +41,7 @@ from evo_agents.worker.runner.plan import PlanRun
 from evo_agents.worker.runner.review import WORKTREE_FIGURES, ReviewRun
 from evo_agents.worker.runner.sender import Sender
 from evo_agents.worker.runner.step import StepRun
+from evo_agents.worker.runner.task import TaskRun
 
 __all__ = [
     "ANSWER_PROMPT",
@@ -58,6 +62,7 @@ __all__ = [
     "RunKind",
     "Sender",
     "StepRun",
+    "TaskRun",
     "Stopped",
     "kind_class",
     "read_asked",

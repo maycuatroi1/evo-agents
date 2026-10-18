@@ -21,7 +21,7 @@ the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays 
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
 `evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in
 `evo_agents/worker/runtimes` and its end of the web terminal. `evo_agents/worker/runner` holds a run on the machine:
-each kind of run (step, plan, review, judge, author, chat) in a module of its own, which composes the parts the kinds share
+each kind of run (step, plan, review, judge, author, chat, task) in a module of its own, which composes the parts the kinds share
 rather than inheriting them, and the decisions that need no I/O as pure functions in `runner/transitions.py`;
 `evo_agents/worker/run.py` keeps the names the daemon imports. The daemon has its own command group because
 `evo-agents hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes
@@ -31,10 +31,10 @@ how decisions and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots and labels after it joined | `workers` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots, labels and plugins after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -50,7 +50,8 @@ of at most 3, the run it retries (`parent_run_id`), its state and lease, the age
 and at the end the commit, diffstat, verify results, evidence, usage and error. A run the night shift queued also
 names its schedule and night and carries its caps (`budget`, see [Runs of the night shift](#runs-of-the-night-shift)).
 A run records the agent profile and the version it went under (`profile_id`, `profile_version`; `docs/hub.md`, Agent
-profiles), and a chat run its chat, the message that started it and its hop (`chat_id`, `chat_message_id`, `hop`).
+profiles), a chat run its chat, the message that started it and its hop (`chat_id`, `chat_message_id`, `hop`), and
+a task run its agent type and the draft pull requests of its branch (`agent_type_id`, `pulls`).
 
 ## Who may do what
 
@@ -66,8 +67,9 @@ profiles), and a chat run its chat, the message that started it and its hop (`ch
   machine token that leaked cannot hand it work; a message or a decision answer sent with a token to a run on it, or
   that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
-- **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels and name, from a
-  web session with its CSRF header or with the owner's machine token. A hub admin who does not own the worker gets
+- **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels, name and plugins
+  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), from a web session with its CSRF
+  header or with the owner's machine token. A hub admin who does not own the worker gets
   403 and anyone else 404, and a revoked worker is 409. The projects a worker serves and whether it allows the web
   terminal are not settings: the machine sets them when it joins or registers, and changing them means registering
   again.
@@ -503,6 +505,32 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
+## Task runs
+
+A task run (kind `task`, `evo_agents.hub.task_runs`) is one turn of an agent type of a plugin on a task the plugin
+handed it through the hub's API (`docs/plugins.md`, Agent types). The hub queues it with no plan (`plan_id` empty), the
+task in `request`, the agent type (`agent_type_id`), the type's profile, dispatched by the member the project named
+for the type (`run_as`), the branch `task/<id>` (the id of the run the dispatch made) and the repos of its project
+(none when it has none). It is pinned to no worker: a worker of `run_as` claims it with `task` in its heartbeat's
+`run_kinds`. When the type names workers, the worker must be one of them, by name. When the run has repos, the worker
+needs a checkout of one of them. The claim hands the prompt the hub builds then (`task_runs.build_task_prompt`): the
+rules, the repos and the task, which is cut first to keep the prompt within its bound. Its budget is what is left of
+the type's cap of cost for 24 hours, and 30 minutes of agent time.
+
+The daemon makes a writable worktree of each repo it has a checkout of on the run's branch, from origin's branch when
+an earlier attempt pushed it, else from origin's default branch (`runner/branch_work.py`, shared with chat runs). The
+agent works in one headless turn, `EVO_RUN_KIND=task`, and asks nobody anything. At the end the daemon:
+
+- commits what the agent left in each worktree;
+- pushes the run's branch of each repo whose commits origin lacks, never a default branch and never forced
+  (`gitops.check_push`);
+- tells the hub of each push with `POST /v1/worker/runs/{id}/task/pulls` (`repo`, `branch`, `head`).
+
+The hub opens a draft pull request with the workers' App, or finds the one open, keeps it in `pulls` and never merges
+it. The run then ends `done`, without verify results. It never waits and is never rerun (409): the plugin hands the
+task again. A lost one is tried again on the same branch with the same agent type. When it ends done, failed or
+cancelled, the plugin of its agent type gets the event `task.result`.
+
 ## Local runs
 
 A local run (kind `local`, `evo_agents.hub.server.local_runs`) is a Claude Code session on a member's own machine
@@ -637,7 +665,10 @@ for a Judge the commit to judge and the run's own key (`judge_key`); null for an
 a runtime its runtime axis allows (a run asking for `any` takes the first of the worker's it allows), and, when the
 profile limits tools, skills or models or has instructions, only by a daemon whose last heartbeat listed
 `agent_profiles` in `features`; the answer has `profile`, the profile at the version the run went under (handle,
-version, name, instructions, permissions), null for a run from before schema 0030. A worker has at most one
+version, name, instructions, permissions), null for a run from before schema 0030. A profile whose environment axis
+allows only environments of plugins is claimed only by a daemon that listed `environments` and whose owner accepted
+the plugin of one; the answer has `environment`, the declaration of the environment the claim picked ([Environments
+of plugins](#environments-of-plugins)), null for the worker's host. A worker has at most one
 claim waiting: a newer claim ends the older one, which answers no run. A claim whose worker hung up, as a daemon that
 stops drops the claim it waits on, takes no run: it ends before it looks at the queue again, and when the worker hangs
 up while the claim leases a run, the lease is rolled back before it commits, so the run stays queued for the next
@@ -660,12 +691,13 @@ it holds:
   "free_slots": 1,
   "runs": [12],
   "agent_version": "0.3.0",
-  "run_kinds": ["step", "plan", "review", "judge"],
-  "features": ["session_per_step", "author_decisions"]
+  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task"],
+  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs"]
 }
 ```
 
-`runtimes` is keyed `claude-code`, `opencode` or `codex`, each `{available, version, reason, models}`: `available`
+`runtimes` is keyed `claude-code`, `opencode`, `codex`, or `<plugin>/<name>` for a runtime of a plugin the hub
+declared to the worker ([Runtimes of plugins](#runtimes-of-plugins)), each `{available, version, reason, models}`: `available`
 is required, `reason` says why a runtime that is there cannot take runs, and only an available runtime is claimed
 for. `models` lists the models an available runtime offers on the machine, when the runtime lets them be read (see
 [Runtime adapters](#runtime-adapters)): at most 200, each one line of at most 200 characters, so the web can suggest
@@ -680,7 +712,11 @@ optional, lists what the daemon does besides its kinds of run (`runs.HUB_FEATURE
 with a new agent session for each step, `author_decisions`, an author run whose agent asks decisions with
 `evo-agents worker ask` and waits for every answer of its turn (the hub then builds the author prompt with the rules of
 decisions; without it, the rules of a chat alone), and `agent_profiles`, a daemon whose adapters apply a run's agent
-profile (tools, skills and model in the session, the instructions in its system prompt). The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
+profile (tools, skills and model in the session, the instructions in its system prompt), `plugin_runtimes`, a daemon
+that runs the runtimes of plugins through its adapter of ACP, `environments`, a daemon that runs a run's agent in
+the environment its claim names, a container of a plugin's environment, and `agent_packs`, a daemon that builds the
+agent packs a run's profile attaches ([Agent packs](#agent-packs)). This daemon sends every kind of `runs.RUN_KINDS` and
+every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
@@ -690,7 +726,10 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 ```json
 {
   "drain": false,
-  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"]},
+  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"]},
+  "plugin_runtimes": [{"runtime": "sandbox/gemini", "plugin": "sandbox", "version": "0.2.0", "title": "Gemini CLI",
+                       "command": ["gemini", "--experimental-acp"], "models": ["gemini-2.5-pro"],
+                       "secrets": ["GEMINI_API_KEY"]}],
   "runs": [{"id": 12, "held": true, "state": "running", "lease_expires_at": "...", "cancel": false,
             "takeover": false, "handback": false, "terminal_open": false, "park": false, "inbox": 0,
             "decisions": 0}]
@@ -699,8 +738,9 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
 (`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
-whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`), which the owner may change
-with `PATCH /v1/workers/{id}`. When they differ from `config.json`, the daemon takes them in memory, writes
+whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`), which the owner may
+change with `PATCH /v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
+those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon). When they differ from `config.json`, the daemon takes them in memory, writes
 `config.json` again (atomically, mode 0600, its other fields as they are on disk) and logs the old and new values. More
 slots are claimed at the next turn of the claim loop, without a restart; fewer stop no run, and the daemon only
 claims nothing until it holds fewer runs than the new slots. The hub counts the runs a worker holds against its slots
@@ -825,7 +865,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}` | member | create a pairing code, follow it |
 | `POST /v1/workers` | member (machine token) | register this machine directly |
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
-| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them) or `name` (unique among the owner's workers not revoked, 409 otherwise), at least one; the values it has already change nothing and are not audited |
+| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
@@ -1290,6 +1330,75 @@ claude-agent-sdk 0.2.163, codex-cli 0.153.4 as the app-server with openai-codex 
 used), opencode 1.18.34 with aiohttp. Otherwise the heartbeat reports it unavailable with the reason, and the hub
 hands it no run.
 
+### Runtimes of plugins
+
+A plugin may declare a runtime: the command of an agent that speaks the Agent Client Protocol (ACP), the models it
+offers and the variables its agent needs ([plugins.md](plugins.md#runtimes)). The hub registers it as
+`<plugin>/<name>` in each project that enabled the plugin, and a run asks for it by that name; `any` never takes it.
+
+The owner chooses which plugins' runtimes a worker takes: its `plugins`, on the worker's page or with
+`PATCH /v1/workers/{id}`, empty until set. The daemon keeps them in `config.json`, as it keeps its slots and labels,
+and lists `plugin_runtimes` in its heartbeat's `features`, so the answer carries the declarations of those plugins'
+runtimes in the projects the worker serves. For each one the daemon makes an adapter of ACP
+(`evo_agents.worker.runtimes.acp`) and reports the runtime at the next heartbeat: available when the program of its
+command is on the daemon's `PATH` (or is an absolute path to an executable), with the declared models; an ACP agent
+has no version option, so none is reported. The hub hands a run of a plugin's runtime only to a worker whose owner
+accepted the plugin, whose daemon lists `plugin_runtimes` and whose heartbeat reports the runtime available. A worker
+without them leaves the run queued for another, and the run does not fail; a dispatch pinned to such a worker is 409,
+saying which of the three it lacks. A run whose plugin a project admin disabled after it was dispatched fails at its
+claim, saying so.
+
+The claim carries the declaration as the plugin enabled on the project has it then (`plugin_runtime`), and the run's
+agent starts through the adapter made from it. The adapter starts the program in the run's worktree through the same
+launcher as the other runtimes, speaks ACP version 1 over its stdin and stdout, and asks for no file system or
+terminal of its own: the agent works with its own tools, every permission it asks is granted, and no MCP server is
+handed to it. The run's model goes to the agent through its config option of category `model`; an agent that offers
+none fails the start. ACP has no system prompt, so the headless note and the instructions of the run's agent profile
+are the first block of the first prompt. A message of the owner waits for the end of the turn and starts the next one.
+The turn completes only with the stop reason `end_turn`, and the agent's `session/update` notifications, already in
+the hub's shapes, become the run's events. A variable the declaration names (`secrets`) that neither the run's leases
+nor the daemon's environment set fails the run before the agent starts, with cause `credentials`. An agent profile
+that limits tools or skills fails the run before the agent starts too: an ACP agent's tools are its own.
+
+### Environments of plugins
+
+A run's agent runs where its claim says (`environment`, picked by the hub from the environment axis of the run's agent
+profile, [hub.md](hub.md), Agent profiles): on the worker's own machine, the host, when it names none, as every run
+ran before environments; or in a container of a plugin's environment, an image pinned by its digest
+([plugins.md](plugins.md#environments)). The owner accepts a plugin's environments as they accept its runtimes, in the
+worker's `plugins`; the daemon lists `environments` in its `features`.
+
+The container provider (`evo_agents.worker.environments`) runs the agent's program through Docker or Podman: the
+engine `EVO_WORKER_CONTAINER_ENGINE` names (`docker`, `podman` or a path), else `docker`, else `podman` on the daemon's
+`PATH`. Every runtime's adapter builds its command through it, so the program is the image's own (`claude`,
+`opencode`, `codex`, or an ACP agent's program, found on the image's PATH), started with:
+
+- `--rm -i --init --pull=never --cap-drop=ALL --security-opt=no-new-privileges`, as the owner's user (`--user
+  <uid>:<gid>`, and `--userns=keep-id` on rootless Podman), so what the agent writes is the owner's;
+- the run's worktree, the git directory of each checkout a worktree in it belongs to (so git works in it) and a home
+  of the run, `runs/<run>/container-home`, each mounted at its own path; the home is the container's `HOME` and keeps
+  the runtime's sessions for the run's next agent; then the declared tmpfs and volumes (`evo-<plugin>-<name>`);
+- the declared network: `--network none`, or the engine's default for `outbound`, with opencode's port published on
+  `127.0.0.1` alone (its server listens on the container's addresses);
+- labels naming this worker (a digest of its home), the run and the environment;
+- only the run's own variables: those its env leases set, and those the run, the adapter or the runtime's SDK set over
+  the daemon's environment, passed by name (`-e NAME`) so the engine's client reads each value from its own environment
+  and none is on a command line. The daemon's own environment (its `PATH`, `HOME`, the owner's tokens and keys) never
+  goes in, nor the run's git configuration, which names a credential helper of this worker. So the runtime's login in
+  a container is a lease: `CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` for Claude Code, a provider's key for
+  opencode or Codex ([credentials.md](credentials.md)); the machine's own login is not there. An ACP agent's `secrets`
+  must come from the run's leases too.
+
+The run's preflight asks the provider before the agent starts: the run is a step or task run (the agent of a plan,
+author, chat, review or judge run talks to the daemon through `evo-agents worker`, which a container does not have),
+headless, not opencode on network `none`, its declared mounts clear of the worker's home and the run's checkouts, and
+the engine answers `info` and has the image or pulls it by its digest (up to 15 minutes). Each problem fails the run
+with cause `environment` and the agent never starts. A run in a container is never handed to a person in a terminal UI,
+which runs on the host. The daemon runs the step's verify commands on the host, as for any run, once the agent ended.
+
+Once an agent ends, the daemon removes what is left of the run's containers by their labels. agent.json names them,
+so a daemon that starts after one that died removes them as it stops the orphan agent's process group.
+
 ### Agent profiles in the session
 
 The claim of a run carries its agent profile ([hub.md](hub.md), Agent profiles) as `profile`. The hub has applied the
@@ -1342,6 +1451,49 @@ The run then fails with cause `runtime` and the reason in its error and its log,
 fetched. Claude Code's check of its MCP servers fails the run the same way as the agent starts, before the prompt
 goes in. Otherwise the log says what the profile limits. A run whose profile limits the session is never handed to a
 person in a terminal UI, which applies no profile: an interactive run fails, and a takeover is refused.
+
+### Agent packs
+
+A run whose agent profile attaches agent packs of plugins ([hub.md](hub.md), Agent profiles;
+[plugins.md](plugins.md#agent-packs)) carries them in its claim as `packs`: each pack at the version of its plugin the
+profile pins, with a presigned GET of that version's bundle, its size and its SHA-256. The daemon lists
+`agent_packs` in its heartbeat's `features`, and the hub hands it such a run only when the owner accepted each pack's
+plugin in the worker's `plugins`, as for runtimes and environments of plugins.
+
+Before the run's first agent starts, the daemon builds the packs (`evo_agents.worker.packs`) into
+`runs/<run>/packs/<plugin>/<pack>/`, emptied first. It downloads each bundle once, checks its size and SHA-256
+against the claim, reads it whole as the hub did when it was published, checks that it is the plugin and version the
+claim names, that it declares the pack and that the owner accepted the plugin, then writes the pack's files with
+their modes. It leaves out the pack's `.mcp.json`, whose servers each runtime gets through its own configuration
+instead, and writes the `.claude-plugin/plugin.json` of a Claude Code plugin named `<plugin>.<pack>`. Two packs that
+name the same MCP server fail the build. The run's log says which packs it built and what each holds.
+
+| | claude-code | opencode | codex |
+| --- | --- | --- | --- |
+| skills | each pack a local plugin (`plugins` of claude-agent-sdk, `--plugin-dir`), named `<plugin>.<pack>:<skill>` | `skills.paths` in `OPENCODE_CONFIG_CONTENT`, by their own names | the app-server's `skills/extraRoots/set`, by their own names |
+| subagents, hooks | the plugin | refused | refused |
+| MCP servers | `mcp_servers`, by their own names: stdio, http, sse | an `mcp` entry each in `OPENCODE_CONFIG_CONTENT`, `local` or `remote` | `mcp_servers` in the thread's `config`: stdio and http; sse refused |
+| instructions | after the profile's in `--append-system-prompt` | after the profile's in `system` | after the profile's in `developer_instructions` |
+
+- Claude Code gets a pack's MCP servers under their own names rather than as the plugin's, which it would name
+  `plugin:<plugin>:<server>`, a name a profile's `allowedMcpServers` cannot hold.
+- opencode and Codex list skills by their bare names, so two packs that hold a skill of the same name fail the run
+  there; Claude Code tells them apart by the plugin.
+- The runtimes of plugins (ACP) load no pack.
+
+On the skill and tool axes of the run's profile a pack counts as named, as the hub reads it: an allowlist of the skill
+axis gains the pack's skills as the runtime names them, and one of the tool axis `mcp:<server>` for each of its
+servers (`evo_agents.worker.runtimes.profiles`). An axis of mode `all` stays as it is, and no other axis widens, so an
+allowlist of tools without `bash` keeps the agent from the shell when a pack's skill asks for it too. A pack's hooks
+are commands Claude Code runs itself at its events, not tools of the agent, so no axis limits them: pinning a pack
+that has hooks is consent to them. With a tool allowlist, Codex turns off the MCP servers of the owner's and the
+worktree's `config.toml` the profile leaves out, and keeps those of the packs.
+
+A pack that does not build, or that holds what the run's runtime does not load (`Adapter.pack_refusal`), fails the
+run with cause `runtime` before its agent starts: the run's error and its log say which pack and what. In a container
+of a plugin's environment, each pack's directory is mounted read-only at its own path. A run with packs is never
+handed to a person in a terminal UI, which loads none. Checked against Claude Code 2.1.296, opencode 1.18.34 and
+codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a pack built so.
 
 ### A run on the machine
 
@@ -1760,7 +1912,10 @@ fetches anything and before its agent starts (`evo_agents.worker.preflight`):
   `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c` argument; not the shell's builtins, a word the
   shell expands, a relative path (a file of the worktree, not there yet), or what `python -m` and `uv run` run. After a
   command that may change PATH (`source`, `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named
-  by its number alone, never its command or its program.
+  by its number alone, never its command or its program;
+- for a run whose claim names a plugin's environment, the container provider can run its agent here: an engine that
+  answers, the image (pulled by its digest when missing), a step run, headless ([Environments of
+  plugins](#environments-of-plugins)).
 
 A check that does not pass is a `system` event of the run, "Preflight: ..." with its `cause`; the run fails with every
 problem in its error ("preflight: ...; the agent did not start") and the cause of the first as its `failure_cause`.
@@ -1776,6 +1931,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `origin` | the project lists no origin for a repo it needs (preflight) |
 | `credentials` | git cannot read or push to a repo with what the run holds (preflight), or the remote refused the fetch or the push for its credential |
 | `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), or a verify command exited 127 |
+| `environment` | the run's claim names a plugin's environment, a container, that the worker cannot run its agent in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does not take (preflight) |
 | `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |
 | `verify_failed` | a verify command the daemon ran again exited other than 0 |
 | `timeout` | it ran past its timeout |

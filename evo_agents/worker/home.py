@@ -66,6 +66,7 @@ class WorkerConfig:
     projects: list[str]
     slots: int = 1
     labels: list[str] = field(default_factory=list)
+    plugins: list[str] = field(default_factory=list)  # whose runtimes it takes, as its owner set them on the hub
     allow_web_terminal: bool = False
     owner: str | None = None
     token_id: int | None = None
