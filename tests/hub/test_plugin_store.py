@@ -58,10 +58,15 @@ def make_app(hub_db, tmp_path, s3, *, publishers: str = PUBLISHERS, hub_version:
         plugin_core_publishers=frozenset({"evo"}),
         **s3.config(),
     )
+    from evo_agents.hub.plugin_calls import CoreRegistry
+
     app = create_app(config)
     if hub_version is not None:
         app.state.hub_version = hub_version
     app.state.plugin_sigstore = sigstore or FakeSigstore()
+    # The store as published bundles fill it: the core plugins of the image (Telegram) stay out of it here, and
+    # test_plugin_points and the command line's test below show them beside published ones.
+    app.state.core_plugins = CoreRegistry(())
     return app
 
 
@@ -433,12 +438,15 @@ def test_plugin_install_cli_publishes_lists_shows_installs_upgrades_and_removes_
 
         listed = json.loads(ok(plugin_cli(["list", "--json"], home)).stdout)
         assert_json_keys("hub plugin list", listed)
-        assert [(p["name"], p["state"], p["latest_version"]) for p in listed] == [("sandbox", "available", "1.1.0")]
+        # beside sandbox, Telegram: the core plugin evo-ak ships, installed with it, which the hub records as it starts
+        found = [(p["name"], p["state"], p["latest_version"]) for p in listed]
+        assert found == [("sandbox", "available", "1.1.0"), ("telegram", "installed", "1.0.0")]
+        assert "installed 1.0.0 by the hub's image at" in ok(plugin_cli(["show", "telegram"], home)).stdout
         installed = json.loads(ok(plugin_cli(["install", "sandbox", "--version", "1.0.0", "--json"], home)).stdout)
         assert_json_keys("hub plugin install", installed)
         assert installed["installed_version"] == "1.0.0"
         table = ok(plugin_cli(["list"], home)).stdout
-        assert "sandbox" in table and "installed" in table and "1.1.0" in table
+        assert "sandbox" in table and "installed" in table and "1.1.0" in table and "telegram" in table
         shown = ok(plugin_cli(["show", "sandbox"], home)).stdout
         assert "Plugin sandbox of publisher acme: installed" in shown and "upgrade waiting: 1.1.0" in shown
         assert "asks for runs:read, chats:write" in shown

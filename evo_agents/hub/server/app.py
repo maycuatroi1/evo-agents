@@ -345,8 +345,8 @@ def create_app(config: HubConfig) -> FastAPI:
 
 
 async def _check_plugins(app: FastAPI, config: HubConfig) -> None:
-    """Record the core plugins of the image that projects enable, then turn off the installed plugins that do not run
-    on this release (``plugin_store``); a failure is logged and the hub serves on."""
+    """Record the core plugins of the image in the store, then turn off the installed plugins that do not run on this
+    release (``plugin_store``); a failure is logged and the hub serves on."""
     from evo_agents.hub.server.plugin_store import disable_incompatible, register_core_plugins
 
     try:
