@@ -30,7 +30,8 @@ const mono = IBM_Plex_Mono({
 
 /**
  * The title and the favicon follow the hub's branding when it sets a name or a favicon (GET /v1/branding); without
- * one they are the web's own, public/icon.svg being the mark.
+ * one they are the web's own, public/icon.svg being the mark and public/apple-icon.png its tile for a phone's home
+ * screen. A branded favicon drops the home screen tile too, so a branded hub never shows the evo-agents mark.
  */
 export async function generateMetadata(): Promise<Metadata> {
   const [t, branding] = await Promise.all([getTranslations("app"), serverBranding()]);
@@ -39,7 +40,9 @@ export async function generateMetadata(): Promise<Metadata> {
     title: { default: name, template: `%s | ${name}` },
     description: t("description"),
     robots: { index: false, follow: false },
-    icons: { icon: branding?.favicon_url ?? { url: "/icon.svg", type: "image/svg+xml" } },
+    icons: branding?.favicon_url
+      ? { icon: branding.favicon_url }
+      : { icon: { url: "/icon.svg", type: "image/svg+xml" }, apple: "/apple-icon.png" },
   };
 }
 

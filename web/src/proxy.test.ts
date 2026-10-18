@@ -83,7 +83,7 @@ describe("proxy", () => {
     if (typeof pages === "string") throw new Error("the first matcher is the pages' one");
     const source = new RegExp(`^${pages.source}$`);
     for (const path of ["/", "/login", "/admin", "/p/demo"]) expect(source.test(path), path).toBe(true);
-    for (const path of ["/v1/projects", "/mcp", "/_next/static/chunk.js", "/icon.svg"]) {
+    for (const path of ["/v1/projects", "/mcp", "/_next/static/chunk.js", "/icon.svg", "/apple-icon.png"]) {
       expect(source.test(path), path).toBe(false);
     }
   });
