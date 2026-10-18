@@ -111,7 +111,7 @@ def cmd_list(args) -> int:
             decision["state"],
             decision["category"],
             f"#{decision['run_id']}",
-            decision["plan_id"] or f"author run #{decision['run_id']}",
+            decision["plan_id"] or "-",
             decision["step_key"] or "-",
             decision["owner"],
             _one_line(decision["question"], QUESTION_CHARS),
