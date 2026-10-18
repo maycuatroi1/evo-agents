@@ -142,10 +142,8 @@ def test_migration_0030_gives_every_project_before_it_a_default_profile_with_its
     rows = sql(
         hub_db, select(ap.c.handle, ap.c.name, ap.c.is_default, ap.c.permissions, ap.c.version).order_by(ap.c.id)
     )
-    assert rows == [
-        ("demo", "demo", True, profiles.all_access(), 1),
-        ("second", "second", True, profiles.all_access(), 1),
-    ]
+    seven = {axis: {"mode": "all"} for axis in profiles.AXES if axis != "environment"}  # 0040 adds the eighth
+    assert rows == [("demo", "demo", True, seven, 1), ("second", "second", True, seven, 1)]
     bodies = sql(hub_db, select(v.c.version, v.c.body).order_by(v.c.profile_id))
     assert [(version, body["handle"], body["is_default"]) for version, body in bodies] == [
         (1, "demo", True),

@@ -637,8 +637,17 @@
             "worker",
             "project",
             "model",
-            "runtime"
+            "runtime",
+            "environment"
           ]
+        },
+        {
+          "flags": [
+            "--pack"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -679,6 +688,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -730,6 +740,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -812,8 +823,17 @@
             "worker",
             "project",
             "model",
-            "runtime"
+            "runtime",
+            "environment"
           ]
+        },
+        {
+          "flags": [
+            "--pack"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
         },
         {
           "flags": [
@@ -829,8 +849,17 @@
             "worker",
             "project",
             "model",
-            "runtime"
+            "runtime",
+            "environment"
           ]
+        },
+        {
+          "flags": [
+            "--no-packs"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
         },
         {
           "flags": [
@@ -887,6 +916,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -938,6 +968,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -989,6 +1020,7 @@
           "is_default",
           "permissions",
           "restricted",
+          "packs",
           "version",
           "created_by",
           "created_at",
@@ -4625,6 +4657,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -4791,6 +4824,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -4890,6 +4924,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5024,13 +5059,7 @@
           ],
           "value": "string",
           "required": false,
-          "repeatable": false,
-          "choices": [
-            "any",
-            "claude-code",
-            "opencode",
-            "codex"
-          ]
+          "repeatable": false
         },
         {
           "flags": [
@@ -5166,6 +5195,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5265,6 +5295,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5364,6 +5395,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5425,6 +5457,7 @@
             "judge",
             "author",
             "chat",
+            "task",
             "local"
           ]
         },
@@ -5625,13 +5658,7 @@
           ],
           "value": "string",
           "required": false,
-          "repeatable": false,
-          "choices": [
-            "any",
-            "claude-code",
-            "opencode",
-            "codex"
-          ]
+          "repeatable": false
         },
         {
           "flags": [
@@ -5759,6 +5786,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -5874,6 +5902,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -6022,6 +6051,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -6121,6 +6151,7 @@
           "profile",
           "profile_id",
           "profile_version",
+          "environment",
           "machine",
           "cwd",
           "claude_email",
@@ -13677,7 +13708,7 @@
             "workers"
           ],
           "summary": "Update Worker",
-          "description": "Change the worker's slots, labels or name: its owner only, from a web session or with their machine token.",
+          "description": "Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine\ntoken.",
           "operationId": "update_worker_v1_workers__worker_id__patch",
           "parameters": [
             {
@@ -14437,6 +14468,7 @@
                       "judge",
                       "author",
                       "chat",
+                      "task",
                       "local"
                     ],
                     "type": "string"
@@ -17477,21 +17509,17 @@
               "schema": {
                 "anyOf": [
                   {
-                    "enum": [
-                      "claude-code",
-                      "opencode",
-                      "codex"
-                    ],
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$"
                   },
                   {
                     "type": "null"
                   }
                 ],
-                "description": "the runs of this runtime",
+                "description": "the runs of this runtime, of the core or a plugin's",
                 "title": "Runtime"
               },
-              "description": "the runs of this runtime"
+              "description": "the runs of this runtime, of the core or a plugin's"
             },
             {
               "name": "X-Evo-Sink",
@@ -21775,6 +21803,378 @@
           }
         }
       },
+      "/v1/x/builder/{project}/proposals": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Proposals",
+          "description": "The project's proposals of @builder, the newest first; those in ``state`` alone when given.",
+          "operationId": "list_proposals_v1_x_builder__project__proposals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "pending",
+                      "applied",
+                      "rejected",
+                      "failed",
+                      "rolled_back"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "State"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/BuilderProposal"
+                    },
+                    "title": "Response List Proposals V1 X Builder  Project  Proposals Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/x/builder/{project}/proposals/{proposal_id}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Proposal",
+          "operationId": "show_proposal_v1_x_builder__project__proposals__proposal_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BuilderProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/builder/{project}/proposals/{proposal_id}/answer": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Answer Proposal",
+          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why\nit could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the\nothers.",
+          "operationId": "answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderProposalAnswer"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BuilderProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/builder/{project}/proposals/{proposal_id}/rollback": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Roll Back Proposal",
+          "description": "Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is\nstill at the version the proposal made.",
+          "operationId": "roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BuilderProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/me/telegram": {
         "get": {
           "tags": [
@@ -24108,6 +24508,714 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agent-packs": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "List Agent Packs",
+          "description": "The agent packs a profile of the project may attach, by plugin, then in its manifest's order.",
+          "operationId": "list_agent_packs_v1_projects__project__agent_packs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AgentPack"
+                    },
+                    "title": "Response List Agent Packs V1 Projects  Project  Agent Packs Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agent-types": {
+        "get": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "List Agent Types",
+          "description": "The agent types of the plugins the project enabled, by plugin, then in its manifest's order.",
+          "operationId": "list_agent_types_v1_projects__project__agent_types_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AgentType"
+                    },
+                    "title": "Response List Agent Types V1 Projects  Project  Agent Types Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/agent-types/{plugin}/{name}": {
+        "put": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Enable Agent Type",
+          "description": "Enable agent type ``name`` of ``plugin`` in the project, creating its profile the first time, or change how.",
+          "operationId": "enable_agent_type_v1_projects__project__agent_types__plugin___name__put",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                "description": "the agent type, as the manifest names it",
+                "title": "Name"
+              },
+              "description": "the agent type, as the manifest names it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentTypeIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentType"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "agents"
+          ],
+          "summary": "Disable Agent Type",
+          "description": "Turn agent type ``name`` of ``plugin`` off in the project: the plugin's tasks are refused; its profile stays.",
+          "operationId": "disable_agent_type_v1_projects__project__agent_types__plugin___name__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plugin",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9-]{0,62}$",
+                "description": "the plugin's id",
+                "title": "Plugin"
+              },
+              "description": "the plugin's id"
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                "description": "the agent type, as the manifest names it",
+                "title": "Name"
+              },
+              "description": "the agent type, as the manifest names it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/AgentType"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/agent-types/{name}/tasks": {
+        "post": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Dispatch Task",
+          "description": "Hand a task to agent type ``name`` of the plugin whose token the request carries: a run of kind task.",
+          "operationId": "dispatch_task_v1_plugin_api_projects__project__agent_types__name__tasks_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+                "description": "the agent type, as the manifest names it",
+                "title": "Name"
+              },
+              "description": "the agent type, as the manifest names it"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskQueued"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            }
+          }
+        }
+      },
+      "/v1/plugin-api/projects/{project}/tasks/{task}": {
+        "get": {
+          "tags": [
+            "plugin api"
+          ],
+          "summary": "Show Task",
+          "description": "A task the plugin whose token the request carries handed, as its latest run has it.",
+          "operationId": "show_task_v1_plugin_api_projects__project__tasks__task__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "task",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "description": "the id the task's dispatch answered",
+                "title": "Task"
+              },
+              "description": "the id the task's dispatch answered"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Task"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/task/pulls": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Pushed",
+          "description": "The worker pushed the task run's branch of a repo: its draft pull request, kept on the run.",
+          "operationId": "pushed_v1_worker_runs__run_id__task_pulls_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TaskPushed"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TaskPull"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "429": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Too Many Requests"
             }
           }
         }
@@ -29834,7 +30942,15 @@
               },
               "type": "array",
               "title": "Restricted",
-              "description": "the axes that are allowlists, in the order of the seven"
+              "description": "the axes that are allowlists, in the order of the eight"
+            },
+            "packs": {
+              "items": {
+                "$ref": "#/components/schemas/PinnedPack"
+              },
+              "type": "array",
+              "title": "Packs",
+              "description": "the agent packs it attaches, in order, each at the version it pins"
             },
             "version": {
               "type": "integer",
@@ -29881,6 +30997,7 @@
             "is_default",
             "permissions",
             "restricted",
+            "packs",
             "version",
             "created_by",
             "created_at",
@@ -29988,6 +31105,15 @@
             },
             "permissions": {
               "$ref": "#/components/schemas/AgentPermissions"
+            },
+            "packs": {
+              "items": {
+                "$ref": "#/components/schemas/AgentPackPin"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Packs",
+              "description": "the agent packs it attaches, in order; see GET .../agent-packs"
             }
           },
           "additionalProperties": false,
@@ -30060,7 +31186,23 @@
                   "type": "null"
                 }
               ],
-              "description": "the seven axes whole; an axis left out allows all"
+              "description": "the eight axes whole; an axis left out allows all"
+            },
+            "packs": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/AgentPackPin"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Packs",
+              "description": "the agent packs it attaches, whole, in order; [] for none"
             },
             "if_version": {
               "anyOf": [
@@ -30212,6 +31354,107 @@
           ],
           "title": "AgentMessageIn"
         },
+        "AgentPack": {
+          "properties": {
+            "pack": {
+              "type": "string",
+              "title": "Pack",
+              "description": "<plugin>/<name>"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "installed_version": {
+              "type": "string",
+              "title": "Installed Version",
+              "description": "the plugin's version installed now, which a pin without one takes"
+            },
+            "versions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Versions",
+              "description": "the versions of the plugin the hub holds that declare the pack and run on this release, the newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "pack",
+            "plugin",
+            "name",
+            "title",
+            "description",
+            "installed_version",
+            "versions"
+          ],
+          "title": "AgentPack",
+          "description": "A pack a profile of the project may attach: of a plugin the project enabled, at one of ``versions``."
+        },
+        "AgentPackPin": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9-]{0,62}$",
+              "title": "Plugin",
+              "description": "the plugin's id"
+            },
+            "name": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+              "title": "Name",
+              "description": "the pack, as the plugin's manifest names it"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)\\.(0|[1-9][0-9]*)(?:-([0-9A-Za-z.-]{1,40}))?$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "a version of the plugin the hub holds; left out: the one installed now, which the profile pins"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "plugin",
+            "name"
+          ],
+          "title": "AgentPackPin",
+          "description": "A pack a profile attaches: pack ``name`` of plugin ``plugin`` at version ``version`` of the plugin."
+        },
         "AgentPermissions": {
           "properties": {
             "credential": {
@@ -30240,13 +31483,17 @@
             },
             "runtime": {
               "$ref": "#/components/schemas/AgentAxis",
-              "description": "claude-code, opencode, codex"
+              "description": "claude-code, opencode, codex, and plugins' runtimes <plugin>/<name>"
+            },
+            "environment": {
+              "$ref": "#/components/schemas/AgentAxis",
+              "description": "where the agent runs, in order of preference: host, the worker's own machine, and plugins' environments <plugin>/<name>, each a container; all runs on the host"
             }
           },
           "additionalProperties": false,
           "type": "object",
           "title": "AgentPermissions",
-          "description": "What the runs of a profile may use, on seven axes; an axis left out allows all."
+          "description": "What the runs of a profile may use, on eight axes; an axis left out allows all."
         },
         "AgentReactionIn": {
           "properties": {
@@ -30275,6 +31522,194 @@
             "emoji"
           ],
           "title": "AgentReactionIn"
+        },
+        "AgentType": {
+          "properties": {
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "handle": {
+              "type": "string",
+              "title": "Handle",
+              "description": "its profile's handle: the one the hub made, or the one its template names"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "<plugin>/<name>, the environment its runs take"
+            },
+            "packs": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Packs",
+              "description": "the agent packs of the plugin it attaches, <plugin>/<name>"
+            },
+            "enabled": {
+              "type": "boolean",
+              "title": "Enabled",
+              "description": "enabled in the project and not turned off: the plugin may hand it tasks"
+            },
+            "run_as": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run As"
+            },
+            "workers": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Workers"
+            },
+            "daily_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Daily Usd"
+            },
+            "spent_usd": {
+              "type": "number",
+              "title": "Spent Usd",
+              "description": "what its task runs cost in the last 24 hours"
+            },
+            "enabled_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled By"
+            },
+            "enabled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Enabled At"
+            },
+            "disabled_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Disabled At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plugin",
+            "name",
+            "title",
+            "description",
+            "handle",
+            "environment",
+            "packs",
+            "enabled",
+            "run_as",
+            "workers",
+            "daily_usd",
+            "spent_usd",
+            "enabled_by",
+            "enabled_at",
+            "disabled_at"
+          ],
+          "title": "AgentType",
+          "description": "An agent type a plugin the project enabled contributes, and how the project enabled it (null: never)."
+        },
+        "AgentTypeIn": {
+          "properties": {
+            "run_as": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9-]{0,38}$",
+              "title": "Run As",
+              "description": "the member whose name its runs go under: a writer or an admin of the project"
+            },
+            "workers": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 16,
+              "title": "Workers",
+              "description": "the workers of run_as its runs may take, by name; none: any the profile allows"
+            },
+            "daily_usd": {
+              "type": "number",
+              "maximum": 1000.0,
+              "exclusiveMinimum": 0.0,
+              "title": "Daily Usd",
+              "description": "what its task runs may cost in 24 hours; a task past it is refused"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "run_as",
+            "daily_usd"
+          ],
+          "title": "AgentTypeIn",
+          "description": "How a project runs an agent type: under whose name, on which of that member's workers, at what cost a day."
         },
         "AgentVersion": {
           "properties": {
@@ -31176,6 +32611,204 @@
             "finished_at"
           ],
           "title": "Build"
+        },
+        "BuilderProposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "branding",
+                "features",
+                "plugin_config",
+                "agent"
+              ],
+              "title": "Kind"
+            },
+            "target": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Target",
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent)"
+            },
+            "change": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Change",
+              "description": "set: field -> value; unset: the fields it clears"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "base_version": {
+              "type": "integer",
+              "title": "Base Version",
+              "description": "the setting's version it was proposed on, which approving needs still"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "applied",
+                "rejected",
+                "failed",
+                "rolled_back"
+              ],
+              "title": "State"
+            },
+            "approver": {
+              "type": "string",
+              "enum": [
+                "hub_admin",
+                "project_admin"
+              ],
+              "title": "Approver",
+              "description": "who may decide it"
+            },
+            "proposed_by": {
+              "type": "string",
+              "title": "Proposed By",
+              "description": "the admin who asked @builder, the run's dispatcher"
+            },
+            "proposed_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Proposed At"
+            },
+            "decided_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided By"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "applied_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Applied Version",
+              "description": "the setting's version approving made"
+            },
+            "rollback_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rollback Version",
+              "description": "the setting's version rolling back made"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the hub could not apply it, for a failed one"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Link",
+              "description": "the hub's message that shows it in its thread"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "kind",
+            "target",
+            "change",
+            "summary",
+            "base_version",
+            "state",
+            "approver",
+            "proposed_by",
+            "proposed_at",
+            "decided_by",
+            "decided_at",
+            "applied_version",
+            "rollback_version",
+            "error",
+            "run_id",
+            "link"
+          ],
+          "title": "BuilderProposal",
+          "description": "A change @builder proposed, and what became of it."
+        },
+        "BuilderProposalAnswer": {
+          "properties": {
+            "answer": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "reject"
+              ],
+              "title": "Answer"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "answer"
+          ],
+          "title": "BuilderProposalAnswer"
         },
         "Builds": {
           "properties": {
@@ -34283,14 +35916,10 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
+              "maxLength": 127,
+              "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$",
               "title": "Runtime",
-              "description": "any: the claiming worker picks one it has",
+              "description": "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422",
               "default": "any"
             },
             "mode": {
@@ -35753,6 +37382,14 @@
             "settings": {
               "$ref": "#/components/schemas/WorkerSettings",
               "description": "the worker's settings as the hub holds them, which its owner may change (PATCH /v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none"
+            },
+            "plugin_runtimes": {
+              "items": {
+                "$ref": "#/components/schemas/PluginRuntime"
+              },
+              "type": "array",
+              "title": "Plugin Runtimes",
+              "description": "for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise"
             }
           },
           "type": "object",
@@ -35766,19 +37403,17 @@
         "HeartbeatRequest": {
           "properties": {
             "runtimes": {
-              "additionalProperties": {
-                "$ref": "#/components/schemas/RuntimeReport"
+              "patternProperties": {
+                "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$": {
+                  "$ref": "#/components/schemas/RuntimeReport"
+                }
               },
               "propertyNames": {
-                "enum": [
-                  "claude-code",
-                  "opencode",
-                  "codex"
-                ]
+                "maxLength": 127
               },
               "type": "object",
               "title": "Runtimes",
-              "description": "the runtimes on the machine: {\"claude-code\": {\"available\": true, \"version\": \"2.1.289\"}}"
+              "description": "the runtimes on the machine: {\"claude-code\": {\"available\": true, \"version\": \"2.1.289\"}}, and those of the plugins its owner accepted that the hub sent it (plugin_runtimes of the answer), as <plugin>/<name>"
             },
             "checkouts": {
               "patternProperties": {
@@ -35854,7 +37489,7 @@
                 }
               ],
               "title": "Features",
-              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
+              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run whose agent runs in a container of a plugin's environment. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
             }
           },
           "type": "object",
@@ -37873,7 +39508,8 @@
                     "author_waiting",
                     "chat_mention",
                     "chat_added",
-                    "plugin_disabled"
+                    "plugin_disabled",
+                    "builder_proposal"
                   ]
                 },
                 {
@@ -38577,6 +40213,7 @@
                 "judge",
                 "author",
                 "chat",
+                "task",
                 "local"
               ],
               "title": "Kind"
@@ -38676,14 +40313,8 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
               "title": "Runtime",
-              "description": "any until a worker claims the run"
+              "description": "any until a worker claims the run; a plugin's runtime is <plugin>/<name>"
             },
             "model": {
               "anyOf": [
@@ -39107,6 +40738,36 @@
             "path"
           ],
           "title": "PathIn"
+        },
+        "PinnedPack": {
+          "properties": {
+            "pack": {
+              "type": "string",
+              "title": "Pack",
+              "description": "<plugin>/<name>"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          "type": "object",
+          "required": [
+            "pack",
+            "plugin",
+            "name",
+            "version"
+          ],
+          "title": "PinnedPack",
+          "description": "A pack a profile attaches, at the version of its plugin it pins."
         },
         "Plan": {
           "properties": {
@@ -39636,14 +41297,10 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
+              "maxLength": 127,
+              "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$",
               "title": "Runtime",
-              "description": "any: the claiming worker picks one it has",
+              "description": "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422",
               "default": "any"
             },
             "model": {
@@ -40455,6 +42112,64 @@
             "core"
           ],
           "title": "PluginPublisher"
+        },
+        "PluginRuntime": {
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "title": "Runtime",
+              "description": "<plugin>/<name>, as runs name it"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the plugin's installed version"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "command": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Command",
+              "description": "the program, found on the worker's PATH unless absolute, then its arguments"
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Models",
+              "description": "the models the agent offers, which the worker reports"
+            },
+            "secrets": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Secrets",
+              "description": "the variables the agent needs, from the run's leases or the worker's environment"
+            }
+          },
+          "type": "object",
+          "required": [
+            "runtime",
+            "plugin",
+            "version",
+            "title",
+            "command",
+            "models",
+            "secrets"
+          ],
+          "title": "PluginRuntime",
+          "description": "A runtime a plugin enabled on a project declares (``evo_agents.plugins.runtimes``): the command of an ACP agent,\nat the plugin's version the hub has installed."
         },
         "PluginVersion": {
           "properties": {
@@ -42954,6 +44669,7 @@
                 "judge",
                 "author",
                 "chat",
+                "task",
                 "local"
               ],
               "title": "Kind",
@@ -43063,24 +44779,13 @@
             },
             "requested_runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
-              "title": "Requested Runtime"
+              "title": "Requested Runtime",
+              "description": "as the dispatch asked: any, a runtime of the core or a plugin's"
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
               "title": "Runtime",
-              "description": "any until a worker claims the run"
+              "description": "any until a worker claims the run; a plugin's runtime is <plugin>/<name>"
             },
             "model": {
               "anyOf": [
@@ -43536,6 +45241,18 @@
               ],
               "title": "Profile Version",
               "description": "the version of the profile whose rules apply to the run"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Environment",
+              "description": "the environment of a plugin, <plugin>/<name>, its claim picked from the environment axis of its profile, a container its agent runs in; null for a run on the worker's host, and before a claim"
             },
             "chat_id": {
               "anyOf": [
@@ -44271,6 +45988,66 @@
           ],
           "title": "RunDay"
         },
+        "RunEnvironment": {
+          "properties": {
+            "environment": {
+              "type": "string",
+              "title": "Environment",
+              "description": "<plugin>/<name>, as the environment axis of a profile names it"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the plugin's installed version"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "provider": {
+              "type": "string",
+              "const": "container",
+              "title": "Provider",
+              "default": "container"
+            },
+            "image": {
+              "type": "string",
+              "title": "Image",
+              "description": "[registry/]repository[:tag]@sha256:<digest>, pulled and run by that digest"
+            },
+            "network": {
+              "type": "string",
+              "enum": [
+                "none",
+                "outbound"
+              ],
+              "title": "Network"
+            },
+            "mounts": {
+              "items": {
+                "$ref": "#/components/schemas/RunMount"
+              },
+              "type": "array",
+              "title": "Mounts",
+              "description": "besides the worktree and the run's home"
+            }
+          },
+          "type": "object",
+          "required": [
+            "environment",
+            "plugin",
+            "version",
+            "title",
+            "image",
+            "network"
+          ],
+          "title": "RunEnvironment",
+          "description": "An environment a plugin enabled on a project declares (``evo_agents.plugins.run_environments``): a container\nimage pinned by its digest, at the plugin's version the hub has installed."
+        },
         "RunEvent": {
           "properties": {
             "seq": {
@@ -44624,6 +46401,113 @@
           ],
           "title": "RunList"
         },
+        "RunMount": {
+          "properties": {
+            "type": {
+              "type": "string",
+              "enum": [
+                "tmpfs",
+                "volume"
+              ],
+              "title": "Type"
+            },
+            "target": {
+              "type": "string",
+              "title": "Target",
+              "description": "the absolute path in the container"
+            },
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name",
+              "description": "a volume's name within the plugin; the worker names it evo-<plugin>-<name>"
+            },
+            "read_only": {
+              "type": "boolean",
+              "title": "Read Only",
+              "default": false
+            },
+            "size_mb": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Size Mb",
+              "description": "a tmpfs's size; null: the engine's default"
+            }
+          },
+          "type": "object",
+          "required": [
+            "type",
+            "target"
+          ],
+          "title": "RunMount",
+          "description": "A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``)."
+        },
+        "RunPack": {
+          "properties": {
+            "pack": {
+              "type": "string",
+              "title": "Pack",
+              "description": "<plugin>/<name>"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the version of the plugin the profile pins"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256",
+              "description": "what the downloaded bundle must hash to"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "presigned GET of the plugin's bundle; a bearer credential until it expires"
+            },
+            "expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Expires At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "pack",
+            "plugin",
+            "name",
+            "version",
+            "sha256",
+            "size",
+            "url",
+            "expires_at"
+          ],
+          "title": "RunPack",
+          "description": "An agent pack the run's profile attaches (``evo_agents.plugins.agent_packs``), as the hub holds the version of\nits plugin the profile pins: the worker downloads the plugin's bundle, checks it, and builds the pack from its\n``packs/<name>/`` into the run's directory for the agent's runtime."
+        },
         "RunPlugin": {
           "properties": {
             "name": {
@@ -44678,7 +46562,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Permissions",
-              "description": "the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}"
+              "description": "the eight axes, each {mode: all} or {mode: allowlist, allow: [...]}; an axis a version from before the axis does not name allows all"
             }
           },
           "type": "object",
@@ -44821,7 +46705,8 @@
                 "review",
                 "judge",
                 "author",
-                "chat"
+                "chat",
+                "task"
               ],
               "title": "Kind"
             },
@@ -44914,12 +46799,8 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
-              "title": "Runtime"
+              "title": "Runtime",
+              "description": "a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration"
             },
             "model": {
               "anyOf": [
@@ -45072,6 +46953,36 @@
                 }
               ],
               "description": "the agent profile the run went under; null for a run from before schema 0030"
+            },
+            "plugin_runtime": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PluginRuntime"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core"
+            },
+            "environment": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/RunEnvironment"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host"
+            },
+            "packs": {
+              "items": {
+                "$ref": "#/components/schemas/RunPack"
+              },
+              "type": "array",
+              "title": "Packs",
+              "description": "the agent packs the run's profile attaches, in its order, each at the version it pins, which the worker builds into the run's directory for its runtime; empty for a profile that attaches none"
             }
           },
           "type": "object",
@@ -47201,6 +49112,338 @@
           ],
           "title": "StorageCounts"
         },
+        "Task": {
+          "properties": {
+            "task_id": {
+              "type": "integer",
+              "title": "Task Id",
+              "description": "the run its dispatch made, which names its branch"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its latest run: a run its worker lost goes on in the next attempt"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "agent_type": {
+              "type": "string",
+              "title": "Agent Type"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "pulls": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Pulls",
+              "description": "the draft pull requests the hub opened, {repo, url, number} each"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "task_id",
+            "run_id",
+            "attempt",
+            "project",
+            "agent_type",
+            "state",
+            "branch",
+            "pulls",
+            "failure_cause",
+            "queued_at",
+            "finished_at"
+          ],
+          "title": "Task",
+          "description": "A task a plugin handed one of its agent types, as its latest run has it: ids and states only."
+        },
+        "TaskBudget": {
+          "properties": {
+            "max_usd": {
+              "type": "number",
+              "title": "Max Usd",
+              "description": "what is left of the agent type's cap, the run's cost cap"
+            },
+            "max_seconds": {
+              "type": "integer",
+              "title": "Max Seconds"
+            }
+          },
+          "type": "object",
+          "required": [
+            "max_usd",
+            "max_seconds"
+          ],
+          "title": "TaskBudget"
+        },
+        "TaskIn": {
+          "properties": {
+            "task": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "title": "Task",
+              "description": "what the agent is to do, at most 16384 bytes in UTF-8"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title",
+              "description": "one line the run's list shows; default: the task's"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "task"
+          ],
+          "title": "TaskIn"
+        },
+        "TaskPull": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "the draft pull request, or the branch; null when the hub knows neither"
+            },
+            "number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Number",
+              "description": "the pull request's number on GitHub"
+            },
+            "opened": {
+              "type": "boolean",
+              "title": "Opened",
+              "description": "the hub opened it now; false for one open already, or none"
+            },
+            "problem": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Problem",
+              "description": "why GitHub opened none, when it refused"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "url",
+            "number",
+            "opened",
+            "problem"
+          ],
+          "title": "TaskPull"
+        },
+        "TaskPushed": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Branch",
+              "description": "the run's branch, task/<id>"
+            },
+            "head": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Head",
+              "description": "the commit the branch has now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "head"
+          ],
+          "title": "TaskPushed"
+        },
+        "TaskQueued": {
+          "properties": {
+            "task_id": {
+              "type": "integer",
+              "title": "Task Id",
+              "description": "the run its dispatch made, which names its branch"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id",
+              "description": "its latest run: a run its worker lost goes on in the next attempt"
+            },
+            "attempt": {
+              "type": "integer",
+              "title": "Attempt"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "agent_type": {
+              "type": "string",
+              "title": "Agent Type"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "pulls": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Pulls",
+              "description": "the draft pull requests the hub opened, {repo, url, number} each"
+            },
+            "failure_cause": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Failure Cause"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            },
+            "budget": {
+              "$ref": "#/components/schemas/TaskBudget"
+            },
+            "spent_usd": {
+              "type": "number",
+              "title": "Spent Usd",
+              "description": "what its agent type's task runs cost in the last 24 h"
+            },
+            "daily_usd": {
+              "type": "number",
+              "title": "Daily Usd",
+              "description": "the agent type's cap, which the project's admins set"
+            }
+          },
+          "type": "object",
+          "required": [
+            "task_id",
+            "run_id",
+            "attempt",
+            "project",
+            "agent_type",
+            "state",
+            "branch",
+            "pulls",
+            "failure_cause",
+            "queued_at",
+            "finished_at",
+            "budget",
+            "spent_usd",
+            "daily_usd"
+          ],
+          "title": "TaskQueued"
+        },
         "TelegramLink": {
           "properties": {
             "url": {
@@ -48411,6 +50654,14 @@
               "type": "array",
               "title": "Labels"
             },
+            "plugins": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Plugins",
+              "description": "the plugins whose runtimes and environments it takes, as its owner set them"
+            },
             "projects": {
               "items": {
                 "type": "string"
@@ -48422,7 +50673,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Runtimes",
-              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
+              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode, codex or <plugin>/<name>, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
             },
             "checkouts": {
               "additionalProperties": true,
@@ -48522,6 +50773,7 @@
             "agent_version",
             "slots",
             "labels",
+            "plugins",
             "projects",
             "runtimes",
             "checkouts",
@@ -48693,6 +50945,14 @@
               },
               "type": "array",
               "title": "Labels"
+            },
+            "plugins": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Plugins",
+              "description": "the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none"
             }
           },
           "type": "object",
@@ -48747,6 +51007,23 @@
               ],
               "title": "Name",
               "description": "unique among the owner's workers not revoked"
+            },
+            "plugins": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,62}$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plugins",
+              "description": "the plugins whose runtimes and environments it takes; [] for none"
             }
           },
           "type": "object",

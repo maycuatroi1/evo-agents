@@ -1,6 +1,6 @@
 "use client";
 
-import { FilePen, MessagesSquare, Workflow } from "lucide-react";
+import { FilePen, MessagesSquare, Puzzle, Workflow } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
@@ -33,6 +33,17 @@ export function ChatRunKindBadge({ className }: { className?: string }) {
   return (
     <Tag className={className} data-testid="run-kind" data-kind="chat">
       <MessagesSquare aria-hidden="true" />
+      {t("kind")}
+    </Tag>
+  );
+}
+
+/** "Task run": one turn of a plugin's agent type on a task the plugin handed it, in tables and on the run page. */
+export function TaskRunKindBadge({ className }: { className?: string }) {
+  const t = useTranslations("runs.taskRun");
+  return (
+    <Tag className={className} data-testid="run-kind" data-kind="task">
+      <Puzzle aria-hidden="true" />
       {t("kind")}
     </Tag>
   );

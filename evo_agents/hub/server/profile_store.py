@@ -2,8 +2,9 @@
 profile of a project and the version rows, for the routes of ``agent_profiles``, the registration of a project
 (``projects``) and the runs (``runs.service.profiles``).
 
-A version row holds the profile whole as that version had it (``snapshot``); it is written in the transaction that
-makes the version. ``ensure_default`` gives a project its default profile when it has none: the registration of a new
+A version row holds the profile whole as that version had it (``snapshot``), its agent packs with the version each
+pins; it is written in the transaction that makes the version. A row written before the packs (schema 0041) has no
+``packs`` key, read as none. ``ensure_default`` gives a project its default profile when it has none: the registration of a new
 project calls it, and so does a run queued in a project that has none (one inserted outside the API), so that every
 run records a profile.
 """
@@ -20,7 +21,17 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import profiles, tables
 
 DEFAULT_DESCRIPTION = "The project's default agent: every permission, no instructions."
-SNAPSHOT = ("handle", "name", "description", "instructions", "color", "avatar_sha256", "is_default", "permissions")
+SNAPSHOT = (
+    "handle",
+    "name",
+    "description",
+    "instructions",
+    "color",
+    "avatar_sha256",
+    "is_default",
+    "permissions",
+    "packs",
+)
 
 
 @dataclass(frozen=True)
@@ -38,6 +49,7 @@ class Profile:
     avatar_sha256: str | None
     is_default: bool
     permissions: dict
+    packs: list  # the agent packs it attaches, each {"plugin", "name", "version"} (agent_packs)
     version: int
     created_by: str
     created_at: datetime
@@ -69,6 +81,7 @@ def profile_select() -> Select:
             ap.c.avatar_sha256,
             ap.c.is_default,
             ap.c.permissions,
+            ap.c.packs,
             ap.c.version,
             u.c.login.label("created_by"),
             ap.c.created_at,
@@ -121,6 +134,7 @@ async def ensure_default(conn: AsyncConnection, project_id: int) -> Profile:
         "avatar_sha256": None,
         "is_default": True,
         "permissions": profiles.all_access(),
+        "packs": [],
         "created_by": project.created_by,
     }
     statement = pg_insert(ap).values(**values).on_conflict_do_nothing().returning(ap.c.id)

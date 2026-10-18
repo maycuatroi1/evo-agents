@@ -20,7 +20,8 @@ import { AxisField } from "./axis-field";
 import { AvatarPicker, ColourField, Field } from "./form-parts";
 import { useAgentFailure, useAvatarWrite, useCreateAgent, useEditAgent } from "./hooks";
 import { type AgentDraft, createBody, draftOf, draftProblems, editBody, emptyDraft, fileBase64, type FieldProblem, hasProblems } from "./model";
-import { agentOptionsQuery } from "./options";
+import { agentOptionsQuery, agentPacksQuery } from "./options";
+import { PacksField } from "./packs-field";
 
 type Props = {
   project: string;
@@ -35,9 +36,9 @@ type Props = {
 /**
  * New agent and Edit agent, for an admin of the project (web/DESIGN.md, Agents): who the agent is (handle, creating
  * only, since it never changes; name, description, colour, and creating, an avatar) and, for any agent but the
- * project's default, its instructions and its seven axes. The form repeats the hub's checks and shows them once the
- * admin tries to save; an edit sends only what changed, against the version it opened on. The content mounts each
- * time the dialog opens, so it starts from the agent as the hub holds it.
+ * project's default, its instructions, its eight axes and the agent packs it attaches. The form repeats the hub's
+ * checks and shows them once the admin tries to save; an edit sends only what changed, against the version it opened
+ * on. The content mounts each time the dialog opens, so it starts from the agent as the hub holds it.
  */
 export function AgentDialog({ project, agent, open, onOpenChange, onSaved }: Props) {
   const [pending, setPending] = useState(false);
@@ -86,6 +87,8 @@ function AgentForm({
   const failure = useAgentFailure();
   const fieldText = useFieldText();
   const options = useQuery(agentOptionsQuery(browserApi, project));
+  const restricted = !agent?.is_default;
+  const packs = useQuery({ ...agentPacksQuery(browserApi, project), enabled: restricted });
   const create = useCreateAgent(project);
   const edit = useEditAgent(project, agent?.handle ?? "");
   const avatar = useAvatarWrite(project);
@@ -95,7 +98,6 @@ function AgentForm({
   const write = agent ? edit : create;
   const pending = write.isPending || avatar.isPending;
   const creating = agent === null;
-  const restricted = !agent?.is_default;
 
   useEffect(() => onPending(pending), [pending, onPending]);
   // The picked image, shown before it is sent; its object URL is let go once another is picked or the form closes.
@@ -287,6 +289,16 @@ function AgentForm({
                 />
               ))}
             </section>
+            <PacksField
+              project={project}
+              value={draft.packs}
+              onChange={(next) => set({ packs: next })}
+              offered={packs.data ?? []}
+              loading={packs.isPending}
+              failed={packs.isError}
+              problem={shown.packs}
+              disabled={pending}
+            />
           </>
         ) : (
           <p role="note" className="flex items-start gap-2.5 rounded-md border bg-surface-sunken px-4 py-3 text-[13px] text-pretty text-muted-foreground" data-testid="agent-default-note">

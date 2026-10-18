@@ -9,6 +9,7 @@ import { Identifier } from "@/components/data/identifier";
 import { useNow } from "@/components/kg/use-now";
 import { Badge } from "@/components/ui/badge";
 import { workerHref } from "@/components/workers/queries";
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
 import { branchUrl, commitUrl, type RepoWeb } from "./forge";
@@ -99,7 +100,7 @@ export function RunDetails({ run, viewer, more }: { run: Run; viewer: RunViewer 
   const t = useTranslations("runs.detail.facts");
   const [all, setAll] = useState(false);
   const tRun = useTranslations("runs");
-  const tRuntime = useTranslations("runs.runtime");
+  const tRuntime = useRuntimeName();
   const duration = useDuration();
   const now = useNow(isActiveState(run.state));
   const timing = runTiming(run, now);

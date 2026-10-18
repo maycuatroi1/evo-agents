@@ -125,7 +125,8 @@ async def answer(state, user: Principal, project: str | None, name: str, argumen
         shown = "; ".join(f"{i.path or 'arguments'}: {i.message}" for i in problems[:SHOWN_PROBLEMS])
         return _error(f"bad arguments for {name}: {shown}")
     params = {"tool": tool, "arguments": arguments, "caller": {"login": user.login, "project": project, "role": role}}
-    context = CoreContext(plugin, state.engine, state.config, project, row.project_id)
+    run_id = user.scope.run_id if user.scope is not None else None
+    context = CoreContext(plugin, state.engine, state.config, project, row.project_id, run_id)
     try:
         result = await call(state.plugin_host, plugin, row.tier, "mcp_tools", item, params, context, TOOL_TIMEOUT)
     except PluginHostUnavailable as exc:
