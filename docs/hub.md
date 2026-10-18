@@ -1167,7 +1167,8 @@ As the api starts, it turns off every installed plugin whose version no longer r
 been upgraded past the plugin's `engines`: the plugin shows `disabled` with the reason, the audit trail
 `plugin.disable`, and every hub admin who has signed in gets the notice `plugin_disabled`. The hub serves on, and a
 failure of that check is logged without stopping the start. Upgrading the plugin to a version that runs, or installing
-one again, turns it back on.
+one again, turns it back on. A core plugin of the hub's image is not checked so: the image loads it only on a release
+it runs on, and records it in the store as the api starts (`docs/plugins.md`, section Core plugins).
 
 ### Isolated backends and the plugin host
 
@@ -1191,8 +1192,10 @@ state at `GET /v1/plugins/{name}/backend`. The compose file caps the service wit
 ### Plugins in a project
 
 An installed plugin does nothing in a project until an admin of the project enables it there (table `project_plugins`,
-migration 0035). `GET /v1/projects/{project}/plugins/{name}` shows what the installed version asks for, each
-permission with what it lets the plugin do in the project; enabling grants exactly that list, which the request names
+migration 0035). A core plugin of the hub's image with nothing per project, Telegram, runs hub-wide instead: the store
+lists it, and a project's plugins do not (`docs/plugins.md`, section Core plugins).
+`GET /v1/projects/{project}/plugins/{name}` shows what the installed version asks for, each permission with what it
+lets the plugin do in the project; enabling grants exactly that list, which the request names
 back, and any other list is a 422. Once an upgrade asks for more, the plugin lists it under `pending`, and enabling it
 again grants the new list. What a plugin may do in a project is what was granted there that its installed version
 still asks for, and only while it is installed and turned on; `granted` says that grant, so an upgrade that asks for

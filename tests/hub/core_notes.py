@@ -61,6 +61,17 @@ MISSING_TABLE = {
     "id": "ghost",
     "contributes": {**MANIFEST["contributes"], "tables": [{"name": "ghost_entries"}], "routes": []},
 }
+# A core plugin with nothing per project, as Telegram, whose table no migration creates.
+HUB_WIDE_MISSING_TABLE = {
+    "id": "phantom",
+    "version": "1.0.0",
+    "publisher": "evo-agents",
+    "tier": "core",
+    "name": "Phantom",
+    "engines": {"evo-agents": ">=0.16"},
+    "plugin_api": 1,
+    "contributes": {"tables": [{"name": "phantom_links"}]},
+}
 
 router = APIRouter()
 STEPS: list[dict] = []  # the plan.step events delivered, in order
