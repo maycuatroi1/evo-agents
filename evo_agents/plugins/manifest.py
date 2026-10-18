@@ -17,6 +17,10 @@ tables come from the hub's own chain of migrations, never from the plugin at run
 A page (``pages``) of an isolated plugin names its HTML file in the bundle under ``pages/`` (``entry``), which the web
 shows in a sandboxed iframe; a core plugin's page is native, a page of the hub's web itself, and names no entry.
 
+A runtime (``runtimes``) names one of ``acp``, the command of an agent that speaks the Agent Client Protocol, which
+any plugin may declare (``evo_agents.plugins.runtimes``), and ``python``, a core plugin's adapter of a runtime of the
+worker; within the bounds of MAX_COMMAND_ITEMS, MAX_RUNTIME_MODELS and MAX_RUNTIME_SECRETS, each model and secret once.
+
 The schema file is read where the package installs it, next to the harness schemas, without importing
 ``evo_agents.harness``. Standard library only, besides ``evo_agents.schema``.
 """
@@ -41,6 +45,9 @@ TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
 CORE_ONLY_POINTS = ("tables",)  # what only a core plugin contributes
 CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notification_channels.kind), never "web"
+MAX_COMMAND_ITEMS = 32  # the program and arguments of an ACP runtime's command
+MAX_RUNTIME_MODELS = 200  # the models an ACP runtime lists, as a worker's heartbeat bounds them
+MAX_RUNTIME_SECRETS = 20  # the variables an ACP runtime's agent needs
 PERMISSIONS = (
     "runs:read",
     "runs:dispatch",
@@ -131,14 +138,16 @@ class Manifest:
 
 def is_per_project(data: dict) -> bool:
     """Whether a project enables the plugin of manifest ``data`` for anything: it is isolated, asks for a permission,
-    takes a config, or contributes an MCP tool, a job, an event, a page or a route under /v1/x/<id>/<project>. A core
-    plugin that does none of that (Telegram: a channel of members and routes of its own) runs hub-wide wherever it is
+    takes a config, or contributes an MCP tool, a job, an event, a page, an ACP runtime or a route under
+    /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of members and routes of its own) runs hub-wide wherever it is
     installed: the hub's store lists it, installed with the image, and no project enables it. ``data`` is a manifest
     that was read once (the store keeps it so), not checked again here."""
     contributes = data.get("contributes") or {}
     if data.get("tier", "isolated") == "isolated" or data.get("permissions") or data.get("config"):
         return True
     if any(contributes.get(point) for point in ("mcp_tools", "jobs", "events", "pages")):
+        return True
+    if any("acp" in item for item in contributes.get("runtimes") or ()):
         return True
     return any("prefix" not in item for item in contributes.get("routes") or ())
 
@@ -188,7 +197,27 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not web"]
     if point == "pages":
         return _page_problems(where, item, core)
+    if point == "runtimes":
+        return _runtime_problems(where, item)
     return []
+
+
+def _runtime_problems(where: str, item: dict) -> list[str]:
+    """What is wrong with runtime ``item``: it names one of acp and python, within the bounds, each model and secret
+    once."""
+    if ("acp" in item) == ("python" in item):
+        return [f"{where}: a runtime names one of acp (an ACP agent's command) and python (a core plugin's adapter)"]
+    found = []
+    if len(item.get("acp", {}).get("command", ())) > MAX_COMMAND_ITEMS:
+        found.append(f"{where}.acp.command: at most {MAX_COMMAND_ITEMS} items")
+    for key, bound in (("models", MAX_RUNTIME_MODELS), ("secrets", MAX_RUNTIME_SECRETS)):
+        values = item.get(key) or []
+        if len(values) > bound:
+            found.append(f"{where}.{key}: at most {bound} items")
+        found += [
+            f"{where}.{key}: {value!r} is listed twice" for value in sorted(set(values)) if values.count(value) > 1
+        ]
+    return found
 
 
 def _page_problems(where: str, item: dict, core: bool) -> list[str]:

@@ -7,7 +7,9 @@
 - ``compat``: whether a plugin runs on a release, by its ``engines`` range and ``plugin_api``;
 - ``config``: a plugin's config as layers (defaults, instance, project, agent profile, run), checked against its
   schema, merged and digested;
-- ``core``: the core plugins installed as Python packages, from the entry point group ``evo_agents.plugins``.
+- ``core``: the core plugins installed as Python packages, from the entry point group ``evo_agents.plugins``;
+- ``runtimes``: the runtimes plugins declare, agents that speak the Agent Client Protocol, registered as
+  ``<plugin>/<name>``.
 
 A plugin is core (Python in the hub's and the worker's processes, installed into the image or the machine) or
 isolated (its backend in a process of its own, its pages in a sandboxed iframe, installed on a hub at run time from
