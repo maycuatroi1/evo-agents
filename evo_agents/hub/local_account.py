@@ -1,19 +1,25 @@
 """The Claude account a local session runs as: its email and, when it can be told, the claude-profiles profile.
 
-A session of the Code tab of Claude Desktop has a record, ``<data folder>/claude-code-sessions/<account>/<org>/
-local_<id>.json``, in the data folder of the profile that runs it (claude-profiles starts Desktop with
-``--user-data-dir``). The folders to look in are those of claude-profiles (``profiles.json`` in its application
-support folder, read by what it holds under any of a few key names, since its format is not ours) and Desktop's own
-(``~/Library/Application Support/Claude``). A record is the one whose text holds the session id; the email is the first
-value under a key with ``email`` in its name, and the profile is the name claude-profiles gave the folder. A session of
-the CLI has none: its account is ``oauthAccount.emailAddress`` of the configuration Claude Code uses
+Claude Desktop runs a session of its Code tab with ``CLAUDE_CODE_USER_EMAIL`` (the account),
+``CLAUDE_CODE_ACCOUNT_UUID`` and ``CLAUDE_CODE_EXECPATH`` (the claude binary it started, under ``<data folder>/
+claude-code/``) in the environment, which the hooks inherit. claude-profiles starts each profile's Desktop with
+``--user-data-dir``, so the data folder that holds that binary is the profile's; failing that, the one with records of
+that account, ``<data folder>/claude-code-sessions/<account>/<org>/local_<id>.json``. The folders are those of
+claude-profiles (``profiles.json`` in its application support folder, read by what it holds under any of a few key
+names, since its format is not ours; a profile with a name and no folder is Desktop's own) and Desktop's own
+(``~/Library/Application Support/Claude``), and the profile is the name claude-profiles gave the folder.
+
+An older Desktop that sets none of these leaves the record to go by: the one whose text holds the session id, its
+email the first value under a key with ``email`` in its name. On binhna-macbook-m4 (Desktop 2.42304, 2026-10-18) a
+record has no email, may not hold the CLI session id yet at the session's first prompt, and claude-profiles copies it
+into every profile that shares sessions, so a record names the profile only when sharing is off. A session of the CLI
+has none of this: its account is ``oauthAccount.emailAddress`` of the configuration Claude Code uses
 (``$CLAUDE_CONFIG_DIR/.claude.json``, else ``~/.claude.json``).
 
 Nothing here fails: what cannot be read is ``unknown`` (the email) or None (the profile), and no secret is read. Only
 the keys with ``email`` in their name, the profile names and the folder paths are taken from the files. Standard
-library only. The layout of a Desktop record is [Unverified] on the machines this ran on: it follows the README of
-claude-profiles, and ``EVO_CLAUDE_DESKTOP_DIRS`` (``name=path`` or ``path``, separated like PATH) names the folders
-when the defaults miss.
+library only. ``EVO_CLAUDE_DESKTOP_DIRS`` (``name=path`` or ``path``, separated like PATH) names the folders when the
+defaults miss.
 """
 
 from __future__ import annotations
@@ -27,6 +33,10 @@ from pathlib import Path
 
 UNKNOWN = "unknown"
 FOLDERS_VARIABLE = "EVO_CLAUDE_DESKTOP_DIRS"
+EMAIL_VARIABLE = "CLAUDE_CODE_USER_EMAIL"  # set by Claude Desktop for a session of its Code tab
+ACCOUNT_VARIABLE = "CLAUDE_CODE_ACCOUNT_UUID"
+BINARY_VARIABLE = "CLAUDE_CODE_EXECPATH"
+BINARIES = "claude-code"  # where Desktop keeps the claude binaries it runs, in its data folder
 SESSIONS = "claude-code-sessions"
 MAX_RECORDS = 300  # newest records read per data folder
 MAX_RECORD_BYTES = 1 << 20
@@ -60,10 +70,19 @@ def _first(item: Mapping, keys: tuple[str, ...]) -> str | None:
 
 
 def _profile_entries(data, depth: int = 0):
-    """(name, folder) of every object in the profile list that gives a folder, found at any depth up to 3."""
+    """(name, folder) of every object in the profile list that gives a folder, found at any depth up to 3; folder
+    None for a named profile in a list that gives none, Desktop's own (claude-profiles' default has no folder)."""
     if isinstance(data, list):
         for item in data:
-            yield from _profile_entries(item, depth + 1)
+            if (
+                isinstance(item, dict)
+                and _first(item, NAME_KEYS)
+                and _first(item, FOLDER_KEYS) is None
+                and not any(isinstance(value, list | dict) for value in item.values())
+            ):
+                yield _first(item, NAME_KEYS), None
+            else:
+                yield from _profile_entries(item, depth + 1)
     elif isinstance(data, dict):
         folder = _first(data, FOLDER_KEYS)
         if folder is not None:
@@ -84,11 +103,15 @@ def data_folders(env: Mapping[str, str], home: Path) -> list[tuple[str | None, P
             folders.append((name or None, Path(path)) if sep else (None, Path(part)))
         return [(name, path) for name, path in folders if str(path)]
     found: list[tuple[str | None, Path]] = []
+    own: str | None = None
     for name, folder in _profile_entries(_json(home / PROFILES_FILE)):
+        if folder is None:
+            own = own or name
+            continue
         path = Path(folder).expanduser()
         if path.is_absolute():
             found.append((name, path))
-    found.append((None, home / DEFAULT_FOLDER))
+    found.append((own, home / DEFAULT_FOLDER))
     return found
 
 
@@ -139,6 +162,26 @@ def desktop_account(session_id: str, folders: list[tuple[str | None, Path]]) -> 
     return None
 
 
+def _inside(path: str, folder: Path) -> bool:
+    return os.path.realpath(path).startswith(os.path.realpath(folder) + os.sep)
+
+
+def running_profile(env: Mapping[str, str], folders: list[tuple[str | None, Path]]) -> str | None:
+    """The profile whose Desktop runs this session: the data folder holding the claude binary Desktop started, else
+    the only one with records of the session's account; None when neither says."""
+    binary = env.get(BINARY_VARIABLE)
+    if binary:
+        for name, folder in folders:
+            if _inside(binary, folder / BINARIES):
+                return name
+    account = env.get(ACCOUNT_VARIABLE)
+    if account and "/" not in account and account not in (".", ".."):
+        holding = {name for name, folder in folders if (folder / SESSIONS / account).is_dir()}
+        if len(holding) == 1:
+            return holding.pop()
+    return None
+
+
 def cli_email(env: Mapping[str, str], home: Path) -> str | None:
     """``oauthAccount.emailAddress`` of the configuration this Claude Code reads."""
     base = env.get("CLAUDE_CONFIG_DIR")
@@ -158,7 +201,11 @@ def read_account(session_id: str, env: Mapping[str, str] | None = None, home: Pa
     env = os.environ if env is None else env
     home = Path.home() if home is None else home
     try:
-        found = desktop_account(session_id, data_folders(env, home))
+        folders = data_folders(env, home)
+        email = env.get(EMAIL_VARIABLE, "").strip()
+        if "@" in email and len(email) <= 320:  # Desktop says whose session it is
+            return Account(email, running_profile(env, folders))
+        found = desktop_account(session_id, folders)
         if found is not None:  # the CLI's account is not a Desktop profile's: no fallback to it
             return found
         return Account(cli_email(env, home) or UNKNOWN)
