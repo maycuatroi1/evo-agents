@@ -126,6 +126,7 @@ def test_switching_to_a_ref_with_older_commits_takes_its_content_for_every_file(
 def test_runs_of_one_lineage_share_its_epoch_and_a_new_lineage_starts_one(tmp_path, kg_env):
     repo = two_branches(tmp_path / "repo")
     first = sync_source(git_project(tmp_path, kg_env, repo, "main"), "app")
+    commit(repo, "2026-10-02T09:00:00Z", {"docs/guide.md": "# Guide\n\nmain, later\n"})  # else nothing is read again
     again = sync_source(git_project(tmp_path, kg_env, repo, "main", extra="    refresh: 1h\n"), "app")
     switched = sync_source(git_project(tmp_path, kg_env, repo, "deploy"), "app")
     headers = [next(Corpus.read_log(Path(r.log))) for r in (first, again, switched)]

@@ -190,7 +190,10 @@ def test_git_fetch_reads_the_remote_branch(tmp_path, monkeypatch):
 
 
 def cursor_of(messages) -> dict:
-    return next(m for m in messages if m["type"] == "state")["cursor"]
+    """The cursor a run ended with, but for ``input``, the digest of its config and code (tested on its own)."""
+    cursor = next(m for m in messages if m["type"] == "state")["cursor"]
+    assert cursor["input"].startswith("sha256:")
+    return {key: value for key, value in cursor.items() if key != "input"}
 
 
 def test_git_cursor_names_the_commit_read_and_how_far_behind_the_remote_default_branch(tmp_path, monkeypatch):
@@ -217,7 +220,7 @@ def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp
     first = git(app, "rev-parse", "HEAD").strip()
     blob = "https://github.com/acme/demo-app/blob"
     corpus = project.corpus()
-    assert corpus.cursor("app") == {
+    assert {k: v for k, v in corpus.cursor("app").items() if k != "input"} == {
         "commit": first,
         "ref": "HEAD",
         "url": f"https://github.com/acme/demo-app/commit/{first}",

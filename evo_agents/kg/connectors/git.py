@@ -31,7 +31,10 @@ shows only once the file changes again. A change of the source's ``ref``, ``repo
 are newer.
 
 The run's cursor (``read_cursor``) names the commit read, how far it is behind the remote's default branch as the
-clone has it, and where links at that commit start. An item's ``uri`` links to its file by branch, never by commit,
+clone has it, where links at that commit start, and ``input``, a digest of what besides the commit decides the items
+(``read_input``). A sync whose source's last run was ok asks ``read_already`` first: when the ref still resolves to
+that commit and the input is the same, the run would read the same items, so the sync reads nothing and keeps no log
+(``evo_agents.kg.sync``). An item's ``uri`` links to its file by branch, never by commit,
 which would change every item's hash on every commit; the tools show the link at the commit read instead
 (``evo_agents.kg.freshness``).
 
@@ -43,13 +46,21 @@ item's ``props.redactions`` counts the markers by kind, and the sync's audit lin
 
 from __future__ import annotations
 
+import functools
+import hashlib
+import json
+import sys
 from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.kg.connectors import _git
 from evo_agents.kg.connectors._files import asset_item, decode, excluded, file_item, selected
-from evo_agents.kg.protocol import finalize_item, hello
+from evo_agents.kg.protocol import finalize_item, hello, sha256
 from evo_agents.kg.redact import redact_file
+
+# Keys of a source that say when or how it runs, or what the build does with its items: they leave the items as they
+# are, so changing one does not make the next sync read the commit again.
+NOT_READ = frozenset({"refresh", "timeout", "fetch", "deletion", "credentials", "label", "code"})
 
 
 def repo_dir(ctx) -> Path:
@@ -78,6 +89,56 @@ def behind_now(ctx, commit: str, base: str) -> int | None:
     except ValueError:
         return None
     return _git.behind(repo, commit, base) if repo.is_dir() else None
+
+
+def _repo_entry(ctx) -> dict:
+    """The source's repo as harness.yaml lists it; {} for a source with ``path:`` or no harness."""
+    return (ctx.harness.repo(ctx.source["repo"]) or {}) if ctx.harness and ctx.source.get("repo") else {}
+
+
+@functools.cache
+def _code() -> str:
+    """Digest of the code that makes the items of a commit: this module, the file selection and the redaction. A
+    build of evo-agents that changes how files are read or redacted reads every commit again, whatever its version."""
+    from evo_agents.kg import redact
+
+    digest = hashlib.sha256(__version__.encode())
+    for module in (sys.modules[__name__], _git, sys.modules[selected.__module__], redact):
+        try:
+            digest.update(Path(module.__file__).read_bytes())
+        except (OSError, TypeError):  # no source file to read: the version alone stands for it
+            digest.update(module.__name__.encode())
+    return digest.hexdigest()
+
+
+def read_input(ctx) -> str:
+    """Digest of what, besides the commit, decides the items and the links of a run: the source's config but for the
+    keys in NOT_READ, the origin and default branch harness.yaml gives its repo, and the connector's code."""
+    entry = _repo_entry(ctx)
+    config = {key: value for key, value in ctx.source.items() if key not in NOT_READ}
+    parts = [_code(), config, entry.get("origin", ""), entry.get("default_branch")]
+    return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
+
+
+def read_already(ctx) -> tuple[bool, list[str]]:
+    """Whether a run now would read what the source's cursor (``ctx.cursor``) says the last one read: its ref resolves
+    to the same commit and ``read_input`` is the same. It fetches first when the source asks to, as a run does;
+    also the warnings of that fetch."""
+    cursor = ctx.cursor if isinstance(ctx.cursor, dict) else {}
+    if not cursor.get("commit") or cursor.get("input") != read_input(ctx):
+        return False, []
+    try:
+        repo = repo_dir(ctx)
+    except ValueError:
+        return False, []
+    if not _git.is_repo(repo):
+        return False, []
+    ref = ctx.source.get("ref") or "HEAD"
+    warnings = [m["message"] for m in _fetch(repo, ref)] if ctx.source.get("fetch") else []
+    try:
+        return _git.resolve(repo, ref) == cursor["commit"], warnings
+    except _git.GitError:
+        return False, warnings
 
 
 def _fetch(repo: Path, ref: str):
@@ -151,7 +212,7 @@ def run(ctx):
     others = [(sha, path) for sha, path in tree if assets and not selected(path, include, exclude, allow)]
     times = _git.last_change_times(repo, commit)
     fallback_time = _git.commit_time(repo, commit)
-    entry = (ctx.harness.repo(ctx.source["repo"]) or {}) if ctx.harness and ctx.source.get("repo") else {}
+    entry = _repo_entry(ctx)
     origin = entry.get("origin", "")
     branch = ctx.source.get("branch") or entry.get("default_branch") or "main"
 
@@ -183,6 +244,6 @@ def run(ctx):
         yield finalize_item(item)
         count += 1
     cursor = read_cursor(repo, ref, commit, origin=origin, branch=branch, default=entry.get("default_branch"))
-    yield {"type": "state", "cursor": cursor}
+    yield {"type": "state", "cursor": {**cursor, "input": read_input(ctx)}}
     yield {"type": "listing", "scope": f"{sid}:file:", "complete": True, "count": count}
     yield {"type": "closed", "status": "ok"}
