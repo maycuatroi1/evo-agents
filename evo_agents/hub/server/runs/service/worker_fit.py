@@ -34,6 +34,7 @@ def workers_of(user_id: int, project_id: int):
             w.c.dispatch_from,
             w.c.agent_version,
             w.c.drained_at,
+            w.c.plugins,
             (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
             holding.label("holding"),
         )
@@ -62,6 +63,9 @@ def usable_runtimes(row, profile) -> list[str]:
 def worker_problems(row, profile, via: str, kind: str = "chat") -> list[str]:
     """Why worker ``row`` (``workers_of``) cannot take a run of ``kind`` of ``profile`` dispatched with ``via`` now,
     each reason once, in the order they are checked; none when it can."""
+    packs = profiles.packs_unfit(
+        profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
+    )
     checks = (
         (not row.online, "is offline"),
         (row.drained_at is not None, "is draining"),
@@ -79,6 +83,7 @@ def worker_problems(row, profile, via: str, kind: str = "chat") -> list[str]:
             and runs.AGENT_PROFILES not in (row.features or ()),
             "has a daemon that does not apply agent profiles",
         ),
+        (packs is not None, f"cannot build the agent packs of @{profile.handle}: {packs}"),
     )
     return [why for failed, why in checks if failed]
 

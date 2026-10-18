@@ -60,7 +60,6 @@ from evo_agents.hub.server.curator import CuratorOverview, curator_overview
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.plans import step_counts
 from evo_agents.hub.server.projects import ProjectAccess, project_access
-from evo_agents.hub.server.runs.models import REQUESTED_RUNTIMES
 from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
 from evo_agents.hub.server.security import CurrentUser
 
@@ -109,7 +108,7 @@ class OverviewRun(BaseModel):
     dispatched_by: str = Field(description="the login of the member who dispatched it, its owner")
     worker_id: int | None = Field(description="the worker that claimed it; null while it is queued")
     worker: str | None = Field(description="that worker's name")
-    runtime: Literal[REQUESTED_RUNTIMES] = Field(description="any until a worker claims the run")
+    runtime: str = Field(description="any until a worker claims the run; a plugin's runtime is <plugin>/<name>")
     model: str | None
     steps_total: int | None = Field(description="the steps of a plan run's plan; null for a run of one step")
     steps_done: int | None = Field(description="a plan run's steps the plan holds done now; null for a run of one step")

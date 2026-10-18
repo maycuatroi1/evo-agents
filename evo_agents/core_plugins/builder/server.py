@@ -1,0 +1,314 @@
+"""The server side of the core plugin builder (``evo_agents.core_plugins.builder``): the tool its agent proposes a
+change with, the event that reads an admin's answer in the thread, and the routes of the proposals.
+
+- ``propose`` is the tool ``builder__propose`` of the hub's /mcp. It answers the agent of a chat run of @builder
+  alone: the run (X-Evo-Run) is a chat run whose profile is the one the project's agent type builder created, the type
+  is on, and the member who dispatched the run is an admin of the project still. It checks the change against the
+  setting as it is now, keeps it pending, shows it in the thread and tells each member who may approve it (a notice
+  ``builder_proposal`` in the Inbox). It applies nothing.
+- ``on_message`` takes ``chat.message``: a member's message in the thread of a proposal that is only ``approve N``,
+  ``reject N`` or ``rollback N`` answers it, as that member, then the hub says what happened in the thread. A member
+  who may not decide it gets the hub's refusal there. A delivery made again finds the answer done, or the refusal
+  said, and says nothing.
+- ``router`` lists and shows a project's proposals, and answers and rolls one back, under /v1/x/builder/<project>/
+  for a member with a grant on the project; the agent of a run never answers one.
+"""
+
+from __future__ import annotations
+
+import logging
+import re
+from typing import Annotated, Literal
+
+from fastapi import APIRouter, HTTPException, Path, Request
+from pydantic import BaseModel, ConfigDict
+from sqlalchemy import select
+from sqlalchemy.ext.asyncio import AsyncConnection
+
+from evo_agents import __version__
+from evo_agents.core_plugins.builder import proposals
+from evo_agents.core_plugins.builder.proposals import APPROVE, REJECT, ROLLBACK, BuilderProposal, ProposalError
+from evo_agents.hub import tables
+from evo_agents.hub.access import has_role
+from evo_agents.hub.plugin_calls import CoreContext, enabled_in
+from evo_agents.hub.server import notifications
+from evo_agents.hub.server.admin import PROJECT_NAME
+from evo_agents.hub.server.agent_types import enabled_type
+from evo_agents.hub.server.chat_runs import ChatRun, chat_run, hub_reply
+from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.hub.tables_settings import PROPOSAL_STATES
+
+log = logging.getLogger(__name__)
+
+TYPE = "builder"  # the agent type of the manifest
+COMMAND = re.compile(r"\s*(approve|reject|roll\s*back)\s+#?([1-9][0-9]{0,17})\s*[.!]?\s*", re.IGNORECASE)
+REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 422)}
+ProjectName = Annotated[str, Path(pattern=PROJECT_NAME)]
+ProposalId = Annotated[int, Path(ge=1)]
+
+
+def _text(text: str, *, error: bool = False) -> dict:
+    return {"content": [{"type": "text", "text": text}], "is_error": error}
+
+
+def _is_admin(config, login: str) -> bool:
+    """Whether ``login`` is a hub admin; never without the hub's config, which names them."""
+    return config is not None and config.is_admin(login)
+
+
+async def _member(conn: AsyncConnection, user_id: int, config) -> Principal:
+    """Member ``user_id`` as the hub sees a request of theirs that carries no token."""
+    u = tables.users
+    login = (await conn.execute(select(u.c.login).where(u.c.id == user_id))).scalar_one()
+    return Principal(user_id, login, _is_admin(config, login), None, MACHINE, "")
+
+
+async def _access(conn: AsyncConnection, member: Principal, project: str) -> ProjectAccess:
+    try:
+        return await project_access(conn, member, project)
+    except HTTPException:
+        raise ProposalError(403, f"{member.login} holds no grant on project {project} now") from None
+
+
+# The tool
+
+
+async def _builder_run(conn: AsyncConnection, context: CoreContext) -> ChatRun:
+    """The chat run of @builder the tool is called from; ProposalError (403) for any other caller."""
+    refused = ProposalError(
+        403, f"only the agent of a chat run of @{TYPE} in project {context.project} proposes a change"
+    )
+    if context.run_id is None or context.project_id is None:
+        raise refused
+    run = await chat_run(conn, context.run_id)
+    plugin = await enabled_in(conn, context.plugin, context.project_id)
+    if run is None or plugin is None:
+        raise refused
+    kind = await enabled_type(conn, context.project_id, plugin.id, TYPE)
+    if kind is None or kind.disabled_at is not None or kind.profile_id != run.profile_id:
+        raise refused
+    return run
+
+
+async def _tell_approvers(
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    change: proposals.Change,
+    proposal_id: int,
+    run,
+    message_id: int,
+    config,
+) -> int:
+    admins = config.admins if config is not None else frozenset()
+    told = await proposals.approvers(conn, access, change.kind, admins)
+    for user_id in told:
+        await notifications.notify(
+            conn,
+            user_id=user_id,
+            kind="notice",
+            notice_kind=proposals.NOTICE,
+            title=f"@{TYPE} proposes a change of {change.kind.replace('_', ' ')} in {access.name}",
+            project_id=access.project_id,
+            run_id=run.run_id,
+            details={"proposal": proposal_id, "kind": change.kind, "project": access.name},
+            link=proposals.chats.chat_link(run.chat_id, message_id),
+        )
+    return len(told)
+
+
+async def _propose(conn: AsyncConnection, change: proposals.Change, context: CoreContext) -> str:
+    run = await _builder_run(conn, context)
+    dispatcher = await _member(conn, run.dispatcher_id, context.config)
+    access = await _access(conn, dispatcher, context.project)
+    if not has_role(access.role, "admin"):
+        raise ProposalError(
+            403, f"@{TYPE} proposes for an admin of project {access.name}, and {dispatcher.login} is none now"
+        )
+    target = await proposals.locate(conn, access, change)
+    await proposals.check(conn, access, change, target, __version__)
+    proposal_id = await proposals.store(conn, access, change, target, run)
+    approver = proposals.approver_words(change.kind, access.name)
+    shown = proposals.thread_text(proposal_id, change, target, approver)
+    message_id = await hub_reply(conn, run.chat_id, run.root_id, shown)
+    await proposals.shown_at(conn, proposal_id, message_id)
+    told = await _tell_approvers(conn, access, change, proposal_id, run, message_id, context.config)
+    await proposals.record_proposal(conn, dispatcher, access, proposal_id, run)
+    log.info("builder proposal made", extra={"proposal": proposal_id, "kind": change.kind, "run_id": run.run_id})
+    return (
+        f"Proposal {proposal_id} waits for {approver}: the hub showed it in the thread and told {told} member(s). "
+        "Nothing is applied until an admin approves it; say so to the member, and do not answer for them."
+    )
+
+
+async def propose(params: dict, context: CoreContext) -> dict:
+    """The tool ``builder__propose``: keep a change of a setting as a proposal an admin decides; apply nothing."""
+    try:
+        change = proposals.change_of(params.get("arguments") or {})
+        async with context.engine.begin() as conn:
+            return _text(await _propose(conn, change, context))
+    except ProposalError as exc:
+        return _text(f"error: {exc.message}", error=True)
+
+
+# Answers in the thread
+
+
+def outcome(found: BuilderProposal) -> str:
+    """What the hub says in the thread once proposal ``found`` was decided or rolled back."""
+    head = f"Proposal {found.id}"
+    if found.state == proposals.APPLIED:
+        return (
+            f"{head} is applied by {found.decided_by}: the setting is at version {found.applied_version} now. "
+            f"`rollback {found.id}` brings back the version before it."
+        )
+    if found.state == proposals.FAILED:
+        return f"{head} was approved by {found.decided_by}, and the hub could not apply it: {found.error}"
+    if found.state == proposals.REJECTED:
+        return f"{head} is rejected by {found.decided_by}: nothing changed."
+    return (
+        f"{head} is rolled back: version {found.rollback_version} of the setting is a copy of the one before "
+        f"version {found.applied_version}."
+    )
+
+
+def _verb(word: str) -> str:
+    word = word.lower()
+    return ROLLBACK if word.startswith("roll") else word
+
+
+async def answer_as(
+    conn: AsyncConnection, member: Principal, project: str, proposal_id: int, verb: str, hub_version: str
+) -> BuilderProposal:
+    """Decide (APPROVE, REJECT) or roll back (ROLLBACK) proposal ``proposal_id`` as ``member``; ProposalError when
+    they may not, or the hub cannot."""
+    if member.scope is not None:
+        raise ProposalError(403, "the agent of a run never answers a proposal of @builder: an admin does")
+    access = await _access(conn, member, project)
+    if verb == ROLLBACK:
+        return await proposals.rollback(conn, member, access, proposal_id, hub_version)
+    return await proposals.decide(conn, member, access, proposal_id, verb, hub_version)
+
+
+async def _refused_already(conn: AsyncConnection, payload: dict, seq: int, text: str) -> bool:
+    """Whether the hub said refusal ``text`` in the thread after the message of sequence ``seq``: a delivery of the
+    same message made again."""
+    m = tables.chat_messages
+    query = select(m.c.id).where(
+        m.c.chat_id == payload["chat_id"],
+        m.c.thread_root_id == payload["thread_root_id"],
+        m.c.seq > seq,
+        m.c.author_user_id.is_(None),
+        m.c.author_profile_id.is_(None),
+        m.c.body == text,
+    )
+    return (await conn.execute(query.limit(1))).first() is not None
+
+
+async def _thread_answer(conn: AsyncConnection, payload: dict, context: CoreContext) -> str | None:
+    m = tables.chat_messages
+    query = select(m.c.body, m.c.author_user_id, m.c.seq).where(
+        m.c.id == payload["message_id"], m.c.chat_id == payload["chat_id"]
+    )
+    said = (await conn.execute(query)).first()
+    match = COMMAND.fullmatch(said.body) if said is not None and said.author_user_id is not None else None
+    if match is None:
+        return None
+    verb, proposal_id = _verb(match[1]), int(match[2])
+    found = await proposals.in_thread(
+        conn, context.project_id, proposal_id, payload["chat_id"], payload["thread_root_id"]
+    )
+    if found is None or proposals.done_already(found, verb, said.author_user_id):
+        return None
+    member = await _member(conn, said.author_user_id, context.config)
+    try:
+        text = outcome(await answer_as(conn, member, context.project, proposal_id, verb, __version__))
+    except ProposalError as exc:
+        text = f"{member.login}: {exc.message}"
+        if await _refused_already(conn, payload, said.seq, text):
+            return None
+    await hub_reply(conn, payload["chat_id"], payload["thread_root_id"], text)
+    return text
+
+
+async def on_message(params: dict, context: CoreContext) -> dict:
+    """The event ``answers`` (``chat.message``): a member's ``approve N``, ``reject N`` or ``rollback N`` in the thread
+    of proposal N of the project."""
+    payload = params.get("payload") or {}
+    if payload.get("by") != "person" or not payload.get("thread_root_id") or context.project_id is None:
+        return {"answered": False}
+    if context.config is None:
+        log.warning("builder answers read without the hub's config: hub admins are not known")
+    async with context.engine.begin() as conn:
+        text = await _thread_answer(conn, payload, context)
+    return {"answered": text is not None}
+
+
+# Routes
+
+
+class BuilderProposalAnswer(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    answer: Literal[APPROVE, REJECT]
+
+
+router = APIRouter(tags=["plugins"], responses={401: {"model": ErrorBody}})
+
+
+async def _say_in_thread(conn: AsyncConnection, proposal_id: int, found: BuilderProposal) -> None:
+    thread = await proposals.thread_of(conn, proposal_id)
+    if thread is not None:
+        await hub_reply(conn, *thread, outcome(found))
+
+
+async def _answered(request: Request, user: Principal, project: str, proposal_id: int, verb: str) -> BuilderProposal:
+    try:
+        async with request.app.state.engine.begin() as conn:
+            found = await answer_as(conn, user, project, proposal_id, verb, request.app.state.hub_version)
+            await _say_in_thread(conn, proposal_id, found)
+    except ProposalError as exc:
+        raise HTTPException(exc.status, exc.message) from None
+    return found
+
+
+@router.get("/{project}/proposals", response_model=list[BuilderProposal])
+async def list_proposals(
+    request: Request, project: ProjectName, user: CurrentUser, state: Literal[PROPOSAL_STATES] | None = None
+) -> list[BuilderProposal]:
+    """The project's proposals of @builder, the newest first; those in ``state`` alone when given."""
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        return await proposals.listed(conn, access.project_id, state)
+
+
+@router.get("/{project}/proposals/{proposal_id}", response_model=BuilderProposal, responses=REFUSALS)
+async def show_proposal(
+    request: Request, project: ProjectName, proposal_id: ProposalId, user: CurrentUser
+) -> BuilderProposal:
+    async with request.app.state.engine.begin() as conn:
+        access = await project_access(conn, user, project)
+        try:
+            return await proposals.shown(conn, access, proposal_id)
+        except ProposalError as exc:
+            raise HTTPException(exc.status, exc.message) from None
+
+
+@router.post("/{project}/proposals/{proposal_id}/answer", response_model=BuilderProposal, responses=REFUSALS)
+async def answer_proposal(
+    request: Request, project: ProjectName, proposal_id: ProposalId, body: BuilderProposalAnswer, user: CurrentUser
+) -> BuilderProposal:
+    """Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
+    it could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the
+    others."""
+    return await _answered(request, user, project, proposal_id, body.answer)
+
+
+@router.post("/{project}/proposals/{proposal_id}/rollback", response_model=BuilderProposal, responses=REFUSALS)
+async def roll_back_proposal(
+    request: Request, project: ProjectName, proposal_id: ProposalId, user: CurrentUser
+) -> BuilderProposal:
+    """Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is
+    still at the version the proposal made."""
+    return await _answered(request, user, project, proposal_id, ROLLBACK)

@@ -1,7 +1,7 @@
 """Triage of failed runs: the group chat of a plan's failures, the thread of each failed run, and a switch per project.
 
-Revision ID: 0039
-Revises: 0038
+Revision ID: 0044
+Revises: 0043
 Create Date: 2026-10-18
 
 ``evo_agents.hub.tables_triage`` describes the tables. Every statement is an Alembic operation on SQLAlchemy Core
@@ -18,8 +18,8 @@ Going back drops the two tables and the column: the threads are chat messages an
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0039"
-down_revision = "0038"
+revision = "0044"
+down_revision = "0043"
 branch_labels = None
 depends_on = None
 

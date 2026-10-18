@@ -51,6 +51,7 @@ from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.plan_cli import _plan_id, _project
 from evo_agents.hub.run_cli_candidates import register_candidates
 from evo_agents.hub.run_cli_options import (
+    KIND_TEXTS,
     account_option,
     author_options,
     dispatch_options,
@@ -134,10 +135,8 @@ RUN_KEYS = (
     "steady_wait",
     "failure_cause",
     "session_per_step",
-    "profile",
-    "profile_id",
-    "profile_version",
 )
+RUN_KEYS += ("profile", "profile_id", "profile_version", "environment")  # its agent profile, where its agent runs
 RUN_KEYS += ("machine", "cwd", "claude_email", "claude_profile", "last_activity_at")  # a local run's; null otherwise
 RUN_KEYS += ("chat_id", "chat_message_id", "hop")  # a chat run's (evo_agents.hub.chat_runs); null for any other
 RUN_LIST_KEYS = ("runs", "total", "counts", "limit", "offset")
@@ -542,15 +541,6 @@ def cmd_list(args) -> int:
     return 0
 
 
-KIND_TEXTS = {  # what `run show` says a run of each kind but step and plan is
-    "review": "review run: the Curator reads the project and proposes changes; it pushes nothing",
-    "judge": "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing",
-    "author": "author run: a plan written from your request with create-exec-plan; it pushes nothing",
-    "chat": "chat run: one turn of an agent mentioned in a group chat, on the branch of its session",
-    "local": "local run: a Claude Code session on a member's own machine, which the hub only watches",
-}
-
-
 def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
     """What the run does: its kind and title, or its step; its project or plan; a chat run's chat and message."""
     kind, plan = run["kind"], f"{run['plan_id']} of project {run['project']}, revision {run['plan_revision']}"
@@ -565,7 +555,7 @@ def _what(run: dict, hub_url: str) -> list[tuple[str, str]]:
         link = _origin(hub_url) + chat_link(run["chat_id"], run["chat_message_id"]) if run.get("chat_id") else "-"
         lines.append(("chat", f"#{run.get('chat_id')}, message #{run.get('chat_message_id')}, hop {run.get('hop')}"))
         lines.append(("message", link))
-    if kind not in ("review", "author", "chat", "local") or run.get("plan_id"):
+    if kind not in ("review", "author", "chat", "task", "local") or run.get("plan_id"):
         lines.append(("plan", plan))
     return lines
 

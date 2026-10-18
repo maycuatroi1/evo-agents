@@ -6,6 +6,7 @@ import { type ApiClient, call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
+import type { RequestedRuntime } from "@/lib/runtimes";
 
 /**
  * What the runs pages read and write (docs/workers.md). Any member with a grant on the project lists its runs, of the
@@ -21,7 +22,7 @@ export type ReadySteps = Schemas["ReadySteps"];
 export type StepReadiness = Schemas["StepReadiness"];
 export type DispatchRequest = Schemas["Dispatch"];
 export type PlanRunRequest = Omit<Schemas["PlanRunDispatch"], "session_per_step"> & { session_per_step?: true }; // sent only when on
-export type RequestedRuntime = DispatchRequest["runtime"];
+export type { RequestedRuntime };
 export type RunMode = DispatchRequest["mode"];
 export type Approval = DispatchRequest["approval"];
 export type RunKind = Run["kind"];
@@ -72,8 +73,7 @@ export const PLAN_TIMEOUT_CHOICES = [2, 4, 8, 24] as const satisfies readonly Pl
 export const DEFAULT_PLAN_TIMEOUT: PlanTimeout = 4;
 /** `runs.MAX_MODEL_CHARS`: a model name is one line of at most 200 characters. */
 export const MAX_MODEL_CHARS = 200;
-/** `MAX_DISPATCH_STEPS` of the API. */
-export const MAX_DISPATCH_STEPS = 50;
+export const MAX_DISPATCH_STEPS = 50; // `MAX_DISPATCH_STEPS` of the API
 /** `max_length` of the list's q. */
 export const MAX_QUERY = 200;
 

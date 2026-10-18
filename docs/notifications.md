@@ -91,7 +91,7 @@ decisions is open or the owner writes in the thread. The reaper parks a waiting 
 in the thread then queues a chat run pinned to the same worker that goes on in the same session, worktrees and branch
 (`resume_of_run_id` names the parked run, which is `done`), with the decisions still open and the unread inbox moved to
 it. When the run ends otherwise, its open decisions are `cancelled`. The Inbox, the web and Telegram answer such a
-decision through the same route as any other (migration 0040 allows the category).
+decision through the same route as any other (migration 0045 allows the category).
 When the failure is one of the frame's (`docs/workers.md`, "Failure triage"), the agent acts by itself, each act with a
 `Decision:` line in the thread; the decision is for what is outside it.
 

@@ -467,29 +467,40 @@ async def diff(cwd: Path, base: str, head: str = "HEAD", prefix: str | None = No
     return out
 
 
+def _own_branches(kind: str) -> tuple[str, str, str, Callable[[str], bool]] | None:
+    """For a kind of run that pushes only branches of its own: who runs it, whose branches they are, their form, and
+    the test of a branch; None for any other kind."""
+    if kind == "chat":
+        from evo_agents.hub.chat_runs import is_chat_branch
+
+        return "a chat run", "a chat run", "chat/<run>", is_chat_branch
+    if kind == "task":
+        from evo_agents.hub.task_runs import is_task_branch
+
+        return "a task run", "a task run", "task/<run>", is_task_branch
+    if kind == "curator":
+        from evo_agents.hub.judge import is_curator_branch
+
+        return "a run of the Curator", "the Curator", "curator/...", is_curator_branch
+    return None
+
+
 def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branch: str | None) -> bool:
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
     a judge run and an author run push nothing at all, a Builder of the Curator (``kind`` curator) only a branch
-    ``curator/...`` that is no default branch, and a chat run (``kind`` chat) only its branch ``chat/<run>``."""
+    ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, and a task
+    run (``kind`` task) only its branch ``task/<run>``."""
     if kind in ("review", "judge", "author"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
-    if kind == "chat":
-        from evo_agents.hub.chat_runs import is_chat_branch
-
+    own = _own_branches(kind)
+    if own is not None:
+        who, whose, form, is_own = own
         if branch in protected or branch in PROTECTED:
-            raise PushRefused(f"{branch} is a default branch: a chat run never pushes it")
-        if not is_chat_branch(branch):
-            raise PushRefused(f"{branch} is not a branch of a chat run: a chat run pushes chat/<run> alone")
-        return False
-    if kind == "curator":
-        from evo_agents.hub.judge import is_curator_branch
-
-        if branch in protected or branch in PROTECTED:
-            raise PushRefused(f"{branch} is a default branch: a run of the Curator never pushes it")
-        if not is_curator_branch(branch):
-            raise PushRefused(f"{branch} is not a branch of the Curator: a run of the Curator pushes curator/... alone")
+            raise PushRefused(f"{branch} is a default branch: {who} never pushes it")
+        if not is_own(branch):
+            raise PushRefused(f"{branch} is not a branch of {whose}: {who} pushes {form} alone")
         return False
     if branch not in protected:
         return False

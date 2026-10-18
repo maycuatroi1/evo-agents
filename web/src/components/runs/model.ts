@@ -332,3 +332,11 @@ export function readRequest(text: string): { request: string; problem: RequestPr
   if (new TextEncoder().encode(text).length > MAX_REQUEST_BYTES) return { request: text, problem: "long" };
   return { request: text, problem: null };
 }
+
+// Task runs. A task run is one turn of a plugin's agent type on a task the plugin handed it (task_dispatch.py), on the
+// branch task/<id of the run the dispatch made> of each repo; a lost run's next attempt is a new run on the same branch.
+
+/** The branch a task run works on: the one the hub recorded, else the one its own id names (a first attempt). */
+export function taskBranch(run: Pick<Run, "id" | "branch">): string {
+  return run.branch ?? `task/${run.id}`;
+}

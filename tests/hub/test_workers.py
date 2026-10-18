@@ -700,11 +700,11 @@ def test_a_heartbeat_answer_carries_the_settings_the_owner_patched(client, hub, 
         assert response.status_code == 200, response.text
         return response.json()
 
-    assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"]}
+    assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"], "plugins": []}
     patched = client.patch(f"/v1/workers/{worker_id}", json={"slots": 6, "name": "big-mac"}, headers=hub["owner"])
     assert patched.status_code == 200, patched.text
     first = beat(2)  # what the daemon held before it read the answer
-    assert first["settings"] == {"slots": 6, "name": "big-mac", "labels": ["mac"]}
+    assert first["settings"] == {"slots": 6, "name": "big-mac", "labels": ["mac"], "plugins": []}
     assert first["drain"] is False and first["runs"] == []
     assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 2
     beat(6)

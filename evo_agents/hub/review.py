@@ -142,6 +142,7 @@ RUN_FAILURE_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
     ("worker_revoked", re.compile(r"\brevoked\b", re.I)),
     ("worker_stopped", re.compile(r"was stopped while|failed while running|daemon stopped", re.I)),
     ("origin", re.compile(r"lists no origin", re.I)),
+    ("environment", re.compile(r"environment [a-z][a-z0-9-]*/[a-z][a-z0-9_-]* of plugin|container engine", re.I)),
     ("account_auth", re.compile(r"failed to authenticate", re.I)),  # before credentials, whose 401 it holds
     ("credentials", ENVIRONMENT_CAUSES[4][1]),
     ("rate_limit", re.compile(r"usage limit|rate.?limit", re.I)),

@@ -1,7 +1,7 @@
 """Decisions of category triage: the question the agent of a chat run asks its owner while it waits.
 
-Revision ID: 0040
-Revises: 0039
+Revision ID: 0045
+Revises: 0044
 Create Date: 2026-10-18
 
 The check decisions_category_check allows ``triage`` as well, so a chat run can ask a decision. Going back puts the
@@ -11,8 +11,8 @@ earlier check back; a decision of category triage that is still there stops it, 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0040"
-down_revision = "0039"
+revision = "0045"
+down_revision = "0044"
 branch_labels = None
 depends_on = None
 
