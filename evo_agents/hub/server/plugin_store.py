@@ -60,6 +60,7 @@ from evo_agents.hub.server.plugin_tokens import revoke_tokens
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import compat, signing
 from evo_agents.plugins.bundle import MAX_BUNDLE, BundleError, read_bundle
+from evo_agents.plugins.environment import MAX_PLUGIN_ID
 from evo_agents.plugins.manifest import PLUGIN_ID, TIERS, Manifest, is_per_project
 from evo_agents.plugins.signing import MAX_SIGNATURE, SIGNATURE_KINDS, SignatureError, SignatureUnavailable
 
@@ -462,6 +463,18 @@ def check_state(row, *, upgrade: bool, target: str | None = None) -> None:
         )
     if upgrade and target is not None and compat.plugin_version_key(target) <= compat.plugin_version_key(installed):
         raise HTTPException(409, f"{target} is not above {installed}, the installed version of plugin {row.name}")
+
+
+def check_placeable(row, version) -> None:
+    """409 when the plugin host could not run the backend of ``version`` of plugin ``row``: an isolated plugin with a
+    backend whose id on the hub is MAX_PLUGIN_ID or more, for which the host has no killer user of its own
+    (``evo_agents.plugins.environment.killer_uid``) and starts nothing."""
+    if version.tier == "isolated" and (version.manifest or {}).get("backend") and row.id >= MAX_PLUGIN_ID:
+        raise HTTPException(
+            409,
+            f"plugin {row.name} has id {row.id} on this hub, and the plugin host runs the backend only of a plugin "
+            f"whose id is below {MAX_PLUGIN_ID}",
+        )
 
 
 async def set_installed(conn: AsyncConnection, user: Principal, row, version: str, *, upgrade: bool) -> None:

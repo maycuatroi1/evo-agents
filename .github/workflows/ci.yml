@@ -143,12 +143,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: The hub's image
         run: docker build -f deploy/hub/Dockerfile -t evo-agents-hub:ci .
-      - name: The plugin tests as root with the plugins service's capabilities
+      - name: The plugin tests as root with the plugins service's capabilities and limits
         run: |
           docker volume create evo-plugins-ci
           docker run --rm --init --user 0:0 --cap-drop ALL \
             --cap-add SETUID --cap-add SETGID --cap-add CHOWN --cap-add KILL \
-            --security-opt no-new-privileges:true --pids-limit 512 --memory 2g \
+            --security-opt no-new-privileges:true --cpus 1 --pids-limit 2048 --memory 2g \
             -e EVO_HUB_DSN=postgresql://hub:evo-hub-secret-dsn@db/hub \
             -e EVO_HUB_SECRETS_KEY=SECRETKEY-evo-hub-secret-sealing-key-000000 \
             -e EVO_HUB_PLUGIN_HOST_TOKEN=evo-hub-secret-host-token-0123456789abcdef \

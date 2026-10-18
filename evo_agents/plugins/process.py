@@ -12,8 +12,9 @@ first, ``protocol.RemoteError`` for the error it answers. A line on stdout that 
 ``violations``; the last lines of stderr in ``stderr_tail``, each cut at STDERR_LINE characters. ``stop`` asks the
 backend to shut down, closes its stdin, then sends SIGTERM and SIGKILL to its whole process group; when the backend
 has a user of its own, it then kills every process of that user (``kill_user``), so a child that left the group with
-setsid() goes too; no process of that user may signal the killer, and a killer that hangs anyway is killed after
-KILLER_WAIT, so a stop never waits on it for long.
+setsid() goes too. The host does that itself, as root: it stops every process of the user, then kills them all
+(``sweep_user``), and no process of the plugin may signal, renice or pin the host. A killer under a user of its own
+then goes after what the sweep could not catch; it is killed after KILLER_WAIT, so a stop never waits on it for long.
 
 Standard library only (asyncio).
 """
@@ -29,6 +30,7 @@ import os
 import signal
 import subprocess
 import sys
+import time
 from collections import deque
 from pathlib import Path
 
@@ -42,6 +44,11 @@ STOP_GRACE = 5.0  # seconds a backend has to exit after shutdown
 KILL_WAIT = 2.0  # seconds after SIGTERM before SIGKILL
 KILL_ROUNDS = 10  # kill(-1) rounds before kill_user gives up on a user that keeps forking
 KILLER_WAIT = 10.0  # seconds one killer may take, its Python's start included, on a CPU the plugin keeps busy
+FREEZE_PASSES = 200  # passes of sweep_user over /proc before it kills what it holds, all stopped or not
+FREEZE_PAUSE = 0.002  # seconds between two passes
+SETTLE = 1.0  # seconds the processes a sweep killed have to end before a killer goes after what is left
+HELD_STATES = ("T", "t")  # stopped, or stopped by a tracer: runs no code of the plugin until let go
+AWAKE_STATES = ("R", "S")  # running, or asleep where a signal wakes it; a pass that finds none ends the stopping
 KILLER = (  # real and saved user the killer's own, effective user the plugin's, then kill(-1); never as root
     "import os, sys\n" + CLOSE_FDS + TAKE_USER + "close_fds()\n"
     "killer, uid, sig = (int(arg) for arg in sys.argv[1:4])\n"
@@ -213,52 +220,190 @@ class BackendProcess:
         return self.proc.returncode
 
 
+def _parse_status(text: str) -> dict[str, str]:
+    return dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+
+
 def _status(pid: Path) -> dict[str, str]:
     try:
         text = (pid / "status").read_text(encoding="utf-8", errors="replace")
     except OSError:
         return {}
-    return dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+    return _parse_status(text)
+
+
+def _status_at(directory: int) -> dict[str, str]:
+    """/proc/<pid>/status read through a descriptor of /proc/<pid>, so it is that process's even once its pid is free
+    again; empty when the process is gone."""
+    try:
+        descriptor = os.open("status", os.O_RDONLY | os.O_CLOEXEC, dir_fd=directory)
+    except OSError:
+        return {}
+    try:
+        with os.fdopen(descriptor, "rb") as status:
+            return _parse_status(status.read().decode("utf-8", "replace"))
+    except OSError:
+        return {}
+
+
+def _state(status: dict[str, str]) -> str:
+    return status.get("State", "").strip()[:1]
+
+
+def _belongs(status: dict[str, str], uid: int) -> bool:
+    """Whether the process's real or saved user is ``uid``: those are the processes of the plugin, the ones the kernel
+    lets a process of that user signal and counts in its RLIMIT_NPROC. A killer has the plugin's user as its effective
+    one only, and is not one of them."""
+    ids = status.get("Uid", "").split()
+    return len(ids) >= 3 and str(uid) in (ids[0], ids[2])
+
+
+def _alive(status: dict[str, str]) -> bool:
+    """Whether the process may still run code: not a zombie, unless its first thread exited while others of it run
+    (its status then says Z, and Threads counts them)."""
+    if not status:
+        return False
+    if _state(status) not in ("Z", "X"):
+        return True
+    with contextlib.suppress(ValueError):
+        return int(status.get("Threads", "0").strip()) > 1
+    return False
+
+
+def _pids() -> list[int]:
+    try:
+        return [int(name) for name in os.listdir(PROC) if name.isdigit()]
+    except OSError:
+        return []
 
 
 def processes_of(uid: int) -> list[int]:
-    """The live processes whose real, effective or saved user is ``uid``, from /proc (Linux); zombies left out, as
-    they hold nothing. /proc/<pid>/status is readable even for a process that is not dumpable."""
+    """The live processes whose real or saved user is ``uid``, from /proc (Linux); zombies left out, as they hold
+    nothing. /proc/<pid>/status is readable even for a process that is not dumpable."""
     if not PROC.is_dir():
         return []
     found = []
-    for entry in PROC.iterdir():
-        if not entry.name.isdigit():
-            continue
-        status = _status(entry)
-        uids = status.get("Uid", "").split()[:3]
-        if str(uid) in uids and not status.get("State", "").strip().startswith(("Z", "X")):
-            found.append(int(entry.name))
+    for pid in _pids():
+        status = _status(PROC / str(pid))
+        if _belongs(status, uid) and _alive(status):
+            found.append(pid)
     return found
+
+
+def _open_proc(pid: int) -> int | None:
+    try:
+        return os.open(PROC / str(pid), os.O_RDONLY | os.O_DIRECTORY | os.O_CLOEXEC)
+    except OSError:
+        return None
+
+
+def _send(directory: int, pid: int, sig: int) -> bool:
+    """Send ``sig`` to the process ``directory`` (its /proc directory, a pidfd for the kernel) holds; False when it is
+    gone or may not be signalled. A pid freed and taken again by another process never gets the signal. Without
+    pidfd_send_signal (an older kernel, or a seccomp profile that refuses it), the pid, once its status still reads."""
+    try:
+        signal.pidfd_send_signal(directory, sig)
+        return True
+    except ProcessLookupError:
+        return False
+    except (AttributeError, OSError):
+        pass
+    if not _status_at(directory):
+        return False
+    try:
+        os.kill(pid, sig)
+    except OSError:
+        return False
+    return True
+
+
+def sweep_user(uid: int) -> int:
+    """Stop, then kill, every process whose real or saved user is ``uid``, as root (CAP_KILL); how many it signalled.
+
+    Each pass reads /proc and sends SIGSTOP to every process of ``uid`` not stopped yet, through a descriptor of its
+    /proc directory taken before its status is read, so the status and the signal are of the same process. Passes go on
+    until one finds no process of that user running or asleep (at most FREEZE_PASSES): a stopped process forks
+    nothing, signals nothing and changes no one's scheduling, and one that a sibling woke (SIGCONT) is stopped again
+    at the next pass. Then each gets SIGKILL, which nothing undoes. Nothing of the plugin can delay this: the host's
+    user is root, which no process of the plugin may signal, trace, renice or move to another CPU, and SIGSTOP and
+    SIGKILL can be neither caught nor blocked. It needs no new process, so a service at its pids limit still kills."""
+    if uid <= 0 or not PROC.is_dir():
+        return 0
+    held: dict[int, int] = {}  # pid -> descriptor of /proc/<pid>
+    try:
+        for _ in range(FREEZE_PASSES):
+            awake = 0
+            for pid in _pids():
+                directory = held.get(pid)
+                fresh = directory is None
+                if fresh and (directory := _open_proc(pid)) is None:
+                    continue
+                status = _status_at(directory)
+                if not (_belongs(status, uid) and _alive(status)):
+                    os.close(directory)
+                    held.pop(pid, None)
+                    awake += not fresh  # a process held before is gone: its pid may hold a new one next pass
+                    continue
+                held[pid] = directory
+                if _state(status) not in HELD_STATES and _send(directory, pid, signal.SIGSTOP):
+                    awake += _state(status) in AWAKE_STATES
+            if not awake:
+                break
+            time.sleep(FREEZE_PAUSE)  # for the processes just stopped to reach their stop
+        for pid, directory in held.items():
+            _send(directory, pid, signal.SIGKILL)
+        return len(held)
+    finally:
+        for directory in held.values():
+            os.close(directory)
+
+
+async def _off_loop(work, *args):
+    """``work`` in a thread of the loop's executor, or here when no thread can start (a service at its pids limit)."""
+    loop = asyncio.get_running_loop()
+    try:
+        running = loop.run_in_executor(None, work, *args)
+    except RuntimeError:
+        return work(*args)
+    return await running
+
+
+async def _gone(uid: int, seconds: float) -> bool:
+    """Whether /proc shows no process of ``uid`` within ``seconds``: the processes just killed take a moment to end."""
+    deadline = time.monotonic() + seconds
+    while processes_of(uid):
+        if time.monotonic() >= deadline:
+            return False
+        await asyncio.sleep(0.02)
+    return True
 
 
 async def kill_user(owner: Identity) -> bool:
     """SIGKILL every process of ``owner``'s user, again until /proc shows none; True when none is left.
 
-    Each round, a killer calls kill(-1), which reaches every process its user may signal, at once: a fork under way
-    fails rather than leave a child behind. The killer is the host's Python, isolated, so nothing of the plugin runs in
-    it, and it takes its user itself (KILLER), like the trampoline of a backend: its effective user is the plugin's, so
-    it may signal every process of the plugin, while its real and saved user is one of its own (``killer_uid``), so no
-    process of the plugin may signal it (the kernel asks that the sender's user be the target's real or saved one) or
-    trace it, and none can stop it before it kills. It kills nothing unless it holds exactly those IDs and no
-    capability. A killer that has not ended after KILLER_WAIT is SIGKILLed and its round fails, so a stop or a start
-    never waits on one for long. The host needs CAP_SETUID, CAP_SETGID and CAP_KILL, which it has when it gives
-    backends users of their own."""
-    real = killer_uid(owner)
-    if real is None:
-        log.error("no killer user for this plugin user", extra={"uid": owner.uid})
-        return not processes_of(owner.uid) if PROC.is_dir() else False
+    Each round, the host itself, as root, stops every process of that user and then kills them (``sweep_user``), so
+    neither a signal nor a change of scheduling from the plugin can delay it. What the sweep cannot catch is a chain of
+    processes each of which forks the next and exits at once, faster than a pass reads /proc; for that, a killer then
+    calls kill(-1), which reaches every process its user may signal at once, so a fork under way fails rather than
+    leave a child behind. The killer is the host's Python, isolated, so nothing of the plugin runs in it, and it takes
+    its user itself (KILLER), like the trampoline of a backend: its effective user is the plugin's, so it may signal
+    every process of the plugin, while its real and saved user is one of its own (``killer_uid``), so no process of the
+    plugin may signal or trace it. It kills nothing unless it holds exactly those IDs and no capability. A killer that
+    has not ended after KILLER_WAIT is SIGKILLed and its round fails, so a stop or a start never waits on one for long.
+    The host needs CAP_SETUID, CAP_SETGID and CAP_KILL, which it has when it gives backends users of their own."""
+    killer = killer_uid(owner)
     for _ in range(KILL_ROUNDS):
         if PROC.is_dir() and not processes_of(owner.uid):
             return True
-        code = await _kill_round(real, owner)
-        if not PROC.is_dir():  # nothing to look at again (not Linux): the round's word is all there is
-            return code == 0
+        await _off_loop(sweep_user, owner.uid)
+        if not PROC.is_dir():  # nothing to look at (not Linux): the killer's word is all there is
+            return killer is not None and await _kill_round(killer, owner) == 0
+        if await _gone(owner.uid, SETTLE):
+            return True
+        if killer is None:
+            log.error("no killer user for this plugin user", extra={"uid": owner.uid})
+        else:
+            await _kill_round(killer, owner)
         await asyncio.sleep(0.05)
     return not processes_of(owner.uid)
 

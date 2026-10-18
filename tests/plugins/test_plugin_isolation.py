@@ -481,6 +481,16 @@ def test_plugin_isolation_trampoline_and_killer_refuse_a_user_they_cannot_take(t
         refused["trampoline, host user root"] = _snippet(
             environment.TRAMPOLINE, environment.SAME_USER, *after, home=tmp_path
         )
+        # The second review of PR #72 (L3): root as the saved user only, and the capabilities that keeps, passed the
+        # check of the real and effective users. The trampoline's code runs here after setresuid(user, user, 0).
+        saved_root = (
+            "import os, sys\n"
+            f"os.setgroups([]); os.setresgid({user}, {user}, {user}); os.setresuid({user}, {user}, 0)\n"
+            "exec(compile(sys.argv.pop(1), 'trampoline', 'exec'))\n"
+        )
+        refused["trampoline, host user root as its saved user"] = _snippet(
+            saved_root, environment.TRAMPOLINE, environment.SAME_USER, *after, home=tmp_path
+        )
     else:  # a user only root may take: setgroups raises
         refused["trampoline, a user not its own"] = _snippet(
             environment.TRAMPOLINE, f"{user}:{user}", *after, home=tmp_path
@@ -495,6 +505,124 @@ def test_plugin_isolation_trampoline_and_killer_refuse_a_user_they_cannot_take(t
     if not as_root():  # the host's own user, which is not root: the trampoline goes on to the backend's command
         assert _snippet(environment.TRAMPOLINE, environment.SAME_USER, *after, home=tmp_path).returncode == 0
         assert marker.exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the trampoline is POSIX")
+def test_plugin_isolation_trampoline_closes_descriptors_it_cannot_list(tmp_path):
+    """The second review of PR #72 (L2): with neither /proc/self/fd nor /dev/fd to list, the trampoline closed only
+    the descriptors below 65536. It now closes up to the limit of open files (os.closerange), the one above too."""
+    import resource
+
+    soft, hard = resource.getrlimit(resource.RLIMIT_NOFILE)
+    high = 70_000
+    if hard != resource.RLIM_INFINITY and hard <= high:
+        pytest.skip(f"the limit of open files ({hard}) holds no descriptor {high}")
+    code = (
+        "import os, resource, sys\n"
+        "try:\n"
+        f"    resource.setrlimit(resource.RLIMIT_NOFILE, ({high + 1}, resource.getrlimit(resource.RLIMIT_NOFILE)[1]))\n"
+        f"    fd = os.open(os.devnull, os.O_RDONLY)\n    os.dup2(fd, {high}, inheritable=False)\n    os.dup2(fd, 300)\n"
+        "except (OSError, ValueError) as exc:\n"
+        "    print('SKIP', exc)\n"
+        "    sys.exit(0)\n"
+        "def unlistable(path):\n    raise OSError('no listing here')\n"
+        "os.listdir = unlistable\n" + environment.CLOSE_FDS + "close_fds()\n"
+        "left = []\n"
+        f"for n in (fd, 300, {high}):\n"
+        "    try:\n        os.fstat(n)\n        left.append(n)\n    except OSError:\n        pass\n"
+        "print(left)\n"
+    )
+    done = _snippet(code, home=tmp_path)
+    if done.stdout.startswith("SKIP"):
+        pytest.skip(f"this system holds no descriptor {high}: {done.stdout.strip()}")
+    assert done.returncode == 0, done.stderr
+    assert done.stdout.strip() == "[]", f"descriptors left open: {done.stdout.strip()}"
+
+
+def _lingering_host(plugin_root, monkeypatch, kills: list[bool]) -> tuple[Host, int]:
+    """A host whose plugin ``sample`` has a user of its own, ``kill_user`` of which answers ``kills`` in turn (the
+    last one again once they run out), and two processes of that user that /proc shows."""
+    user = environment.UID_BASE + 21
+    answers = iter(kills)
+
+    async def kill(owner) -> bool:
+        assert owner.uid == user
+        return next(answers, kills[-1])
+
+    monkeypatch.setattr(host_module, "identity", lambda plugin_id: environment.Identity(user, user))
+    monkeypatch.setattr(host_module, "kill_user", kill)
+    monkeypatch.setattr(host_module, "processes_of", lambda uid: [4242, 4243])
+    monkeypatch.setattr(host_module, "BACKOFF", (0.05,))
+    monkeypatch.setattr(host_module, "MAX_BACKOFF", 0.05)
+    host = Host(plugin_root)
+    host.place(manifest("sample"), bundle("sample"), init("sample", 21))
+    return host, user
+
+
+def test_plugin_crash_a_retired_plugins_user_is_killed_again_until_none_is_left_and_admins_see_it(
+    plugin_root, monkeypatch
+):
+    """The second review of PR #72 (M1): an uninstalled plugin whose processes outlived its stop was dropped from the
+    status, only a warning logged, and nothing tried again, so the plugin ran on unseen. ``Host.retire`` now kills its
+    user again, with a backoff, until /proc shows none, and the host's status says so meanwhile."""
+    host, user = _lingering_host(plugin_root, monkeypatch, [False, False, False, True])
+
+    async def run() -> tuple[list[dict], list[dict]]:
+        stopping = host.retire("sample")
+        seen = []
+        while not stopping.done():
+            seen.extend(host.status())
+            await asyncio.sleep(0.01)
+        await stopping
+        return seen, host.status()
+
+    seen, after = asyncio.run(run())
+    assert seen, "the host's status left out the retired plugin while processes of its user ran"
+    want = host_module.RETIRED_LINGERING.format(name="sample", count=2, uid=user)
+    assert {(s["plugin"], s["state"], s["error"]) for s in seen} == {("sample", "backoff", want)}
+    assert max(s["restarts"] for s in seen) == 3  # the stop's kill, then two more that failed, then one that did not
+    assert after == [] and not host.lingering and "sample" not in host.stopping
+
+
+def test_plugin_crash_a_retired_plugins_lingering_user_never_holds_the_hosts_close(plugin_root, monkeypatch):
+    """A retired plugin whose user keeps processes the host cannot kill: closing the host kills once more and ends."""
+    host, _ = _lingering_host(plugin_root, monkeypatch, [False])
+    monkeypatch.setattr(host_module, "BACKOFF", (3600.0,))
+    monkeypatch.setattr(host_module, "MAX_BACKOFF", 3600.0)
+
+    async def run() -> list[dict]:
+        stopping = host.retire("sample")
+        while not host.lingering:
+            await asyncio.sleep(0.01)
+        shown = host.status()
+        await asyncio.wait_for(host.stop_all(), 10)
+        assert stopping.done()
+        return shown
+
+    shown = asyncio.run(run())
+    assert [s["plugin"] for s in shown] == ["sample"] and not host.lingering
+
+
+def test_plugin_isolation_no_backend_for_a_plugin_id_its_killer_has_no_user_for(plugin_root, monkeypatch):
+    """The second review of PR #72 (L4): a plugin id of MAX_PLUGIN_ID or more got no killer, as its killer's user would
+    meet the backends'. The host now refuses to place or start such a backend, and says why."""
+    plugin_id = environment.MAX_PLUGIN_ID
+    user = environment.UID_BASE + plugin_id
+    monkeypatch.setattr(host_module, "identity", lambda given: environment.Identity(user, user))
+
+    async def run() -> Backend:
+        host = Host(plugin_root)
+        backend = host.place(manifest("sample"), bundle("sample"), init("sample", plugin_id))
+        with pytest.raises(BackendUnavailable):
+            await backend.call("ping", {}, timeout=20)
+        await host.stop_all()
+        return backend
+
+    backend = asyncio.run(run())
+    want = host_module.NO_KILLER_USER.format(name="sample", plugin_id=plugin_id, limit=environment.MAX_PLUGIN_ID)
+    assert backend.status.state == "backoff" and backend.status.error == want
+    assert environment.killer_uid(environment.Identity(user, user)) is None
+    assert backend.process is None and not backend.where.code.exists()  # nothing was placed
 
 
 def _alive(pid: int) -> bool:

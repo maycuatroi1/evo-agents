@@ -3,12 +3,12 @@ and KILL, each backend under a user of its own (isolation uid). Criterion a4 of 
 C1, H1 and M2, which the tests run as a user on macOS never reached.
 
 These run only as root on Linux. CI's plugin-host-root job runs them in the hub's image with the plugins service's
-user, capabilities, no-new-privileges and init, the hub's variables set on the container (so docker-init, pid 1, holds
-them as it holds EVO_HUB_PLUGIN_HOST_TOKEN in production) and a fresh named volume at /plugins
-($EVO_PLUGIN_HOST_TEST_ROOT), as deploy/hub/docker-compose.yml mounts one:
+user, capabilities, no-new-privileges, init and limits (one CPU, 2048 processes, 2 GiB), the hub's variables set on
+the container (so docker-init, pid 1, holds them as it holds EVO_HUB_PLUGIN_HOST_TOKEN in production) and a fresh
+named volume at /plugins ($EVO_PLUGIN_HOST_TEST_ROOT), as deploy/hub/docker-compose.yml mounts one:
 
     docker run --rm --init --user 0:0 --cap-drop ALL --cap-add SETUID --cap-add SETGID --cap-add CHOWN \\
-      --cap-add KILL --security-opt no-new-privileges:true -e EVO_PLUGIN_HOST_TEST_ROOT=/plugins ... \\
+      --cap-add KILL --security-opt no-new-privileges:true --cpus 1 -e EVO_PLUGIN_HOST_TEST_ROOT=/plugins ... \\
       -v plugins:/plugins -v "$PWD:/src:ro" -w /src evo-agents-hub:ci python -m pytest tests/plugins
 
 - the hostile backend reads no secret, writes into no other plugin's code, environment or data directory, and may
@@ -16,7 +16,9 @@ them as it holds EVO_HUB_PLUGIN_HOST_TOKEN in production) and a fresh named volu
 - a backend's data directory, which its user owns, is prepared again at the next start without CAP_FOWNER (H1);
 - pip runs under the backend's user and installs only the bundle's wheels; the environment is root's afterwards (C1);
 - stopping a backend kills every process of its user, a child that left the group with setsid() included (M2), and
-  a process of that user that stops every other one (SIGSTOP) cannot stop the kill (the review of PR #72);
+  a process of that user that stops every other one (SIGSTOP) cannot stop the kill (the review of PR #72), nor can
+  spinners and watchers that demote whatever kills them delay it (the second review), nor a process whose first
+  thread exited hide from it;
 - the limits of a backend's user hold;
 - a link another process of the backend's user plants in the environment pip fills is removed, never followed, and
   the modes there are reset; stopping a backend kills pip and waits for the placing it cancelled (the second L2).
@@ -28,6 +30,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import platform
 import signal as signals
 import stat
 import subprocess
@@ -259,6 +262,172 @@ def test_plugin_crash_root_a_process_of_the_plugins_user_cannot_stop_the_kill(pl
     assert [stopper.returncode for stopper in stoppers] == [-signals.SIGKILL] * 2
     assert processes_of(user) == [], "a process of the plugin's user outlived the stop"
     assert elapsed < 40, elapsed
+
+
+STARVE = """
+import os, resource, sys
+spinners, watchers, nproc = (int(arg) for arg in sys.argv[1:4])
+resource.setrlimit(resource.RLIMIT_NPROC, (nproc, nproc))  # as the trampoline sets it for the plugin's user
+me = str(os.getuid())
+
+
+def spin():
+    os.sched_setaffinity(0, {0})
+    while True:
+        pass
+
+
+def theirs(pid):
+    try:
+        with open('/proc/%d/status' % pid) as status:
+            ids = next(line for line in status if line.startswith('Uid:')).split()[1:4]
+    except (OSError, StopIteration):
+        return False
+    return me not in (ids[0], ids[2])
+
+
+def watch():
+    # Demote each process that appears, as soon as it does: SCHED_IDLE, pinned to the CPU the spinners hold, nice 19.
+    # The kernel lets it when the target's real or effective user is this one's, as a killer's effective user is.
+    told = set()
+    while True:
+        top = max(int(name) for name in os.listdir('/proc') if name.isdigit())
+        for _ in range(2000):
+            for pid in range(top + 1, top + 48):
+                try:
+                    os.sched_setscheduler(pid, os.SCHED_IDLE, os.sched_param(0))
+                except OSError:
+                    continue
+                try:
+                    os.sched_setaffinity(pid, {0})
+                    os.setpriority(os.PRIO_PROCESS, pid, 19)
+                except OSError:
+                    pass
+                if pid not in told and theirs(pid):
+                    told.add(pid)
+                    sys.stdout.write('%d\\n' % pid)
+                    sys.stdout.flush()
+
+
+for work in [spin] * spinners + [watch] * watchers:
+    if os.fork() == 0:
+        try:
+            work()
+        finally:
+            os._exit(0)
+sys.stdout.write('ready\\n')
+sys.stdout.flush()
+spin()
+"""
+
+
+def test_plugin_crash_root_spinners_and_demoting_watchers_cannot_delay_the_kill(plugin_root):
+    """The second review of PR #72 (M1): the killer's effective user was the plugin's, so a process of the plugin could
+    demote it (SCHED_IDLE, pinned to one CPU, nice 19) while hundreds of others spun on that CPU; with --cpus 1, 4 of 5
+    killers timed out and the kill of an uninstalled plugin took 54.8 s, or failed and was never tried again. Here a
+    backend's user runs 100 spinners on CPU 0 and 8 watchers demoting every process that appears, then the plugin is
+    uninstalled (``Host.retire``). The host stops and kills them itself, as root, which no process of the plugin may
+    signal or reschedule: every one ends within seconds, and no process of another user had its scheduling changed.
+    CI's plugin-host-root job runs this with --cpus 1, as the plugins service runs."""
+    user = UID_BASE + 19
+    spinners, watchers = 100, 8
+
+    async def run() -> tuple[float, list[dict], Host]:
+        host = Host(plugin_root)
+        backend = host.place(manifest("faulty"), bundle("faulty"), init("faulty", 19))
+        assert text(await backend.call("tool", tool("ok"), 60)) == "ok"
+        attack = subprocess.Popen(
+            [sys.executable, "-I", "-S", "-c", STARVE, str(spinners), str(watchers), str(NPROC)],
+            user=user,
+            group=user,
+            extra_groups=[],
+            cwd="/",
+            start_new_session=True,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+        )
+        assert await asyncio.to_thread(attack.stdout.readline) == b"ready\n"
+        await asyncio.sleep(1.0)  # they spin, and watch
+        assert len(processes_of(user)) >= spinners + watchers
+        started = time.monotonic()
+        stopping = host.retire("faulty")
+        seen = []
+        while not stopping.done():
+            seen.extend(host.status())
+            await asyncio.wait({stopping}, timeout=0.2)
+        await stopping
+        elapsed = time.monotonic() - started
+        demoted = sorted({int(pid) for pid in (await asyncio.to_thread(attack.communicate, timeout=30))[0].split()})
+        assert not demoted, f"processes of other users the plugin demoted: {demoted}"
+        return elapsed, seen, host
+
+    try:
+        elapsed, seen, host = asyncio.run(run())
+    finally:  # what a failed run leaves
+        for pid in processes_of(user):
+            os.kill(pid, signals.SIGKILL)
+    assert processes_of(user) == [], "a process of the plugin's user outlived its uninstall"
+    assert elapsed < 20, f"the kill took {elapsed:.1f}s"
+    assert not host.lingering and host.status() == []
+    assert not [s for s in seen if s["state"] == "backoff" and "still running" in (s["error"] or "")], seen
+
+
+ZOMBIE_LEADER = """
+import ctypes, platform, threading, time
+
+
+def spin():
+    while True:
+        pass
+
+
+threading.Thread(target=spin).start()
+time.sleep(0.3)
+ctypes.CDLL(None).syscall({'x86_64': 60, 'aarch64': 93}[platform.machine()], 0)  # exit(2): the first thread only
+"""
+
+
+def _state_of(pid: int) -> str:
+    try:
+        text = Path(f"/proc/{pid}/status").read_text()
+    except OSError:
+        return ""
+    return next((line.split()[1] for line in text.splitlines() if line.startswith("State:")), "")
+
+
+def test_plugin_crash_root_a_process_whose_first_thread_exited_is_still_killed(plugin_root):
+    """A process of the plugin whose first thread exits while another of its threads runs reads as a zombie in
+    /proc/<pid>/status (State Z, Threads 2). processes_of left it out, so the kill said none was left while the thread
+    ran on. It now counts as alive while it has threads, and the host's sweep kills it."""
+    if platform.machine() not in ("x86_64", "aarch64"):
+        pytest.skip(f"no exit(2) number for {platform.machine()}")
+    user = UID_BASE + 20
+    leader = subprocess.Popen(
+        [sys.executable, "-I", "-S", "-c", ZOMBIE_LEADER],
+        user=user,
+        group=user,
+        extra_groups=[],
+        cwd="/",
+        start_new_session=True,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        deadline = time.monotonic() + 10
+        while _state_of(leader.pid) != "Z":
+            assert time.monotonic() < deadline, "the first thread did not exit"
+            time.sleep(0.05)
+        assert processes_of(user) == [leader.pid], "a process whose thread runs reads as gone"
+        assert asyncio.run(process.kill_user(environment.Identity(user, user))) is True
+        assert leader.wait(timeout=10) == -signals.SIGKILL
+    finally:
+        for pid in processes_of(user):
+            os.kill(pid, signals.SIGKILL)
+        if leader.poll() is None:
+            leader.wait(timeout=10)
+    assert processes_of(user) == []
 
 
 def test_plugin_isolation_root_limits_count_the_plugins_user(plugin_root):
