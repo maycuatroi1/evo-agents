@@ -409,8 +409,8 @@ def test_a_kg_result_the_hub_serves_joins_the_session_label_as_the_evo_kg_hook_w
         monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", mine)
         calls = [call(1, "kg_search", {"query": "x"}), call(2, "memory_search", {"query": "x"}), call(3, "kg_node")]
         replies = run_proxy(Proxy("alpha", credentials=signed_in(hub.url), err=io.StringIO()), *calls)
-        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", theirs)  # evo-kg serves this session's kg_*: none come here
-        run_proxy(Proxy("alpha", kg=False, credentials=signed_in(hub.url), err=io.StringIO()), calls[0])
+        monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", theirs)  # evo-kg serves this session's kg_*, so none are listed,
+        hidden = run_proxy(Proxy("alpha", kg=False, credentials=signed_in(hub.url), err=io.StringIO()), calls[0])
         monkeypatch.delenv("CLAUDE_CODE_SESSION_ID")  # not a Claude Code session: no label to join
         run_proxy(Proxy("alpha", credentials=signed_in(hub.url), err=io.StringIO()), calls[0])
     finally:
@@ -432,8 +432,38 @@ def test_a_kg_result_the_hub_serves_joins_the_session_label_as_the_evo_kg_hook_w
     by_hook = sessions.post_tool(payload)  # what evo-kg's hook records for the same result
     drop = ("session_id", "last_updated")
     assert {k: v for k, v in record.items() if k not in drop} == {k: v for k, v in by_hook.items() if k not in drop}
-    assert sessions.read_session(theirs) is None
-    assert sorted(p.stem for p in (tmp_path / "kg" / "sessions").glob("*.json")) == sorted([mine, hooked])
+    # but a call to one still reaches the hub: it is a read of the graph like any other, labelled the same
+    assert [r["result"]["content"][0]["text"] for r in hidden] == ["called kg_search"]
+    unlisted = sessions.read_session(theirs)
+    assert {k: v for k, v in unlisted.items() if k not in drop} == {k: v for k, v in record.items() if k not in drop}
+    assert sorted(p.stem for p in (tmp_path / "kg" / "sessions").glob("*.json")) == sorted([mine, theirs, hooked])
+
+
+@pytest.mark.parametrize("kg", [True, False])
+def test_a_kg_result_that_cannot_join_the_session_label_still_goes_back_with_a_note(tmp_path, monkeypatch, kg):
+    from evo_agents.kg import sessions
+
+    def refused(session_id, data, home=None):
+        raise PermissionError(13, "Permission denied", str(tmp_path / "kg" / "sessions" / "secret.json"))
+
+    label = {"level": "customer", "location": "any", "integrity": "U", "projects": ["alpha"]}
+    monkeypatch.setenv("EVO_KG_HOME", str(tmp_path / "kg"))
+    monkeypatch.setenv("CLAUDE_CODE_SESSION_ID", "54444444-5555-4666-8777-888888888888")
+    monkeypatch.setattr(sessions, "record_read", refused)
+    hub = FakeHub(kg_reply({"project": "alpha", "label": label, "results_read": 1}))
+    err = io.StringIO()
+    try:
+        calls = [call(1, "kg_search", {"query": "x"}), call(2, "memory_search", {"query": "x"})]
+        replies = by_id(run_proxy(Proxy("alpha", kg=kg, credentials=signed_in(hub.url), err=err), *calls))
+    finally:
+        hub.stop()
+    assert {i: r["result"]["content"][0]["text"] for i, r in replies.items()} == {
+        1: "called kg_search",
+        2: "called memory_search",
+    }
+    assert err.getvalue().splitlines() == [
+        "evo-agents hub mcp: session label not updated for this result (PermissionError)"
+    ]  # the type alone: no path or text from the message
 
 
 def claude_config(root: Path, enabled: dict, installed=("evo-kg@evo-agents", "evo-hub@evo-agents")) -> dict:
