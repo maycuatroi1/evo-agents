@@ -233,7 +233,7 @@ def test_serve_reads_the_store_read_only_and_compares_labels_only_when_some_are_
 
 
 def test_a_done_step_reaches_the_files_its_evidence_commit_changed(tmp_path, kg_env, monkeypatch):
-    from evo_agents.kg.connectors import _github
+    from evo_agents.kg.connectors import github
 
     project = make_project(tmp_path, kg_env)
     app = tmp_path / "demo-app"
@@ -257,9 +257,9 @@ def test_a_done_step_reaches_the_files_its_evidence_commit_changed(tmp_path, kg_
         "html_url": "https://github.com/acme/demo-app/pull/12",
         "updated_at": "2026-10-01T03:00:00Z",
     }
-    monkeypatch.setattr(_github, "enabled", lambda env=None: True)
-    monkeypatch.setattr(_github, "token", lambda env=None: "test-token")
-    monkeypatch.setattr(_github, "_page", lambda project, page, secret: [pull] if page == 1 else [])
+    monkeypatch.setattr(github, "enabled", lambda env=None: True)
+    monkeypatch.setattr(github, "token", lambda env=None: "test-token")
+    monkeypatch.setattr(github, "_page", lambda project, page, secret: [pull] if page == 1 else [])
     report = sync_build(project, verify=True, cold=True)
     assert report.verify["match"], report.verify
     store = Store.for_project(project)

@@ -46,7 +46,7 @@ item's ``props.redactions`` counts the markers by kind, and the sync's audit lin
 Besides the files, a run reads the history of the ref: an item ``<source>:commit:<sha>`` (kind ``commit``) for each
 commit reachable from the commit read, with its parents, its committer time and the paths it changed that the source
 does not exclude (a merge's against its first parent, at most MAX_COMMIT_PATHS of them, ``files`` counting them all);
-never its message. For a repo whose origin is on GitHub it also reads the pull requests (``_github``): an item
+never its message. For a repo whose origin is on GitHub it also reads the pull requests (``github``): an item
 ``<source>:pr:<number>`` (kind ``pr``) with the title, the state (open, closed or merged), the head and base branches
 and the merge commit, labelled integrity U; ``pulls: false`` on the source turns that off. A run whose cursor has the
 input of this run reads only the commits since the cursor's commit and the pull requests updated since the newest one
@@ -64,7 +64,7 @@ import sys
 from pathlib import Path
 
 from evo_agents import __version__
-from evo_agents.kg.connectors import _git, _github
+from evo_agents.kg.connectors import _git, github
 from evo_agents.kg.connectors._files import asset_item, decode, excluded, file_item, selected
 from evo_agents.kg.protocol import canonical_json, finalize_item, hello, sha256
 from evo_agents.kg.redact import redact_file
@@ -115,7 +115,7 @@ def _code() -> str:
     from evo_agents.kg import redact
 
     digest = hashlib.sha256(__version__.encode())
-    for module in (sys.modules[__name__], _git, _github, sys.modules[selected.__module__], redact):
+    for module in (sys.modules[__name__], _git, github, sys.modules[selected.__module__], redact):
         try:
             digest.update(Path(module.__file__).read_bytes())
         except (OSError, TypeError):  # no source file to read: the version alone stands for it
@@ -273,22 +273,22 @@ def pull_items(ctx, repo_name: str, origin: str, prior: dict):
     key = _git.remote_key(origin) if origin else None
     since = (prior.get("pulls") or {}).get("since") if isinstance(prior.get("pulls"), dict) else None
     kept = {"since": since} if since else None
-    if not key or key[0] != "github.com" or ctx.source.get("pulls") is False or not _github.enabled(ctx.env):
+    if not key or key[0] != "github.com" or ctx.source.get("pulls") is False or not github.enabled(ctx.env):
         return kept
-    secret = _github.token(ctx.env)
+    secret = github.token(ctx.env)
     if secret is None:
         yield {"type": "log", "level": "info", "message": "pulls not read: no GitHub token (GH_TOKEN, gh)"}
         return kept
     try:
-        found = _github.pulls(key[1], secret, since)
-    except _github.PullsError as exc:
+        found = github.pulls(key[1], secret, since)
+    except github.PullsError as exc:
         yield {"type": "log", "level": "warning", "message": f"pulls not read: {exc}"}
         return kept
     for pull in found.pulls:
         yield pull_item(ctx.source_id, repo_name, key[1], pull)
     yield {"type": "listing", "scope": f"{ctx.source_id}:pr:", "complete": False, "count": len(found.pulls)}
     if found.cut:
-        shown = f"the {_github.MAX_PAGES * _github.PAGE} most recently updated"
+        shown = f"the {github.MAX_PAGES * github.PAGE} most recently updated"
         yield {"type": "log", "level": "warning", "message": f"pulls: read {shown} of {key[1]} only"}
     newest = max(filter(None, (since, found.newest)), default=None)
     return {"since": newest} if newest else None
