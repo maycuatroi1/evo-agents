@@ -223,7 +223,7 @@ def test_post_tool_leaves_a_record_it_cannot_read_as_it_is(kg_env, monkeypatch, 
     path = sessions.session_path(payload["session_id"])
     before = {"unreadable": path.read_text(encoding="utf-8"), "not-json": '{"level": "secr', "not-an-object": "[]"}
     before = before[trouble]
-    path.write_text(before, encoding="utf-8")
+    path.write_bytes(before.encode("utf-8"))  # as bytes: write_text on Windows would turn each \n into \r\n
     if trouble == "unreadable":  # as when the file belongs to another user; patched, since root reads any file
         read_text = Path.read_text
 
