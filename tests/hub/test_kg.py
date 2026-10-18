@@ -52,6 +52,7 @@ from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import HubContext, connector, queue
+from evo_agents.kg import build as kg_build_module
 from evo_agents.kg import serve
 from evo_agents.kg import store as kg_store
 from evo_agents.kg.build import build_project
@@ -774,6 +775,39 @@ def test_deleting_the_worker_cache_and_building_again_gives_the_same_content_has
     (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
     assert done.merged == 2  # every log came back from the blob store
     assert len(list((hub.worker_dir / "kg" / "home" / PROJECT / "log").iterdir())) == 2
+
+
+def test_a_build_with_nothing_new_builds_nothing_and_points_at_the_same_artifact(hub, tmp_path, caplog, monkeypatch):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    first = latest(hub)
+    assert first["status"] == "succeeded"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(kg_build_module, "run_pipeline", lambda *a, **kw: pytest.fail("built an unchanged corpus"))
+        response = hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice)
+        assert response.status_code == 202 and response.json()["queued"] is True
+        with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
+            run_jobs(hub.db, hub.s3, hub.worker_dir)
+    second = latest(hub)
+    assert second["id"] != first["id"] and second["status"] == "succeeded", second
+    assert (second["content_hash"], second["artifact_sha256"]) == (first["content_hash"], first["artifact_sha256"])
+    assert (second["nodes"], second["edges"]) == (first["nodes"], first["edges"])
+    (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
+    assert done.skipped is True and done.artifact_reused_from == first["id"]
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+
+    laptop.sync("docs", doc("guide", "Edited.", rev="2"), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    caplog.clear()
+    with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
+        run_jobs(hub.db, hub.s3, hub.worker_dir)
+    third = latest(hub)
+    assert third["status"] == "succeeded" and third["content_hash"] != first["content_hash"]
+    (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
+    assert done.skipped is False
 
 
 def test_an_artifact_that_does_not_match_its_sha256_is_never_opened(hub, tmp_path):
