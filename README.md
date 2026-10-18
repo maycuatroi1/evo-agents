@@ -144,7 +144,9 @@ server binds to the project of the session directory; pass `--project` in `.mcp.
 run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
 (`kg bind --list` and `kg bind --remove DIR` manage those bindings). When the machine is signed in to a
 hub that has a graph of the project, the server answers from the hub with the same tools
-(`kg serve --backend auto`, the default; `local` and `hub` force one or the other).
+(`kg serve --backend auto`, the default; `local` and `hub` force one or the other). Inside a run of a worker,
+`auto` and `hub` ask the hub with the run's worker token, signed in or not, and only `local` reads a graph built on
+the machine ([docs/credentials.md](docs/credentials.md)).
 
 | Tool | Use |
 |---|---|
