@@ -8,6 +8,7 @@ import {
   CircleX,
   DatabaseZap,
   GitMerge,
+  Hammer,
   type LucideIcon,
   MessageCircleQuestionMark,
   MessageSquare,
@@ -62,6 +63,7 @@ export const NOTICE_LOOK: Record<NoticeKind, { icon: LucideIcon }> = {
   chat_mention: { icon: AtSign },
   chat_added: { icon: UserPlus },
   plugin_disabled: { icon: Unplug },
+  builder_proposal: { icon: Hammer },
 };
 
 /** What a notice is about, as the kit's tag: a kind is a name with square corners, never a round state pill. */

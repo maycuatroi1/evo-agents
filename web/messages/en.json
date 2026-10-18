@@ -4039,7 +4039,8 @@
       "author_waiting": "An author run waits for your reply",
       "chat_mention": "Someone mentioned you in a chat",
       "chat_added": "Someone added you to a chat",
-      "plugin_disabled": "The hub turned off a plugin"
+      "plugin_disabled": "The hub turned off a plugin",
+      "builder_proposal": "@builder proposed a change for you to approve"
     },
     "item": {
       "unread": "Unread",

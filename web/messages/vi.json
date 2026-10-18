@@ -4039,7 +4039,8 @@
       "author_waiting": "Run soạn plan chờ bạn trả lời",
       "chat_mention": "Có người nhắc bạn trong một chat",
       "chat_added": "Có người thêm bạn vào một chat",
-      "plugin_disabled": "Hub đã tắt một plugin"
+      "plugin_disabled": "Hub đã tắt một plugin",
+      "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt"
     },
     "item": {
       "unread": "Chưa đọc",
