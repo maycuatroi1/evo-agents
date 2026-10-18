@@ -960,7 +960,10 @@ model, the tokens, the session's id and its directory. It also holds the largest
 from the note it leaves in a result's place), the characters they had before the cut (`spool_original_chars`) and the
 calls that named the spool directory, the agent reading a spool file again (`spool_reads`); only these counts leave
 the machine, never a spool file. The hub keeps them, and `digest_show` returns them, null in a digest an older client
-pushed.
+pushed. The text of `digest_show`, like that of `run_events`, stays under 24,000 characters, below the 25,000 at which
+the hub's tools cut a text for `kg_more`: `digest_show` leaves out the last items of its longest lists and says how
+many (a kept item keeps the index that `session:ID:FIELD:INDEX` evidence names), and `run_events` stops before the
+event that would go past it and says after which seq to call again; one event's line holds at most 500 characters.
 Before it leaves the machine every string that looks like a
 secret is replaced by `***` (`evo_agents/hub/redact.py`): GitHub, Anthropic, OpenAI, AWS, Slack and Google keys and
 tokens, private keys in PEM, hub, web and worker tokens, passwords in URIs, Bearer and Basic credentials, and the value
