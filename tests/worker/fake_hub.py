@@ -49,8 +49,9 @@ class FakeHub:
         self.proposals: list[dict] = []
         self.plan_puts: list[dict] = []  # what the agent of an author run put, with the run's id and the status
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
-        # what the agent of a run did in group chats and what the daemon of a chat run told of its pushes: each with
-        # the run's id and the route (chat/messages, chat/reactions, chat/mentions, chats, chat/pulls)
+        # what the agent of a run did in group chats and what the daemon of a chat run or a task run told of its
+        # pushes: each with the run's id and the route (chat/messages, chat/reactions, chat/mentions, chats,
+        # chat/pulls, task/pulls)
         self.chat_calls: list[dict] = []
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
@@ -102,6 +103,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/chat", self._chat),
                 post("/v1/worker/runs/{id}/chat/{route}", self._in_chats),
                 post("/v1/worker/runs/{id}/chats", self._in_chats),
+                post("/v1/worker/runs/{id}/task/pulls", self._task_pulls),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
                 web.put("/v1/worker/runs/{id}/plan", self._put_plan),
@@ -372,6 +374,39 @@ class FakeHub:
         )
         spec = self.runs[run_id]["spec"]
         spec["branch"] = branch or f"chat/{run_id}"  # before the claim: nothing awaits in between
+        spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
+        return run_id
+
+    def queue_task_run(
+        self, repos: list[str], prompt: str = "You are @triager. Fix the wait.", *, runtime: str = "claude-code"
+    ) -> int:
+        """A task run over ``repos`` on the branch task/<its id>, as the hub hands it when a plugin dispatches it."""
+        run_id = self.queue_run(
+            kind="task",
+            project=self.project,
+            plan_id="",
+            step_key=None,
+            title="triage: fix the wait",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=3,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime=runtime,
+            model=None,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=[],
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+        )
+        spec = self.runs[run_id]["spec"]
+        spec["branch"] = f"task/{run_id}"  # before the claim: nothing awaits in between
         spec["repos"] = [{"repo": name, "branch": spec["branch"]} for name in repos]
         return run_id
 
@@ -648,6 +683,21 @@ class FakeHub:
         else:
             answer = message
         return web.json_response(answer, status=200 if route == "chat/reactions" else 201)
+
+    async def _task_pulls(self, request: web.Request) -> web.Response:
+        """The push a task run's daemon tells of: recorded, and answered as the hub would, with a draft pull request
+        of its own; the branch of another run is refused."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "task":
+            raise _refusal(404, f"run {run_id} is not a task run this worker holds")
+        body = await request.json()
+        if body.get("branch") != run["spec"]["branch"]:
+            raise _refusal(422, f"run {run_id} pushes {run['spec']['branch']}, not {body.get('branch')}")
+        self.chat_calls.append({"run_id": run_id, "route": "task/pulls", **body})
+        number = len(self.chat_calls)
+        url = f"https://github.example/demo/{body['repo']}/pull/{number}"
+        answer = {"repo": body["repo"], "branch": body["branch"], "url": url, "number": number, "opened": True}
+        return web.json_response({**answer, "problem": None}, status=201)
 
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)

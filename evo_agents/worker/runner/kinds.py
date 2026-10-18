@@ -11,6 +11,7 @@ from evo_agents.worker.runner.judge import JudgeRun
 from evo_agents.worker.runner.plan import PlanRun
 from evo_agents.worker.runner.review import ReviewRun
 from evo_agents.worker.runner.step import StepRun
+from evo_agents.worker.runner.task import TaskRun
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import RunKind
@@ -22,6 +23,7 @@ KINDS = {
     "judge": JudgeRun,
     "author": AuthorRun,
     "chat": ChatRun,
+    "task": TaskRun,
 }
 
 
