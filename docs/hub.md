@@ -1069,6 +1069,10 @@ serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filt
 A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
 the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
 therefore uploads nothing: it points at that artifact, and `artifact_reused_from` names the build that uploaded it.
+The content hash covers the store's schema and what its full-text index holds, so the first build after an upgrade
+that changes either uploads a new artifact. A `kg_*` tool call or a graph page that meets a graph written with an older
+store schema answers 503 and queues a build of the project, which needs no new run; the tools answer again once it
+has run.
 Every hour the worker deletes the artifacts of graphs older than each project's `EVO_HUB_KG_KEEP_ARTIFACTS` newest (3 by
 default; an artifact several builds share counts once, and the newest always stays). A pruned build keeps its row, its
 content hash and its counts, gets `artifact_pruned_at`, and loses `artifact_sha256`, so no row names an object that is

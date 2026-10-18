@@ -44,6 +44,7 @@ from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candida
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
+from evo_agents.kg.search import with_mentions
 from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
@@ -223,27 +224,24 @@ class Session:
         store, b = self._store()
         limit = max(1, min(int(limit), 25))
         kinds = [kinds] if isinstance(kinds, str) else kinds
-        ids = store.search(query, b, limit=limit * 4)
-        named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed
-        if named is not None and named["id"] not in ids:
-            ids.insert(0, named["id"])
+        ids = store.search(query, b, limit=limit * 4, kinds=kinds)
+        named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
+        if named is not None:
+            ids = [named["id"], *(i for i in ids if i != named["id"])]
         found = store.nodes(ids, b)
-        results = []
-        for nid in ids:
-            n = found.get(nid)
-            if n is None or not self.visible(n["label"]):
-                continue
-            if kinds and n["kind"] not in kinds:
-                continue
-            results.append(n)
-            if len(results) >= limit:
-                break
+        hits = [found[i] for i in ids if i in found and self.visible(found[i]["label"])]
+        results, via = with_mentions(
+            store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.visible, kinds
+        )
+        for reached in via.values():
+            self._saw(reached["label"])
         shared, label_line = self._labels(results)
         lines = [f"{len(results)} result(s) for {query!r} in project {self.project.name} (build {b})", *label_line]
-        lines += [self._line(n, shared) for n in results]
+        lines += [("  mentions " if n["id"] in via else "") + self._line(n, shared) for n in results]
         return "\n".join(lines), {
             "build": b,
             "results": [self._node_json(n) for n in results],
+            "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
             "summary": f"{len(results)} results",
         }
 
@@ -298,10 +296,8 @@ class Session:
             if n is not None:
                 break
         if n is None:
-            alias = store.db.execute(
-                "SELECT node_id FROM nodes WHERE aliases LIKE ? AND tx_to IS NULL LIMIT 1", (f'%"{node_id}"%',)
-            ).fetchone()
-            n = store.node(alias[0], b) if alias else None
+            alias = store.alias_of(node_id, b)
+            n = store.node(alias, b) if alias else None
         return n if n is not None and self.visible(n["label"]) else None
 
     def tool_kg_node(self, id: str) -> tuple[str, dict]:

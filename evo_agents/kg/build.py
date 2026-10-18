@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from evo_agents.kg import audit
+from evo_agents.kg import search as text_search
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
 from evo_agents.kg.ids import utc_now
@@ -45,6 +46,8 @@ from evo_agents.kg.store import SCHEMA_VERSION, Graph, Store, edge_id, key_confl
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config"}  # config: tsconfig.json aliases
 DEFINITION_SAMPLES = 15
+UNSEARCHED_ITEMS = ("code", "plan")  # their text reaches search through symbols, docstrings, plans and steps
+UNSEARCHED_FIELDS = ("title", "verify", "evidence")  # the name already; commands and run output
 STAT_KEYS = (
     "mentions",
     "resolved",
@@ -223,6 +226,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     derivs: dict[str, list[dict]] = defaultdict(list)
     where: dict[str, set] = defaultdict(set)
     same: list[tuple[str, str]] = []
+    notes: dict[str, list[str]] = defaultdict(list)  # node id -> descriptions and docstrings, for search
     errors: list[str] = []
     issues: list[str] = []
     stats: dict[str, dict] = defaultdict(lambda: {"items": 0, "issues": 0, **dict.fromkeys(STAT_KEYS, 0)})
@@ -255,6 +259,8 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
                 where[key].update(tuple(w) for w in f.get("where", []))
             elif t == "same":
                 same.append((f["a"], f["b"]))
+            elif t in ("text", "doc") and f.get("field") not in UNSEARCHED_FIELDS:
+                notes[f["src"]].append(f["text"])
             elif t == "error":
                 errors.append(f["message"])
             elif t == "issue":
@@ -341,22 +347,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             holders.append(f"{nid} (source {', '.join(srcs)})")
         errors.append(f"duplicate {kind} key {key}: " + ", ".join(holders))
 
-    # Searchable text: section and document bodies, short.
-    for rec in records:
-        r = rec.record
-        if r["id"] in graph.nodes and r.get("fragments") and graph.nodes[r["id"]]["kind"] == "Document":
-            for f in corpus.fragments(r):
-                sid = f"{r['id']}#{f['anchor']}"
-                target = sid if sid in graph.nodes else r["id"]
-                graph.texts[target] = (graph.texts.get(target, "") + "\n" + f["text"])[:4000]
-        elif r["id"] in graph.nodes and r["kind"] not in ("code",):
-            text = body(rec)
-            if text:
-                graph.texts[r["id"]] = text[:4000]
-    for nid, n in graph.nodes.items():
-        extra = " ".join(str(v) for k, v in n["props"].items() if k in ("path", "goal", "code", "repo", "uri"))
-        if extra:
-            graph.texts[nid] = (graph.texts.get(nid, "") + " " + extra)[:4000]
+    cut = search_texts(graph, records, corpus, body, notes)
 
     coverage = {
         "sources": [],
@@ -365,6 +356,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
         "errors": errors[:50],
         "warnings": [],
         "multiple_definitions": multiple_definitions(graph, {i["kind"] for i in identifiers}),
+        "search": {"cut": len(cut), "max_chars": text_search.MAX_TEXT_CHARS, "samples": cut[:DEFINITION_SAMPLES]},
     }
     for sid in sorted(sources):
         s = stats[sid]
@@ -380,6 +372,42 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
                 coverage["warnings"].append(f"source {sid}: {entry['code']['warning']}")
         coverage["sources"].append(entry)
     return graph, coverage, errors, issues
+
+
+def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, list[str]]) -> list[str]:
+    """Fill ``graph.texts`` and ``graph.paths``, what the full-text index holds besides names (``kg.search``): the
+    sections of a document, the text of an item that is neither code nor a plan (a plan's text is on its plan and
+    step nodes), the descriptions and docstrings in ``notes``, and a requirement's code; the path of a node that has
+    one, a section's being its document's. The ids of the nodes whose body was cut (``kg.search.MAX_TEXT_CHARS``)."""
+    parts: dict[str, list[str]] = defaultdict(list)
+    for rec in records:
+        r = rec.record
+        node = graph.nodes.get(r["id"])
+        if node is None:
+            continue
+        if r.get("fragments") and node["kind"] == "Document":
+            for f in corpus.fragments(r):
+                sid = f"{r['id']}#{f['anchor']}"
+                parts[sid if sid in graph.nodes else r["id"]].append(f["text"])
+        elif r["kind"] not in UNSEARCHED_ITEMS:
+            parts[r["id"]].append(body(rec) or "")
+    for nid, texts in notes.items():
+        if nid in graph.nodes:
+            parts[nid] += texts
+    cut = []
+    for nid, n in graph.nodes.items():
+        props = n["props"]
+        if props.get("code"):
+            parts[nid].append(str(props["code"]))
+        item = graph.nodes.get(props.get("item")) if n["kind"] == "Section" else None
+        path = props.get("path") or (item["props"].get("path") if item else None)
+        if path:
+            graph.paths[nid] = str(path)
+        if parts.get(nid):
+            graph.texts[nid], was_cut = text_search.body_text(parts[nid])
+            if was_cut:
+                cut.append(nid)
+    return sorted(cut)
 
 
 def multiple_definitions(graph: Graph, code_kinds: set[str]) -> dict:
