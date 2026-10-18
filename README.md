@@ -469,9 +469,11 @@ scripts/      bump_version.py X.Y.Z: the release version in evo_agents/__init__.
 docs/         hub.md: running and using the hub; workers.md: workers, runs, plan runs and the daemon;
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
-              and size budgets that CI checks, and how to split a module; kg.md: what kg_impact follows, and
-              its coverage per language; kg-eval.md: measuring retrieval with `kg eval`; plugins.md: plugins,
-              the plugin host and plugin/1; hub-deployment.md: a hub for a client
+              and size budgets that CI checks, and how to split a module; kg.md: the knowledge graph's tools
+              (what kg_impact follows and covers per language, the text of every tool, search, the note after
+              grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
+              retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
+              hub for a client
 ```
 
 ## License
