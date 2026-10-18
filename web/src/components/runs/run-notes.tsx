@@ -1,6 +1,7 @@
 "use client";
 
 import { Ban, Hand, HeartPulse, Info, type LucideIcon, ShieldAlert, Undo2 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useFormatter, useTranslations } from "next-intl";
 import type { ReactNode } from "react";
 
@@ -9,7 +10,9 @@ import { cn } from "@/lib/utils";
 import { HELD_STATES, type Run, STEADY_GAP_SECONDS, STEADY_SECONDS } from "./queries";
 import { attachCommand } from "./run-actions";
 import type { RunControls } from "./run-model";
-import { RunTriage } from "./run-triage";
+
+/** The triage of a failed run is loaded when its page shows one: most runs never fail. */
+const RunTriage = dynamic(() => import("./run-triage").then((module) => module.RunTriage), { ssr: false });
 
 /** The notes over a run's trace (run-detail.tsx): what the run waits for, one line each. */
 

@@ -1,10 +1,11 @@
 "use client";
 
 import { useQueries } from "@tanstack/react-query";
+import dynamic from "next/dynamic";
 import { useCallback, useMemo, useState } from "react";
 
 import type { Decision } from "@/components/inbox/queries";
-import { runDecisionsQuery } from "@/components/runs/run-decisions";
+import { runDecisionsQuery } from "@/components/runs/decision-queries";
 import { CHAT_REFRESH_MS } from "@/components/runs/queries";
 import { browserApi } from "@/lib/api/browser";
 import type { GroupMessage } from "@/lib/chats";
@@ -13,7 +14,8 @@ import type { Feed } from "@/components/chats/feed-model";
 import type { MessageSlot } from "@/components/chats/message-item";
 import { createElement } from "react";
 
-import { MessageDecisions } from "./message-decisions";
+/** The decisions card (the inbox's DecisionCard and its answer form) loads when a decision first shows. */
+const MessageDecisions = dynamic(() => import("./message-decisions").then((module) => module.MessageDecisions), { ssr: false });
 
 /** The runs whose decisions a chat reads: the latest ones, since an older run's question was answered or expired. */
 const MAX_RUNS = 12;
@@ -65,6 +67,8 @@ export function useChatDecisions(feed: Feed, ended: boolean): MessageSlot {
   });
   const of = (message: GroupMessage) => (message.run_id !== null && last.get(message.run_id)?.id === message.id ? (byRun.get(message.run_id) ?? []) : []);
   return function decisionsUnder(message) {
-    return createElement(MessageDecisions, { decisions: of(message), onSettled: keep });
+    const decisions = of(message);
+    if (decisions.length === 0) return null;
+    return createElement(MessageDecisions, { decisions, onSettled: keep });
   };
 }

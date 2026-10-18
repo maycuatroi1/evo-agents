@@ -40,9 +40,9 @@ import { taskBranch } from "./model";
 import { runControls } from "./run-model";
 import { useDescribeMove, useSessionTab, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
-import { RunTerminalPanel } from "./run-terminal";
 import { RunTimeline } from "./run-timeline";
 import { TracePreview } from "./trace-preview";
+import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
 import { logSignal, useRunLog } from "./use-run-log";
 

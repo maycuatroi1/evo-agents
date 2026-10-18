@@ -2,6 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CircleSlash } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
@@ -24,11 +25,13 @@ import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
-import { MembersSheet } from "./members-sheet";
 import { type MessageSlot } from "./message-item";
 import { MessageList } from "./message-list";
 import { ThreadPanel } from "./thread-panel";
 import { useChatFeed } from "./use-chat-feed";
+
+/** The members' sheet opens on demand: its code loads when the chat's head asks for it. */
+const MembersSheet = dynamic(() => import("./members-sheet").then((module) => module.MembersSheet), { ssr: false });
 
 const CARD = "flex min-h-0 flex-col overflow-hidden rounded-md border bg-card shadow-raised";
 /** Tailwind's 2xl (96rem, 1536 px): from there the thread is a column beside the chat, below it a sheet. */
