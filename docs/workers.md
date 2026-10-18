@@ -21,7 +21,7 @@ the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays 
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
 `evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in
 `evo_agents/worker/runtimes` and its end of the web terminal. `evo_agents/worker/runner` holds a run on the machine:
-each kind of run (step, plan, review, judge, author, chat) in a module of its own, which composes the parts the kinds share
+each kind of run (step, plan, review, judge, author, chat, task) in a module of its own, which composes the parts the kinds share
 rather than inheriting them, and the decisions that need no I/O as pure functions in `runner/transitions.py`;
 `evo_agents/worker/run.py` keeps the names the daemon imports. The daemon has its own command group because
 `evo-agents hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes
@@ -34,7 +34,7 @@ how decisions and notices reach a member.
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots, labels and plugins after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -50,7 +50,8 @@ of at most 3, the run it retries (`parent_run_id`), its state and lease, the age
 and at the end the commit, diffstat, verify results, evidence, usage and error. A run the night shift queued also
 names its schedule and night and carries its caps (`budget`, see [Runs of the night shift](#runs-of-the-night-shift)).
 A run records the agent profile and the version it went under (`profile_id`, `profile_version`; `docs/hub.md`, Agent
-profiles), and a chat run its chat, the message that started it and its hop (`chat_id`, `chat_message_id`, `hop`).
+profiles), a chat run its chat, the message that started it and its hop (`chat_id`, `chat_message_id`, `hop`), and
+a task run its agent type and the draft pull requests of its branch (`agent_type_id`, `pulls`).
 
 ## Who may do what
 
@@ -503,6 +504,32 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
+
+## Task runs
+
+A task run (kind `task`, `evo_agents.hub.task_runs`) is one turn of an agent type of a plugin on a task the plugin
+handed it through the hub's API (`docs/plugins.md`, Agent types). The hub queues it with no plan (`plan_id` empty), the
+task in `request`, the agent type (`agent_type_id`), the type's profile, dispatched by the member the project named
+for the type (`run_as`), the branch `task/<id>` (the id of the run the dispatch made) and the repos of its project
+(none when it has none). It is pinned to no worker: a worker of `run_as` claims it with `task` in its heartbeat's
+`run_kinds`. When the type names workers, the worker must be one of them, by name. When the run has repos, the worker
+needs a checkout of one of them. The claim hands the prompt the hub builds then (`task_runs.build_task_prompt`): the
+rules, the repos and the task, which is cut first to keep the prompt within its bound. Its budget is what is left of
+the type's cap of cost for 24 hours, and 30 minutes of agent time.
+
+The daemon makes a writable worktree of each repo it has a checkout of on the run's branch, from origin's branch when
+an earlier attempt pushed it, else from origin's default branch (`runner/branch_work.py`, shared with chat runs). The
+agent works in one headless turn, `EVO_RUN_KIND=task`, and asks nobody anything. At the end the daemon:
+
+- commits what the agent left in each worktree;
+- pushes the run's branch of each repo whose commits origin lacks, never a default branch and never forced
+  (`gitops.check_push`);
+- tells the hub of each push with `POST /v1/worker/runs/{id}/task/pulls` (`repo`, `branch`, `head`).
+
+The hub opens a draft pull request with the workers' App, or finds the one open, keeps it in `pulls` and never merges
+it. The run then ends `done`, without verify results. It never waits and is never rerun (409): the plugin hands the
+task again. A lost one is tried again on the same branch with the same agent type. When it ends done, failed or
+cancelled, the plugin of its agent type gets the event `task.result`.
 
 ## Local runs
 

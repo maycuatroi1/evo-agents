@@ -186,8 +186,8 @@ project is what the project granted that its installed version still asks for, c
 | `chats:read` | read the project's group chats | the `chat.message` events |
 | `memories:read` | read the project's memories | the bridge's `memories.list` |
 | `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications |
-| `runs:dispatch` | dispatch runs in the project | nothing yet: no route of the hub takes a plugin's token |
-| `chats:write` | post messages in the project's group chats | nothing yet, for the same reason |
+| `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, and the `task.result` events (section Agent types) |
+| `chats:write` | post messages in the project's group chats | nothing yet: no route of the hub posts a plugin's message |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -219,6 +219,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
 | `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
 | `agent_packs` | `name`, `title`, `description` | a directory `packs/<name>/` of the bundle laid out as a Claude Code plugin, which an agent profile attaches at a version of the plugin; a plugin of the hub's image has no bundle to build it from | the same (section Agent packs) |
+| `agent_types` | `name`, `title`, `description`, `profile`, `packs`, `environment`, `jobs`, `events`, `pages` | a template of an agent profile with the plugin's own packs, environment, jobs, events and pages it uses, which a project enables and the plugin hands tasks to | the same (section Agent types) |
 
 What a project does not enable is not there: every route, tool, job, event and channel of a plugin works in a project
 that enabled the plugin while the plugin is installed and turned on, and the hub checks it on each call, not once.
@@ -250,8 +251,9 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
   that enable the plugin and may take 120 seconds.
 - **Events.** A plugin enabled in a project takes the events its `on` names there (every kind when it names none) that
   its grant lets it read: `run.state` with `runs:read` (a run moved: its id, kind, states, actor, plan and step),
-  `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it), and
-  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision). A payload
+  `chat.message` with `chats:read` (a message in a chat with an agent of the project: its ids and who wrote it),
+  `plan.step` with `plans:read` (a step's status changed: the plan, the step, the statuses and the revision), and
+  `task.result` with `runs:dispatch`, only to the plugin whose agent type ran the task (section Agent types). A payload
   carries ids and states, never a text the project's labels may keep from the plugin; the plugin asks the hub for more.
   The hub writes one delivery per plugin in the transaction that made the event (table `plugin_deliveries`), and the
   job `hub.deliver_plugin_events` hands each to its plugin every minute, **at least once**: a delivery counts only once
@@ -469,6 +471,112 @@ under it:
 evo-agents hub agent create @reviewer --project evo-agents --name Reviewer --pack sandbox/reviewer@1.2.0
 evo-agents hub run dispatch rollout 2 --project evo-agents --agent reviewer
 ```
+
+## Agent types
+
+A plugin contributes **agent types** (`contributes.agent_types`): each a template of an agent profile with the parts of
+the same plugin its runs use. The plugin then hands that agent tasks, and each task runs as a run of kind `task` on a
+worker of the project (`evo_agents/hub/task_runs.py`):
+
+```json
+"contributes": {
+  "agent_packs": [{"name": "triage", "title": "Triage kit"}],
+  "environments": [{"name": "node", "title": "Node 22", "image": "ghcr.io/acme/node@sha256:..."}],
+  "jobs": [{"name": "tick", "cron": "*/10 * * * *"}],
+  "events": [{"name": "results", "on": ["task.result"]}],
+  "agent_types": [
+    {
+      "name": "triager",
+      "title": "Issue triager",
+      "profile": {"handle": "triager", "name": "Triager", "instructions": "Reproduce, then fix or explain."},
+      "packs": ["triage"],
+      "environment": "node",
+      "jobs": ["tick"],
+      "events": ["results"]
+    }
+  ]
+}
+```
+
+`profile` takes the handle, name, description, instructions and permissions (by axis) of an agent profile
+(`docs/hub.md`, Agent profiles). `packs`, `environment`, `jobs`, `events` and `pages` name the plugin's own
+contributions by name. A manifest that names a part the plugin does not contribute, or one part twice, is refused, as
+are two types with the same handle.
+
+**An admin of a project enables an agent type there** after enabling its plugin:
+`PUT /v1/projects/{project}/agent-types/{plugin}/{name}` with:
+
+- `run_as`: the member whose name its runs go under, a writer or an admin of the project;
+- `workers`: the workers of that member its runs may take, by name, at most 16 (none: any the profile allows);
+- `daily_usd`: the cap of what its task runs may cost in 24 hours, above 0 and at most 1000.
+
+The first enable creates the type's profile in the project from the template:
+
+- its packs attached at the version of the plugin the project runs;
+- its environment, when it names one, as the only one its runs may take.
+
+A handle another agent of the project holds, deleted ones included, refuses the enable (409), as does a plugin the
+project did not enable or turned off. Enabling the type again keeps that profile, which the project's admins edit like
+any other, and changes `run_as`, `workers` and `daily_usd`. A deleted profile refuses it (409): a handle is never
+taken again. `DELETE` on the same path turns the type off and keeps its row and profile. `GET
+/v1/projects/{project}/agent-types` lists the types of the plugins the project enabled, to every member, each with how
+it is enabled and what its task runs cost in the last 24 hours. The audit log keeps `agent-type.enable` and
+`agent-type.disable`.
+
+**A plugin granted `runs:dispatch` hands a task to one of its own agent types** through the hub's API for plugins,
+with the token the plugin host hands its backend (`Authorization: Bearer evp_...`) and no other credential:
+
+```http
+POST /v1/plugin-api/projects/evo-agents/agent-types/triager/tasks
+Authorization: Bearer evp_...
+Content-Type: application/json
+
+{"task": "Issue #212: the export drops the last row. Reproduce it and fix it.", "title": "Fix #212"}
+```
+
+`task` is at most 16 KiB in UTF-8 and `title` at most 200 characters (when left out, the task's text on one line, cut short). The hub
+refuses the dispatch with:
+
+- 401 without a live plugin token, or when the plugin is uninstalled or turned off;
+- 403 when the project did not enable the plugin or did not grant it `runs:dispatch`;
+- 404 for a type the installed version does not contribute, or one the project did not enable or turned off;
+- 409 when the type's profile was deleted, or `run_as` no longer holds writer on the project;
+- 422 for a body it does not take;
+- 429 once the type's task runs cost its cap in the last 24 hours, as their usage says.
+
+Otherwise it answers 201 with the task: `task_id`, the id of the run it queued, and `budget`, what is left of the cap
+as the run's cost cap with 30 minutes of agent time, as a chat run has. A runtime that reports no cost stops at the
+time. The run goes under the type's profile, dispatched by `run_as` with the credential kind `machine`, and waits for
+a worker of `run_as` that:
+
+- the type names (any, when it names none);
+- runs task runs;
+- has a checkout of one of the project's repos, when the project has any;
+- passes the profile's axes.
+
+The audit log keeps `task.dispatch`, with `run_as` as its actor.
+
+**A task run changes code on the branch `task/<task_id>` of each repo** of the project its worker has a checkout of, in
+one headless turn of the agent, which asks nobody anything (`docs/workers.md`, Task runs). At its end the worker:
+
+- commits what the agent left;
+- pushes that branch of each repo it changed, never a default branch and never forced;
+- tells the hub of each push.
+
+The hub opens a draft pull request of the branch with the workers' GitHub App, or finds the one open, and never merges
+it. A repo elsewhere than GitHub, or a hub without the App, gets the pushed branch only. A run its worker lost goes on
+in its next attempt on the same branch. A task run is never rerun: the plugin hands the task again (409).
+
+**The plugin learns the end through its events**: when the run is done, failed or cancelled, the hub writes the event
+`task.result` for the plugin of the agent type alone, while the project grants it `runs:dispatch`. Its payload holds:
+
+- `task_id`, `run_id`, `attempt`, `project`, `agent_type` and `state`;
+- `branch`;
+- `pulls`, the draft pull requests as `{repo, url, number}` each;
+- `failure_cause`.
+
+`GET /v1/plugin-api/projects/{project}/tasks/{task_id}` reads the same of a task's latest attempt, with when it was
+queued and when it ended. It answers for the plugin's own tasks only (404 for any other).
 
 ## Pages
 
