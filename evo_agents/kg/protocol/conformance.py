@@ -80,6 +80,29 @@ def _digest_after(corpus: Corpus, runs: list[tuple[str, list[dict]]]) -> str:
     return corpus.state_digest(db)
 
 
+def _truncated_listing(source: dict, harness: Harness | None, env, items: int, tmp: Path) -> Check:
+    """A full sync, then one cut short after about half its items: the cut one fails and derives no deletion."""
+    project = Project(
+        "conformance",
+        # Without a harness, exec connectors run where the test was started, as in the first run.
+        harness or Harness(Path.cwd(), {"name": "conformance"}),
+        {"project": "conformance", "sources": [source]},
+        tmp / "knowledge.yaml",
+        tmp / "home",
+    )
+    from evo_agents.kg.sync import sync_source
+
+    with contextlib.closing(project.corpus()) as synced:
+        full = sync_source(project, source["id"], env=env, corpus=synced)
+        with synced.db:  # without its cursor the cut run reads everything again, as the full one did
+            synced.db.execute("DELETE FROM cursors WHERE source = ?", (source["id"],))
+        cut = sync_source(project, source["id"], kill_after=1 + items // 2, env=env, corpus=synced)
+        alive = len(synced.items(source["id"]))
+    ok = full.ok and not cut.ok and cut.removals == 0 and alive == full.items
+    details = [f"full run ok={full.ok}, cut run ok={cut.ok}, removals={cut.removals}, alive={alive} of {full.items}"]
+    return Check("truncated-listing", ok, [] if ok else details)
+
+
 def run_conformance(
     source: dict,
     *,
@@ -122,30 +145,7 @@ def run_conformance(
 
         items = [m for m in first if m.get("type") == "item"]
         if len(items) >= 2 and any(m.get("type") == "listing" and m.get("complete") for m in first):
-            project = Project(
-                "conformance",
-                # Without a harness, exec connectors run where the test was started, as in the first run.
-                harness or Harness(Path.cwd(), {"name": "conformance"}),
-                {"project": "conformance", "sources": [source]},
-                Path(tmp) / "knowledge.yaml",
-                Path(tmp) / "home",
-            )
-            from evo_agents.kg.sync import sync_source
-
-            with contextlib.closing(project.corpus()) as synced:
-                full = sync_source(project, source["id"], env=env, corpus=synced)
-                cut = sync_source(project, source["id"], kill_after=1 + len(items) // 2, env=env, corpus=synced)
-                alive = len(synced.items(source["id"]))
-            ok = full.ok and not cut.ok and cut.removals == 0 and alive == full.items
-            details = (
-                []
-                if ok
-                else [
-                    f"full run ok={full.ok}, cut run ok={cut.ok}, removals={cut.removals}, "
-                    f"alive={alive} of {full.items}"
-                ]
-            )
-            checks.append(Check("truncated-listing", ok, details))
+            checks.append(_truncated_listing(source, harness, env, len(items), Path(tmp)))
         else:
             checks.append(Check("truncated-listing", True, ["skipped: needs two items and a complete listing"]))
 

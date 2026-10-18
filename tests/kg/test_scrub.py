@@ -105,6 +105,7 @@ def synced_before_redaction(tmp_path, kg_env, monkeypatch):
     add_secrets(tmp_path / "demo-app")
     with monkeypatch.context() as patched:
         patched.setattr(git_connector, "redact_file", lambda text, path: (text, {}))
+        patched.setattr(git_connector, "read_input", lambda ctx: "sha256:a connector that does not redact")
         assert all(r.ok for r in sync_project(project))
         assert build_project(project).ok
     assert files_holding(project.root)  # the control: the values are on disk
@@ -381,6 +382,7 @@ def test_scrub_purge_drops_the_records_a_change_of_ref_superseded(tmp_path, kg_e
     guard = "    deletion: {max_removal_ratio: 0.1, min_scope: 0}\n"
     with monkeypatch.context() as patched:
         patched.setattr(git_connector, "redact_file", lambda text, path: (text, {}))
+        patched.setattr(git_connector, "read_input", lambda ctx: "sha256:a connector that does not redact")
         main_run = sync_source(git_project(tmp_path, kg_env, repo, "main", guard), "app")
     assert main_run.ok and files_holding(kg_env / "proj")  # the control: the value is on disk
     project = git_project(tmp_path, kg_env, repo, "deploy", guard)
@@ -402,10 +404,13 @@ def test_scrub_purge_drops_the_records_a_change_of_ref_superseded(tmp_path, kg_e
     assert found.rewrite == [first.name] and found.logs == []
     with holding_sources(project.root):
         deleted = purge(found)
-    assert (deleted["blobs"], deleted["logs"], deleted["rewritten"], deleted["dropped"]) == (1, 0, 1, 2)
+    # Dropped: the main run's docker-compose.yml, docs/guide.md and the commit both refs reach, which the deploy run
+    # read again. The commit only main reaches stays from the main run, held back like docs/main-only.md.
+    assert (deleted["blobs"], deleted["logs"], deleted["rewritten"], deleted["dropped"]) == (1, 0, 1, 3)
 
     entries = [record for record in records_of(first) if record["type"] in ("item", "tombstone")]
-    assert [record["id"] for record in entries] == ["app:file:docs/main-only.md"]
+    main_only = git(repo, "rev-parse", "main").strip()
+    assert sorted(record["id"] for record in entries) == [f"app:commit:{main_only}", "app:file:docs/main-only.md"]
     assert records_of(first)[0]["epoch"] == BASE_EPOCH
     assert_compacted(project, kept, state, content)
     corpus = Corpus(project.name, project.home)
@@ -418,7 +423,7 @@ def test_scrub_purge_drops_the_records_a_change_of_ref_superseded(tmp_path, kg_e
     finally:
         corpus.close()
 
-    assert accept_removals(project, "app") == 1  # the held removal goes on from the rewritten log
+    assert accept_removals(project, "app") == 2  # the held removals (file, commit) go on from the rewritten log
     assert states(project)[0] == states(project)[1]
     assert project.corpus().get("app:file:docs/main-only.md").deleted
 
@@ -484,7 +489,7 @@ def test_rewrite_log_leaves_a_log_lacking_a_record_the_corpus_holds(fake_project
     first = Path(sync_project(project)[0].log)
     fake.set(items=[doc("a", VAULT, rev="2")], listing=False)
     sync_project(project)
-    winners, _ = scrub_module._winners(project.root)
+    winners, _ = scrub_module.winners_of(project.root)
     run_id = records_of(first)[0]["run_id"]
     before = first.read_bytes()
 

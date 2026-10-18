@@ -1522,6 +1522,16 @@
         "source": "Nguồn"
       }
     },
+    "commits": {
+      "title": "Commit đã đọc",
+      "description": "Commit mà mỗi nguồn git của đồ thị này đã đọc, và commit đó chậm nhánh mặc định của remote bao nhiêu commit lúc nguồn được đồng bộ.",
+      "ref": "của {ref}",
+      "behind": "chậm {base} {count, plural, other {# commit}}",
+      "upToDate": "khớp với {base}",
+      "notCompared": "không có nhánh remote để so",
+      "open": "Mở commit {commit} (mở trong tab mới)",
+      "copy": "Chép SHA của commit {commit}"
+    },
     "node": {
       "facts": "Thông tin node",
       "id": "Id",

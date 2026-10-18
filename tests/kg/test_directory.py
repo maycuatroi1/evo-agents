@@ -123,7 +123,7 @@ def test_directory_retracts_with_the_last_item_under_it(tmp_path, kg_env):
     commit(app)
     second = sync_build(project, verify=True, cold=True)
     assert second.verify["match"], second.verify
-    assert second.memo["map"]["misses"] == 0  # the other items' map entries stay valid
+    assert second.memo["map"]["misses"] == 1  # the other items' map entries stay valid; the new commit is new
     b2 = second.build_id
     assert store.node(extra, b2) is not None
     assert store.node(one, b2) is None

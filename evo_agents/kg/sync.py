@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from evo_agents import __version__
 from evo_agents.kg import audit
 from evo_agents.kg.corpus import Corpus, LogWriter, kg_home
 from evo_agents.kg.ids import parse_utc, utc_now, uuid7
@@ -42,6 +43,7 @@ NOT_LINEAGE = frozenset(
         "credentials",
         "timeout",
         "fetch",
+        "pulls",
         "include",
         "exclude",
         "allow",
@@ -71,6 +73,7 @@ class SyncResult:
     stderr_tail: list[str] = field(default_factory=list)
     seconds: float = 0.0
     log: str | None = None
+    unchanged: bool = False  # a git source at the commit and config its last ok run read: nothing read, no log
 
     @property
     def ok(self) -> bool:
@@ -153,6 +156,109 @@ def _record_run(corpus: Corpus, result: SyncResult, connector: str, version: str
     return finished
 
 
+def _finish(project: Project, corpus: Corpus, result: SyncResult, connector: str, version, started: str, then=None):
+    """Commit the run: ``then()``, what the caller writes with it, and its row in the runs table, in one
+    transaction; then its line in the audit log."""
+    with corpus.db:
+        if then is not None:
+            then()
+        finished = _record_run(corpus, result, connector, version, started)
+    audit.record_sync(
+        corpus.root,
+        project.name,
+        result,
+        connector=connector,
+        connector_version=version,
+        started=started,
+        finished=finished,
+    )
+
+
+def _read_already(corpus: Corpus, ctx: ConnectorContext, result: SyncResult) -> bool:
+    """Whether a git source whose last run was ok would read the commit and config its cursor names
+    (``connectors.git.read_already``). Such a sync reads nothing: no log, no change to the state or the cursor, and
+    ``result`` is ok and ``unchanged``. When it fetched and found something new, the run that follows does not fetch
+    again."""
+    if ctx.source.get("connector") != "git":
+        return False
+    last = corpus.runs(ctx.source_id, limit=1)
+    if not last or last[0]["status"] != "ok":
+        return False
+    from evo_agents.kg.connectors import git
+
+    same, warnings = git.read_already(ctx)
+    result.warnings.extend(warnings)
+    if same:
+        result.status, result.unchanged = "ok", True
+    elif ctx.source.get("fetch"):
+        ctx.source = {**ctx.source, "fetch": False}  # fetched just now; fetch is not part of the lineage
+    return same
+
+
+def _read(run: ConnectorRun, checker: StreamChecker, corpus: Corpus, writer: LogWriter, result: SyncResult, states):
+    """Log every message of the run and count it into ``result``; append each state message to ``states``."""
+    for message in run:
+        problems = checker.feed(message)
+        if problems:
+            result.rejected += 1
+            result.issues.extend(str(p) for p in problems[:3])
+            continue
+        kind = message["type"]
+        if kind == "item":
+            writer.write(corpus.to_log_record(message))
+            count_item(result, message)
+        elif kind == "tombstone":
+            record = dict(message)
+            known = corpus.get(record["id"])
+            if known is not None:
+                record.setdefault("rev", known.rev)
+                if known.record.get("rev_time"):
+                    record.setdefault("rev_time", known.record["rev_time"])
+            writer.write(record)
+            result.tombstones += 1
+        elif kind == "state":
+            writer.sync()  # every item before this cursor is durable before the cursor counts
+            writer.write(message)
+            states.append(message)
+        else:
+            if kind == "error":
+                result.errors += 1
+            elif kind == "log" and message["level"] in ("warning", "error"):
+                result.warnings.append(message["message"])
+            writer.write(message)
+
+
+def _removals(corpus: Corpus, source: dict, checker: StreamChecker, writer: LogWriter, result: SyncResult) -> list:
+    """Tombstones for the items a complete listing no longer names, written to the log, unless the deletion guard
+    holds them back: the rows of ``held`` for those."""
+    held_rows = []
+    for listing in checker.listings:
+        if not listing.get("complete"):
+            continue
+        scope = listing["scope"]
+        alive = corpus.alive_in_scope(scope)
+        removed = [r for r in alive if r.item_id not in checker.seen and r.item_id not in checker.error_ids]
+        if not removed:
+            continue
+        reason = _guard(source, len(alive), len(removed), listing["count"])
+        if reason:
+            held_rows.append((result.run_id, result.source, scope, reason, [r.item_id for r in removed]))
+            result.held.append({"scope": scope, "reason": reason, "count": len(removed)})
+            continue
+        for r in removed:
+            writer.write(
+                {
+                    "type": "tombstone",
+                    "id": r.item_id,
+                    "rev": r.rev,
+                    "rev_time": r.record.get("rev_time", ""),
+                    "derived": "listing",
+                }
+            )
+            result.removals += 1
+    return held_rows
+
+
 def sync_source(
     project: Project,
     source_id: str,
@@ -161,9 +267,12 @@ def sync_source(
     credential_getter=None,
     corpus: Corpus | None = None,
     env: dict | None = None,
+    plans=None,
 ) -> SyncResult:
     """Run one source's connector into the corpus. The run gets a row in the runs table and a line in the
-    project's audit log, once its state is committed."""
+    project's audit log, once its state is committed. A git source whose commit and config are those its last ok
+    run read is not read again (``_read_already``). ``plans`` reads the plans of the hub for a harness source
+    (``ConnectorContext.plans``)."""
     source = project.source(source_id)
     corpus = corpus or project.corpus()
     started_clock = time.monotonic()
@@ -176,54 +285,20 @@ def sync_source(
                 env = credential_env(source, credential_getter)
         except ConnectorError as exc:
             result.issues.append(str(exc))
-            with corpus.db:
-                finished = _record_run(corpus, result, source["connector"], None, started)
-            audit.record_sync(
-                corpus.root,
-                project.name,
-                result,
-                connector=source["connector"],
-                connector_version=None,
-                started=started,
-                finished=finished,
-            )
+            _finish(project, corpus, result, source["connector"], None, started)
             return result
 
-        ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env)
+        ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env, plans)
+        if _read_already(corpus, ctx, result):
+            result.seconds = round(time.monotonic() - started_clock, 3)
+            _finish(project, corpus, result, source["connector"], __version__, started)
+            return result
         writer = _open_log(project, corpus, source, run_id)
         checker = StreamChecker(source_id)
         run = ConnectorRun(ctx, kill_after=kill_after)
-        cursor, got_cursor = None, False
+        states: list[dict] = []
         try:
-            for message in run:
-                problems = checker.feed(message)
-                if problems:
-                    result.rejected += 1
-                    result.issues.extend(str(p) for p in problems[:3])
-                    continue
-                kind = message["type"]
-                if kind == "item":
-                    writer.write(corpus.to_log_record(message))
-                    count_item(result, message)
-                elif kind == "tombstone":
-                    record = dict(message)
-                    known = corpus.get(record["id"])
-                    if known is not None:
-                        record.setdefault("rev", known.rev)
-                        if known.record.get("rev_time"):
-                            record.setdefault("rev_time", known.record["rev_time"])
-                    writer.write(record)
-                    result.tombstones += 1
-                elif kind == "state":
-                    writer.sync()  # every item before this cursor is durable before the cursor counts
-                    writer.write(message)
-                    cursor, got_cursor = message["cursor"], True
-                else:
-                    if kind == "error":
-                        result.errors += 1
-                    elif kind == "log" and message["level"] in ("warning", "error"):
-                        result.warnings.append(message["message"])
-                    writer.write(message)
+            _read(run, checker, corpus, writer, result, states)
         except ConnectorError as exc:
             result.issues.append(str(exc))
         result.returncode = run.returncode
@@ -234,33 +309,7 @@ def sync_source(
             result.issues.append("connector was killed before it finished")
 
         complete = checker.complete_run and not result.issues
-        held_rows = []
-        if complete:
-            for listing in checker.listings:
-                if not listing.get("complete"):
-                    continue
-                scope = listing["scope"]
-                alive = corpus.alive_in_scope(scope)
-                removed = [r for r in alive if r.item_id not in checker.seen and r.item_id not in checker.error_ids]
-                if not removed:
-                    continue
-                reason = _guard(source, len(alive), len(removed), listing["count"])
-                if reason:
-                    held_rows.append((run_id, source_id, scope, reason, [r.item_id for r in removed]))
-                    result.held.append({"scope": scope, "reason": reason, "count": len(removed)})
-                    continue
-                for r in removed:
-                    writer.write(
-                        {
-                            "type": "tombstone",
-                            "id": r.item_id,
-                            "rev": r.rev,
-                            "rev_time": r.record.get("rev_time", ""),
-                            "derived": "listing",
-                        }
-                    )
-                    result.removals += 1
-
+        held_rows = _removals(corpus, source, checker, writer, result) if complete else []
         result.status = "ok" if complete else "failed"
         writer.write(
             {
@@ -274,26 +323,19 @@ def sync_source(
         result.log = str(writer.close())
         hello = checker.hello or {}
         connector, version = hello.get("connector", source["connector"]), hello.get("version")
-        with corpus.db:
+
+        def commit_state() -> None:
             _merge_run(corpus, writer)
-            if got_cursor:
+            if states:
                 corpus.db.execute(
                     "INSERT OR REPLACE INTO cursors VALUES (?, ?, ?)",
-                    (source_id, json.dumps(cursor, ensure_ascii=False), run_id),
+                    (source_id, json.dumps(states[-1]["cursor"], ensure_ascii=False), run_id),
                 )
             for row in held_rows:
                 corpus.db.execute("INSERT OR REPLACE INTO held VALUES (?, ?, ?, ?, ?)", (*row[:4], json.dumps(row[4])))
             result.seconds = round(time.monotonic() - started_clock, 3)
-            finished = _record_run(corpus, result, connector, version, started)
-        audit.record_sync(
-            corpus.root,
-            project.name,
-            result,
-            connector=connector,
-            connector_version=version,
-            started=started,
-            finished=finished,
-        )
+
+        _finish(project, corpus, result, connector, version, started, commit_state)
     return result
 
 
@@ -420,7 +462,8 @@ class ProjectSync:
 
 
 def sync_due(project: Project, *, build: bool = False, now: dt.datetime | None = None, **kwargs) -> ProjectSync:
-    """Sync the sources of one project that are due. With ``build``, build its graph only if one of them ran."""
+    """Sync the sources of one project that are due. With ``build``, build its graph only if one of them read
+    something: a git source still at the commit it read last (``SyncResult.unchanged``) does not count."""
     corpus = project.corpus()
     try:
         due = due_sources(project, corpus, now)
@@ -429,7 +472,7 @@ def sync_due(project: Project, *, build: bool = False, now: dt.datetime | None =
     outcome = ProjectSync(project.name, str(project.harness.root), due)
     if due:
         outcome.runs = sync_project(project, due, **kwargs)
-        if build:
+        if build and not all(r.unchanged for r in outcome.runs):
             from evo_agents.kg.build import build_project
 
             outcome.build = build_project(project)

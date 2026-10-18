@@ -1169,13 +1169,20 @@ fails for a reason that may pass (no answer, 408, 429, 502, 503, 504) is pushed 
 10 and 30 seconds apart; the hub answers what it has already and only the rest is sent. The hub merges the runs of every
 machine the way a local corpus does (`evo_agents/kg/corpus.py`). A source whose `ref:`, `repo:` or `path:` changes
 starts a new epoch on each machine at that machine's first run after the change, so for the files several machines read,
-the runs of the machine that switched last win from then on. `evo-agents hub kg build --project demo --wait` queues a
+the runs of the machine that switched last win from then on. A git source's newest run names the commit it read and how
+many commits that was behind the remote's default branch on the machine that synced it; a build keeps that, and
+`kg_status`, `kg_node`'s links and the project's knowledge graph page (`GET /v1/kg/{project}/graph`, `sources`, for the
+sources the member can see) show it. `evo-agents hub kg build --project demo --wait` queues a
 build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a build succeeded, `evo-agents kg
 serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule.
 
 A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
 the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
 therefore uploads nothing: it points at that artifact, and `artifact_reused_from` names the build that uploaded it.
+The content hash covers the store's schema and what its full-text index holds, so the first build after an upgrade
+that changes either uploads a new artifact. A `kg_*` tool call or a graph page that meets a graph written with an older
+store schema answers 503 and queues a build of the project, which needs no new run; the tools answer again once it
+has run.
 Every hour the worker deletes the artifacts of graphs older than each project's `EVO_HUB_KG_KEEP_ARTIFACTS` newest (3 by
 default; an artifact several builds share counts once, and the newest always stays). A pruned build keeps its row, its
 content hash and its counts, gets `artifact_pruned_at`, and loses `artifact_sha256`, so no row names an object that is

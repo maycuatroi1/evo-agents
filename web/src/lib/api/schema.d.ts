@@ -1032,7 +1032,8 @@ export interface paths {
         };
         /**
          * Graph Summary
-         * @description The build the knowledge graph pages read, and how many nodes of each kind the member can see in it.
+         * @description The build the knowledge graph pages read, how many nodes of each kind the member can see in it, and the commit
+         *     each git source the member can see read.
          */
         get: operations["graph_summary_v1_kg__project__graph_get"];
         put?: never;
@@ -7353,6 +7354,11 @@ export interface components {
              * @description visible nodes by kind, most first
              */
             kinds: components["schemas"]["KindCount"][];
+            /**
+             * Sources
+             * @description the commit each git source the member can see read, by source
+             */
+            sources?: components["schemas"]["SourceRead"][];
         };
         /** GroupMessage */
         GroupMessage: {
@@ -12491,6 +12497,39 @@ export interface components {
              * @description the latest first
              */
             versions: components["schemas"]["Version"][];
+        };
+        /** SourceRead */
+        SourceRead: {
+            /**
+             * Source
+             * @description the source's id in knowledge.yaml
+             */
+            source: string;
+            /**
+             * Commit
+             * @description the SHA of the commit the source read
+             */
+            commit: string;
+            /**
+             * Ref
+             * @description the ref the source names, HEAD when it names none
+             */
+            ref: string | null;
+            /**
+             * Base
+             * @description the remote's default branch the commit is compared with, e.g. origin/main
+             */
+            base: string | null;
+            /**
+             * Behind
+             * @description commits of base the commit read lacks, as the machine that synced it counted; null when unknown
+             */
+            behind: number | null;
+            /**
+             * Url
+             * @description the commit on its forge, when the repo's origin is on one
+             */
+            url: string | null;
         };
         /**
          * StateCounts
