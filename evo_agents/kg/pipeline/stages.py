@@ -30,12 +30,15 @@ import yaml
 from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
-MAP_VERSION = "2"
-STRUCTURE_VERSION = "8"
+MAP_VERSION = "3"
+STRUCTURE_VERSION = "9"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
 # The optional extra behind the graphify-ast code backend (symbols for about 40 languages).
 GRAPHIFY_INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[graphify]'"
+
+# Props of a commit or a pull request item that its node keeps, besides path and repo (``map_item``).
+NODE_PROPS = {"commit": ("sha", "files", "merge"), "pr": ("number", "status", "head", "base", "merge_commit")}
 
 FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)^(?:---|\.\.\.)[ \t]*\r?$", re.S | re.M)
 
@@ -133,7 +136,7 @@ def map_item(record: dict, source_id: str, directories: bool = False) -> list[di
         if record.get(key):
             props[key] = record[key]
     extra = record.get("props") or {}
-    for key in ("path", "repo"):
+    for key in ("path", "repo", *NODE_PROPS.get(record["kind"], ())):
         if extra.get(key):
             props[key] = extra[key]
     name = record.get("title") or extra.get("path") or item_id
@@ -305,10 +308,43 @@ def _plan(item_id: str, data: dict, unit: str) -> list[dict]:
         facts.append({"t": "ident", "type": "step", "key": f"{plan_id}#{number}", "node": stid})
         for dep in step.get("depends_on") or []:
             facts.append(edge(stid, "depends_on", f"{pid}/step:{dep}", [unit]))
-        if isinstance(step.get("repo"), str):
-            facts.append(ref(stid, "in_repo", {"type": "repo", "value": step["repo"]}, [unit]))
+        repo = step["repo"] if isinstance(step.get("repo"), str) else None
+        if repo:
+            facts.append(ref(stid, "in_repo", {"type": "repo", "value": repo}, [unit]))
         for key, text in _step_text(step):
-            facts.append({"t": "text", "src": stid, "unit": unit, "text": text, "field": key})
+            # The step's repo: a bare commit SHA or "PR #57" in its text names a commit or pull request of that repo.
+            facts.append({"t": "text", "src": stid, "unit": unit, "text": text, "field": key, "repo": repo})
+    return facts
+
+
+def _commit(item_id: str, record: dict, unit: str) -> list[dict]:
+    """A commit read from a git source's history: the files it changed, and its SHA for the link stage, which links
+    a mention of the commit (``repo@sha``, a bare SHA in evidence) and a pull request's merge commit to it."""
+    props = record.get("props") or {}
+    repo, sha = props.get("repo"), props.get("sha")
+    if not isinstance(sha, str):
+        return [{"t": "issue", "message": f"{item_id}: a commit without its sha", "unit": unit}]
+    facts: list[dict] = [{"t": "ident", "type": "commit", "key": sha, "repo": repo, "node": item_id}]
+    for path in props.get("paths") or []:
+        if isinstance(path, str):
+            facts.append(ref(item_id, "changes", {"type": "paths", "values": [path], "repo": repo}, [unit]))
+    return facts
+
+
+def _pull(item_id: str, record: dict, unit: str) -> list[dict]:
+    """A pull request of a repo on GitHub: the keys a mention names it by (``repo#57`` with the repo's name in
+    harness.yaml, ``owner/repo#57``, "PR #57" in a step of that repo) and the commit that merged it."""
+    props = record.get("props") or {}
+    repo, number = props.get("repo"), props.get("number")
+    if type(number) is not int:
+        return [{"t": "issue", "message": f"{item_id}: a pull request without its number", "unit": unit}]
+    keys = {f"{repo}#{number}"} if repo else set()
+    if isinstance(props.get("github"), str):
+        keys.add(f"{props['github'].lower()}#{number}")
+    facts: list[dict] = [{"t": "ident", "type": "pr", "key": key, "node": item_id} for key in sorted(keys)]
+    if isinstance(props.get("merge_commit"), str):
+        target = {"type": "commit", "value": props["merge_commit"], "repo": repo}
+        facts.append(ref(item_id, "merged_as", target, [unit]))
     return facts
 
 
@@ -658,6 +694,10 @@ def structure_item(
         if kind == "manifest":
             return _manifest(item_id, data, unit, record)
         return {"contracts": _contracts, "plan": _plan}[kind](item_id, data, unit)
+    if kind == "commit":
+        return _commit(item_id, record, unit)
+    if kind == "pr":
+        return _pull(item_id, record, unit)
     if kind == "config" and text is not None:
         name = PurePosixPath((record.get("props") or {}).get("path") or "").name
         return _tsconfig(record, text) if name in TSCONFIG_NAMES else []

@@ -11,7 +11,7 @@ from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
 from evo_agents.kg.sync import sync_project
-from tests.kg.projects import commit, make_project, write
+from tests.kg.projects import commit, git, make_project, write
 
 APP_SOURCE = "  - id: app\n    connector: git\n    repo: app\n"
 
@@ -365,7 +365,8 @@ def test_a_build_rewrites_only_the_rows_of_the_full_text_index_that_changed(tmp_
 
     after = fts_rows(store)
     moved = {nid for nid, rowid in after.items() if before.get(nid) != rowid}
-    assert moved and all(nid.startswith("app:file:docs/plain.md") for nid in moved)
+    new_commit = f"app:commit:{git(app, 'rev-parse', 'HEAD').strip()}"  # the commit that added the file
+    assert new_commit in moved and all(nid.startswith("app:file:docs/plain.md") for nid in moved - {new_commit})
     assert dict(store.db.execute("SELECT node_id, fts_rowid FROM node_fts_rows").fetchall()) == after
     assert any(nid.startswith("app:file:docs/plain.md") for nid in found(store, "zebracorn"))
     fresh = Store(tmp_path / "fresh.sqlite")

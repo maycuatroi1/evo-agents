@@ -187,8 +187,8 @@ The text is what an agent's model reads, so it is kept short and readable:
   ask (`where`, `does`, `the`, `của`, ...) are dropped from a query that has others, so a question whose words no
   single node holds still gets ranked results.
 - Each way ranks by BM25 over the node's name (weight 6), path (2) and body (1), times a light prior by kind: a plan,
-  a step, a commit or a directory counts half, a section or a requirement 0.7, so at the same text score code and
-  documents come first. The best 300 by BM25 alone are scored again with the prior.
+  a step, a commit, a pull request or a directory counts half, a section or a requirement 0.7, so at the same text
+  score code and documents come first. The best 300 by BM25 alone are scored again with the prior.
 - `kinds` is part of the query, so a search for sections gets as many sections as it asks for.
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
@@ -246,3 +246,45 @@ evo-kg: what the project graph links to the code this search matched (callers, t
   knowledge.yaml stay as they were (`evo_agents/kg/hook_scope.py`), so it imports neither the harness loader nor
   PyYAML. On 50 grep commands in the evo-agents checkout with the machine loaded (load average 21, 2026-10-18), the
   hook took 71 ms at the median and 109 ms at p95.
+
+## Plans of the hub, commits and pull requests
+
+A plan step names the commits and pull requests that did it; the graph follows those names to the files they
+changed, so `kg_path from=plan:<plan>/step:<n> to=<repo>:<path>` answers "which step changed this file" in two hops:
+the step `mentions` a commit, and the commit `changes` the file.
+
+**Plans.** In a harness whose harness.yaml names a hub project, the hub holds the plans and `plans/` only copies of
+them, which lag whenever nobody exported. `kg sync` then has the harness connector read the plans through the hub
+(`evo_agents/hub/kg_plans.py`, `evo_agents/kg/connectors/_hub_plans.py`): each plan the signed-in member sees becomes
+the item `plans/<area>/<id>.yaml` holding its copy at the revision the hub holds, whatever the file on disk says,
+with the hub's label on it (which raises the source's label, never lowers it) and a link to its page on the hub. One
+request lists the revisions; a plan is fetched only when its revision is new to the source's cursor or its copy on
+disk is not that revision. A plan the hub does not list (a draft not pushed yet) is read from disk. A machine not
+signed in to a hub, or one whose hub does not answer (a warning on the run), reads the copies, except that a copy
+which is the revision the cursor holds, as the hub wrote it, gives the very item the hub did, labels and all; so a
+plan whose revision did not change gives the same item either way, and no build follows.
+
+**Commits.** A git source reads, besides the files at its ref, the history of that ref: an item
+`<source>:commit:<sha>` per commit, a node of kind `Commit` with `changes` edges to the files and documents it
+added, edited or deleted that the graph still holds (a merge against its first parent, a rename as a delete and an
+add, at most 100 paths, `files` counting them all). Its message is not read. The first run, and any run after the
+connector or the source's config changed, reads the whole history and lists it complete, so a commit the ref no
+longer reaches goes, under the deletion guard; the runs after it read only the commits since the commit of the
+source's cursor. A mention links to the commit read when exactly one has that SHA: `repo@sha` among the commits of
+that repo, a bare SHA (7 to 40 hex digits, with a letter and a digit) in a step's evidence among the commits of the
+step's `repo` first, then of every repo; a SHA no source read keeps a `Commit` node of its own, `commit:<sha>` or
+`commit:<repo>@<sha>`, as before.
+
+**Pull requests.** For a repo whose `origin` in harness.yaml is on GitHub, the git source also reads its pull
+requests (`evo_agents/kg/connectors/_github.py`): an item `<source>:pr:<number>`, a node of kind `PullRequest`
+named by its title, with `number`, `status` (open, closed or merged), `head` and `base` branches and
+`merge_commit` in its props, and a `merged_as` edge to the commit that merged it when a source read that commit. The
+body and the comments of a pull request are never read; the item is labelled integrity U for its title. A step
+mentions a pull request by its URL, `owner/repo#57`, `<repo>#57` with a repo name of harness.yaml, or "PR #57" in
+the text of a step whose `repo` is that repo. The first read takes the 3,000 most recently updated; later reads only
+those updated since the newest the cursor saw (`pulls.since`), so a pull request is never removed. The token is the
+source's credential `GH_TOKEN` or `GITHUB_TOKEN`, else that variable of the environment, else `gh auth token`; it
+goes only into the request's header, never into an item, a log or an error, and a redirect is refused rather than
+followed with it. Without a token no pull request is read (a line in the run's log). Since a git source whose ref
+did not move is not read again, a pull request opened or closed meanwhile shows once the ref moves. `pulls: false`
+on a source, or `EVO_KG_PULLS=0` on the machine, turns the reading off; the test suite sets the latter.
