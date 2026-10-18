@@ -10,6 +10,9 @@ disabled before its claim fails there, saying why. Runs of the core's runtimes a
 
 from __future__ import annotations
 
+import hashlib
+import json
+
 import pytest
 
 from tests.hub import live, pg
@@ -68,7 +71,9 @@ def install(db, *, runtimes=(FAKE,), name: str = "sandbox", version: str = "1.0.
     with live.engine(db).begin() as conn:
         admin_id = conn.execute(select(users.c.id).where(users.c.login == live.ADMIN)).scalar_one()
         plugin_id = conn.execute(insert(p).values(name=name, publisher="acme").returning(p.c.id)).scalar_one()
-        row = {"plugin_id": plugin_id, "version": version, "sha256": "c" * 64, "size": 10, "r2_key": "blobs/sha256/c"}
+        # the bundle's digest as the store holds it: the hub reads a version's manifest once per plugin and digest
+        sha = hashlib.sha256(json.dumps(data, sort_keys=True).encode()).hexdigest()
+        row = {"plugin_id": plugin_id, "version": version, "sha256": sha, "size": 10, "r2_key": f"blobs/sha256/{sha}"}
         row |= {"publisher": "acme", "tier": "isolated", "manifest": data, "signature": {"kind": "ed25519"}}
         row |= {"signature_kind": "ed25519", "signed_by": "ed25519:0123", "published_by": admin_id}
         conn.execute(insert(v).values(row))
