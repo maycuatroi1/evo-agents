@@ -200,7 +200,7 @@ test("a run that ends keeps its tile in its last state, and its stream closes fo
 
   await expect(tile.getByTestId("run-state")).toHaveText("Failed", { timeout: 10_000 });
   await expect(tile.getByTestId("tile-stream")).toHaveCount(0);
-  await expect(tile.getByTestId("tile-line")).toHaveText([/Agent Starting\./, /Bash pnpm test/]);
+  await expect(tile.getByTestId("tile-line")).toHaveText([/Agent Starting\./, /Bash pnpm test/, /the hub guessed .* from the error/]);
   await expect(tile.getByTestId("tile-error-line")).toHaveText("pnpm test exited 1");
   await expect(tile.getByTestId("tile-said")).toHaveText(`Run #${run.id} is now Failed.`);
   // It left the list of runs in flight, and the tile stays until the member closes it.

@@ -1,6 +1,6 @@
 "use client";
 
-import { queryOptions, useQueries, useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
 import { ArrowRight, Inbox } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
@@ -9,8 +9,6 @@ import { useCallback, useId, useMemo, useState } from "react";
 import { DecisionCard } from "@/components/inbox/decision-view";
 import { type Decision, decisionQuery } from "@/components/inbox/queries";
 import { browserApi } from "@/lib/api/browser";
-import { call } from "@/lib/api/client";
-import type { ApiSource } from "@/lib/queries";
 import { cn } from "@/lib/utils";
 
 import {
@@ -23,6 +21,7 @@ import {
   type Run,
   type RunChat,
 } from "./queries";
+import { runDecisionsQuery } from "./decision-queries";
 
 /**
  * A plan run's open decisions on its page, at the top of the side column (above the log below the xl breakpoint): the
@@ -153,22 +152,6 @@ function LiveDecision({
     />
   );
 }
-
-/** The most decisions a run's chat reads of one run, `MAX_LIST` of the API's list. */
-const MAX_CHAT_DECISIONS = 200;
-
-/** Every decision of one run, in any state, newest first: an author run's chat shows them all. */
-export const runDecisionsQuery = (api: ApiSource, project: string, runId: number) =>
-  queryOptions({
-    queryKey: ["projects", project, "decisions", { run: runId }] as const,
-    queryFn: ({ signal }) =>
-      call(
-        api().GET("/v1/projects/{project}/decisions", {
-          params: { path: { project }, query: { run_id: runId, limit: MAX_CHAT_DECISIONS } },
-          signal,
-        }),
-      ),
-  });
 
 export type ChatDecisions = {
   /** The decisions of the chat's runs, in the order asked. */
