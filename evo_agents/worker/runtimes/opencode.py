@@ -26,6 +26,11 @@ run`` prints is parsed here.
   (``server_env``) and in the session's rules, with ``deny`` for the MCP servers ``GET /mcp`` names that the profile
   leaves out (a resumed session gets them again with ``PATCH /session/:id``), a model of its allowlist, never the
   config's, and the instructions after the headless note in each prompt's ``system``.
+- The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) give opencode their skills,
+  MCP servers and instructions: OPENCODE_CONFIG_CONTENT of the server gains each pack's ``skills/`` in
+  ``skills.paths`` and each server in ``mcp`` (``local`` for stdio, ``remote`` for http and SSE), and the instructions
+  follow the profile's in each prompt's ``system``. A pack with subagents or hooks fails the run before its agent
+  starts (``pack_refusal``).
 - The run's usage adds up the tokens of each step (``step-finish``) with their cost, and holds
   ``peak_context_tokens``, the largest context of a step: its ``input`` plus ``cache.read`` plus ``cache.write``,
   which opencode counts apart (in the research's samples, a step that read 89,984 tokens from the cache had an input
@@ -49,6 +54,7 @@ import tempfile
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
 from evo_agents.worker.environments import HOST_ENVIRONMENT
 from evo_agents.worker.runtimes import profiles
@@ -251,6 +257,8 @@ class OpencodeAdapter(QueueAdapter):
     runtime = "opencode"
     binary = "opencode"
     interactive = True
+    pack_kinds = ("skills", "mcp_servers", "instructions")
+    pack_transports = packs.TRANSPORTS
 
     @classmethod
     def detect(cls) -> Detection:
@@ -314,8 +322,8 @@ class OpencodeAdapter(QueueAdapter):
 
     def server_env(self) -> dict[str, str]:
         """The environment of the run's server: the agent's, with the permissions of its profile
-        (``profiles.opencode_env``)."""
-        return profiles.opencode_env(self.context.env, self.profile)
+        (``profiles.opencode_env``) and the skills and MCP servers of its agent packs (``packs.opencode_env``)."""
+        return packs.opencode_env(profiles.opencode_env(self.context.env, self.profile), self.context.packs)
 
     # HTTP
 
@@ -380,7 +388,9 @@ class OpencodeAdapter(QueueAdapter):
         body = {
             "parts": [{"type": "text", "text": text}],
             "model": {"providerID": provider, "modelID": model},
-            "system": profiles.with_instructions(HEADLESS_NOTE, self.profile),
+            "system": packs.with_instructions(
+                profiles.with_instructions(HEADLESS_NOTE, self.profile), self.context.packs
+            ),
         }
         if self.variant:
             body["variant"] = self.variant

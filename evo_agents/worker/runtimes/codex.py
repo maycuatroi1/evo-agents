@@ -32,6 +32,12 @@ the profile leaves out (``profiles.codex_config``), the model is one of its allo
 DEVELOPER_NOTE; a profile that leaves out ``edit`` or limits skills, which Codex cannot turn off, fails the run before
 its agent starts (``profile_refusal``).
 
+The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) give Codex their skills, their
+stdio and http MCP servers and their instructions: each pack's ``skills/`` is an extra root of the app-server's skills
+(``skills/extraRoots/set``, before the thread starts), each server an entry of ``mcp_servers`` in the thread's
+``config``, and the instructions follow the profile's in the developer instructions. A pack with subagents, hooks or an
+SSE server fails the run before its agent starts (``pack_refusal``).
+
 Checked with openai-codex 0.160.0 and codex-cli 0.153.4 as the app-server (``evo-agents worker selftest --runtime
 codex``); the SDK bundles a codex binary of its own version, which the adapter does not use.
 """
@@ -50,6 +56,7 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext
 from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
@@ -245,6 +252,8 @@ class CodexAdapter(QueueAdapter):
     runtime = "codex"
     binary = "codex"
     interactive = True
+    pack_kinds = ("skills", "mcp_servers", "instructions")
+    pack_transports = ("stdio", "http")
 
     @classmethod
     def detect(cls) -> Detection:
@@ -300,6 +309,23 @@ class CodexAdapter(QueueAdapter):
 
         return AsyncCodex(config)
 
+    async def add_packs(self, config: dict) -> None:
+        """Give the thread the run's agent packs: their MCP servers in its ``config``, their skill directories as extra
+        roots of the app-server's skills."""
+        servers = packs.codex_servers(self.context.packs)
+        if servers:
+            config["mcp_servers"] = {**config.get("mcp_servers", {}), **servers}
+        roots = packs.skill_roots(self.context.packs)
+        if roots:
+            await self.set_skill_roots(roots)
+
+    async def set_skill_roots(self, roots: list[str]) -> None:
+        """The app-server's ``skills/extraRoots/set``, which the SDK has no method for; a test records it."""
+        from openai_codex.generated.v2_all import SkillsExtraRootsSetResponse
+
+        params = {"extraRoots": roots}
+        await self._codex._client.request("skills/extraRoots/set", params, response_model=SkillsExtraRootsSetResponse)
+
     async def _open(self) -> None:
         from openai_codex import ApprovalMode, CodexConfig, Sandbox
 
@@ -324,11 +350,14 @@ class CodexAdapter(QueueAdapter):
         config = profiles.codex_config(profile, self.mcp_servers() if profile is not None else ())
         if effort:
             config["model_reasoning_effort"] = effort
+        await self.add_packs(config)
         self.thread_options = {
             "approval_mode": ApprovalMode.deny_all,
             "sandbox": Sandbox.full_access,
             "cwd": worktree,
-            "developer_instructions": profiles.with_instructions(DEVELOPER_NOTE, profile),
+            "developer_instructions": packs.with_instructions(
+                profiles.with_instructions(DEVELOPER_NOTE, profile), self.context.packs
+            ),
             "model": profiles.session_model(self.context, self.runtime),
             "config": config or None,
         }

@@ -25,6 +25,13 @@ The agent runs where the run's environment says (``environment``, from the claim
 ``evo_agents.worker.environments``): on the host, or in a container of a plugin's environment, which the run's log
 says once and agent.json names, so the next daemon removes what is left of its containers after one that died. A run
 in a container is never handed to a person in a terminal UI, which runs on the host.
+
+The agent packs the run's profile attaches (the claim's ``packs``) are built into ``runs/<run>/packs/`` before its
+first agent starts (``build_packs``, ``evo_agents.worker.packs``), and every agent of the run gets them
+(``RunContext.packs``). A pack that does not build (its bundle does not download, is not the one the hub recorded, or
+is of a plugin the owner did not accept), or that holds what the runtime does not load (``Adapter.pack_refusal``),
+fails the run with cause runtime before its agent starts, saying why. A run with packs is never handed to a person in
+a terminal UI, which loads none.
 """
 
 from __future__ import annotations
@@ -35,7 +42,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
 from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
-from evo_agents.worker import environments, interactive, orphans
+from evo_agents.worker import environments, interactive, orphans, packs
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
 from evo_agents.worker.runner.limits import Limits
@@ -76,6 +83,7 @@ class Agent:
         self.terminal = Terminal(run, self)
         self.limits = Limits(run)  # the usage limit of the agent's account, and the move to another one
         self._environment = None  # where the agent runs (``environment``), read from the claim once
+        self._packs: tuple | None = None  # the agent packs of the run's profile, built before its first agent
 
     # The runtime
 
@@ -153,6 +161,8 @@ class Agent:
         profile = profiles.Profile.of(run.spec)
         if profile is not None and profile.applies:
             return f"agent profile {profile.label} limits the session, and the terminal UI does not apply it"
+        if run.spec.get("packs"):
+            return "its agent profile attaches agent packs, which the terminal UI does not load"
         if not run.daemon.tmux.available:
             return "tmux is not on PATH"
         if self.terminal.failed:
@@ -252,6 +262,33 @@ class Agent:
             alone = f"; this machine has {API_KEY} alone, which it does not use" if has_key else ""
             raise RunFailed(why + alone, cause="runtime")
 
+    async def build_packs(self, cls) -> tuple:
+        """The agent packs of the run's profile, built for its runtime once a run (``packs.build``); RunFailed with
+        cause runtime, noted in the run's log, when one does not build or the runtime does not load it."""
+        if self._packs is not None:
+            return self._packs
+        run = self.run
+        tickets = run.spec.get("packs") or []
+        if not tickets:
+            self._packs = ()
+            return self._packs
+        accepted = getattr(run.daemon.config, "plugins", None)
+        directory = run.daemon.home.run_dir(run.id) / packs.PACKS_DIR
+        try:
+            built = await asyncio.to_thread(packs.build, tickets, directory, accepted=accepted)
+        except packs.PackFailed as exc:
+            why = str(exc)
+        except OSError as exc:
+            why = f"they were not written to {directory}: {exc}"
+        else:
+            why = cls.pack_refusal(built)
+        if why:
+            run.note(f"Agent packs: {why}; the agent did not start.", cause="runtime")
+            raise RunFailed(f"agent packs: {why}", cause="runtime")
+        run.note(packs.summary(built))
+        self._packs = built
+        return built
+
     def context(self, prompt: str, session_id: str | None) -> RunContext:
         """What the adapter of an agent that starts now gets."""
         run = self.run
@@ -265,6 +302,7 @@ class Agent:
             spent_usd=run.watchdog.spent_usd,
             spent_seconds=run.watchdog.spent_before + run.agent_seconds(),
             environment=self.environment,
+            packs=self._packs or (),
         )
 
     def note_environment(self, cls, context: RunContext) -> None:
@@ -310,6 +348,7 @@ class Agent:
     async def headless(self, cls, prompt: str, session_id: str | None) -> Outcome:
         """The agent headless, on a new session or going on with ``session_id``, until its events end."""
         run = self.run
+        await self.build_packs(cls)
         context = self.context(prompt, session_id)
         await self.check_login(cls, context)
         lacking = cls.environment_refusal(context)

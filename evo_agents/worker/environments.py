@@ -12,7 +12,8 @@ a container image pinned by its digest. ``for_run`` gives the provider of each:
   privileges, and ``--pull=never`` so it runs the image the preflight pulled by its digest. It mounts, each at its own
   path, the run's worktree (the agent's directory), the git directory of each checkout a worktree in it belongs to,
   so git works there, and a home of the run (``runs/<run>/container-home``, the container's HOME, which keeps the
-  runtime's sessions for the run's next agent), then the declared mounts: a tmpfs, or a volume named
+  runtime's sessions for the run's next agent), the directory of each agent pack built for the run, read-only
+  (``evo_agents.worker.packs``), then the declared mounts: a tmpfs, or a volume named
   ``evo-<plugin>-<name>``. The network is the declaration's: ``none``, or ``outbound``, the engine's default network,
   with nothing published but the port an agent serves the daemon on (opencode), bound to 127.0.0.1.
 
@@ -294,12 +295,15 @@ class Container(Environment):
 
     # The command
 
-    def mounts(self, worktree: Path) -> list[str]:
+    def mounts(self, worktree: Path, read_only: Sequence[Path] = ()) -> list[str]:
         """The engine's options of the mounts: the run's worktree, its checkouts' git directories and the run's home,
-        each at its own path, then the declared ones."""
+        each at its own path, then ``read_only`` (the directories of the run's agent packs) at theirs, read-only, then
+        the declared ones."""
         options: list[str] = []
         for path in (worktree, *git_dirs(worktree), self.home):
             options += ["--mount", f"type=bind,src={path},dst={path}"]
+        for path in read_only:
+            options += ["--mount", f"type=bind,src={path},dst={path},readonly"]
         for mount in self.declaration.mounts:
             options += self._declared(mount)
         return options
@@ -311,8 +315,9 @@ class Container(Environment):
         name = self.declaration.volume_name(mount)
         return ["--mount", f"type=volume,src={name},dst={mount.target}{',readonly' if mount.read_only else ''}"]
 
-    def run_options(self, worktree: Path, cwd: Path, publish: int | None) -> list[str]:
-        """The options of ``<engine> run`` before the variables, for an agent working in ``cwd``."""
+    def run_options(self, worktree: Path, cwd: Path, publish: int | None, read_only: Sequence[Path] = ()) -> list[str]:
+        """The options of ``<engine> run`` before the variables, for an agent working in ``cwd``; ``read_only`` as
+        ``mounts`` takes it."""
         engine = self.engine or ""
         user = ["--user", f"{os.getuid()}:{os.getgid()}"] if hasattr(os, "getuid") else []
         if is_podman(engine) and hasattr(os, "getuid") and os.getuid() != 0:
@@ -332,7 +337,7 @@ class Container(Environment):
             *network,
             *ports,
             *(item for label in labels for item in ("--label", label)),
-            *self.mounts(worktree),
+            *self.mounts(worktree, read_only),
             "--workdir",
             str(cwd),
             "--env",
@@ -363,7 +368,9 @@ class Container(Environment):
         worktree = Path(context.worktree)
         spec = {
             "engine": self.engine,
-            "before": self.run_options(worktree, worktree, publish),
+            "before": self.run_options(
+                worktree, worktree, publish, [pack.root for pack in getattr(context, "packs", ())]
+            ),
             "after": [self.declaration.image, program],
             "withheld": self.withheld(env, context.leased),
             "prefixes": list(WITHHELD_PREFIXES),

@@ -48,6 +48,11 @@ Codex 0.153.4 as the app-server, through openai-codex 0.160.0:
   (``codex_refusal``).
 - model: the thread's ``model``. Instructions: after the adapter's note in ``developer_instructions``.
 
+The agent packs the profile attaches (``context.packs``, ``evo_agents.worker.packs``) count as named on its skill and
+tool axes: in the session an allowlist of the skill axis also names each pack's skills, as the runtime names them, and
+one of the tool axis ``mcp:<server>`` for each pack's MCP server (``with_packs``); so every rule above lets them
+through. An axis of mode all, and every other axis, stays as the profile has it.
+
 Standard library only; ``claude_hooks`` imports claude-agent-sdk when it runs.
 """
 
@@ -57,10 +62,11 @@ import json
 import re
 import tomllib
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from evo_agents.hub import profiles as rules
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import RunContext
 from evo_agents.worker.runtimes.common import run_setting
 
@@ -180,9 +186,30 @@ class Profile:
 
 
 def profile_of(context: RunContext) -> Profile | None:
-    """The profile of the run of ``context``, when the session changes for it; None otherwise."""
+    """The profile of the run of ``context``, when the session changes for it, with the run's agent packs counted as
+    named on its skill and tool axes (``with_packs``); None otherwise."""
     profile = Profile.of(context.run)
-    return profile if profile is not None and profile.applies else None
+    if profile is None or not profile.applies:
+        return None
+    if not context.packs:
+        return profile
+    runtime = str(context.run.get("runtime") or "")
+    return with_packs(profile, packs.skill_names(context.packs, runtime), packs.server_names(context.packs))
+
+
+def with_packs(profile: Profile, skills: Iterable[str], servers: Iterable[str]) -> Profile:
+    """``profile`` with what the agent packs it attaches hold counted as named: an allowlist of the skill axis gains
+    ``skills`` (the packs' skills, as the runtime names them), one of the tool axis ``mcp:<server>`` for each of
+    ``servers``. Pinning a pack at a version is the admin's consent to what that version holds; an axis of mode all,
+    and every other axis, stay as they are."""
+    permissions = dict(profile.permissions)
+    for axis, items in (("skill", list(skills)), ("tool", [rules.MCP_PREFIX + name for name in servers])):
+        allow = profile.allowed(axis)
+        if allow is None or not items:
+            continue
+        added = [item for item in items if item not in allow]
+        permissions[axis] = {**rules.rule(profile.permissions, axis), "allow": [*allow, *added]}
+    return replace(profile, permissions=permissions)
 
 
 def summary(profile: Profile) -> str:
