@@ -445,7 +445,8 @@ def test_impact_notes_the_coverage_of_its_seeds_languages(tmp_path, kg_env):
     assert not any(swift[key]["supported"] for key in TABLES)
     assert swift["calls_across_files"]["note"] == CROSS_FILE_CALLS["swift"].note
     text = result["content"][0]["text"]
-    assert "coverage of python seeds: calls across files yes; inheritance yes; overrides yes" in text
+    missing = CROSS_FILE_CALLS["python"].missing
+    assert f"coverage of python seeds: calls across files yes, not: {missing}; inheritance yes; overrides yes" in text
     assert f"coverage of swift seeds: calls across files no ({CROSS_FILE_CALLS['swift'].note});" in text
     # A seed that is no code gets no note; the field is there all the same, for clients that read it.
     plain = session.call("kg_impact", {"id": "usecase:KB-01"})
