@@ -9,6 +9,11 @@ The record only rises: a join never lowers the level or the location, never turn
 and never drops a project. It names levels and projects, never ids or text from the results. kg_status and
 the SessionStart note print it.
 
+In a session without the evo-kg plugin the same kg_* tools come from the hub, through ``evo-agents hub mcp``, which
+joins each result into the same record with ``record_read`` itself (``evo_agents.hub.mcp_proxy.note_read``), so a
+read of the graph counts whichever server answered it. TOOL_PREFIXES therefore stays evo-kg's alone: a hook wired by
+hand to the hub's tools as well would count those reads twice.
+
 The labels come from the result itself. The server sends an MCP client the text alone, with READ_META in
 the ``_meta`` of its text block: the project, the join of every label the result reveals (nodes, edges,
 evidence items) and how many elements with an id carry one. Claude Code 2.1.296 hands PostToolUse the
