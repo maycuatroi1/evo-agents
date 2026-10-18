@@ -7,6 +7,15 @@ here.
   ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE, BACKGROUND_NOTE
   and SUBAGENT (a fresh subagent with a plan handoff) appended (``--append-system-prompt``). The owner's settings,
   hooks, plugins and CLAUDE.md load as for ``claude`` itself.
+- The system prompt holds nothing of the machine, the worktree or the step, so a new session reads it from the cache a
+  session in another worktree, run or step wrote: the preset leaves its dynamic sections out
+  (``exclude_dynamic_sections``, sent in the SDK's initialize request; the CLI's
+  ``--exclude-dynamic-system-prompt-sections``). Claude Code 2.1.296 then moves its auto memory section, whose path
+  names the worktree, into the first user message, which already holds CLAUDE.md, the git status snapshot and the
+  prompt; the working directory and the platform come in the context it sends after the prompt. Measured on 2026-10-18
+  with one-turn sessions: the first request in a second worktree read 11,504 tokens from the cache instead of 10,488,
+  the tools and the system prompt; the rest, from the first user message on, was written anew, even in the same
+  worktree with a prompt that differed only in its last words.
 - The input stream the client is connected with stays open while the agent may take input: the prompt and each of
   the owner's messages go in with ``query()``. Claude Code takes a message that arrives mid-turn at the next tool
   boundary, and may fold it into the same ``result`` (research_notes/worker-runtimes.md of the harness).
@@ -659,7 +668,12 @@ class ClaudeCodeAdapter(QueueAdapter):
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
             "permission_mode": "bypassPermissions",
-            "system_prompt": {"type": "preset", "preset": "claude_code", "append": append},
+            "system_prompt": {
+                "type": "preset",
+                "preset": "claude_code",
+                "append": append,
+                "exclude_dynamic_sections": True,  # the same system prompt in every worktree (module docstring)
+            },
             "env": {key: value for key, value in self.context.env.items() if key not in dropped},
             "stderr": self._stderr.append,
         }
