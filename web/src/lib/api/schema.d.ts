@@ -2722,6 +2722,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/builder/{project}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Proposals
+         * @description The project's proposals of @builder, the newest first; those in ``state`` alone when given.
+         */
+        get: operations["list_proposals_v1_x_builder__project__proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/builder/{project}/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Proposal */
+        get: operations["show_proposal_v1_x_builder__project__proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/builder/{project}/proposals/{proposal_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Proposal
+         * @description Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
+         *     it could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the
+         *     others.
+         */
+        post: operations["answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/builder/{project}/proposals/{proposal_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Roll Back Proposal
+         * @description Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is
+         *     still at the version the proposal made.
+         */
+        post: operations["roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/telegram": {
         parameters: {
             query?: never;
@@ -5277,6 +5357,97 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /**
+         * BuilderProposal
+         * @description A change @builder proposed, and what became of it.
+         */
+        BuilderProposal: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "branding" | "features" | "plugin_config" | "agent";
+            /**
+             * Target
+             * @description layer (features), plugin and agent (plugin_config), agent (agent)
+             */
+            target: {
+                [key: string]: string;
+            };
+            /**
+             * Change
+             * @description set: field -> value; unset: the fields it clears
+             */
+            change: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary: string;
+            /**
+             * Base Version
+             * @description the setting's version it was proposed on, which approving needs still
+             */
+            base_version: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "applied" | "rejected" | "failed" | "rolled_back";
+            /**
+             * Approver
+             * @description who may decide it
+             * @enum {string}
+             */
+            approver: "hub_admin" | "project_admin";
+            /**
+             * Proposed By
+             * @description the admin who asked @builder, the run's dispatcher
+             */
+            proposed_by: string;
+            /**
+             * Proposed At
+             * Format: date-time
+             */
+            proposed_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Applied Version
+             * @description the setting's version approving made
+             */
+            applied_version: number | null;
+            /**
+             * Rollback Version
+             * @description the setting's version rolling back made
+             */
+            rollback_version: number | null;
+            /**
+             * Error
+             * @description why the hub could not apply it, for a failed one
+             */
+            error: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Link
+             * @description the hub's message that shows it in its thread
+             */
+            link: string | null;
+        };
+        /** BuilderProposalAnswer */
+        BuilderProposalAnswer: {
+            /**
+             * Answer
+             * @enum {string}
+             */
+            answer: "approve" | "reject";
         };
         /** Builds */
         Builds: {
@@ -8230,7 +8401,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -22810,6 +22981,256 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_proposals_v1_x_builder__project__proposals_get: {
+        parameters: {
+            query?: {
+                state?: ("pending" | "applied" | "rejected" | "failed" | "rolled_back") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_proposal_v1_x_builder__project__proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuilderProposalAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
                 };
             };
         };
