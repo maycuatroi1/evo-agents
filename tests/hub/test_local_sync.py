@@ -268,9 +268,21 @@ def test_events_wait_on_disk_while_the_hub_is_down_and_go_in_order_afterwards(ow
     fire("local-tool", tool_data(own_home, 3), monkeypatch, capsys)
     assert len(fake.calls) == asked  # a hub that did not answer is left alone for a while
     fake.down = False
-    monkeypatch.setattr(hooks, "COOLDOWN", 0.0)
+    monkeypatch.setattr(local_sync, "COOLDOWN", 0.0)
     fire("local-tool", tool_data(own_home, 4), monkeypatch, capsys)
     assert [e["seq"] for e in fake.events] == list(range(1, 9)) and session_file(own_home)["events"] == []
+
+
+def test_a_hub_another_hook_found_silent_holds_local_sync_back_for_its_own_short_cooldown(
+    own_home, fake, monkeypatch, capsys
+):
+    no_throttle(monkeypatch)
+    fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
+    now = time.time()
+    hooks.HookState(own_home / ".evo" / "hub").mark_down(URL, now - local_sync.COOLDOWN - 1)  # Stop's 120 s still run
+    assert hooks.HookState(own_home / ".evo" / "hub").down_since(URL, now) is not None
+    fire("local-tool", tool_data(own_home, 1), monkeypatch, capsys)
+    assert [e["seq"] for e in fake.events] == [1, 2] and session_file(own_home)["events"] == []
 
 
 def test_a_hub_that_hangs_costs_a_hook_at_most_its_own_limits(own_home, monkeypatch, capsys):
