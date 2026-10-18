@@ -31,6 +31,9 @@ class ConnectorContext:
     harness: Harness | None = None
     cursor: object = None
     env: dict[str, str] = field(default_factory=dict)
+    # The plans of the hub, for the harness connector of a harness with a hub project: what ``kg sync`` gets from
+    # evo_agents.hub.kg_plans.reader(), which this package does not import. None: the copies in plans/ are read.
+    plans: Callable | None = None
 
     @property
     def source_id(self) -> str:

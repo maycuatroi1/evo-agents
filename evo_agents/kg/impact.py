@@ -20,6 +20,7 @@ class Impact:
 
     build: int
     depth: int
+    limit: int = 20  # dependents the text lists per hop (documents: doc_limit); the rest are counted
     seeds: dict[str, dict] = field(default_factory=dict)
     reached: dict[str, dict] = field(default_factory=dict)  # {"hop", "node", "edge", "rels", "hub"} by node id
     mentions: dict[str, list[dict]] = field(default_factory=dict)  # mentions edges by the node that mentions
@@ -30,6 +31,11 @@ class Impact:
     unmatched: list[str] = field(default_factory=list)
     missing: int = 0
 
+    @property
+    def doc_limit(self) -> int:
+        """Documents the text lists: a quarter as many as dependents per hop, since they are only to re-check."""
+        return max(1, self.limit // 4)
+
 
 def seed_coverage(seeds: Iterable[dict]) -> list[dict]:
     """The coverage rows (``extract.languages``) of the languages of the code among the seeds: a symbol or file
@@ -39,10 +45,14 @@ def seed_coverage(seeds: Iterable[dict]) -> list[dict]:
 
 
 def coverage_line(row: dict) -> str:
-    parts = [
-        f"{name} yes" if row[key]["supported"] else f"{name} no ({row[key]['note']})"
-        for key, name in COVERAGE_NAMES.items()
-    ]
+    """One line per language: each table's yes or no, the reason of a no, and what a yes still misses."""
+    parts = []
+    for key, name in COVERAGE_NAMES.items():
+        cell = row[key]
+        if not cell["supported"]:
+            parts.append(f"{name} no ({cell['note']})")
+        else:
+            parts.append(f"{name} yes, not: {cell['missing']}" if cell.get("missing") else f"{name} yes")
     return f"coverage of {row['language']} seeds: " + "; ".join(parts)
 
 

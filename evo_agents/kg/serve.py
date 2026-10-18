@@ -1,11 +1,20 @@
 """``evo-agents kg serve``: an MCP server over stdio, bound to one project for its whole life.
 
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
-session's sink. Results carry ids, labels, status and evidence; free text from sources (integrity U) is
-never returned by these tools. Each result stays under about 9,000 tokens; the rest waits behind a
-handle for ``kg_more``. The structured result of a call that reveals elements names the project and the
-join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
+session's sink. The store is opened read-only. When the highest label of the build (``Store.top_label``) flows to
+the sink, V_o is the whole build and no label is compared. Results carry ids, labels, status and evidence; free
+text from sources (integrity U) is never returned by these tools. Each result stays under about 9,000 tokens; the
+rest waits behind a handle for ``kg_more``. The structured result of a call that reveals elements names the project
+and the join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
 adds to the session label (sessions.py).
+
+The text is written to be read: a node is named by its readable id (``refs.readable``: ``repo:path``,
+``repo:path::Symbol``, ``repo:path#section``) and its name only when the id does not already end with it;
+its URI is left to kg_node, which links to the file at the commit its source read (``freshness.Links``); a
+label shared by every node of a result is printed once, under the first line. kg_context keeps its whole
+text, nodes and edges, within ``budget_tokens`` (UTF-8 bytes / 3), and kg_impact lists the first ``limit``
+dependents of each hop and counts the rest. Each tool takes readable and stored ids alike, and the argument
+names agents guess (``refs.ALIASES``).
 
 An MCP client gets a result's text alone (``for_model``), which is what its model reads: Claude Code 2.1.296
 shows the model a result's structuredContent instead of its text when it has one, and the JSON of the data
@@ -20,15 +29,27 @@ import re
 import sys
 import time
 import uuid
-from collections import deque
+from collections import Counter, deque
 
 from evo_agents import __version__
+from evo_agents.kg.budget import (
+    CONTEXT_LABEL_BYTES,
+    CONTEXT_MIN_LINE,
+    CONTEXT_NOTE_BYTES,
+    CONTEXT_QUERY_SHOWN,
+    Room,
+    line_size,
+)
+from evo_agents.kg.freshness import Links
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
 from evo_agents.kg.policy import Label
 from evo_agents.kg.project import Project, ProjectError, resolve_project
+from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
+from evo_agents.kg.search import with_mentions
 from evo_agents.kg.sessions import READ_META, current_session_id, labels_in, read_session
 from evo_agents.kg.sessions import describe as describe_session
 from evo_agents.kg.store import StaleSchema, Store
+from evo_agents.kg.tools import IMPACT_LIMIT, IMPACT_MAX_LIMIT, INSTRUCTIONS, SIGNATURES, TOOLS
 
 SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2026-07-28"]
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
@@ -54,99 +75,8 @@ CHAIN_RELS = ("implements", "schedules", "verifies", "has_step", "touches")
 PATH_SKIP = ("in_source",)  # every item hangs off its source: a path through one says nothing
 SEED_EDGES = 500  # edges read around a seed or a path's start, which are expanded even when they are hubs
 IMPACT_SEED_EDGES = 2_000  # edges kg_impact reads into a seed, SEED_EDGES at a time; it reports a seed with more
+IMPACT_MENTIONS_SHOWN = 3  # reached nodes a document's line names; the data has them all
 _SPAN = re.compile(r"lines? (\d+)(?:-(\d+))?")
-
-INSTRUCTIONS = (
-    "Knowledge graph of the bound project: repos, files, symbols, documents and sections, plans and steps, "
-    "seams, and the explicit links between them, each with provenance and a sensitivity label. Use kg_search "
-    "or kg_context before grepping for a named requirement, plan, document, seam or feature; use grep for exact "
-    "strings and code you just edited. Before editing, renaming or changing the signature of a symbol or file, call "
-    "kg_impact (ids, repo:path or a diff) and check every dependent it lists, then grep for what its coverage note "
-    "says the seed's language lacks. kg_path traces a requirement to its steps, code and tests, or shows how two "
-    "nodes connect. Status 'resolved' and 'proposed' are weaker than 'parsed' and 'declared'. The graph can lag the "
-    "sources: read the live source (uri) before quoting or editing it."
-)
-
-TOOLS = [
-    {
-        "name": "kg_search",
-        "description": "Find nodes by name, id, path, code or words. Returns ids to pass to kg_node or kg_context.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string", "description": "name, id, path, code or words"},
-                "kinds": {"type": "array", "items": {"type": "string"}, "description": "e.g. Plan, Symbol, Section"},
-                "limit": {"type": "integer", "minimum": 1, "maximum": 25, "default": 10},
-            },
-            "required": ["query"],
-        },
-    },
-    {
-        "name": "kg_context",
-        "description": "A connected subgraph around a question or a set of ids, within a token budget.",
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "query": {"type": "string"},
-                "ids": {"type": "array", "items": {"type": "string"}},
-                "budget_tokens": {"type": "integer", "minimum": 500, "maximum": 8000, "default": 3000},
-                "hops": {"type": "integer", "minimum": 1, "maximum": 3, "default": 2},
-            },
-        },
-    },
-    {
-        "name": "kg_node",
-        "description": "One node: properties, status, label, evidence (source, revision, span, uri) and its edges.",
-        "inputSchema": {"type": "object", "properties": {"id": {"type": "string"}}, "required": ["id"]},
-    },
-    {
-        "name": "kg_impact",
-        "description": (
-            "What a change reaches: give node ids, repo:path paths or a unified diff. Walks back over callers (in "
-            "other files too), importers, members, definers, dependants, implementations, tests, subclasses "
-            "(inherits) and overriding methods (overrides), never proposed edges; documents that mention a reached "
-            "node come back as a separate group to re-check. Each result notes, per language of its seeds, whether "
-            "calls across files, inheritance and overrides are covered, and names a seed with more incoming edges "
-            "than it reads, with their number."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "id": {"type": "string"},
-                "ids": {"type": "array", "items": {"type": "string"}},
-                "paths": {"type": "array", "items": {"type": "string"}, "description": "repo:path, or a bare path"},
-                "diff": {"type": "string", "description": "a unified diff, e.g. the output of git diff"},
-                "depth": {"type": "integer", "minimum": 1, "maximum": 3, "default": 2},
-            },
-        },
-    },
-    {
-        "name": "kg_path",
-        "description": (
-            "How two nodes connect: the shortest path from one to the other, preferring stronger status. Without "
-            "'to', the chains from one node along implements, schedules, verifies, has_step and touches."
-        ),
-        "inputSchema": {
-            "type": "object",
-            "properties": {
-                "from": {"type": "string"},
-                "to": {"type": "string"},
-                "max_hops": {"type": "integer", "minimum": 1, "maximum": 6, "default": 6},
-            },
-            "required": ["from"],
-        },
-    },
-    {
-        "name": "kg_status",
-        "description": "Bound project, sink profile, snapshot age, and coverage per source.",
-        "inputSchema": {"type": "object", "properties": {}},
-    },
-    {
-        "name": "kg_more",
-        "description": "Continue a truncated result.",
-        "inputSchema": {"type": "object", "properties": {"handle": {"type": "string"}}, "required": ["handle"]},
-    },
-]
 
 
 class ToolError(Exception):
@@ -161,6 +91,7 @@ class Session:
         self.handles: dict[str, tuple[float, deque]] = {}
         self.policy = project.policy if project else None
         self.clearance = None
+        self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
         self.read: Label | None = None  # join of the labels the current call reveals
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
@@ -176,6 +107,8 @@ class Session:
     # -- visibility -----------------------------------------------------------------------------
 
     def visible(self, label: tuple) -> bool:
+        if self.sees_all:
+            return True
         level, location, _integrity = label
         return level <= self.clearance[0] and location <= self.clearance[1]
 
@@ -189,8 +122,17 @@ class Session:
         self.read = seen if self.read is None else self.read.join(seen)
 
     def _store(self) -> tuple[Store, int]:
+        """The graph this call reads and its latest ready build. When the highest label of that build is within the
+        clearance, every element is visible, and ``visible`` answers so without comparing labels."""
+        store, b = self._graph()
+        top = store.top_label(b)
+        self.sees_all = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
+        return store, b
+
+    def _graph(self) -> tuple[Store, int]:
+        """The project's store, opened read-only: serving never writes, so it never waits on a build."""
         try:
-            store = Store.open_existing(self.project)
+            store = Store.open_readonly(self.project)
         except StaleSchema as exc:
             raise ToolError(str(exc)) from None
         b = store.latest_ready() if store else None
@@ -204,14 +146,18 @@ class Session:
         if self.error:
             return _error(self.error)
         self.read = None
+        self.sees_all = False
         try:
             handler = getattr(self, f"tool_{name}", None)
             if handler is None:
                 raise ToolError(f"unknown tool {name!r}")
-            text, data = handler(**(args or {}))
-        except ToolError as exc:
+            args = args or {}
+            if name in SIGNATURES:
+                args = arguments(name, args, *SIGNATURES[name])
+            text, data = handler(**args)
+        except (ToolError, UnknownArgument) as exc:
             return _error(str(exc))
-        except TypeError as exc:
+        except (TypeError, ValueError) as exc:
             return _error(f"bad arguments for {name}: {exc}")
         return self._envelope(text, data)
 
@@ -245,15 +191,30 @@ class Session:
 
     # -- tools ----------------------------------------------------------------------------------
 
-    def _line(self, n: dict) -> str:
-        props = n["props"]
-        extra = []
-        for key in ("path", "uri", "status", "number", "line"):
-            if props.get(key) not in (None, ""):
-                extra.append(f"{key}={props[key]}")
-        return f"[{n['id']}] {n['kind']} {n['name']!r} ({n['status']}, {self.describe(n['label'])})" + (
-            f" {' '.join(extra)}" if extra else ""
-        )
+    def _line(self, n: dict, shared: str | None = None) -> str:
+        """One node as the text shows it: its readable id, its kind, its name unless the id ends with it, its status,
+        its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
+        it, the line of a symbol, the status and number of a plan step. Never its URI: kg_node gives that."""
+        ref, props = readable(n["id"]), n["props"]
+        head = f"[{ref}] {n['kind']}" + ("" if named_by(ref, n["name"]) else f" {n['name']!r}")
+        extra = [
+            f"{key}={props[key]}"
+            for key in ("path", "status", "number", "line")
+            if props.get(key) not in (None, "") and not (key == "path" and str(props[key]) in ref)
+        ]
+        label = self.describe(n["label"])
+        state = f"({n['status']})" if label == shared else f"({n['status']}, {label})"
+        return f"{head} {state}" + (f" {' '.join(extra)}" if extra else "")
+
+    def _labels(self, nodes) -> tuple[str | None, list[str]]:
+        """The label a result prints once, under its first line: the label of most of ``nodes`` (the first seen of
+        those as common). A line names its node's label only when it is another. None and no line without nodes."""
+        counts = Counter(self.describe(n["label"]) for n in nodes)
+        if not counts:
+            return None, []
+        shared = counts.most_common(1)[0][0]
+        unless = "" if len(counts) == 1 else " unless its line names another"
+        return shared, [f"label of every node{unless}: {shared}"]
 
     def _node_json(self, n: dict) -> dict:
         self._saw(n["label"])  # every node in a structured result is revealed
@@ -276,27 +237,29 @@ class Session:
     def tool_kg_search(self, query: str, kinds: list | None = None, limit: int = 10) -> tuple[str, dict]:
         store, b = self._store()
         limit = max(1, min(int(limit), 25))
-        ids = store.search(query, b, limit=limit * 4)
+        kinds = [kinds] if isinstance(kinds, str) else kinds
+        ids = store.search(query, b, limit=limit * 4, kinds=kinds)
+        named = self._lookup(store, query, b) if ":" in query else None  # an id the text showed comes first
+        if named is not None:
+            ids = [named["id"], *(i for i in ids if i != named["id"])]
         found = store.nodes(ids, b)
-        results = []
-        for nid in ids:
-            n = found.get(nid)
-            if n is None or not self.visible(n["label"]):
-                continue
-            if kinds and n["kind"] not in kinds:
-                continue
-            results.append(n)
-            if len(results) >= limit:
-                break
-        lines = [f"{len(results)} result(s) for {query!r} in project {self.project.name} (build {b})"]
-        lines += [self._line(n) for n in results]
+        hits = [found[i] for i in ids if i in found and self.visible(found[i]["label"])]
+        results, via = with_mentions(
+            store, b, [n for n in hits if not kinds or n["kind"] in kinds], limit, self.visible, kinds
+        )
+        for reached in via.values():
+            self._saw(reached["label"])
+        shared, label_line = self._labels(results)
+        lines = [f"{len(results)} result(s) for {query!r} in project {self.project.name} (build {b})", *label_line]
+        lines += [("  mentions " if n["id"] in via else "") + self._line(n, shared) for n in results]
         return "\n".join(lines), {
             "build": b,
             "results": [self._node_json(n) for n in results],
+            "mentioned_by": {nid: reached["from"] for nid, reached in via.items()},
             "summary": f"{len(results)} results",
         }
 
-    def _evidence(self, store: Store, elem: str, b: int) -> list[dict]:
+    def _evidence(self, store: Store, elem: str, b: int, links: Links) -> list[dict]:
         out = []
         for w in store.where(elem, b)[:10]:
             unit = store.unit(w["unit"], b)
@@ -312,7 +275,7 @@ class Session:
                     "anchor": unit["anchor"],
                     "rev": unit["rev"],
                     "span": w["span"] or unit["span"],
-                    "uri": item["props"].get("uri"),
+                    "uri": links.at_commit(item["props"].get("uri"), unit["source"]),
                     "source": unit["source"],
                 }
             )
@@ -330,20 +293,25 @@ class Session:
                                     "anchor": unit["anchor"],
                                     "rev": unit["rev"],
                                     "span": unit["span"],
-                                    "uri": item["props"].get("uri"),
+                                    "uri": links.at_commit(item["props"].get("uri"), unit["source"]),
                                     "source": unit["source"],
                                 }
                             )
         return out
 
     def _lookup(self, store: Store, node_id: str, b: int) -> dict | None:
-        """A visible node by id or alias; None alike for a missing node and a hidden one."""
-        n = store.node(node_id, b)
+        """A visible node by its stored id, its readable id (``refs.stored``) or an alias; None alike for a missing
+        node and a hidden one."""
+        if not isinstance(node_id, str) or not node_id:
+            return None
+        n = None
+        for candidate in stored(node_id):
+            n = store.node(candidate, b)
+            if n is not None:
+                break
         if n is None:
-            alias = store.db.execute(
-                "SELECT node_id FROM nodes WHERE aliases LIKE ? AND tx_to IS NULL LIMIT 1", (f'%"{node_id}"%',)
-            ).fetchone()
-            n = store.node(alias[0], b) if alias else None
+            alias = store.alias_of(node_id, b)
+            n = store.node(alias, b) if alias else None
         return n if n is not None and self.visible(n["label"]) else None
 
     def tool_kg_node(self, id: str) -> tuple[str, dict]:
@@ -351,6 +319,8 @@ class Session:
         n = self._lookup(store, id, b)
         if n is None:
             raise ToolError("no visible node has that id; search with kg_search")
+        links = Links.of(store, b)
+        n = links.node(n)
         edges = [e for e in store.edges_of(n["id"], b, limit=400) if self.visible(e["label"])]
         others = store.nodes({e["dst"] if e["src"] == n["id"] else e["src"] for e in edges}, b)
         lines = [self._line(n)]
@@ -359,10 +329,10 @@ class Session:
         props = {k: v for k, v in n["props"].items() if k not in ("span",)}
         if props:
             lines.append("props: " + json.dumps(props, ensure_ascii=False, sort_keys=True))
-        evidence = self._evidence(store, n["id"], b)
+        evidence = self._evidence(store, n["id"], b, links)
         for ev in evidence:
             lines.append(
-                f"evidence: {ev['item']}{'#' + ev['anchor'] if ev['anchor'] else ''} rev {ev['rev']}"
+                f"evidence: {readable(ev['item'])}{'#' + ev['anchor'] if ev['anchor'] else ''} rev {ev['rev']}"
                 f"{' ' + ev['span'] if ev['span'] else ''}{' ' + ev['uri'] if ev['uri'] else ''}"
             )
         out_edges, in_edges = [], []
@@ -386,8 +356,9 @@ class Session:
             if group:
                 lines.append(f"{title} ({len(group)}):")
                 for e in group[:60]:
-                    arrow = "->" if title == "out" else "<-"
-                    lines.append(f"  {arrow} {e['rel']} [{e['node']}] {e['kind']} {e['name']!r} ({e['status']})")
+                    arrow, ref = "->" if title == "out" else "<-", readable(e["node"])
+                    name = "" if named_by(ref, e["name"]) else f" {e['name']!r}"
+                    lines.append(f"  {arrow} {e['rel']} [{ref}] {e['kind']}{name} ({e['status']})")
                 if len(group) > 60:
                     lines.append(f"  ... {len(group) - 60} more")
         data = {
@@ -404,74 +375,105 @@ class Session:
         self, query: str | None = None, ids: list | None = None, budget_tokens: int = 3000, hops: int = 2
     ) -> tuple[str, dict]:
         store, b = self._store()
-        budget_chars = max(500, min(int(budget_tokens), 8000)) * 3
+        size = max(500, min(int(budget_tokens), 8000)) * 3
         hops = max(1, min(int(hops), 3))
-        seeds: list[str] = []
-        if ids:
-            seeds = [i for i in ids if isinstance(i, str)]
-        elif query:
-            seeds = store.search(query, b, limit=5)[:5]
+        seeds = self._context_seeds(store, b, query, ids)
+        if query:
+            what = str(query)[:CONTEXT_QUERY_SHOWN]
         else:
-            raise ToolError("give a query or ids")
-        seed_nodes = store.nodes(seeds, b)
-        seeds = [s for s in seeds if s in seed_nodes and self.visible(seed_nodes[s]["label"])]
-        if not seeds:
-            raise ToolError("nothing visible matches; try kg_search")
+            what = ", ".join(readable(s) for s in list(seeds)[:3]) + (f" and {len(seeds) - 3} more" * (len(seeds) > 3))
 
-        included: dict[str, dict] = {s: seed_nodes[s] for s in seeds}
-        used = sum(len(self._line(n)) for n in included.values())
-        edges_out: dict[str, dict] = {}
-        frontier = deque((s, 0) for s in seeds)
-        while frontier and used < budget_chars:
+        def header(nodes: int, edges: int) -> str:
+            return f"context for {what}: {nodes} nodes, {edges} edges (build {b}, connected through the seeds)"
+
+        # The header with the widest counts, the label line, "edges:" and the note on what was left out come out of
+        # the budget first; a node line is costed with its label, which the text drops when the label line has it.
+        reserved = line_size(header(99_999, 99_999)) + CONTEXT_LABEL_BYTES + line_size("edges:") + CONTEXT_NOTE_BYTES
+        room = Room(size - reserved)
+        for sid in seeds:
+            if not room.take_node(sid, seeds[sid], line_size(self._line(seeds[sid]))):
+                room.left_nodes.add(sid)
+        if not room.nodes:
+            raise ToolError("budget_tokens holds none of the seeds: raise it, or pass fewer ids")
+        frontier = deque((s, 0) for s in room.nodes)
+        while frontier:
+            if room.size - room.used < CONTEXT_MIN_LINE:
+                room.beyond = any(depth < hops for _, depth in frontier)  # full: what lies past them is not read
+                break
             current, depth = frontier.popleft()
             if depth >= hops or (depth > 0 and store.degree(current, b) > HUB_DEGREE):
                 continue  # do not expand hubs: they would fill the budget with neighbours of everything
-            edges = [e for e in store.edges_of(current, b, limit=300) if self.visible(e["label"])]
-            edges.sort(
-                key=lambda e: (
-                    -STATUS_RANK.get(e["status"], 0),
-                    e["rel"] in ("in_source", "part_of"),
-                    e["rel"],
-                    e["src"],
-                    e["dst"],
-                )
-            )
-            neighbours = store.nodes({e["dst"] if e["src"] == current else e["src"] for e in edges}, b)
-            for e in edges:
-                other = e["dst"] if e["src"] == current else e["src"]
-                node = neighbours.get(other)
-                if node is None or not self.visible(node["label"]):
-                    continue
-                if other not in included:
-                    cost = len(self._line(node)) + 60
-                    if used + cost > budget_chars:
-                        break
-                    included[other] = node
-                    used += cost
-                    frontier.append((other, depth + 1))
-                edges_out[e["id"]] = e
-        lines = [
-            f"context for {query or ', '.join(seeds)}: {len(included)} nodes, {len(edges_out)} edges"
-            f" (build {b}, connected through the seeds)"
-        ]
-        lines += [self._line(n) for n in included.values()]
+            self._context_from(store, b, current, depth, room, frontier)
+        shared, label_line = self._labels(room.nodes.values())
+        lines = [header(len(room.nodes), len(room.edges)), *label_line]
+        lines += [self._line(n, shared) for n in room.nodes.values()]
         lines.append("edges:")
-        for e in edges_out.values():
-            if e["src"] in included and e["dst"] in included:
-                self._saw(e["label"])
-                lines.append(f"  [{e['src']}] -{e['rel']}-> [{e['dst']}] ({e['status']})")
+        for e in room.edges.values():
+            self._saw(e["label"])
+            lines.append(self._edge_line(e))
+        lines += room.note()
         data = {
             "build": b,
-            "seeds": seeds,
-            "nodes": [self._node_json(n) for n in included.values()],
+            "seeds": list(seeds),
+            "nodes": [self._node_json(n) for n in room.nodes.values()],
             "edges": [
-                {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]}
-                for e in edges_out.values()
-                if e["src"] in included and e["dst"] in included
+                {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]} for e in room.edges.values()
             ],
-            "summary": f"{len(included)} nodes",
+            "left_out": {"nodes": room.left()[0], "edges": room.left()[1], "beyond": room.beyond},
+            "summary": f"{len(room.nodes)} nodes",
         }
         return "\n".join(lines), data
+
+    def _context_seeds(self, store: Store, b: int, query, ids) -> dict[str, dict]:
+        """The visible seeds of kg_context: the nodes ``ids`` name (stored or readable ids), else the first five
+        that match ``query``."""
+        if ids:
+            found = [self._lookup(store, i, b) for i in ids if isinstance(i, str)]
+            seeds = {n["id"]: n for n in found if n is not None}
+        elif query:
+            hits = store.search(query, b, limit=5)[:5]
+            nodes = store.nodes(hits, b)
+            seeds = {h: nodes[h] for h in hits if h in nodes and self.visible(nodes[h]["label"])}
+        else:
+            raise ToolError("give a query or ids")
+        if not seeds:
+            raise ToolError("nothing visible matches; try kg_search")
+        return seeds
+
+    def _edge_line(self, e: dict) -> str:
+        return f"  [{readable(e['src'])}] -{e['rel']}-> [{readable(e['dst'])}] ({e['status']})"
+
+    def _context_from(self, store: Store, b: int, current: str, depth: int, room: Room, frontier: deque) -> None:
+        """Put the visible edges of ``current`` into ``room``, strongest first, each with the neighbour it brings
+        when that one is new; what does not fit is counted as left out, and a new neighbour joins the frontier."""
+        edges = [e for e in store.edges_of(current, b, limit=300) if self.visible(e["label"])]
+        edges.sort(
+            key=lambda e: (
+                -STATUS_RANK.get(e["status"], 0),
+                e["rel"] in ("in_source", "part_of"),
+                e["rel"],
+                e["src"],
+                e["dst"],
+            )
+        )
+        neighbours = store.nodes({e["dst"] if e["src"] == current else e["src"] for e in edges}, b)
+        for e in edges:
+            other = e["dst"] if e["src"] == current else e["src"]
+            node = neighbours.get(other)
+            if node is None or not self.visible(node["label"]) or e["id"] in room.edges:
+                continue
+            cost = line_size(self._edge_line(e))
+            if other in room.nodes:
+                if room.take(cost):
+                    room.edges[e["id"]] = e
+                else:
+                    room.left_edges.add(e["id"])
+            elif room.take_node(other, node, cost + line_size(self._line(node))):
+                room.edges[e["id"]] = e
+                frontier.append((other, depth + 1))
+            else:
+                room.left_nodes.add(other)
+                room.left_edges.add(e["id"])
 
     def _changed_symbols(self, store: Store, b: int, symbols: list[dict], lines: set[int]) -> list[dict]:
         """The visible symbols a set of changed lines falls in: for each line, the symbol that starts last
@@ -508,9 +510,10 @@ class Session:
         paths: list | None = None,
         diff: str | None = None,
         depth: int = 2,
+        limit: int = IMPACT_LIMIT,
     ) -> tuple[str, dict]:
         store, b = self._store()
-        found = Impact(b, max(1, min(int(depth), 3)))
+        found = Impact(b, max(1, min(int(depth), 3)), max(1, min(int(limit), IMPACT_MAX_LIMIT)))
         wanted = ([id] if isinstance(id, str) and id else []) + [i for i in ids or [] if isinstance(i, str)]
         paths = [p for p in ([paths] if isinstance(paths, str) else paths or []) if isinstance(p, str) and p]
         changes = diff_lines(diff) if isinstance(diff, str) else {}
@@ -518,12 +521,21 @@ class Session:
             raise ToolError("give an id, ids, paths (repo:path) or a unified diff")
         for nid in wanted:
             n = self._lookup(store, nid, b)
-            if n is None:
-                found.missing += 1
-            else:
+            if n is not None:
                 found.seeds[n["id"]] = n
+            elif path_like(nid):
+                paths.append(nid)  # an id that names no node may be a path
+            else:
+                found.missing += 1
         if paths or changes:
             self._seeds_by_path(store, found, paths, changes)
+        unmatched, found.unmatched = found.unmatched, []
+        for path in unmatched:  # a path that names no file may be an id, such as one the text showed
+            n = self._lookup(store, path, b)
+            if n is not None:
+                found.seeds[n["id"]] = n
+            else:
+                found.unmatched.append(path)
         if not found.seeds and not (found.ambiguous or found.unmatched):
             raise ToolError("nothing visible matches; try kg_search")
         self._walk_back(store, found)
@@ -625,41 +637,54 @@ class Session:
             found.cut.append({"seed": nid, "read": len(edges), "total": total})
         return edges
 
+    @staticmethod
+    def _impact_shown(found: Impact) -> tuple[dict[int, list[dict]], list[str]]:
+        """What the text of kg_impact lists: per hop, the first ``found.limit`` dependents, strongest edge first,
+        then by id; and the first ``found.doc_limit`` documents, those that mention the most reached nodes first."""
+        hops: dict[int, list[dict]] = {}
+        for r in found.reached.values():
+            hops.setdefault(r["hop"], []).append(r)
+        for group in hops.values():
+            group.sort(key=lambda r: (-STATUS_RANK.get(r["edge"]["status"], 0), r["node"]["id"]))
+        docs = sorted(found.docs, key=lambda d: (-len(found.mentions[d]), d))
+        return {hop: group[: found.limit] for hop, group in hops.items()}, docs[: found.doc_limit]
+
     def _impact_lines(self, found: Impact) -> list[str]:
+        hops, docs = self._impact_shown(found)
+        shown = [*found.seeds.values(), *(r["node"] for g in hops.values() for r in g), *(found.docs[d] for d in docs)]
+        shared, label_line = self._labels(shown)
         lines = [
             f"impact of {len(found.seeds)} seed(s) within {found.depth} hop(s) (build {found.build}):"
             f" {len(found.reached)} dependent(s), {len(found.docs)} document(s) to re-check"
         ]
+        lines += label_line
         if found.seeds:
             lines.append("seeds:")
-            lines += [f"  {self._line(found.seeds[s])}" for s in sorted(found.seeds)]
+            lines += [f"  {self._line(found.seeds[s], shared)}" for s in sorted(found.seeds)]
         lines += [coverage_line(row) for row in found.coverage]
         lines += [
-            f"cut: {c['total']} edges lead into [{c['seed']}] and the first {c['read']} were read; what depends on"
-            " it through the others is not listed"
+            f"cut: {c['total']} edges lead into [{readable(c['seed'])}] and the first {c['read']} were read; what"
+            " depends on it through the others is not listed"
             for c in found.cut
         ]
-        for hop in range(1, found.depth + 1):
-            group = [r for r in found.reached.values() if r["hop"] == hop]
-            if group:
-                lines.append(f"hop {hop}:")
-            for r in group:
+        for hop in sorted(hops):
+            total = sum(r["hop"] == hop for r in found.reached.values())
+            lines.append(f"hop {hop}:" + (f" first {found.limit} of {total}" if total > found.limit else ""))
+            for r in hops[hop]:
                 e, also = r["edge"], [rel for rel in r["rels"] if rel != r["edge"]["rel"]]
                 lines.append(
-                    f"  {self._line(r['node'])} -{e['rel']}-> [{e['dst']}] ({e['status']})"
+                    f"  {self._line(r['node'], shared)} -{e['rel']}-> [{readable(e['dst'])}] ({e['status']})"
                     + (f" (also {', '.join(also)})" if also else "")
                     + (" (hub, not expanded)" if r["hub"] else "")
                 )
-        if found.docs:
-            lines.append("documents to re-check:")
-        for d in sorted(found.docs):
-            targets = sorted(found.mentions[d], key=lambda e: e["dst"])
-            lines.append(
-                f"  {self._line(found.docs[d])} -mentions-> "
-                + ", ".join(f"[{e['dst']}] ({e['status']})" for e in targets)
-            )
+            if total > found.limit:
+                lines.append(
+                    f"  ... {total - found.limit} more at hop {hop}: raise limit (up to {IMPACT_MAX_LIMIT}), or pass "
+                    "the symbols you change instead of their file"
+                )
+        lines += self._impact_doc_lines(found, docs, shared)
         for a in found.ambiguous:
-            candidates = ", ".join(f"[{c}]" for c in a["candidates"])
+            candidates = ", ".join(f"[{readable(c)}]" for c in a["candidates"])
             lines.append(f"ambiguous path {a['path']}: {candidates}; pass repo:path or an id")
         if found.unmatched:
             lines.append("no visible file for: " + ", ".join(found.unmatched))
@@ -667,8 +692,30 @@ class Session:
             lines.append(f"{found.missing} id(s) not found or not visible")
         return lines
 
+    def _impact_doc_lines(self, found: Impact, docs: list[str], shared: str | None) -> list[str]:
+        if not found.docs:
+            return []
+        total = len(found.docs)
+        lines = ["documents to re-check:" + (f" first {len(docs)} of {total}" if total > len(docs) else "")]
+        for d in docs:
+            targets = sorted(found.mentions[d], key=lambda e: e["dst"])
+            more = f", and {len(targets) - IMPACT_MENTIONS_SHOWN} more" if len(targets) > IMPACT_MENTIONS_SHOWN else ""
+            lines.append(
+                f"  {self._line(found.docs[d], shared)} -mentions-> "
+                + ", ".join(f"[{readable(e['dst'])}] ({e['status']})" for e in targets[:IMPACT_MENTIONS_SHOWN])
+                + more
+            )
+        if total > len(docs):
+            lines.append(f"  ... {total - len(docs)} more documents: raise limit (up to {IMPACT_MAX_LIMIT})")
+        return lines
+
     def _impact_data(self, found: Impact) -> dict:
+        """The structured result: every dependent and document, whatever the text lists, since callers such as the
+        Curator's tier check read them all; ``left_out`` says what the text did not list."""
         cut = f"; {len(found.cut)} seed(s) cut" if found.cut else ""
+        per_hop: dict[int, int] = {}
+        for r in found.reached.values():
+            per_hop[r["hop"]] = per_hop.get(r["hop"], 0) + 1
         return {
             "build": found.build,
             "depth": found.depth,
@@ -700,6 +747,11 @@ class Session:
             "ambiguous": found.ambiguous,
             "unmatched": found.unmatched,
             "not_found": found.missing,
+            "limit": found.limit,
+            "left_out": {
+                "hops": {str(hop): n - found.limit for hop, n in sorted(per_hop.items()) if n > found.limit},
+                "documents": max(len(found.docs) - found.doc_limit, 0),
+            },
             "summary": f"{len(found.reached)} dependents, {len(found.docs)} documents{cut}",
         }
 
@@ -760,47 +812,18 @@ class Session:
         if start is None or (to and goal is None):
             raise ToolError("no visible node has that id; search with kg_search")
         tree = self._walk(store, b, start, max_hops, None if goal else CHAIN_RELS, goal["id"] if goal else None)
-
-        def edge_json(t: dict) -> dict:
-            e = t["edge"]
-            return {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]}
-
         if goal is not None:
-            chain = []
-            nid = goal["id"] if goal["id"] in tree else None
-            while nid is not None:
-                chain.append(tree[nid])
-                nid = tree[nid]["parent"]
-            chain.reverse()
-            if not chain:
-                lines = [
-                    f"no path within {max_hops} hop(s) from {start['id']} to {goal['id']} through visible nodes"
-                    f" (build {b}; hubs are not expanded)"
-                ]
-            else:
-                lines = [f"path from {start['id']} to {goal['id']} (build {b}): {len(chain) - 1} hop(s)"]
-                lines.append(self._line(start))
-                lines += [f"  {self._step(t['parent'], t['edge'])} {self._line(t['node'])}" for t in chain[1:]]
-            data = {
-                "build": b,
-                "from": start["id"],
-                "to": goal["id"],
-                "found": bool(chain),
-                "hops": len(chain) - 1 if chain else None,
-                "nodes": [self._node_json(t["node"]) for t in chain],
-                "edges": [edge_json(t) for t in chain[1:]],
-                "summary": f"{len(chain) - 1} hops" if chain else "no path",
-            }
-            return "\n".join(lines), data
-
+            return self._path_between(b, start, goal, tree, max_hops)
         children: dict[str, list[str]] = {}
         for nid, t in tree.items():
             if t["parent"] is not None:
                 children.setdefault(t["parent"], []).append(nid)
+        shared, label_line = self._labels(t["node"] for t in tree.values())
         lines = [
-            f"chains from {start['id']} along {', '.join(CHAIN_RELS)} (build {b}): {len(tree) - 1} node(s)"
+            f"chains from {readable(start['id'])} along {', '.join(CHAIN_RELS)} (build {b}): {len(tree) - 1} node(s)"
             f" within {max_hops} hop(s)",
-            self._line(start),
+            *label_line,
+            self._line(start, shared),
         ]
         stack = sorted(children.get(start["id"], []), reverse=True)
         while stack:
@@ -808,7 +831,7 @@ class Session:
             t = tree[nid]
             lines.append(
                 "  " * t["hop"]
-                + f"{self._step(t['parent'], t['edge'])} {self._line(t['node'])}"
+                + f"{self._step(t['parent'], t['edge'])} {self._line(t['node'], shared)}"
                 + (" (hub, not expanded)" if t["hub"] else "")
             )
             stack.extend(sorted(children.get(nid, []), reverse=True))
@@ -817,8 +840,36 @@ class Session:
             "from": start["id"],
             "to": None,
             "nodes": [{**self._node_json(t["node"]), "hop": t["hop"], "hub": t["hub"]} for t in tree.values()],
-            "edges": [edge_json(t) for t in tree.values() if t["parent"] is not None],
+            "edges": [_edge_json(t) for t in tree.values() if t["parent"] is not None],
             "summary": f"{len(tree) - 1} nodes",
+        }
+        return "\n".join(lines), data
+
+    def _path_between(self, b: int, start: dict, goal: dict, tree: dict, max_hops: int) -> tuple[str, dict]:
+        chain = []
+        nid = goal["id"] if goal["id"] in tree else None
+        while nid is not None:
+            chain.append(tree[nid])
+            nid = tree[nid]["parent"]
+        chain.reverse()
+        ends = f"{readable(start['id'])} to {readable(goal['id'])}"
+        if not chain:
+            lines = [
+                f"no path within {max_hops} hop(s) from {ends} through visible nodes (build {b}; hubs are not expanded)"
+            ]
+        else:
+            shared, label_line = self._labels(t["node"] for t in chain)
+            lines = [f"path from {ends} (build {b}): {len(chain) - 1} hop(s)", *label_line, self._line(start, shared)]
+            lines += [f"  {self._step(t['parent'], t['edge'])} {self._line(t['node'], shared)}" for t in chain[1:]]
+        data = {
+            "build": b,
+            "from": start["id"],
+            "to": goal["id"],
+            "found": bool(chain),
+            "hops": len(chain) - 1 if chain else None,
+            "nodes": [self._node_json(t["node"]) for t in chain],
+            "edges": [_edge_json(t) for t in chain[1:]],
+            "summary": f"{len(chain) - 1} hops" if chain else "no path",
         }
         return "\n".join(lines), data
 
@@ -849,6 +900,11 @@ class Session:
         else:
             del self.handles[handle]
         return text, {"handle": handle, "remaining": len(chunks), "summary": "continued"}
+
+
+def _edge_json(t: dict) -> dict:
+    e = t["edge"]
+    return {"src": e["src"], "rel": e["rel"], "dst": e["dst"], "status": e["status"]}
 
 
 def _error(message: str) -> dict:

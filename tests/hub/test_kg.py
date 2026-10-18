@@ -23,6 +23,7 @@ import asyncio
 import gzip
 import hashlib
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -41,7 +42,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import Text, cast, column, func, insert, select, table, update
+from sqlalchemy import Text, cast, column, create_engine, delete, func, insert, select, table, update
 
 from evo_agents.hub import kg_build as hub_kg_build
 from evo_agents.hub import kg_push, tables
@@ -52,12 +53,15 @@ from evo_agents.hub.kg_build import worker_project
 from evo_agents.hub.kg_push import Pusher
 from evo_agents.hub.server.app import create_app
 from evo_agents.hub.worker import HubContext, connector, queue
+from evo_agents.kg import build as kg_build_module
 from evo_agents.kg import serve
+from evo_agents.kg import store as kg_store
 from evo_agents.kg.build import build_project
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.sessions import READ_META
+from evo_agents.kg.store import Store
 from evo_agents.kg.sync import sync_project
 
 PROJECT = "alpha"
@@ -410,10 +414,17 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
     (run_id,) = laptop.sync("docs", doc("guide", "How the app works."))
     first = push(hub, laptop)
     assert first.ok and first.pushed == [run_id]
+    corpus = laptop.project().corpus()
+    assert corpus.runs_on_hub() == {run_id}  # retention may delete its log now (evo_agents.kg.retention)
+    local = create_engine(f"sqlite:///{corpus.db_path}")  # the laptop's corpus, not a hub table: Core on table()
+    with local.begin() as conn:
+        conn.execute(delete(table("hub_runs")))
+    local.dispose()
     before = jobs(hub.db)
 
     again = push(hub, laptop)  # the hub lists the run: nothing is sent
     assert again.ok and again.pushed == [] and again.present == 1 and again.blobs == 0
+    assert corpus.runs_on_hub() == {run_id}  # recorded from the hub's list
     # the steps by hand, as a client that lost the answers would send them again
     log = laptop.logs()[0]
     state = hub.as_alice.call("POST", f"/v1/kg/{PROJECT}/runs", {"run_id": run_id, "log_sha256": sha(log.read_bytes())})
@@ -775,6 +786,39 @@ def test_deleting_the_worker_cache_and_building_again_gives_the_same_content_has
     assert len(list((hub.worker_dir / "kg" / "home" / PROJECT / "log").iterdir())) == 2
 
 
+def test_a_build_with_nothing_new_builds_nothing_and_points_at_the_same_artifact(hub, tmp_path, caplog, monkeypatch):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    first = latest(hub)
+    assert first["status"] == "succeeded"
+
+    with monkeypatch.context() as patched:
+        patched.setattr(kg_build_module, "run_pipeline", lambda *a, **kw: pytest.fail("built an unchanged corpus"))
+        response = hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice)
+        assert response.status_code == 202 and response.json()["queued"] is True
+        with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
+            run_jobs(hub.db, hub.s3, hub.worker_dir)
+    second = latest(hub)
+    assert second["id"] != first["id"] and second["status"] == "succeeded", second
+    assert (second["content_hash"], second["artifact_sha256"]) == (first["content_hash"], first["artifact_sha256"])
+    assert (second["nodes"], second["edges"]) == (first["nodes"], first["edges"])
+    (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
+    assert done.skipped is True and done.artifact_reused_from == first["id"]
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+
+    laptop.sync("docs", doc("guide", "Edited.", rev="2"), doc("setup", "Install it."))
+    assert push(hub, laptop).ok
+    caplog.clear()
+    with caplog.at_level("INFO", logger="evo_agents.hub.kg_build"):
+        run_jobs(hub.db, hub.s3, hub.worker_dir)
+    third = latest(hub)
+    assert third["status"] == "succeeded" and third["content_hash"] != first["content_hash"]
+    (done,) = [r for r in caplog.records if r.getMessage() == "kg build succeeded"]
+    assert done.skipped is False
+
+
 def test_an_artifact_that_does_not_match_its_sha256_is_never_opened(hub, tmp_path):
     laptop = Machine(tmp_path, "laptop")
     laptop.sync("docs", doc("guide", "How the app works."))
@@ -791,6 +835,32 @@ def test_an_artifact_that_does_not_match_its_sha256_is_never_opened(hub, tmp_pat
     assert not graphs.exists() or list(graphs.iterdir()) == []  # neither the file nor a part of it stays
 
     hub.s3.put(blob_key(build["artifact_sha256"]), good)
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+
+
+def test_a_graph_of_an_older_store_schema_is_rebuilt_rather_than_served_broken(hub, tmp_path, monkeypatch):
+    laptop = Machine(tmp_path, "laptop")
+    laptop.sync("docs", doc("guide", "How the app works."))
+    assert push(hub, laptop).ok
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    old = latest(hub)
+    assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
+
+    # The hub is upgraded to a store schema the artifact was not written with.
+    monkeypatch.setattr(kg_store, "SCHEMA_VERSION", str(int(kg_store.SCHEMA_VERSION) + 1))
+    refused = call_tool(hub, "kg_search", {"query": "guide"})
+    assert refused.status_code == 503, refused.text
+    assert f"(build {old['id']}) was written with store schema" in refused.json()["message"]
+    page = hub.client.get(f"/v1/kg/{PROJECT}/nodes", params={"q": "guide"}, headers=hub.alice)
+    assert page.status_code == 503 and "a new build of it is queued" in page.json()["message"]
+    queued = latest(hub)
+    assert queued["status"] == "queued" and queued["requested_by"] is None
+    assert len([b for b in build_rows(hub) if b["status"] == "queued"]) == 1  # the second refusal found it waiting
+
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    rebuilt = latest(hub)
+    assert rebuilt["id"] == queued["id"] and rebuilt["status"] == "succeeded"
+    assert rebuilt["content_hash"] != old["content_hash"] and rebuilt["artifact_sha256"] != old["artifact_sha256"]
     assert tool_ok(hub, "kg_search", {"query": "guide"})["structuredContent"]["results"]
 
 
@@ -1267,3 +1337,100 @@ def test_a_build_the_worker_stops_is_recorded_and_queued_again(hub, tmp_path, mo
     set_job_status(hub.db, job_id, "aborted")  # as the worker ends it
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert latest(hub)["status"] == "succeeded"
+
+
+# The plans of the hub in the graph of a harness that names a hub project
+
+HUB_HARNESS_KNOWLEDGE = """\
+version: 1
+project: alpha
+policy:
+  levels: [public, internal, customer, secret]
+  sinks:
+    - {id: claude-code@anthropic, kind: agent-session, clearance: {level: customer}}
+    - {id: hub, kind: hub, clearance: {level: internal}}
+sources:
+  - id: harness
+    connector: harness
+    label: {level: public, integrity: U}
+"""
+
+
+class CountingHub(InProcessHub):
+    """``InProcessHub`` that notes the paths it was asked for."""
+
+    def __init__(self, client, headers):
+        super().__init__(client, headers)
+        self.paths: list[str] = []
+
+    def call(self, method, path, body=None, *, timeout=None):
+        self.paths.append(path)
+        return super().call(method, path, body, timeout=timeout)
+
+
+def put_plan(hub, body: dict, revision: int | None = None) -> dict:
+    response = hub.client.put(
+        f"/v1/projects/{PROJECT}/plans/{body['id']}", json={"body": body, "if_revision": revision}, headers=hub.alice
+    )
+    assert response.status_code in (200, 201), response.text
+    return response.json()
+
+
+def test_the_graph_holds_the_plans_at_the_revision_and_label_the_hub_has(hub, tmp_path, monkeypatch):
+    from evo_agents.hub import client as hub_client
+    from evo_agents.hub import kg_plans
+    from evo_agents.hub.mirror import render
+
+    body = {"id": "rollout", "goal": "Ship it.", "steps": [{"id": 1, "title": "One", "what": "do one"}]}
+    first = put_plan(hub, body)
+    root = tmp_path / "alpha-harness"
+    (root / "plans/active").mkdir(parents=True)
+    (root / "harness.yaml").write_text(
+        "name: alpha\nrepos: []\nknowledge_file: knowledge.yaml\nhub: {project: alpha}\n"
+    )
+    (root / "knowledge.yaml").write_text(HUB_HARNESS_KNOWLEDGE)
+    copy = root / "plans/active/rollout.yaml"
+    copy.write_text(render(body, PROJECT, first["revision"], first["digest"]))  # the copy of revision 1
+    done = {**body, "steps": [{**body["steps"][0], "status": "done", "evidence": "shipped"}]}
+    second = put_plan(hub, done, first["revision"])  # the hub moves on; nobody exports
+    home = tmp_path / "kg-home"
+    project = load_project_at(root, home)
+
+    member = CountingHub(hub.client, hub.alice)
+    (result,) = sync_project(project, plans=kg_plans.reader(member))
+    assert result.ok, result.issues
+    assert member.paths == [f"/v1/projects/{PROJECT}/plans", f"/v1/projects/{PROJECT}/plans/rollout"]
+    report = build_project(project)
+    assert report.ok, report.errors
+    store = Store.for_project(project)
+    step = store.node("plan:rollout/step:1", report.build_id)
+    assert step["props"]["status"] == "done"  # the hub's revision, not the copy's
+    assert step["label"][0] == 1  # internal, the hub's label of the plan, above the source's public
+    record = project.corpus().get("harness:file:plans/active/rollout.yaml").record
+    assert record["uri"] == f"https://hub.test/p/{PROJECT}/plans/rollout"
+    assert record["label"] == {"level": "internal", "location": "any", "integrity": "U"}
+
+    copy.write_text(render(done, PROJECT, second["revision"], second["digest"]))  # exported since
+    member.paths.clear()
+    (again,) = sync_project(project, plans=kg_plans.reader(member))
+    assert again.ok and member.paths == [f"/v1/projects/{PROJECT}/plans"]  # known revision, current copy: one call
+    assert build_project(project).skipped  # an unchanged revision changes no item, so nothing is built
+
+    assert push(hub, SimpleNamespace(project=lambda: project), "alice").ok  # the hub builds what the machine read
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    there = tool_ok(hub, "kg_node", {"id": "plan:rollout/step:1"})["structuredContent"]["node"]
+    assert there["props"]["status"] == "done" and there["label"]["level"] == "internal"
+
+    monkeypatch.setattr(hub_client, "hub_dir", lambda: tmp_path / "signed-out")  # no hub login on this machine
+    (offline,) = sync_project(project, plans=kg_plans.reader())
+    assert offline.ok and not offline.warnings
+    assert build_project(project).skipped  # the copy is the revision the cursor holds: the same item, labels and all
+    copy.write_text(render(body, PROJECT, first["revision"], first["digest"]))  # an older copy, checked out by hand
+    # Checked out after the revision: a file's time counts whole seconds (epoch_to_iso), the revision's does not, and
+    # the test can get here within the second of the revision.
+    later = time.time() + 1
+    os.utime(copy, (later, later))
+    assert sync_project(project, plans=kg_plans.reader())[0].ok
+    report = build_project(project)
+    step = Store.for_project(project).node("plan:rollout/step:1", report.build_id)
+    assert step["props"]["status"] == "pending" and step["label"][0] == 0  # the copy, with the source's label

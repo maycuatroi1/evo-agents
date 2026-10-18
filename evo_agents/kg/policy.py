@@ -136,6 +136,19 @@ class Policy:
         clr = self.clearance(sink)
         return label.level <= clr.level and label.location <= clr.location and label.projects <= {self.project}
 
+    def hub_sink(self) -> Clearance | None:
+        """The project's sink of kind hub, None when it declares none."""
+        return next((sink for sink in self.sinks.values() if sink.kind == "hub"), None)
+
+    def hub_clears(self, source_id: str) -> bool | None:
+        """Whether the hub sink clears the label of source ``source_id``, so its runs may leave the machine for the hub
+        (``hub kg push``); None when the project declares no hub sink."""
+        hub = self.hub_sink()
+        if hub is None:
+            return None
+        label = self.source_label(source_id)
+        return label.level <= hub.level and label.location <= hub.location
+
     def describe(self, label: Label) -> dict:
         return {
             "level": self.level_name(label.level),

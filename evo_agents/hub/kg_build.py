@@ -10,10 +10,15 @@ A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the
 
 Each run in ``kg_ingests`` that corpus.sqlite does not list yet is fetched (its log, checked against its SHA-256),
 merged with the corpus's own merge, and listed; the merge is order-independent, so the runs of several machines in
-any order give one state. Then every blob a live item refers to and the cache lacks is fetched, checked, and moved
+any order give one state; the cursor a run ended with is kept unless a later run's is, so a git source's coverage
+names the commit its newest run read (``evo_agents.kg.freshness``). Then every blob a live item refers to and the cache lacks is fetched, checked, and moved
 into place. The graph is built by ``evo_agents.kg.build`` into a fresh store, which leaves WAL mode and replaces
 graph.sqlite in one rename: a single file, the artifact. Anything that fails marks the build failed with a message
 naming no content, and the worker goes on with the next job.
+
+A build whose corpus state and inputs (the knowledge config, the code, the cursors) are those of the graph.sqlite
+in the cache builds nothing (``skipped``): it takes that file, whose content hash is the latest build's, so it
+uploads nothing either. Most pushes carry runs that changed nothing, and such a build takes seconds, not minutes.
 
 The artifact's bytes are not reproducible (SQLite pages carry more than the content), so two builds of one corpus
 give two files with one content hash. A build whose content hash equals that of the project's latest build still
@@ -105,6 +110,7 @@ class Built:
     edges: int
     runs: int
     merged: int  # runs merged by this build; the others were in the cache already
+    skipped: bool = False  # the cache's graph was current: nothing was built
 
 
 @dataclass(frozen=True)
@@ -180,8 +186,11 @@ def _merge(corpus: Corpus, ingest: Ingest) -> None:
         raise BuildFailure(f"the log of run {ingest.run_id} names run {run_id}")
     header = records[0]
     end = next((r for r in reversed(records) if r.get("type") == "run_end"), {})
+    state = next((r for r in reversed(records) if r.get("type") == "state"), None)
     with corpus.db:
         corpus.merge(records, run_id)
+        if state is not None and header.get("source"):  # the commit a git source read, for the build's coverage
+            corpus.record_cursor(header["source"], state.get("cursor"), run_id)
         corpus.record_run(
             run_id,
             source=header.get("source") or "",
@@ -229,11 +238,16 @@ def _sha256(path: Path) -> str:
 
 def build_graph(project: Project) -> tuple[Path, object]:
     """Build ``project`` into a fresh store and make it its graph.sqlite: one file, out of WAL mode. The path and the
-    build report; BuildFailure when the build reports errors."""
-    from evo_agents.kg.build import build_project
+    build report; BuildFailure when the build reports errors. When the graph.sqlite of the cache was built from the
+    corpus state and the inputs ``project`` has now (``evo_agents.kg.build.unchanged``), nothing is built: that file
+    and the report of its build, ``skipped``."""
+    from evo_agents.kg.build import build_project, unchanged
     from evo_agents.kg.store import Store
 
     target = project.root / "graph.sqlite"
+    current = unchanged(project) if not Path(f"{target}-wal").exists() else None  # a WAL: written by hand since
+    if current is not None:
+        return target, current
     stage = Store.staging(target)
     try:
         report = build_project(project, store=stage)
@@ -258,7 +272,15 @@ def build_in_cache(store: BlobStore, data_dir: Path, name: str, config: dict, in
     path, report = build_graph(project)
     sha256 = _sha256(path)
     return Built(
-        path, sha256, path.stat().st_size, report.content_hash, report.nodes, report.edges, len(ingests), merged
+        path,
+        sha256,
+        path.stat().st_size,
+        report.content_hash,
+        report.nodes,
+        report.edges,
+        len(ingests),
+        merged,
+        report.skipped,
     )
 
 
@@ -467,6 +489,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
             "job_id": job_id,
             "runs": built.runs,
             "merged": built.merged,
+            "skipped": built.skipped,
             "nodes": built.nodes,
             "edges": built.edges,
             "content_hash": built.content_hash,
@@ -479,6 +502,7 @@ async def run_build(context, project: str, build_id: int | None, job_id: int | N
         "build_id": build_id,
         "content_hash": built.content_hash,
         "artifact_reused_from": artifact.reused_from,
+        "skipped": built.skipped,
     }
 
 

@@ -9,7 +9,8 @@ size are checked, and only then is it renamed into place, so a file in the cache
 promises. A file that does not match is deleted and never opened. The cache keeps the KEEP files installed last per
 project: an older one is deleted unless a call is reading it (an open file stays readable after it is deleted anyway).
 When the blob store does not answer, the newest build whose artifact is cached answers instead, and kg_status says
-which build that is. Files are opened read-only and immutable: nothing writes them again, so SQLite takes no lock.
+which build that is, and the commit each git source of it read, with how far behind its remote's default branch the
+machine that read it counted (the hub has no checkout to count again). Files are opened read-only and immutable: nothing writes them again, so SQLite takes no lock.
 
 ``HubSession`` is ``evo_agents.kg.serve.Session`` over such a file, with the hub's read rule as its clearance: the
 meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``). The tools, their schemas, CAP_CHARS
@@ -31,9 +32,11 @@ from datetime import datetime
 from pathlib import Path
 
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
+from evo_agents.kg import freshness
+from evo_agents.kg import store as kg_store
 from evo_agents.kg.policy import Label, Policy
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session, ToolError
-from evo_agents.kg.store import Store
+from evo_agents.kg.store import StaleSchema, Store
 
 TOOL_NAMES = tuple(tool["name"] for tool in TOOLS)
 KEEP = 2  # graphs kept per project: the latest, and the one before it to fall back on
@@ -42,6 +45,24 @@ MAX_HANDLES = 100  # kg_more handles kept per user and project
 
 class GraphUnavailable(Exception):
     """No graph of the project can be read: the blob store does not answer and none is cached."""
+
+
+class GraphOutdated(GraphUnavailable):
+    """The newest graph was written with an older store schema than this hub reads: a new build will replace it."""
+
+    def __init__(self, project: str, graph: BuiltGraph, exc: StaleSchema):
+        super().__init__(
+            f"the graph of project {project} (build {graph.build_id}) was written with store schema {exc.found}, and "
+            f"this hub reads {kg_store.SCHEMA_VERSION}: a new build of it is queued; try again once it has run"
+        )
+
+
+def open_graph(path: Path, project: str, graph: BuiltGraph) -> Store:
+    """The cached artifact of ``graph`` as a read-only store; GraphOutdated when an older schema wrote it."""
+    try:
+        return Store.open_file(path, immutable=True)
+    except StaleSchema as exc:
+        raise GraphOutdated(project, graph, exc) from None
 
 
 class ArtifactMismatch(Exception):
@@ -196,7 +217,7 @@ class HubSession(Session):
         else:
             self.clearance = (ceiling.level, ceiling.location)
 
-    def _store(self) -> tuple[Store, int]:
+    def _graph(self) -> tuple[Store, int]:
         b = self.graph_store.latest_ready()
         if b is None:
             raise ToolError(f"build {self.graph.build_id} of project {self.project.name} holds no ready graph")
@@ -225,9 +246,10 @@ class HubSession(Session):
                 "graph cached here"
             )
         for src in coverage.get("sources", []):
+            read = f", read {freshness.describe(src['read'])}" if isinstance(src.get("read"), dict) else ""
             lines.append(
                 f"  {src['id']:<22} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
-                f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling"
+                f" ({src['resolved_ratio']:.0%}), {src['dangling']} dangling{read}"
             )
         lines += [f"warning: {w}" for w in coverage.get("warnings", [])]
         status = {
@@ -237,6 +259,7 @@ class HubSession(Session):
             "hub_build": hub_build,
             "graph": summary,
             "warnings": coverage.get("warnings", []),
+            "reads": freshness.reads(coverage),
             "sink": {"id": self.sink, "clearance": {"level": clr[0], "location": clr[1]}},
             "summary": self.project.name,
         }
@@ -291,7 +314,7 @@ def answer(
     keeps the SQLite connection in the thread that made it."""
     path, graph = cache.acquire(store, project, graphs)
     try:
-        opened = Store.open_file(path, immutable=True)
+        opened = open_graph(path, project, graph)
         try:
             session = HubSession(project, policy, ceiling, sink, opened, graph, graphs[0])
             return handles.call(session, owner, tool, arguments)

@@ -65,6 +65,7 @@ from evo_agents.hub.kg_graph import (
     TOOL_NAMES,
     ArtifactMismatch,
     BuiltGraph,
+    GraphOutdated,
     GraphUnavailable,
     answer,
 )
@@ -715,6 +716,18 @@ async def built_graphs(conn: AsyncConnection, project_id: int, limit: int) -> li
     return [BuiltGraph(**row._mapping) for row in await conn.execute(query)]
 
 
+async def rebuild_outdated(state, project_id: int, project: str) -> None:
+    """Queue a build of a project whose newest graph an older store schema wrote (GraphOutdated), unless one waits
+    already: the new build writes the schema this hub reads. It needs no new run, so nobody has to push."""
+    try:
+        async with state.engine.begin() as conn:
+            _, queued = await queue_build(state.jobs, conn, project_id, project, None)
+    except QueueBusy:
+        return
+    if queued:
+        log.warning("kg graph of an older store schema: a new build is queued", extra={"project": project})
+
+
 def _read_sink(access: ProjectAccess, sink: str) -> str:
     if sink == CLI_SINK and CLI_SINK not in access.rules.policy.sinks and access.rules.hub_sink is not None:
         return access.rules.hub_sink.sink
@@ -753,6 +766,9 @@ async def tool_result(state, user: Principal, project: str, tool: str, arguments
             tool,
             arguments,
         )
+    except GraphOutdated as exc:
+        await rebuild_outdated(state, access.project_id, project)
+        raise HTTPException(503, str(exc)) from None
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     except ArtifactMismatch as exc:
