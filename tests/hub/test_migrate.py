@@ -84,6 +84,8 @@ TABLES |= pg.PLUGIN_PROJECT_TABLES  # migration 0035
 TABLES |= pg.PLUGIN_BACKEND_TABLES  # migration 0036
 TABLES |= pg.SETTINGS_TABLES  # migration 0037
 TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0038
+TABLES |= pg.AGENT_TYPE_TABLES  # migration 0042
+TABLES |= pg.BUILDER_TABLES  # migration 0043
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -158,8 +160,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_sixty_nine_tables(hub_db):
-    assert len(TABLES) == 69  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_seventy_one_tables(hub_db):
+    assert len(TABLES) == 71  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -466,12 +468,12 @@ def test_0026_takes_up_to_sixteen_slots_and_going_back_refuses_a_live_worker_ove
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0026") :]
 
 
-def _author_run(ids):
-    """The INSERT of a queued author run of the seeded user in demo, on no plan, returning its id."""
+def _author_run(ids, **extra):
+    """The INSERT of a queued author run of the seeded user in demo, on no plan, with ``extra``, returning its id."""
     runs = hub_tables.runs
     row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "author", "request": "A wait helper."}
     row |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless", "approval": "auto"}
-    row |= {"timeout_s": 3600, "state": "queued", "repos": [{"repo": "harness", "branch": "main"}]}
+    row |= {"timeout_s": 3600, "state": "queued", "repos": [{"repo": "harness", "branch": "main"}]} | extra
     return insert(runs).values(row).returning(runs.c.id)
 
 
@@ -818,6 +820,181 @@ def test_0038_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_the
     assert "plugin_deliveries" not in tables(hub_db)
     assert query(hub_db, select(t.plugins.c.name)) == [("sandbox",)]  # the image's plugin went with its versions
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0038") :]
+
+
+def test_0039_takes_runs_of_plugins_runtimes_and_the_plugins_of_a_worker_and_going_back_deletes_those_runs(hub_db):
+    move_to(hub_db, "0038")
+    t = hub_tables
+    plugin = {"requested_runtime": "sandbox/fake", "runtime": "sandbox/fake"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        core = one(conn, _author_run(ids))
+        token = one(conn, _token(ids, kind="worker", token_hash="7" * 64, host="mac").returning(t.tokens.c.id))
+        with pytest.raises(errors.CheckViolation):  # the core's runtimes alone before 0039
+            conn.execute(_author_run(ids, **plugin))
+    move_to(hub_db, "0039")
+    with live.connect(hub_db) as conn:
+        first = one(conn, _author_run(ids, **plugin))
+        retry = one(conn, _author_run(ids, **plugin, attempt=2, parent_run_id=first))
+        worker = one(conn, _worker_row(ids, token, "mac", 1))
+        assert query(hub_db, select(t.workers.c.plugins).where(t.workers.c.id == worker)) == [([],)]
+        conn.execute(update(t.workers).values(plugins=["sandbox", "srs-docs"]).where(t.workers.c.id == worker))
+        for bad in (
+            _author_run(ids, requested_runtime="Sandbox/fake", runtime="Sandbox/fake"),
+            _author_run(ids, requested_runtime="sandbox/fake/x", runtime="sandbox/fake/x"),
+            update(t.workers).values(plugins=["Sandbox"]).where(t.workers.c.id == worker),
+            update(t.workers).values(plugins=['sandbox","x']).where(t.workers.c.id == worker),
+            update(t.workers).values(plugins=[f"p{n}" for n in range(17)]).where(t.workers.c.id == worker),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    assert retry > first
+    move_to(hub_db, "0038", down=True)
+    assert query(hub_db, select(t.runs.c.id)) == [(core,)], "the runs of the plugin's runtime went, retries first"
+    assert "plugins" not in columns(hub_db, "workers")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0039") :]
+
+
+def _profile_row(ids, handle: str, permissions: dict, *, default: bool = False):
+    """The INSERT of an agent profile of demo, the default one with ``default``, returning its id."""
+    ap = hub_tables.agent_profiles
+    row = {"project_id": ids["project"], "handle": handle, "name": handle, "color": "#475569"}
+    row |= {"is_default": default, "permissions": permissions, "created_by": ids["user"]}
+    return insert(ap).values(row).returning(ap.c.id)
+
+
+def test_0040_gives_every_profile_the_environment_axis_and_runs_their_environment_and_going_back_takes_them(hub_db):
+    move_to(hub_db, "0039")
+    t, ap = hub_tables, hub_tables.agent_profiles
+    seven = {axis: {"mode": "all"} for axis in ("credential", "tool", "skill", "worker", "project", "model", "runtime")}
+    eight = {**seven, "environment": {"mode": "all"}}
+    limited = {**seven, "tool": {"mode": "allowlist", "allow": ["read"]}}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        default = one(conn, _profile_row(ids, "demo", seven, default=True))
+        reader = one(conn, _profile_row(ids, "reader", limited))
+        with pytest.raises(errors.CheckViolation):  # a default profile's seven axes, all, before 0040
+            conn.execute(update(ap).values(permissions=eight).where(ap.c.id == default))
+    move_to(hub_db, "0040")
+    held = dict(query(hub_db, select(ap.c.id, ap.c.permissions)))
+    assert held == {default: eight, reader: {**limited, "environment": {"mode": "all"}}}
+    boxed = {**eight, "environment": {"mode": "allowlist", "allow": ["sandbox/box", "host"]}}
+    with live.connect(hub_db) as conn:
+        conn.execute(update(ap).values(permissions=boxed).where(ap.c.id == reader))
+        for bad in (
+            update(ap).values(permissions=seven).where(ap.c.id == default),  # the eight axes, all, now
+            update(ap).values(permissions=boxed).where(ap.c.id == default),
+            _author_run(ids, environment="host"),  # NULL is the host
+            _author_run(ids, environment="Sandbox/box"),
+            _author_run(ids, environment="sandbox/box/x"),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+        boxed_run = one(conn, _author_run(ids, environment="sandbox/box"))
+        host_run = one(conn, _author_run(ids))
+    on = dict(query(hub_db, select(t.runs.c.id, t.runs.c.environment)))
+    assert on == {boxed_run: "sandbox/box", host_run: None}
+    move_to(hub_db, "0039", down=True)
+    assert "environment" not in columns(hub_db, "runs")
+    held = dict(query(hub_db, select(ap.c.id, ap.c.permissions)))
+    assert held == {default: seven, reader: seven}, "the axis went, its allowlist with it"
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0040") :]
+
+
+def test_0041_gives_every_profile_an_empty_list_of_agent_packs_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0040")
+    ap = hub_tables.agent_profiles
+    axes = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+    eight = {axis: {"mode": "all"} for axis in axes}
+    pack = {"plugin": "sandbox", "name": "review", "version": "1.0.0"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        default = one(conn, _profile_row(ids, "demo", eight, default=True))
+        reader = one(conn, _profile_row(ids, "reader", {**eight, "tool": {"mode": "allowlist", "allow": ["read"]}}))
+    move_to(hub_db, "0041")
+    assert dict(query(hub_db, select(ap.c.id, ap.c.packs))) == {default: [], reader: []}
+    with live.connect(hub_db) as conn:
+        conn.execute(update(ap).values(packs=[pack]).where(ap.c.id == reader))
+        for bad in (
+            update(ap).values(packs=[pack]).where(ap.c.id == default),  # a default profile attaches none
+            update(ap).values(packs={"plugin": "sandbox"}).where(ap.c.id == reader),  # a list only
+            update(ap).values(packs=[pack] * 17).where(ap.c.id == reader),  # at most 16
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    assert dict(query(hub_db, select(ap.c.id, ap.c.packs))) == {default: [], reader: [pack]}
+    move_to(hub_db, "0040", down=True)
+    assert "packs" not in columns(hub_db, "agent_profiles")
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # the check of schema 0040 is back
+            conn.execute(update(ap).values(instructions="be brief").where(ap.c.id == default))
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0041") :]
+
+
+def _task_run(ids, agent_type_id: int | None, **extra):
+    """The INSERT of a queued task run of the seeded user in demo for agent type ``agent_type_id``."""
+    runs = hub_tables.runs
+    row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "task", "request": "Fix the wait."}
+    row |= {"requested_runtime": "any", "runtime": "any", "mode": "headless", "approval": "auto", "timeout_s": 3600}
+    row |= {"state": "queued", "branch": "task/1", "agent_type_id": agent_type_id, "pulls": []}
+    return insert(runs).values(row | extra).returning(runs.c.id)
+
+
+def test_0042_takes_agent_types_and_task_runs_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0041")
+    t = hub_tables
+    eight = {
+        axis: {"mode": "all"}
+        for axis in ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+    }
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        plugin_id = one(conn, insert(t.plugins).values(name="sandbox", publisher="acme").returning(t.plugins.c.id))
+        conn.execute(_plugin_version(plugin_id, ids["user"]))
+        profile_id = one(conn, _profile_row(ids, "triager", eight))
+        author = one(conn, _author_run(ids))
+        delivery = {"plugin_id": plugin_id, "project_id": ids["project"], "kind": "task.result", "contribution": "runs"}
+        delivery["payload"] = {"task_id": 1}
+        with pytest.raises(errors.CheckViolation):  # no event task.result before 0042
+            conn.execute(insert(t.plugin_deliveries).values(delivery))
+    move_to(hub_db, "0042")
+    agent_types = t.project_agent_types
+    row = {"project_id": ids["project"], "plugin_id": plugin_id, "name": "triage", "profile_id": profile_id}
+    row |= {"run_as": ids["user"], "daily_usd": 5.0, "enabled_by": ids["user"]}
+    pull = {"repo": "app", "url": "https://github.com/acme/app/pull/1", "number": 1}
+    with live.connect(hub_db) as conn:
+        type_id = one(conn, insert(agent_types).values(row).returning(agent_types.c.id))
+        first = one(conn, _task_run(ids, type_id))
+        one(conn, _task_run(ids, type_id, attempt=2, parent_run_id=first, pulls=[pull], repos=null()))
+        conn.execute(insert(t.plugin_deliveries).values(delivery))
+        conn.execute(insert(t.plugin_deliveries).values({**delivery, "kind": "run.state"}))
+        for bad in (
+            _task_run(ids, None),  # a task run names its agent type
+            _task_run(ids, type_id, request=None),  # and its task
+            _author_run(ids, agent_type_id=type_id),  # and only a task run names one
+            _task_run(ids, type_id, pulls={"repo": "app"}),  # a list of pull requests only
+            _task_run(ids, type_id, pulls=[pull] * 51),  # at most 50
+            insert(agent_types).values({**row, "name": "other", "daily_usd": 0}),
+            insert(agent_types).values({**row, "name": "other", "daily_usd": 1000.5}),
+            insert(agent_types).values({**row, "name": "Other"}),
+            insert(agent_types).values({**row, "name": "other", "workers": [f"w{n}" for n in range(17)]}),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+        with pytest.raises(errors.UniqueViolation):  # a project enables a type once
+            conn.execute(insert(agent_types).values(row))
+    assert query(hub_db, select(t.runs.c.kind).order_by(t.runs.c.id)) == [("author",), ("task",), ("task",)]
+
+    # Going back deletes the task runs, the retry included, and the deliveries of task.result; the rest stays.
+    move_to(hub_db, "0041", down=True)
+    assert "project_agent_types" not in tables(hub_db)
+    assert not {"agent_type_id", "pulls"} & columns(hub_db, "runs")
+    assert query(hub_db, select(t.runs.c.id, t.runs.c.kind)) == [(author, "author")]
+    assert query(hub_db, select(t.plugin_deliveries.c.kind)) == [("run.state",)]
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # the checks of schema 0041 are back
+            conn.execute(insert(t.plugin_deliveries).values(delivery))
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0042") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

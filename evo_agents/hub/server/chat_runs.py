@@ -113,6 +113,7 @@ def _workers(user_id: int, project_id: int):
             w.c.dispatch_from,
             w.c.agent_version,
             w.c.drained_at,
+            w.c.plugins,
             (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
             holding.label("holding"),
         )
@@ -125,6 +126,9 @@ def unfit_worker(row, profile: Profile, via: str) -> str | None:
     """Why worker ``row`` (``_workers``) cannot take a chat run of ``profile`` dispatched with ``via`` now, or None."""
     allow = profiles.allowed(profile.permissions, "runtime")
     usable = [name for name in runs.RUNTIMES if available((row.runtimes or {}).get(name))]
+    packs = profiles.packs_unfit(
+        profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
+    )
     checks = (
         (not row.online, "is offline"),
         (row.drained_at is not None, "is draining"),
@@ -142,6 +146,7 @@ def unfit_worker(row, profile: Profile, via: str) -> str | None:
             and runs.AGENT_PROFILES not in (row.features or ()),
             "has a daemon that does not apply agent profiles",
         ),
+        (packs is not None, f"cannot build the agent packs of @{profile.handle}: {packs}"),
     )
     return next((why for failed, why in checks if failed), None)
 
@@ -302,6 +307,18 @@ async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
     return run_id
 
 
+async def _admins_only(conn: AsyncConnection, profile_id: int) -> bool:
+    """Whether the profile ``profile_id`` is that of an agent type a version of its plugin says takes work from the
+    project's admins alone (``mentioned_by: admin``); any version the hub holds counts, so it never opens up."""
+    t, v = tables.project_agent_types, tables.plugin_versions
+    query = select(t.c.name, v.c.manifest).join_from(t, v, v.c.plugin_id == t.c.plugin_id)
+    for row in await conn.execute(query.where(t.c.profile_id == profile_id)):
+        for item in (row.manifest.get("contributes") or {}).get("agent_types") or ():
+            if item.get("name") == row.name and item.get("mentioned_by") == "admin":
+                return True
+    return False
+
+
 async def _writer_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
     profile, g = hand.profile, tables.grants
     if profile.deleted_at is not None:
@@ -312,6 +329,11 @@ async def _writer_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
         return (
             f"@{profile.handle} works for the writers of project {profile.project}, and {hand.dispatcher} holds "
             f"{role or 'no grant'} there"
+        )
+    if not has_role(role, "admin") and await _admins_only(conn, profile.id):
+        return (
+            f"@{profile.handle} takes work from the admins of project {profile.project} alone, and {hand.dispatcher} "
+            f"holds {role} there"
         )
     return None
 

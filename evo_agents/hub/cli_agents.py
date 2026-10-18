@@ -5,13 +5,15 @@ over GET, POST, PATCH and DELETE /v1/projects/{p}/agents.
 deleted ones. ``show`` prints one profile whole, each axis with its allowlist. Every member of the project may read
 them. ``create``, ``edit`` and ``delete`` need the admin role on the project.
 
-A profile's permissions are seven axes (credential, tool, skill, worker, project, model, runtime), each ``all`` or an
-allowlist. ``--allow AXIS:ITEM`` (repeatable) makes AXIS an allowlist of the items given for it, such as ``--allow
+A profile's permissions are eight axes (credential, tool, skill, worker, project, model, runtime, environment), each
+``all`` or an allowlist; an axis a profile does not name, as a hub older than the axis answers, reads as ``all``. ``--allow AXIS:ITEM`` (repeatable) makes AXIS an allowlist of the items given for it, such as ``--allow
 tool:read --allow tool:edit --allow credential:github-app``; ``--none AXIS`` makes AXIS an allowlist of nothing, and
 ``--all AXIS`` (``edit`` only) makes it allow everything again. ``edit`` changes only the axes named, sending the
 profile's other axes as they are, with ``if_version`` set to the version it read, so a change made meanwhile is a
 refusal rather than lost. ``--instructions-file PATH`` reads the instructions from a file, ``-`` for stdin; ``--avatar
-PATH`` sets a PNG, JPEG or WebP image of at most 512 KiB, ``--no-avatar`` drops it.
+PATH`` sets a PNG, JPEG or WebP image of at most 512 KiB, ``--no-avatar`` drops it. ``--pack PLUGIN/NAME[@VERSION]``
+(repeatable) attaches the agent packs given, in that order, each pinned at VERSION of its plugin or, left out, at the
+version installed now; on ``edit`` the packs given replace those the profile attached, and ``--no-packs`` drops them.
 
 Every command finds its project with ``--project``, or in the harness.yaml (``hub.project``) of the harness around the
 current directory. ``--json`` prints what the hub answered. Standard library only, like the rest of the client.
@@ -46,6 +48,7 @@ AGENT_KEYS = (
     "is_default",
     "permissions",
     "restricted",
+    "packs",
     "version",
     "created_by",
     "created_at",
@@ -96,7 +99,10 @@ def _show(agent: dict) -> None:
     instructions = agent["instructions"]
     print(f"  instructions: {f'{len(instructions)} characters' if instructions else 'none'}")
     for axis in AXES:
-        print(f"  {axis + ':':<12}{_axis_text(agent['permissions'][axis])}")
+        label = f"{axis}:".ljust(12) if len(axis) < 11 else f"{axis}: "
+        print(f"  {label}{_axis_text(agent['permissions'].get(axis) or {})}")
+    packs = [f"{pack['plugin']}/{pack['name']}@{pack['version']}" for pack in agent.get("packs") or ()]
+    print(f"  {'packs:'.ljust(12)}{', '.join(packs) or 'none'}")
     print(f"  created by {agent['created_by']} at {when(agent['created_at'])} UTC, changed {when(agent['updated_at'])}")
 
 
@@ -157,8 +163,9 @@ def _avatar(path: str) -> dict:
 
 
 def permissions_from(args, current: dict | None = None) -> dict | None:
-    """The permissions to send: ``current`` (all axes ``all`` when None) with the axes ``--allow``, ``--none`` and
-    ``--all`` name changed; None when none is named and there is nothing to send."""
+    """The permissions to send: ``current`` (none when None) with the axes ``--allow``, ``--none`` and ``--all`` name
+    changed; None when none is named and there is nothing to send. An axis left out allows all, so a hub that does not
+    know one of AXES is never sent it unless the command names it."""
     named: dict[str, list[str]] = {}
     for entry in args.allow or ():
         axis, sep, item = entry.partition(":")
@@ -177,9 +184,26 @@ def permissions_from(args, current: dict | None = None) -> dict | None:
     for axis in AXES:
         if axis in named:
             rules[axis] = {"mode": "allowlist", "allow": named[axis]}
-        elif axis in reset or axis not in rules:
+        elif axis in reset:
             rules[axis] = {"mode": "all"}
     return rules
+
+
+def packs_from(args) -> list[dict] | None:
+    """The packs of ``--pack`` (``[]`` for ``--no-packs``), each ``{"plugin", "name"}`` with its ``version`` when
+    given; None when neither was given. ValueError for one that does not read."""
+    if getattr(args, "no_packs", False):
+        return []
+    if not args.pack:
+        return None
+    found = []
+    for given in args.pack:
+        pack, at, version = given.partition("@")
+        plugin, slash, name = pack.partition("/")
+        if not (plugin and slash and name) or "/" in name or (at and not version):
+            raise ValueError(f"--pack {given!r} is not PLUGIN/NAME or PLUGIN/NAME@VERSION")
+        found.append({"plugin": plugin, "name": name, **({"version": version} if version else {})})
+    return found
 
 
 def _send_avatar(hub, project: str, handle: str, args) -> dict | None:
@@ -203,13 +227,11 @@ def cmd_create(args) -> int:
     try:
         body = {"handle": args.handle.removeprefix("@"), "name": args.name}
         fields = {"description": args.description, "instructions": _instructions(args), "color": args.color}
-        body.update({key: value for key, value in fields.items() if value is not None})
-        permissions = permissions_from(args)
+        fields |= {"permissions": permissions_from(args), "packs": packs_from(args)}
         avatar = _avatar(args.avatar) if args.avatar else None
     except (ValueError, OSError) as exc:
         return _usage(str(exc))
-    if permissions is not None:
-        body["permissions"] = permissions
+    body.update({key: value for key, value in fields.items() if value is not None})
     hub, _ = signed_in()
     project = _project(args)
     agent = hub.call("POST", _path(project), body)
@@ -230,6 +252,7 @@ def cmd_edit(args) -> int:
             "instructions": _instructions(args),
             "color": args.color,
             "permissions": permissions_from(args, current["permissions"]),
+            "packs": packs_from(args),
         }
         if args.avatar:
             _avatar(args.avatar)  # refused before anything changes
@@ -242,7 +265,10 @@ def cmd_edit(args) -> int:
         agent = hub.call("PATCH", _path(project, args.handle), body)
     agent = _send_avatar(hub, project, current["handle"], args) or agent
     if not body and agent is current:
-        return _usage("give something to change: a field, an axis (--allow, --none, --all) or the avatar")
+        return _usage(
+            "give something to change: a field, an axis (--allow, --none, --all), the packs (--pack, --no-packs) or "
+            "the avatar"
+        )
     return _done(args, agent, "Changed")
 
 
@@ -270,6 +296,13 @@ def _fields(parser, *, creating: bool) -> None:
         help=f"make AXIS an allowlist holding ITEM; repeat it (axes: {', '.join(AXES)})",
     )
     parser.add_argument("--none", action="append", choices=AXES, metavar="AXIS", help="make AXIS allow nothing")
+    parser.add_argument(
+        "--pack",
+        action="append",
+        metavar="PLUGIN/NAME[@VERSION]",
+        help="attach an agent pack of a plugin the project enabled, at VERSION or the one installed now; repeat it"
+        + ("" if creating else " (they replace the packs it attached)"),
+    )
 
 
 def _handle(parser) -> None:
@@ -304,6 +337,7 @@ def register_agents(hsub) -> None:
     _handle(edit)
     _fields(edit, creating=False)
     edit.add_argument("--all", action="append", choices=AXES, metavar="AXIS", help="make AXIS allow everything")
+    edit.add_argument("--no-packs", action="store_true", help="attach no agent pack any more")
     avatar = edit.add_mutually_exclusive_group()
     avatar.add_argument("--avatar", metavar="PATH", help="a PNG, JPEG or WebP image of at most 512 KiB")
     avatar.add_argument("--no-avatar", action="store_true", help="drop the avatar: its initial on its colour")

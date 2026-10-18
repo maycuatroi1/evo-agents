@@ -36,6 +36,7 @@ import { LocalRunDetails } from "./local-run-details";
 import { RunDecisions } from "./run-decisions";
 import { RunHeader } from "./run-header";
 import { RunLogCard, type SessionTab } from "./run-log";
+import { taskBranch } from "./model";
 import { runControls } from "./run-model";
 import { useDescribeMove, useSessionTab, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
@@ -189,6 +190,8 @@ function RunPage({ run }: { run: Run }) {
                     chunks
                   ),
               })
+            : run.kind === "task"
+            ? t("taskSub", { agent: run.profile ?? run.project, branch: taskBranch(run) })
             : authoring
             ? run.plan_id
               ? t.rich("authorPlanSub", { plan: run.plan_id, title, planLink })

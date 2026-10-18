@@ -19,6 +19,7 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { AgentDialog } from "./agent-dialog";
 import { AgentHistory, DeleteAgent } from "./agent-history";
+import { AgentPacks } from "./agent-packs";
 import { AgentPermissions } from "./agent-permissions";
 import { AvatarCard } from "./avatar-card";
 import { useAgentAdmin } from "./hooks";
@@ -26,9 +27,9 @@ import { AgentBadges, ReadOnlyNote } from "./parts";
 
 /**
  * One agent of a project (web/DESIGN.md, Agents): its face, name and @handle, what it is for and the instructions its
- * runs get, its seven axes, its versions, and the runs that went under it (`runs`, which the route composes from the
- * runs feature). An admin of the project edits it, changes its avatar and deletes it (never the default); everyone
- * else reads it. A deleted agent reads as before, under a note.
+ * runs get, its eight axes and the agent packs it attaches, its versions, and the runs that went under it (`runs`,
+ * which the route composes from the runs feature). An admin of the project edits it, changes its avatar and deletes
+ * it (never the default); everyone else reads it. A deleted agent reads as before, under a note.
  */
 export function AgentDetail({ project, handle, initialError, runs }: { project: string; handle: string; initialError: ApiErrorInfo | null; runs: ReactNode }) {
   const t = useTranslations("agents.detail");
@@ -131,6 +132,7 @@ function AgentPage({ project, agent, runs }: { project: string; agent: Agent; ru
             </CardContent>
           </Card>
           <AgentPermissions agent={agent} />
+          <AgentPacks agent={agent} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
           <AvatarCard project={project} agent={agent} admin={admin} />

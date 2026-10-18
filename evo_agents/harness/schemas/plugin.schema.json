@@ -219,16 +219,16 @@
           "$ref": "#/$defs/pages"
         },
         "agent_packs": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/agent_packs"
         },
         "agent_types": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/agent_types"
         },
         "runtimes": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/runtimes"
         },
         "environments": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/environments"
         },
         "kg_connectors": {
           "$ref": "#/$defs/contributions"
@@ -428,14 +428,15 @@
           "minimum": 1
         },
         "on": {
-          "description": "The events it takes; every event the plugin's grant lets it read when left out (run.state with runs:read, chat.message with chats:read, plan.step with plans:read).",
+          "description": "The events it takes; every event the plugin's grant lets it read when left out (run.state with runs:read, chat.message with chats:read, plan.step with plans:read, and task.result with runs:dispatch: the end of a task run of one of the plugin's own agent types).",
           "type": "array",
           "minItems": 1,
           "items": {
             "enum": [
               "run.state",
               "chat.message",
-              "plan.step"
+              "plan.step",
+              "task.result"
             ]
           }
         }
@@ -531,6 +532,76 @@
         }
       }
     },
+    "runtime": {
+      "description": "A runtime of agents. Its acp names the command of an agent that speaks the Agent Client Protocol on its stdin and stdout, which a worker whose owner accepted the plugin runs through the core adapter of ACP: the hub registers it as <id>/<name> in the projects that enabled the plugin, and a run asks for it by that name. A core plugin's python names instead a subclass of evo_agents.worker.adapter.Adapter in the worker's process, the adapter of the runtime its name gives (one of claude-code, opencode and codex). A runtime names one of acp and python.",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "python": {
+          "description": "module:attribute of the Python object that implements it, in the hub's or the worker's process: core plugins only.",
+          "type": "string",
+          "pattern": "^[A-Za-z_][A-Za-z0-9_.]*:[A-Za-z_][A-Za-z0-9_.]*$"
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "acp": {
+          "description": "The ACP agent: the program, found on the worker's PATH unless it is an absolute path, and its arguments.",
+          "type": "object",
+          "required": [
+            "command"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "command": {
+              "description": "The program and its arguments, such as [\"gemini\", \"--experimental-acp\"]: at most 32 items.",
+              "type": "array",
+              "minItems": 1,
+              "items": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 1000,
+                "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+              }
+            }
+          }
+        },
+        "models": {
+          "description": "The models the agent offers, as a run's model names them, which the hub suggests for a dispatch and the worker reports: at most 200. A run's model reaches the agent through its ACP config option of category model.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200,
+            "pattern": "^[^\\u0000-\\u001f\\u007f]+$"
+          }
+        },
+        "secrets": {
+          "description": "The environment variables the agent needs, each a secret such as GEMINI_API_KEY, which the run's leases or the worker's own environment give it: at most 20. A run whose agent would lack one fails before its agent starts, with cause credentials.",
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[A-Z_][A-Z0-9_]{0,63}$"
+          }
+        }
+      }
+    },
     "channels": {
       "type": "array",
       "items": {
@@ -571,6 +642,246 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/page"
+      }
+    },
+    "runtimes": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/runtime"
+      }
+    },
+    "environment": {
+      "description": "A run environment: a container image, pinned by its digest, that a worker whose owner accepted the plugin runs the agent of a run in, through the container provider of the core (Docker or Podman), with the run's worktree mounted at its own path and only the run's own variables passed in. The hub registers it as <id>/<name> in the projects that enabled the plugin, and the environment axis of an agent profile names it; a run of a profile that allows it runs there (docs/plugins.md, Environments). The plugin does not ship the image's agents: the image has the programs of the runtimes it runs (claude, opencode, codex or an ACP agent).",
+      "type": "object",
+      "required": [
+        "name",
+        "image",
+        "network"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": {
+          "description": "The image, pinned by the digest of its manifest or index: [registry/]repository[:tag]@sha256:<64 hex>, such as ghcr.io/acme/agent-box@sha256:0123.... The worker pulls it by that digest before the agent starts and runs nothing else; a tag alone is refused.",
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]{1,5})?(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?@sha256:[0-9a-f]{64}$"
+        },
+        "network": {
+          "description": "What the container reaches: none, nothing but its own loopback (an agent that serves the worker over a port, as opencode does, cannot run there); outbound, the engine's default network, out to the internet and the model's API, with nothing published but the port an agent serves the worker on, bound to the worker's 127.0.0.1.",
+          "enum": [
+            "none",
+            "outbound"
+          ]
+        },
+        "mounts": {
+          "description": "What the container gets besides the run's worktree, the git directories of its checkouts and a home of the run, which the worker always mounts: at most 8, each target once. A plugin never mounts a path of the worker's own.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/environment_mount"
+          }
+        }
+      }
+    },
+    "environment_mount": {
+      "description": "A mount of a run environment: tmpfs, an empty file system in memory for the container's life; volume, a named volume of the engine that outlives the run, such as a cache, named evo-<plugin>-<name> on the worker.",
+      "type": "object",
+      "required": [
+        "type",
+        "target"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "tmpfs",
+            "volume"
+          ]
+        },
+        "target": {
+          "description": "The absolute path in the container, normalized, without a comma or a colon; never /, /proc, /sys, /dev or a path under them.",
+          "type": "string",
+          "pattern": "^/[^\\u0000-\\u001f\\u007f,:]{0,254}$"
+        },
+        "name": {
+          "description": "A volume's name within the plugin, which a volume names and a tmpfs does not.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "read_only": {
+          "description": "Mounted read-only; false when left out.",
+          "type": "boolean"
+        },
+        "size_mb": {
+          "description": "A tmpfs's size in MiB, 1 to 65536; the engine's default when left out.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      }
+    },
+    "environments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/environment"
+      }
+    },
+    "agent_pack": {
+      "description": "An agent pack: a directory packs/<name>/ of the bundle laid out as a Claude Code plugin, whose skills (skills/<skill>/SKILL.md), subagents (agents/<agent>.md), hooks (hooks/hooks.json), MCP servers (.mcp.json, mcpServers) and instructions (INSTRUCTIONS.md) an agent profile attaches at a pinned version of the plugin. The hub registers it as <id>/<name> in the projects that enabled the plugin; a worker builds it into the directory of each run of the profile, Claude Code loads it as a plugin, and opencode and Codex get the skills, MCP servers and instructions (docs/plugins.md, Agent packs).",
+      "type": "object",
+      "required": [
+        "name"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        }
+      }
+    },
+    "agent_packs": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/agent_pack"
+      }
+    },
+    "agent_type": {
+      "description": "An agent type: a template of an agent profile, with the agent packs, the environment, the jobs, the events and the pages of this plugin it uses. An admin of a project that enabled the plugin enables the type there, which creates its profile in the project and names the member its runs go under, the workers they may run on and the cap of their cost per day; the plugin, granted runs:dispatch, then hands it tasks through the hub's API, each a run of kind task on a branch task/<run> whose draft pull request the hub opens, and gets the event task.result when one ends (docs/plugins.md, Agent types).",
+      "type": "object",
+      "required": [
+        "name",
+        "profile"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "profile": {
+          "description": "The agent profile the hub creates in a project that enables the type: its handle (taken as is when the project has no agent of that handle), name, description, instructions and permissions, by axis, as an agent profile has them.",
+          "type": "object",
+          "required": [
+            "handle"
+          ],
+          "additionalProperties": false,
+          "properties": {
+            "handle": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+            },
+            "name": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 80
+            },
+            "description": {
+              "type": "string",
+              "maxLength": 1000
+            },
+            "instructions": {
+              "type": "string",
+              "maxLength": 8000
+            },
+            "permissions": {
+              "type": "object"
+            }
+          }
+        },
+        "packs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The agent packs of this plugin its profile attaches, by name, at the version the project enabled."
+        },
+        "environment": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$",
+          "description": "The environment of this plugin its runs run in, by name."
+        },
+        "mentioned_by": {
+          "type": "string",
+          "enum": [
+            "writer",
+            "admin"
+          ],
+          "description": "Who hands its profile work by mentioning it in a group chat: the writers of the project (writer, the default), or its admins alone (admin); a member the type does not take work from gets a refusal in the thread."
+        },
+        "jobs": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The jobs of this plugin that serve it, by name."
+        },
+        "events": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The events contributions of this plugin that take its results, by name."
+        },
+        "pages": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+          },
+          "description": "The pages of this plugin that show it, by name."
+        }
+      }
+    },
+    "agent_types": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/agent_type"
       }
     }
   }

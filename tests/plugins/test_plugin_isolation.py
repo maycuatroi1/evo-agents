@@ -16,8 +16,10 @@
 - a backend that crashes or hangs makes the call fail within its timeout, and so does one whose start takes long;
   the host starts a fresh one after a backoff;
 - a backend holds no file descriptor but 0, 1 and 2; the trampoline and the killer refuse a user they cannot take
-  exactly, and user 0 always; a killer that does not end is killed and its round fails; a plugin's stop runs beside
-  the host's other work, and the backend placed again after it waits for it.
+  exactly, and user 0 always; a killer that does not end is killed and its round fails, and a kill gives up at its
+  deadline; a plugin's stop runs beside the host's other work, and the backend placed again after it waits for it;
+  a stop that raises ends neither a backend's backoff nor the kills of a retired plugin's user; a zombie of the
+  plugin's user the host is parent of (a backend's clone(CLONE_PARENT)) is reaped.
 
 The backends run as real subprocesses. ``tests/fixtures/plugins/{hostile,faulty,sample}`` hold them. These checks
 need no hub, so they run without EVO_HUB_TEST_DSN. Run as root (CI's plugin-host-root job, in the hub's image), the
@@ -35,6 +37,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 
@@ -707,3 +710,138 @@ def test_plugin_crash_a_plugins_stop_never_holds_the_host_and_its_next_backend_w
         await host.stop_all()
 
     asyncio.run(run())
+
+
+@pytest.mark.skipif(os.name != "posix", reason="the killer is POSIX (SIGKILL)")
+def test_plugin_crash_a_kill_gives_up_at_its_deadline_when_a_process_escapes_every_round(tmp_path, monkeypatch):
+    """The third review of PR #72: a process that escaped every sweep held kill_user for KILL_ROUNDS rounds of SETTLE,
+    KILLER_WAIT and KILL_WAIT, some 130 seconds, and with it the stop, the lock and the backend that replaces it. The
+    rounds now stop at KILL_DEADLINE, each killer's wait cut to what is left of it; the caller tries again later."""
+    monkeypatch.setattr(process_module, "KILLER", "import time\ntime.sleep(120)\n")  # a killer that never ends
+    monkeypatch.setattr(process_module, "processes_of", lambda uid: [4242])  # a process every round misses
+    monkeypatch.setattr(process_module, "sweep_user", lambda uid: 0)
+    monkeypatch.setattr(process_module, "PROC", tmp_path)  # a /proc to read, as on Linux
+    monkeypatch.setattr(process_module, "SETTLE", 0.2)
+    monkeypatch.setattr(process_module, "KILL_DEADLINE", 1.5)
+    owner = environment.Identity(environment.UID_BASE + 22, environment.UID_BASE + 22)
+
+    async def run() -> tuple[bool, float]:
+        started = time.monotonic()
+        killed = await process_module.kill_user(owner)
+        return killed, time.monotonic() - started
+
+    killed, elapsed = asyncio.run(run())
+    assert killed is False and elapsed < 1.5 + process_module.KILL_WAIT + 1, (killed, elapsed)
+
+
+def test_plugin_crash_a_retired_plugins_stop_or_kill_that_raises_is_tried_again(plugin_root, monkeypatch, caplog):
+    """The third review of PR #72: ``Host.retire`` killed the user of a plugin no longer installed again only while its
+    stop answered False; a stop or a kill that raised ended the retire there, the processes of that user running on
+    unseen. An error now counts as processes left: the host kills them again, with its backoff, until none is."""
+    host, user = _lingering_host(plugin_root, monkeypatch, [True])
+    answers: list = [RuntimeError("the loop refused the killer"), False, True]
+    kills = []
+
+    async def kill(owner) -> bool:
+        kills.append(owner.uid)
+        answer = answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+    async def broken_stop(self) -> bool:
+        raise RuntimeError("the stop broke")
+
+    monkeypatch.setattr(host_module, "kill_user", kill)
+    monkeypatch.setattr(Backend, "stop", broken_stop)
+
+    async def run() -> tuple[list[dict], list[dict]]:
+        stopping = host.retire("sample")
+        seen = []
+        while not stopping.done():
+            seen.extend(host.status())
+            await asyncio.sleep(0.01)
+        await stopping
+        return seen, host.status()
+
+    with caplog.at_level(logging.WARNING, logger=host_module.__name__):
+        seen, after = asyncio.run(run())
+    assert kills == [user] * 3, "the kills stopped at the first error"
+    assert max(s["restarts"] for s in seen) == 3  # the stop that raised, a kill that raised, one that failed
+    assert after == [] and not host.lingering and "sample" not in host.stopping
+    assert [r for r in caplog.records if "killing its user again" in r.getMessage()]
+
+
+@STARTS_BACKENDS
+def test_plugin_crash_a_backend_whose_stop_raises_still_backs_off(plugin_root, monkeypatch):
+    """The third review of PR #72: when the stop of a backend that died under a call raised, the call raised that error
+    instead of BackendUnavailable, the status still said running, and the next call started it again at once, with no
+    backoff. The error now goes to the log only: the call answers BackendUnavailable and the restart backs off."""
+    real_stop = process_module.BackendProcess.stop
+
+    async def stop_then_raise(self, grace: float = process_module.STOP_GRACE):
+        await real_stop(self, grace)
+        raise RuntimeError("the kill of the plugin's user broke")
+
+    monkeypatch.setattr(process_module.BackendProcess, "stop", stop_then_raise)
+
+    async def run() -> tuple[Backend, dict]:
+        host = shared(plugin_root)
+        backend = host.place(manifest("faulty"), bundle("faulty"), init("faulty", 22))
+        assert text(await backend.call("tool", tool("ok"), 30)) == "ok"
+        with pytest.raises(BackendUnavailable):
+            await backend.call("tool", tool("crash"), 30)
+        status = backend.status.as_dict()
+        await host.stop_all()
+        return backend, status
+
+    backend, status = asyncio.run(run())
+    assert status["state"] == "backoff" and status["retry_at"] is not None and status["pid"] is None, status
+    assert backend.process is None
+
+
+def _zombie_child(pid: int) -> bool:
+    """Whether ``pid`` is a zombie whose parent is this process."""
+    try:
+        text = Path(f"/proc/{pid}/status").read_text()
+    except OSError:
+        return False
+    fields = dict(line.split(":", 1) for line in text.splitlines() if ":" in line)
+    return fields.get("State", "").split()[:1] == ["Z"] and fields.get("PPid", "").strip() == str(os.getpid())
+
+
+@pytest.mark.skipif(not LINUX, reason="/proc")
+def test_plugin_crash_a_zombie_of_the_plugins_user_the_host_is_parent_of_is_reaped():
+    """The third review of PR #72: a child a backend makes with clone(CLONE_PARENT) is the host's child, and the event
+    loop waits only for what it started, so once that child ended it stayed a zombie, holding a pid and one of the
+    processes the user's RLIMIT_NPROC allows, until the host ended. ``reap_zombies`` reaps every zombie of the user
+    whose parent is the host, but a backend the loop still waits for. The test's own children stand for both here;
+    ``test_plugin_isolation_root`` has a backend make the clone."""
+    user = environment.UID_BASE + 24 if as_root() else os.getuid()
+    options = {"user": user, "group": user, "extra_groups": []} if as_root() else {}
+    cloned, waited = (
+        subprocess.Popen(
+            [sys.executable, "-I", "-S", "-c", ""],
+            cwd="/",
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            **options,
+        )
+        for _ in range(2)
+    )
+    backend = process_module.BackendProcess([sys.executable], {}, Path("/"))
+    backend.proc = SimpleNamespace(pid=waited.pid, returncode=None)  # a backend the loop has not waited for yet
+    process_module._STARTED.add(backend)
+    try:
+        deadline = time.monotonic() + 10
+        while not (_zombie_child(cloned.pid) and _zombie_child(waited.pid)):
+            assert time.monotonic() < deadline, "the children did not end"
+            time.sleep(0.05)
+        reaped = process_module.reap_zombies(user)
+        assert cloned.pid in reaped and waited.pid not in reaped, reaped
+        assert not _zombie_child(cloned.pid) and _zombie_child(waited.pid)
+    finally:
+        process_module._STARTED.discard(backend)
+        waited.wait(timeout=10)
+        cloned.poll()  # reaped already: subprocess reads that as an exit of 0

@@ -98,6 +98,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
+| builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
@@ -279,7 +280,7 @@ without a grant gets the project's 404.
 A profile has a handle, unique on the hub (deleted profiles' included) and never a project's name, written
 `[a-z0-9-]`; a name shown for it (1 to 80 characters); a description (at most 1000); instructions, added to the system
 prompt of its runs (at most 8000); a colour (`#rrggbb`, one picked by the handle when none is given); an avatar or
-none; and seven axes of permissions. The handle never changes. Every edit that changes something, the avatar
+none; and eight axes of permissions. The handle never changes. Every edit that changes something, the avatar
 included, raises its version and keeps the profile as that version had it, which `GET .../agents/{handle}/versions`
 lists. A deleted profile takes no new run. Field names follow an A2A Agent Card where they can: `name`,
 `description`, and `icon_url` for the avatar.
@@ -302,13 +303,37 @@ member who dispatches a run has (their workers, their secrets, the projects they
 | `worker` | worker names, or `label:<label>` (ignoring case) | the dispatch (a pinned worker, or one of the dispatcher's at least) and the claim |
 | `project` | the other projects whose runs the profile may take; its own always | the dispatch |
 | `model` | model names, as a runtime names them | the dispatch (none named: the first allowed), and the worker's adapter |
-| `runtime` | `claude-code`, `opencode`, `codex` | the dispatch, and the claim of a run asking for `any` |
+| `runtime` | `claude-code`, `opencode`, `codex`, and `<plugin>/<name>` of a plugin's runtime | the dispatch, and the claim of a run asking for `any` (which takes a runtime of the core) |
+| `environment` | where the agent runs, in order of preference: `host` (the worker's own machine) and `<plugin>/<name>` of a plugin's environment, a container | the dispatch (one the project registers), the claim (the first the worker takes) and the worker's preflight |
 
 The tool axis speaks runtime-neutral words, which each runtime's adapter turns into its own tools: `read` (read files
 and search them), `edit` (create and change files), `bash` (run shell commands), `web` (fetch web pages and search the
 web), `agent` (start subagents), and `mcp:<server>` (the tools of one MCP server). Tools that only keep the agent's own
 notes, such as a to-do list, are always there. A runtime that cannot turn off a word a profile leaves out fails the run
 before its agent starts.
+
+The environment axis is where its runs' agent runs. `all`, the default, runs it on the worker's host, as every run ran
+before the axis; an allowlist names `host` and the environments of plugins (`docs/plugins.md`, Environments) in order
+of preference, so `["sandbox/box", "host"]` takes the container where the worker can run it and the host elsewhere,
+and `["sandbox/box"]` waits for a worker that can. Schema 0040 gave every profile the axis with mode `all` and made a
+default profile's eight axes, all, the rule; a profile version written before it names seven axes, and the hub reads
+the one it does not name as `all`.
+
+A profile may also attach agent packs of plugins its project enabled (`docs/plugins.md`, Agent packs): `packs`, at
+most 16, each `{"plugin", "name", "version"}` and once, pinned at a version of its plugin the hub holds as a bundle,
+whose manifest declares the pack and that runs on this release; a pin sent without `version` takes the version
+installed now. A plugin that is not enabled in the project or is turned off, a version the hub does not hold, one of
+the hub's image (it has no bundle) or one that declares no such pack is a 422 that says which and that nothing
+changed. The pin holds when the plugin moves on: only an edit moves it, and an edit sends the packs whole, as a new
+version of the profile. `GET /v1/projects/{p}/agent-packs` lists what a profile of the project may attach, each with
+the version installed now and every version that qualifies, the newest first. The default profile attaches none.
+
+A pack a profile attaches counts as named on its skill and tool axes: its skills pass the skill axis and its MCP
+servers the tool axis (`mcp:<server>`), since pinning the pack at a version is the admin's consent to what that
+version holds. The axes still limit everything else (an allowlist of tools that leaves out `bash` keeps it out for a
+pack's skill too), and a pack widens no other axis. Schema 0041 adds `packs` to each profile, `[]` for every profile
+before it and always for a default one; each version written since keeps them in its body, and a version written
+before it attaches none. Going back to 0040 drops them: a profile that attached packs runs without them.
 
 ### Runs under a profile
 
@@ -325,14 +350,26 @@ which allowlist leaves what out and that nothing was dispatched, when:
 - the account picked by hand is not in the credential allowlist (422), or an author run's profile leaves out the skill
   `create-exec-plan` (422);
 - the pinned worker's daemon does not say it applies profiles (feature `agent_profiles`) and the profile limits
-  tools, skills or models or has instructions (409, as for any worker that could never claim the run).
+  tools, skills or models or has instructions (409, as for any worker that could never claim the run);
+- the environment axis names no environment the project registers, or allows none (422); a pinned worker whose
+  daemon does not say it runs environments (feature `environments`), or whose owner has not accepted the plugin of
+  any environment the profile allows, and the axis does not allow `host` (409).
+- the pinned worker's daemon does not say it builds agent packs (feature `agent_packs`), or its owner has not
+  accepted the plugin of each pack the profile attaches, in the worker's plugins (409).
 
 The run records `profile_id` and `profile_version`, and `Run` shows `profile` (the handle), `profile_id` and
 `profile_version`. The hub applies that version's rules to the run: a worker claims it only when the worker axis names
-it or one of its labels, the runtime axis one of its runtimes, and, for a profile that needs it, its daemon lists
-`agent_profiles` in its heartbeat's `features`; a run asking for `any` runtime takes the first of the worker's the
-profile allows. The claim carries the profile at that version (`RunSpec.profile`: handle, version, name, instructions,
-permissions) for the worker to apply. A rerun goes under the profile of the run it reruns, at its version now, checked
+it or one of its labels, the runtime axis one of its runtimes, the environment axis `host` or a plugin's environment
+the worker takes, and, for a profile that needs it, its daemon lists `agent_profiles` in its heartbeat's `features`; a
+run asking for `any` runtime takes the first of the worker's the profile allows. The claim records the environment it
+picked in the run (`environment`: `<plugin>/<name>`, null for the host) and hands its declaration
+(`RunSpec.environment`). The claim carries the profile at that version (`RunSpec.profile`: handle, version, name, instructions,
+permissions) for the worker to apply. A run whose profile attaches packs goes only to a worker whose daemon lists
+`agent_packs` and whose owner accepted each pack's plugin; the claim hands each pack at the version the profile pins
+(`RunSpec.packs`: `pack`, `plugin`, `name`, `version`, and the `url` of a presigned GET of that version's bundle
+with its `sha256`, `size` and `expires_at`). A run whose pack's plugin is no longer enabled in its project, whose
+pinned version the hub no longer holds, or that the hub cannot hand out for want of a blob store fails at the
+claim, saying why. A rerun goes under the profile of the run it reruns, at its version now, checked
 again; the next attempt of a lost run and a run that resumes a parked one keep the profile and version. A run of the
 night shift goes under the project's default. A run from before 0030 has no profile and runs as before.
 
@@ -352,10 +389,13 @@ lease row records the profile and version it was handed out under.
 | `DELETE .../agents/{handle}` | `hub agent delete HANDLE` | an admin of the project |
 | `PUT` and `DELETE .../agents/{handle}/avatar` | `--avatar PATH`, `--no-avatar` | an admin of the project |
 | `GET .../agents/{handle}/avatar` | | a member |
+| `GET .../agent-packs`, the agent packs a profile of the project may attach | | a member |
 
 `--allow AXIS:ITEM` (repeatable) makes an axis an allowlist of the items given for it, `--none AXIS` an allowlist of
 nothing, and on `edit` `--all AXIS` allows everything again; `edit` sends the other axes as it read them, with
-`if_version`. For example:
+`if_version`. `--pack PLUGIN/NAME[@VERSION]` (repeatable) attaches the agent packs given, in that order, each at
+VERSION or the version installed now; on `edit` they replace the packs the profile attached, and `--no-packs` drops
+them. For example:
 
 ```sh
 evo-agents hub agent create reviewer --name Reviewer --project evo-agents --allow tool:read --allow tool:mcp:github \
@@ -653,7 +693,8 @@ the run's Chat tab.
 
 Every command after `dispatch`, `plan` and `list` takes the id of a run, as `list` shows it, and finds its project as
 the plan commands do: `--project`, or `hub.project` in the harness around the current directory. `dispatch` takes
-`--runtime` (`any` by default: the first runtime the claiming worker has), `--model` (the model as the runtime names
+`--runtime` (`any` by default: the first runtime of the core the claiming worker has; or `<plugin>/<name>`, a runtime
+a plugin enabled on the project declares, which the hub refuses with 422 when the project does not register it), `--model` (the model as the runtime names
 it, `provider/model` for opencode; the runtime's own choice by default), `--mode` (`headless` by default, or
 `interactive`), `--worker` (the id or the name of one of your workers, which pins the runs to it), `--approval`
 (`review` by default, which waits for `run approve`; `auto` marks the step done once every verify command the worker
@@ -1264,6 +1305,32 @@ evo-agents hub plugin list --project evo-agents                  # each installe
 evo-agents hub plugin enable sandbox --project evo-agents        # prints what it asks for, then asks; --yes grants it
 evo-agents hub plugin disable sandbox --project evo-agents
 ```
+
+A plugin enabled in a project also registers its runtimes there, `<plugin>/<name>` (`docs/plugins.md`, Runtimes):
+the runs of the project may ask for them, and a dispatch of a runtime the project does not register is a 422. Schema
+0039 lets `runs.runtime` and `runs.requested_runtime` hold such a name and adds `workers.plugins`, the plugins whose
+runtimes a worker takes; going back to 0038 deletes the runs of plugins' runtimes and drops the column.
+
+It registers its environments there too, `<plugin>/<name>` (`docs/plugins.md`, Environments), which the environment
+axis of the project's agent profiles names. Schema 0040 adds the axis to every profile, with mode `all`, and
+`runs.environment`, the environment of a plugin a run's claim picked (NULL for the host); going back to 0039 drops the
+column and takes the axis out of every profile, whose runs then run on the host.
+
+Its agent types are listed there too (`docs/plugins.md`, Agent types): an admin of the project enables one with `PUT
+/v1/projects/{project}/agent-types/{plugin}/{name}`, which creates its agent profile the first time and names the
+member its runs go under (`run_as`), the workers of that member they may take and the cap of their cost in 24 hours.
+`DELETE` on the same path turns it off. The plugin, granted `runs:dispatch`, hands it tasks with its token
+(`/v1/plugin-api/`): each a run of kind `task` on the branch `task/<run>` of the project's repos. The hub refuses a
+task once the type's runs cost its cap, opens a draft pull request of each pushed branch and never merges it, and tells
+the plugin the end with the event `task.result`. Schema 0042 adds the table `project_agent_types`, the kind `task` of
+runs with `runs.agent_type_id` and `runs.pulls`, and the delivery kind `task.result`. Going back to 0041 deletes the
+task runs and their deliveries, and drops the columns and the table.
+
+The core plugin builder (`docs/plugins.md`, Builder) keeps what its agent proposes until an admin decides it. Schema
+0043 adds the table `builder_proposals` (each proposal's kind, target, change, summary, the setting's version it was
+proposed at, the run, chat and thread it came from, and once decided its state, `applied_version`, `error` or
+`rollback_version`) and the notice kind `builder_proposal`. Going back to 0042 deletes those notices and drops the
+table.
 
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the

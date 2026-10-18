@@ -1,29 +1,38 @@
 """The agent profile of a run (``evo_agents.hub.profiles``) where runs are dispatched, rerun, claimed and handed out.
 
 A dispatch names a profile by handle or none, which means the project's default (``profile_store.ensure_default``).
-``choose`` resolves it and checks what the dispatch asks against the profile's allowlists, each refusal a 422 that
-says which allowlist leaves what out: the run's project (a profile of another project needs the dispatcher to be a
-writer there too, and its project axis to name this one), the runtime, the model (none named on a profile that limits
+``choose`` first refuses a runtime the project does not register (``plugin_runtimes.check``), then resolves the
+profile and checks what the dispatch asks against its allowlists, each refusal a 422 that says which allowlist leaves
+what out: the run's project (a profile of another project needs the dispatcher to be a
+writer there too, and its project axis to name this one), the runtime (a plugin's runtime as one of the core's; any,
+which takes a runtime of the core, needs the axis to allow one), the model (none named on a profile that limits
 models takes the first it allows), the worker it is pinned to or, unpinned, at least one worker of the dispatcher's
-the profile allows, the account picked by hand, and for an author run the skill create-exec-plan. A deleted profile
-takes no new run (422). A worker pinned to the run whose daemon does not apply profiles, for a profile that needs one
-(``profiles.needs_worker``), is 409, as for any worker that could never claim the run.
+the profile allows, the account picked by hand, the environment (at least one of the axis's allowlist registered in
+the project, ``plugin_environments.check``), and for an author run the skill create-exec-plan. A deleted profile takes
+no new run (422). A worker pinned to the run whose daemon does not apply profiles, for a profile that needs one
+(``profiles.needs_worker``), that could never take an environment the profile allows, or that could never build the
+agent packs it attaches (``profiles.packs_unfit``), is 409, as for any worker that could never claim the run.
 
 A run records the profile and the version it was dispatched under; the claim applies that version's rules
 (``claim_clause``): a worker takes the run only when the worker axis names it or one of its labels, the runtime axis
-one of its runtimes, and, for a profile that needs it, when its daemon says it applies profiles. A run asking for any
-runtime gets the first of the worker's that the profile allows (``pick_runtime``). The claimed run carries the
+one of its runtimes, the environment axis host or an environment of a plugin the worker takes, and, for a profile
+that needs it, when its daemon says it applies profiles, and for one that attaches agent packs, when its daemon says it
+builds them (``runs.AGENT_PACKS``) and its owner accepted each pack's plugin. A run asking for any runtime gets the first of the worker's
+runtimes of the core that the profile allows (``pick_runtime``); a run of a plugin's runtime keeps the one it asked
+for. Its environment is the first of the axis's allowlist the worker takes (``plugin_environments.pick``), the host
+for an axis that allows all. The claimed run carries the
 profile at its version (``run_profile``) for its worker. A run without a profile, one from before schema 0030, is
 claimed as before.
 """
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 
 from fastapi import HTTPException
-from sqlalchemy import Text, exists, func, literal, or_, select
-from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy import Text, and_, cast, exists, func, literal, or_, select
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, JSONPATH
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import author, profiles, runs, tables
@@ -31,7 +40,9 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunProfile, available
+from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
 from evo_agents.hub.server.security import Principal
+from evo_agents.plugins.run_environments import HOST
 
 NOTHING = "nothing was dispatched"
 
@@ -117,9 +128,13 @@ def _runtime(profile: Profile, asked: Asked) -> None:
         raise _refuse(profile, f"does not allow runtime {asked.runtime}: it allows {', '.join(allow) or 'none'}")
     if not allow:
         raise _refuse(profile, "allows no runtime")
+    if asked.runtime == "any" and not any(name in runs.RUNTIMES for name in allow):
+        raise _refuse(
+            profile, f"allows only {', '.join(allow)}, and a run asking for any takes a runtime of the core: name one"
+        )
     pinned = asked.pinned
     if pinned is not None and asked.runtime == "any":
-        usable = [name for name in allow if available(pinned.runtimes.get(name))]
+        usable = [name for name in allow if name in runs.RUNTIMES and available(pinned.runtimes.get(name))]
         if not usable:
             raise _refuse(profile, f"allows {', '.join(allow)}, none of which worker {pinned.name} reports available")
 
@@ -148,7 +163,8 @@ def _workers_text(profile: Profile) -> str:
 
 
 def _rest(profile: Profile, asked: Asked) -> None:
-    """The account picked by hand, the skill of an author run, and a pinned worker that does not apply profiles."""
+    """The account picked by hand, the skill of an author run, and a pinned worker that does not apply profiles or
+    cannot build the profile's agent packs."""
     for picked in asked.picked:
         if not profiles.allows(profile.permissions, "credential", picked.name):
             raise _refuse(profile, f"does not allow the credential {picked.name} picked as the run's account")
@@ -164,17 +180,62 @@ def _rest(profile: Profile, asked: Asked) -> None:
             f"agent profiles, and agent @{profile.handle} limits tools, skills or models or has instructions: upgrade "
             f"it and restart its daemon; {NOTHING}",
         )
+    _pinned_packs(profile, pinned)
+
+
+def _pinned_packs(profile: Profile, pinned) -> None:
+    """409 when the run is pinned to a worker that could never build the agent packs the profile attaches."""
+    if pinned is None:
+        return
+    why = profiles.packs_unfit(
+        profile.packs,
+        worker_id=pinned.id,
+        agent_version=pinned.agent_version,
+        features=pinned.features,
+        plugins=pinned.plugins,
+    )
+    if why:
+        raise HTTPException(
+            409,
+            f"worker {pinned.name} cannot take this run of agent @{profile.handle}: {why}. Dispatch it again once the "
+            f"worker's heartbeat reports that, or dispatch it to another worker; {NOTHING}",
+        )
+
+
+async def _environment(conn: AsyncConnection, access: ProjectAccess, profile: Profile, asked: Asked) -> None:
+    """422 when the profile allows no environment the project registers; 409 when the run is pinned to a worker that
+    could never take one of those it allows."""
+    usable = await plugin_environments.check(conn, access.project_id, access.name, profile.handle, profile.permissions)
+    pinned = asked.pinned
+    if pinned is None:
+        return
+    why = plugin_environments.unfit(
+        usable,
+        worker_id=pinned.id,
+        agent_version=pinned.agent_version,
+        features=pinned.features,
+        plugins=pinned.plugins,
+    )
+    if why:
+        raise HTTPException(
+            409,
+            f"worker {pinned.name} cannot take this run: {why}. Dispatch it again once the worker's heartbeat reports "
+            f"that, or dispatch it to another worker; {NOTHING}",
+        )
 
 
 async def choose(
     conn: AsyncConnection, user: Principal, access: ProjectAccess, handle: str | None, asked: Asked
 ) -> Chosen:
     """The profile a run of ``access``'s project goes under: the one ``handle`` names, or the project's default; with
-    the model it takes. HTTPException when the profile refuses what the dispatch asks."""
+    the model it takes. HTTPException when the project does not register the runtime asked for, or the profile refuses
+    what the dispatch asks."""
+    await plugin_runtimes.check(conn, access.project_id, access.name, asked.runtime)
     profile = await ensure_default(conn, access.project_id) if handle is None else None
     if profile is None:
         profile = await _named(conn, user, access, handle)
     _runtime(profile, asked)
+    await _environment(conn, access, profile, asked)
     model = _model(profile, asked.model)
     await _worker(conn, user, access, profile, asked)
     _rest(profile, asked)
@@ -202,21 +263,53 @@ def _rules():
 
 
 def _all(permissions, axis: str):
-    return permissions[axis]["mode"].astext == profiles.ALL
+    """Whether ``axis`` of the version's permissions allows all; an axis the version does not name does."""
+    return func.coalesce(permissions[axis]["mode"].astext, profiles.ALL) == profiles.ALL
 
 
-def claim_clause(name: str, labels, runtimes: list[str], features) -> object:
+def _packs_fit(version, features, plugins):
+    """Whether a worker whose daemon says ``features`` and whose owner accepted ``plugins`` builds every agent pack of
+    the profile ``version`` (correlated): one that attaches none (or a version from before packs) always."""
+    packs = version.c.body["packs"]
+    if runs.AGENT_PACKS not in (features or ()):
+        return func.coalesce(func.jsonb_array_length(packs), 0) == 0
+    path = cast(literal("$[*].plugin"), JSONPATH)
+    named = func.coalesce(func.jsonb_path_query_array(packs, path), func.jsonb_build_array(), type_=JSONB)
+    return named.contained_by(cast(literal(json.dumps(sorted(plugins or ()))), JSONB))
+
+
+def claim_clause(
+    name: str,
+    labels,
+    runtimes: list[str],
+    features,
+    plugin_runtimes: list[str] = (),
+    environments: list[str] = (),
+    plugins: list[str] = (),
+) -> object:
     """Whether the profile of a queued run (``runs``, correlated) lets this worker take it: named by name or label on
-    the worker axis, one of ``runtimes`` on the runtime axis, and a daemon that applies profiles (``features``) when
-    the profile needs one. Always for a run without a profile."""
+    the worker axis, one of its ``runtimes`` of the core on the runtime axis, or for a run of a plugin's runtime one
+    of its ``plugin_runtimes``, host or one of the plugins' ``environments`` it takes on the environment axis, a
+    daemon that applies profiles (``features``) when the profile needs one, and one that builds agent packs when it
+    attaches some, each of a plugin of ``plugins``, those its owner accepted. Always for a run without a profile."""
     r = tables.runs
     v, permissions = _rules()
     names = [name.lower(), *(profiles.LABEL_PREFIX + label.lower() for label in labels or ())]
+    allow = permissions["runtime"]["allow"]
     conditions = [
         v.c.profile_id == r.c.profile_id,
         v.c.version == r.c.profile_version,
         or_(_all(permissions, "worker"), permissions["worker"]["allow"].has_any(literal(names, ARRAY(Text)))),
-        or_(_all(permissions, "runtime"), permissions["runtime"]["allow"].has_any(literal(runtimes, ARRAY(Text)))),
+        or_(
+            _all(permissions, "runtime"),
+            allow.has_any(literal(runtimes, ARRAY(Text))),
+            and_(r.c.runtime != "any", allow.has_any(literal(list(plugin_runtimes), ARRAY(Text)))),
+        ),
+        or_(
+            _all(permissions, "environment"),
+            permissions["environment"]["allow"].has_any(literal([HOST, *environments], ARRAY(Text))),
+        ),
+        _packs_fit(v, features, plugins),
     ]
     if runs.AGENT_PROFILES not in (features or ()):
         conditions += [_all(permissions, axis) for axis in ("tool", "skill", "model")]
@@ -224,20 +317,32 @@ def claim_clause(name: str, labels, runtimes: list[str], features) -> object:
     return or_(r.c.profile_id.is_(None), exists().where(*conditions))
 
 
-def runtime_rule():
-    """The runtime axis of the profile version of the run being claimed (correlated); NULL without a profile."""
+def runtime_rule(axis: str = "runtime"):
+    """``axis`` (the runtime axis unless named) of the profile version of the run being claimed (correlated); NULL
+    without a profile, or for an axis the version does not name."""
     r = tables.runs
     v, permissions = _rules()
     return (
-        select(permissions["runtime"])
+        select(permissions[axis])
+        .where(v.c.profile_id == r.c.profile_id, v.c.version == r.c.profile_version)
+        .scalar_subquery()
+    )
+
+
+def run_packs():
+    """The agent packs of the profile version of the run being claimed (correlated), as the version stores them; NULL
+    without a profile, or for a version from before packs."""
+    r, v = tables.runs, tables.agent_profile_versions
+    return (
+        select(v.c.body["packs"])
         .where(v.c.profile_id == r.c.profile_id, v.c.version == r.c.profile_version)
         .scalar_subquery()
     )
 
 
 def pick_runtime(asked: str, runtimes: list[str], rule: dict | None) -> str:
-    """The runtime of a claimed run: the one it asked for, or for ``any`` the first of ``runtimes`` the profile's
-    runtime axis ``rule`` allows (``claim_clause`` made sure there is one)."""
+    """The runtime of a claimed run: the one it asked for, or for ``any`` the first of ``runtimes``, the worker's of the
+    core, the profile's runtime axis ``rule`` allows (``claim_clause`` made sure there is one)."""
     if asked != "any":
         return asked
     allow = profiles.allowed({"runtime": rule}, "runtime") if rule else None

@@ -1788,6 +1788,8 @@
         "slotsValue": "Đang dùng {held} trên {slots}",
         "labels": "Label",
         "noLabels": "Không có",
+        "plugins": "Plugin",
+        "noPlugins": "Không có",
         "permissions": "Quyền",
         "permissionsValue": "Toàn quyền, như {owner}",
         "dispatch": "Ai dispatch",
@@ -1868,6 +1870,11 @@
       "labelsHint": "Không bắt buộc. Ngăn cách bằng dấu phẩy hoặc khoảng trắng.",
       "labelsInvalid": "Label không hợp lệ: {labels}. Label bắt đầu bằng chữ hoặc số và chỉ gồm chữ, số, dấu chấm, gạch ngang hoặc gạch dưới, tổng cộng tối đa 40 ký tự.",
       "labelsTooMany": "Tối đa {max} label.",
+      "plugins": "Plugin",
+      "pluginsPlaceholder": "sandbox",
+      "pluginsHint": "Không bắt buộc. Các plugin mà worker này chạy runtime của chúng, theo id, ngăn cách bằng dấu phẩy hoặc khoảng trắng. Worker báo runtime của plugin khi chương trình có trên PATH của máy, và không nhận run của plugin không có ở đây.",
+      "pluginsInvalid": "Không phải id plugin: {plugins}. Id bắt đầu bằng chữ thường và chỉ gồm chữ thường, số và gạch ngang, tổng cộng tối đa 63 ký tự.",
+      "pluginsTooMany": "Tối đa {max} plugin.",
       "save": "Lưu",
       "saving": "Đang lưu",
       "discard": "Bỏ thay đổi",
@@ -2066,6 +2073,12 @@
         "noun": "runtime",
         "hint": "Các chương trình agent mà run được khởi chạy.",
         "all": "Mọi runtime"
+      },
+      "environment": {
+        "title": "Môi trường",
+        "noun": "môi trường",
+        "hint": "Nơi agent của run chạy, theo thứ tự ưu tiên: host là chính máy worker, hoặc container của một plugin.",
+        "all": "Host của worker"
       }
     },
     "tools": {
@@ -2169,7 +2182,8 @@
           "worker": "Tên một worker, hoặc label:tên",
           "project": "Tên một dự án",
           "model": "Một model, theo tên runtime của nó đặt",
-          "runtime": "claude-code, opencode hoặc codex"
+          "runtime": "claude-code, opencode hoặc codex",
+          "environment": "host, hoặc môi trường của plugin: plugin/tên"
         },
         "add": "Thêm",
         "invalid": {
@@ -2179,7 +2193,8 @@
           "worker": "Tên một worker, hoặc label: kèm label của worker.",
           "project": "Tên dự án gồm chữ thường, chữ số và dấu gạch ngang.",
           "model": "Model là một dòng, tối đa 200 ký tự.",
-          "runtime": "Runtime là claude-code, opencode hoặc codex."
+          "runtime": "Runtime là claude-code, opencode hoặc codex.",
+          "environment": "Môi trường là host, hoặc id của plugin và tên môi trường: plugin/tên."
         },
         "nothing": "Không cho phép gì: run dưới agent này không có {axis} nào.",
         "count": "Cho phép {count}, tối đa {max}.",
@@ -2191,7 +2206,23 @@
         "skillScope": {
           "global": "dùng chung",
           "project": "của dự án này"
-        }
+        },
+        "host": "chính máy của worker"
+      },
+      "packs": {
+        "title": "Gói agent",
+        "hint": "Skill, subagent, hook, MCP server và chỉ dẫn từ các plugin mà dự án đã bật. Mỗi gói được ghim ở một phiên bản của plugin, chỉ đổi được tại đây; skill và MCP server của gói được tính là đã cho phép ở Skill và Tool.",
+        "failed": "Không đọc được các gói agent của dự án: các gói đã gắn được giữ nguyên.",
+        "noneRead": "Không có gì để chọn.",
+        "none": "Chưa plugin nào được bật trong {project} cung cấp gói agent.",
+        "choices": "Các gói agent để gắn",
+        "version": "Phiên bản của {pack}",
+        "installed": "{version} (đang cài)",
+        "goneVersion": "{version} (hub không còn giữ)",
+        "gone": "Không còn được cung cấp",
+        "noneAttached": "Chưa gắn gói nào.",
+        "count": "Đã gắn {count}, tối đa {max}.",
+        "tooMany": "Tối đa {max} gói agent."
       }
     },
     "detail": {
@@ -2263,7 +2294,9 @@
           "worker": "worker",
           "project": "dự án",
           "model": "model",
-          "runtime": "runtime"
+          "runtime": "runtime",
+          "environment": "môi trường",
+          "packs": "các gói agent"
         }
       },
       "delete": {
@@ -2283,6 +2316,12 @@
         "empty": "Trong {searched} run mới nhất của dự án, không run nào chạy dưới agent này.",
         "caption": "Run dưới @{handle}",
         "scope": "Lấy từ {searched} run mới nhất của dự án."
+      },
+      "packs": {
+        "title": "Gói agent",
+        "hint": "Được nạp vào mọi run dưới agent này, mỗi gói ở phiên bản đã ghim. Skill và MCP server của gói được tính là đã cho phép.",
+        "none": "Không có: các run của nó không nhận gói agent nào.",
+        "version": "v{version}"
       }
     }
   },
@@ -3582,6 +3621,7 @@
         "hubSays": "Hub báo: {message}"
       },
       "chatSub": "Một lượt của @{agent} trong group chat, bước chuyền {hop}. <chatLink>Mở tin mà run trả lời</chatLink>.",
+      "taskSub": "Một task plugin giao cho @{agent}: một lượt trên nhánh {branch}, hub mở nhánh này thành draft pull request.",
       "header": {
         "back": "Plan {plan}",
         "step": "Bước {key}: {title}",
@@ -3790,6 +3830,11 @@
       "line": "Một lượt của @{agent} trong group chat",
       "lineProject": "{project}: một lượt của @{agent} trong group chat"
     },
+    "taskRun": {
+      "kind": "Task run",
+      "line": "Một task plugin giao cho @{agent}, trên nhánh {branch}",
+      "lineProject": "{project}: một task plugin giao cho @{agent}, trên nhánh {branch}"
+    },
     "account": {
       "label": "Tài khoản",
       "byRules": "Tự động, theo quy tắc của bạn",
@@ -3823,7 +3868,8 @@
         "worker": "worker",
         "project": "dự án",
         "model": "model",
-        "runtime": "runtime"
+        "runtime": "runtime",
+        "environment": "môi trường"
       },
       "problem": {
         "deleted": "@{handle} đã bị xoá và không nhận run mới.",
@@ -3999,7 +4045,8 @@
       "author_waiting": "Run soạn plan chờ bạn trả lời",
       "chat_mention": "Có người nhắc bạn trong một chat",
       "chat_added": "Có người thêm bạn vào một chat",
-      "plugin_disabled": "Hub đã tắt một plugin"
+      "plugin_disabled": "Hub đã tắt một plugin",
+      "builder_proposal": "@builder đề xuất một thay đổi chờ bạn duyệt"
     },
     "item": {
       "unread": "Chưa đọc",

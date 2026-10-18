@@ -1,6 +1,6 @@
 "use client";
 
-import { BrainCircuit, FolderKanban, KeyRound, type LucideIcon, Server, Sparkles, SquareTerminal, Wrench } from "lucide-react";
+import { BrainCircuit, Container, FolderKanban, KeyRound, type LucideIcon, Server, Sparkles, SquareTerminal, Wrench } from "lucide-react";
 import { useTranslations } from "next-intl";
 
 import { Tag } from "@/components/data/identifier";
@@ -15,6 +15,7 @@ export const AXIS_ICONS: Record<Axis, LucideIcon> = {
   project: FolderKanban,
   model: BrainCircuit,
   runtime: SquareTerminal,
+  environment: Container,
 };
 
 /** Tags a row shows before the rest fold into "+N", so a row of the list stays one line high. */

@@ -69,6 +69,7 @@ git = "evo_agents.kg.connectors.git:run"
 # The core plugins evo-ak ships (evo_agents.core_plugins), which the hub's image therefore has.
 [project.entry-points."evo_agents.plugins"]
 telegram = "evo_agents.core_plugins.telegram:MANIFEST"
+builder = "evo_agents.core_plugins.builder:MANIFEST"
 
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
@@ -83,6 +84,7 @@ evo_agents = [
     "hub/migrations/*.mako",
     "hub/migrations/versions/*.py",
     "hub/migrations/sql/*",
+    "core_plugins/*/packs/**/*",  # the agent packs a core plugin ships (evo_agents.plugins.core.image_bundle)
 ]
 
 [tool.ruff]

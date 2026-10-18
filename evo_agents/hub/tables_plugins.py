@@ -26,10 +26,20 @@ it was revoked: starting the backend again revokes the plugin's older tokens. pl
 said of each backend it runs: the version, its state, the isolation it has, its process id, how many times it was
 started again, since when it runs, the last failure, when it is tried again, and when the host said so.
 
+workers.plugins (0039) lists the plugins whose runtimes and environments a worker takes, as its owner set them.
+runs.environment (0040) is the environment of a plugin, <plugin>/<name>, that a run's claim picked from the
+environment axis of its agent profile; NULL for a run on the worker's host.
+
 plugin_deliveries (0038) is the outbox of the extension points (``evo_agents.hub.plugin_events``): one event or
 notification for one plugin in one project, its kind, the contribution it goes to, its payload, its state, tries, when
 it is due, the last error, when it was made and delivered. 0038 also records the core plugins of the hub's image in
 plugins and plugin_versions: signature kind ``image``, published and installed by nobody.
+
+project_agent_types (0042) holds each agent type of a plugin a project enabled (``evo_agents.hub.task_runs``): the
+plugin, the type's name, the agent profile the hub made for it, the member its runs go under (``run_as``), the names
+of that member's workers they may run on, the cap of their cost per day, who enabled it and when, and when it was
+turned off. runs.agent_type_id names the agent type of a task run, and runs.pulls the draft pull requests the hub opened
+of its branch.
 """
 
 from __future__ import annotations
@@ -38,6 +48,7 @@ from sqlalchemy import (
     BigInteger,
     Column,
     DateTime,
+    Double,
     ForeignKeyConstraint,
     Identity,
     Index,
@@ -62,7 +73,8 @@ def _stamp(name: str) -> Column:
 
 def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table, Table]:
     """(plugins, plugin_versions, project_plugins, plugin_configs, run_plugins), added to ``metadata``; the column of
-    a run's own layer added to ``runs``."""
+    a run's own layer and its environment added to ``runs``, and the plugins a worker takes the runtimes and
+    environments of to ``workers``."""
     plugins = Table(
         "plugins",
         metadata,
@@ -163,6 +175,9 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         ),
     )
     runs.append_column(Column("plugin_config", JSONB))
+    # the plugins whose runtimes and environments a worker takes, as its owner set them (0039)
+    metadata.tables["workers"].append_column(Column("plugins", ARRAY(Text), nullable=False, server_default="{}"))
+    runs.append_column(Column("environment", Text))  # the environment of a plugin the claim picked; NULL: host (0040)
     run_plugins = Table(
         "run_plugins",
         metadata,
@@ -183,8 +198,8 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
     return project_plugins, plugin_configs, run_plugins
 
 
-def backend_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """(plugin_tokens, plugin_backends, plugin_deliveries), added to ``metadata``."""
+def backend_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table]:
+    """(plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types), added to ``metadata``."""
     plugin_tokens = Table(
         "plugin_tokens",
         metadata,
@@ -214,7 +229,7 @@ def backend_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         _fkey("plugin_id", "plugins.id", "plugin_backends", "CASCADE"),
         PrimaryKeyConstraint("plugin_id", name="plugin_backends_pkey"),
     )
-    return plugin_tokens, plugin_backends, _deliveries(metadata)
+    return plugin_tokens, plugin_backends, _deliveries(metadata), _agent_types(metadata, runs)
 
 
 def _deliveries(metadata: MetaData) -> Table:
@@ -246,3 +261,35 @@ def _deliveries(metadata: MetaData) -> Table:
         postgresql_where=deliveries.c.state == "pending",
     )
     return deliveries
+
+
+def _agent_types(metadata: MetaData, runs: Table) -> Table:
+    agent_types = Table(
+        "project_agent_types",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("plugin_id", BigInteger, nullable=False),
+        Column("name", Text, nullable=False),
+        Column("profile_id", BigInteger, nullable=False),
+        Column("run_as", BigInteger, nullable=False),
+        Column("workers", ARRAY(Text), nullable=False, server_default="{}"),
+        Column("daily_usd", Double, nullable=False),
+        Column("enabled_by", BigInteger, nullable=False),
+        _stamp("enabled_at"),
+        Column("disabled_at", DateTime(timezone=True)),
+        _fkey("project_id", "projects.id", "project_agent_types"),
+        _fkey("plugin_id", "plugins.id", "project_agent_types", "CASCADE"),
+        _fkey("profile_id", "agent_profiles.id", "project_agent_types"),
+        _fkey("run_as", "users.id", "project_agent_types"),
+        _fkey("enabled_by", "users.id", "project_agent_types"),
+        PrimaryKeyConstraint("id", name="project_agent_types_pkey"),
+        UniqueConstraint("project_id", "plugin_id", "name", name="project_agent_types_name_key"),
+        Index("project_agent_types_plugin_idx", "plugin_id", "project_id"),
+    )
+    runs.append_column(Column("agent_type_id", BigInteger))  # the agent type of a task run (0042)
+    runs.append_column(Column("pulls", JSONB))  # the draft pull requests of a task run's branch (0042)
+    runs.append_constraint(_fkey("agent_type_id", "project_agent_types.id", "runs"))
+    typed = runs.c.agent_type_id.is_not(None)
+    Index("runs_agent_type_idx", runs.c.agent_type_id, runs.c.queued_at, postgresql_where=typed)
+    return agent_types
