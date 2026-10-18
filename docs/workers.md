@@ -1231,9 +1231,11 @@ them, leaving the last two turns and the `skill` tool alone, once that frees mor
 own compaction when the context is full (`compaction.auto`).
 
 A long tool result stays out of the agent's context as in a session on a laptop: the PostToolUse hook of the evo-hub
-plugin runs in a Claude Code run too, and gives the agent the head and tail of a Bash, Read, Grep or MCP result longer
-than 10,000 characters with the path of a file under `~/.evo/tool-output/` that holds all of it (`EVO_SPOOL_THRESHOLD`
-in the daemon's environment changes the threshold; [hub.md](hub.md), Long tool output). That file, mode 0600 and kept 7
+plugin runs in a Claude Code run too, and gives the agent the head and tail of a Bash, Grep, WebFetch or MCP result
+longer than 10,000 characters, or the head of a Read longer than 40,000, with the path of a file under
+`~/.evo/tool-output/` that holds all of it (`EVO_SPOOL_THRESHOLD` and `EVO_SPOOL_READ_THRESHOLD` in the daemon's
+environment change the thresholds; the tools of evo-hub and evo-kg and a plan's handoff pass whole; [hub.md](hub.md),
+Long tool output). That file, mode 0600 and kept 7
 days, is not the daemon's spool of events, and nothing sends it to the hub. A Codex run has Codex's own limit
 instead, `tool_output_token_limit` (above), since Codex ignores a hook's replacement of a tool's output.
 
