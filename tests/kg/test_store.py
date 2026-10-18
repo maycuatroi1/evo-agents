@@ -3,7 +3,10 @@ from pathlib import Path
 
 import pytest
 
+from evo_agents.kg import search as text_search
+from evo_agents.kg import store as store_module
 from evo_agents.kg.build import build_project
+from evo_agents.kg.pipeline.stages import leading_comment
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import SCHEMA_VERSION, StaleSchema, Store
@@ -130,7 +133,7 @@ def test_schema_upgrade_rebuilds_from_the_log_and_replaces_the_file(tmp_path, kg
     report = build_project(project, verify=True)
     assert report.ok, report.errors
     assert report.rebuilt_from == "1"
-    assert "store rebuilt from the log (schema 1 -> 2)" in report.summary_line()
+    assert f"store rebuilt from the log (schema 1 -> {SCHEMA_VERSION})" in report.summary_line()
     assert report.verify["match"], report.verify
     assert report.content_hash == first.content_hash == second.content_hash
     assert Store.stored_schema(path) == SCHEMA_VERSION
@@ -152,7 +155,7 @@ def test_schema_upgrade_is_refused_by_readers_and_keeps_the_file_on_failure(tmp_
     path = project.root / "graph.sqlite"
     make_schema_1(path)
 
-    with pytest.raises(StaleSchema, match="schema 1, this code reads 2"):
+    with pytest.raises(StaleSchema, match=f"schema 1, this code reads {SCHEMA_VERSION}"):
         Store.open_existing(project)
     answer = Session(project, "agent").call("kg_search", {"query": "search"})
     assert answer["isError"] and "evo-agents kg build" in answer["content"][0]["text"]
@@ -197,3 +200,165 @@ def test_leave_wal_leaves_the_whole_store_in_its_file(tmp_path):
     reopened = sqlite3.connect(path)
     assert reopened.execute("SELECT value FROM meta WHERE key = 'note'").fetchone() == ("kept",)
     reopened.close()
+
+
+# Search: the full-text index and the lookups by id and name (evo_agents.kg.search)
+
+HUB_BUILD = '''"""Where the hub builds the knowledge graph from the corpus."""
+
+
+class GraphBuilder:
+    """Turns a corpus into nodes and edges."""
+
+    def buildGraph(self, corpus):
+        return corpus
+
+
+def load_corpus(path):
+    return path
+'''
+NEEDLE = "zanzibarquokka"  # a word only past the first 4,000 characters of the long section
+
+
+def make_searchable(tmp_path, kg_env, **kw):
+    """The demo project plus a module with docstrings and camelCase names, a Vietnamese note and a long section."""
+    project = make_project(tmp_path, kg_env, **kw)
+    app = tmp_path / "demo-app"
+    write(app / "app/hub_build.py", HUB_BUILD)
+    write(app / "docs/do-thi.md", "# Đồ thị tri thức\n\nĐường đi của dữ liệu qua các nguồn.\n")
+    write(app / "docs/plain.md", "# Ghi chu\n\nDuong ong du lieu chay moi dem.\n")
+    write(app / "docs/long.md", "# Long\n\n" + "Filler sentence about nothing. " * 200 + f"\n\n{NEEDLE} at the end.\n")
+    commit(app, "searchable")
+    return project
+
+
+def found(store: Store, query: str, **kw) -> list[str]:
+    return store.search(query, store.latest_ready(), **kw)
+
+
+def test_search_ranks_any_word_when_no_node_holds_them_all(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    question = "where does the hub build the knowledge graph on tuesdays"
+    assert found(store, question, any_word=False) == []  # no node holds every word: AND alone finds nothing
+    hits = found(store, question, limit=5)
+    assert hits[0] in ("app:file:app/hub_build.py", "symbol:app:app/hub_build.py::GraphBuilder")
+    assert "app:file:app/hub_build.py" in hits[:5]
+
+
+def test_search_splits_camel_case_reads_d_for_dj_and_indexes_docstrings(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    builder, method = (
+        "symbol:app:app/hub_build.py::GraphBuilder",
+        "symbol:app:app/hub_build.py::GraphBuilder.buildGraph",
+    )
+    assert found(store, "GraphBuilder")[0] == builder  # its name: through the index, first
+    assert builder in found(store, "graph builder")[:3]  # the parts of a camelCase name
+    assert method in found(store, "buildgraph")[:3]  # the whole word too
+    assert "symbol:app:app/hub_build.py::load_corpus" in found(store, "load corpus")[:3]  # snake_case
+    assert "app:file:app/hub_build.py" in found(store, "hub_build")[:3]  # a path
+    assert found(store, "corpus into nodes and edges")[0] == builder  # its docstring
+    assert "app:file:docs/do-thi.md#đồ-thị-tri-thức" in found(store, "do thi tri thuc")[:3]  # đ reads as d
+    assert "app:file:docs/plain.md#ghi-chu" in found(store, "đường ống dữ liệu")[:3]  # both ways
+    assert any(h.startswith("app:file:docs/long.md") for h in found(store, NEEDLE))  # past 4,000 characters
+
+
+def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    assert found(store, "blob") == []  # every node's URI has /blob/main/: none of it is indexed
+    sections = found(store, "search", limit=2, kinds=["Section"])
+    assert sections and all(":file:docs/" in h and "#" in h for h in sections)
+    assert found(store, "rank_results", kinds=["Section"]) == ["app:file:docs/guide.md#details"]
+    answer = Session(project, "agent").call("kg_search", {"query": "search", "kinds": ["Section"], "limit": 1})
+    assert [r["kind"] for r in answer["structuredContent"]["results"]] == ["Section"]
+
+
+def test_a_text_past_the_cap_is_cut_and_counted_in_coverage(tmp_path, kg_env, monkeypatch):
+    monkeypatch.setattr(text_search, "MAX_TEXT_CHARS", 3000)
+    project = make_searchable(tmp_path, kg_env)
+    report = sync_build(project)
+    cut = report.coverage["search"]
+    assert cut["cut"] == 1 and cut["samples"] == ["app:file:docs/long.md#long"] and cut["max_chars"] == 3000
+    assert found(Store.for_project(project), NEEDLE) == []
+
+
+def test_lookups_by_id_name_and_alias_go_through_an_index(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    sync_build(project)
+    store = Store.for_project(project)
+    b = store.latest_ready()
+    statements: list[str] = []
+    store.db.set_trace_callback(statements.append)
+    store.exact("symbol:app:app/search.py::search", b, 10)
+    store.exact("search", b, 10, ["Symbol"])
+    store.alias_of("usecase:KB-99", b)
+    store.node("app:file:app/search.py", b)
+    store.db.set_trace_callback(None)
+    assert len(statements) == 4
+    for sql in statements:
+        plan = [row[3] for row in store.db.execute(f"EXPLAIN QUERY PLAN {sql}")]
+        assert any("USING INDEX nodes_" in step for step in plan), (sql, plan)
+        assert not any(step.startswith("SCAN") for step in plan), (sql, plan)
+
+
+def make_schema_2(path) -> None:
+    """Turn a store file into what schema 2 wrote: node_fts without kind and path, no name index, no aliases."""
+    db = sqlite3.connect(path)
+    db.execute("DROP INDEX nodes_name")
+    db.execute("DROP TABLE node_alias")
+    db.execute("DROP TABLE node_fts")
+    db.execute("CREATE VIRTUAL TABLE node_fts USING fts5(node_id UNINDEXED, name, body)")
+    db.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
+    db.commit()
+    db.close()
+
+
+def test_a_store_of_schema_2_is_rebuilt_by_the_next_build_and_refused_by_readers(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    first = sync_build(project)
+    path = project.root / "graph.sqlite"
+    make_schema_2(path)
+    with pytest.raises(StaleSchema, match=f"schema 2, this code reads {SCHEMA_VERSION}"):
+        Store.open_file(path)
+    answer = Session(project, "agent").call("kg_search", {"query": "graph builder"})
+    assert answer["isError"] and "evo-agents kg build" in answer["content"][0]["text"]
+
+    report = sync_build(project)
+    assert report.rebuilt_from == "2" and report.content_hash == first.content_hash
+    assert "symbol:app:app/hub_build.py::GraphBuilder" in found(Store.for_project(project), "graph builder")
+
+
+def test_the_content_hash_covers_the_schema_and_what_search_reads(tmp_path, kg_env, monkeypatch):
+    project = make_searchable(tmp_path, kg_env)
+    report = sync_build(project)
+    store = Store.for_project(project)
+    b = report.build_id
+    before = store.content_hash(b, "a")
+    assert before != store.content_hash(b, "b")
+    monkeypatch.setattr(store_module, "SCHEMA_VERSION", "99")
+    assert store.content_hash(b, "a") != before  # the hub never serves a file of one schema for another
+
+
+def test_leading_comments_are_the_docstrings_of_other_languages():
+    lines = [
+        "#!/usr/bin/env node",
+        "// Routes of the app.",
+        "import x from 'y'",
+        "",
+        "/**",
+        " * Builds the graph.",
+        " */",
+        "@Injectable()",
+        "export function buildGraph() {}",
+        "#[derive(Debug)]",
+        "struct Plain;",
+    ]
+    assert leading_comment(lines, None) == "Routes of the app."
+    assert leading_comment(lines, 9) == "Builds the graph."
+    assert leading_comment(lines, 11) is None
+    assert leading_comment(lines, 3) == "Routes of the app."

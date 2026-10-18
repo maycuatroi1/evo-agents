@@ -28,11 +28,11 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException, Query, Request
 from pydantic import BaseModel, Field
 
-from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphUnavailable
+from evo_agents.hub.kg_graph import ArtifactMismatch, BuiltGraph, GraphOutdated, GraphUnavailable
 from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProblem, NotVisible, WebSession, read
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.kg import built_graphs
+from evo_agents.hub.server.kg import built_graphs, rebuild_outdated
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 
@@ -191,6 +191,9 @@ async def _read(request: Request, user, project: str, reader):
         data, graph = await asyncio.to_thread(
             read, state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, graphs, reader
         )
+    except GraphOutdated as exc:
+        await rebuild_outdated(state, access.project_id, project)
+        raise HTTPException(503, str(exc)) from None
     except GraphUnavailable as exc:
         raise HTTPException(503, str(exc)) from None
     except ArtifactMismatch as exc:
