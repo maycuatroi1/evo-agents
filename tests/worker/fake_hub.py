@@ -69,6 +69,8 @@ class FakeHub:
         self.heartbeats = 0
         # the worker's settings each heartbeat answer carries ({slots, name, labels}); None: none, as a hub before 0026
         self.settings: dict | None = None
+        # the declarations of plugins' runtimes each heartbeat answer carries (plugin_runtimes); empty: the key left out
+        self.plugin_runtimes: list[dict] = []
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
         self.blob_reads: list[str] = []
         self._ids = itertools.count(101)
@@ -549,6 +551,8 @@ class FakeHub:
         answer = {"drain": False, "runs": controls}
         if self.settings is not None:
             answer["settings"] = self.settings
+        if self.plugin_runtimes:
+            answer["plugin_runtimes"] = self.plugin_runtimes
         return web.json_response(answer)
 
     async def _state(self, request: web.Request) -> web.Response:

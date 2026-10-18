@@ -16,6 +16,10 @@ applies no profile.
 A headless agent whose account hits its usage limit is stopped, and goes on in the same session with another account
 when the hub moves the run to one (``limits``); else the run fails with cause rate_limit. One whose account failed to
 authenticate goes on the same way, else fails with cause account_auth.
+
+A run of a plugin's runtime (``<plugin>/<name>``) starts its agent through the adapter of ACP made from the declaration
+its claim carries (``acp.adapter_class``), and fails with cause credentials before the agent starts when a variable the
+declaration names is set neither by the run's leases nor in the daemon's environment (``Adapter.environment_refusal``).
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ import contextlib
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
+from evo_agents.plugins.runtimes import AcpRuntime, is_plugin_runtime
 from evo_agents.worker import interactive, orphans
 from evo_agents.worker.adapter import AgentEvent, Outcome, ProfileRefused, RunContext
 from evo_agents.worker.runner.common import RunFailed, log
@@ -32,6 +37,7 @@ from evo_agents.worker.runner.limits import Limits
 from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
 from evo_agents.worker.runtimes import profiles
+from evo_agents.worker.runtimes.acp import adapter_class
 from evo_agents.worker.runtimes.claude_code import compact_window
 
 if TYPE_CHECKING:
@@ -68,13 +74,28 @@ class Agent:
     # The runtime
 
     def runtime_class(self):
-        """The adapter class of the run's runtime; RunFailed when this worker has none, or when it cannot apply the
-        run's agent profile (``check_profile``)."""
-        cls = self.run.daemon.adapters.get(self.run.runtime)
+        """The adapter class of the run's runtime, a plugin's made from the declaration of the claim; RunFailed when
+        this worker has none, or when it cannot apply the run's agent profile (``check_profile``)."""
+        runtime = self.run.runtime
+        cls = self.plugin_class() if is_plugin_runtime(runtime) else self.run.daemon.adapters.get(runtime)
         if cls is None:
             raise RunFailed(f"this worker has no adapter for {self.run.runtime}", cause="runtime")
         self.check_profile(cls)
         return cls
+
+    def plugin_class(self):
+        """The adapter of ACP of the run's plugin runtime, from the declaration its claim carries; RunFailed when the
+        claim carries none this worker reads, or one of another runtime."""
+        runtime = self.run.runtime
+        try:
+            declaration = AcpRuntime.from_json(self.run.spec.get("plugin_runtime"))
+        except ValueError as exc:
+            raise RunFailed(
+                f"the claim carries no declaration of {runtime} this worker reads: {exc}", cause="runtime"
+            ) from None
+        if declaration.runtime != runtime:
+            raise RunFailed(f"the claim declares {declaration.runtime}, not the run's {runtime}", cause="runtime")
+        return adapter_class(declaration)
 
     def check_profile(self, cls) -> None:
         """Say in the run's log what its agent profile limits in the session; RunFailed when the adapter cannot apply
@@ -265,6 +286,9 @@ class Agent:
         run = self.run
         context = self.context(prompt, session_id)
         await self.check_login(cls, context)
+        lacking = cls.environment_refusal(context)
+        if lacking:
+            raise RunFailed(lacking, cause="credentials")
         adapter = cls(context)
         self.adapter = adapter
         self.phase = "headless"
