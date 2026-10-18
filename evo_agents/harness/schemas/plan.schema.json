@@ -26,6 +26,15 @@
     "created_at": {
       "type": "string"
     },
+    "abandoned_at": {
+      "type": "string"
+    },
+    "abandoned_reason": {
+      "type": "string"
+    },
+    "superseded_by": {
+      "type": "string"
+    },
     "context": {
       "type": "string"
     },
@@ -194,11 +203,15 @@
             "done",
             "in_progress",
             "pending",
-            "blocked"
+            "blocked",
+            "descoped"
           ],
           "x-severity": "warning"
         },
         "done_at": {
+          "type": "string"
+        },
+        "descoped_at": {
           "type": "string"
         },
         "evidence": {
