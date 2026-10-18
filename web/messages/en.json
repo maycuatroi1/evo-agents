@@ -2208,6 +2208,21 @@
           "project": "this project"
         },
         "host": "the worker's own machine"
+      },
+      "packs": {
+        "title": "Agent packs",
+        "hint": "Skills, subagents, hooks, MCP servers and instructions from plugins the project enabled. Each is pinned at a version of its plugin, which changes only here; its skills and MCP servers count as allowed on Skills and Tools.",
+        "failed": "The project's agent packs could not be read: those attached stay as they are.",
+        "noneRead": "Nothing to pick from.",
+        "none": "No plugin enabled in {project} contributes an agent pack.",
+        "choices": "Agent packs to attach",
+        "version": "Version of {pack}",
+        "installed": "{version} (installed)",
+        "goneVersion": "{version} (no longer held)",
+        "gone": "No longer offered",
+        "noneAttached": "None attached.",
+        "count": "{count} attached, of at most {max}.",
+        "tooMany": "At most {max} agent packs."
       }
     },
     "detail": {
@@ -2280,7 +2295,8 @@
           "project": "projects",
           "model": "models",
           "runtime": "runtimes",
-          "environment": "environments"
+          "environment": "environments",
+          "packs": "agent packs"
         }
       },
       "delete": {
@@ -2300,6 +2316,12 @@
         "empty": "No run among the project's latest {searched} went under this agent.",
         "caption": "Runs under @{handle}",
         "scope": "From the project's latest {searched} runs."
+      },
+      "packs": {
+        "title": "Agent packs",
+        "hint": "Loaded into every run under this agent, each at the version it pins. Its skills and MCP servers count as allowed.",
+        "none": "None: its runs get no agent pack.",
+        "version": "v{version}"
       }
     }
   },

@@ -16,6 +16,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     is_default: false,
     permissions: {},
     restricted: [],
+    packs: [],
     version: 1,
     created_by: "octo",
     created_at: "2026-10-14T03:00:00Z",

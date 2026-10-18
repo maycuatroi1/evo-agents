@@ -4,8 +4,9 @@ import type { components } from "@/lib/api/schema";
  * Agent profiles of a project (docs/hub.md, Agent profiles; `evo_agents.hub.profiles` of the API): who an agent is
  * (handle, name, colour, avatar, description, instructions) and what its runs may use on eight axes, each every value
  * (`all`) or an allowlist. The project's default agent, @<project>, keeps every permission and no instructions; a run
- * dispatched without naming an agent goes under it. The hub enforces the rules again on every dispatch and claim: what
- * this module checks in the browser only spares a refusal.
+ * dispatched without naming an agent goes under it. A profile may also attach agent packs of plugins its project
+ * enabled, each pinned at a version (`packs`). The hub enforces the rules again on every dispatch and claim: what this
+ * module checks in the browser only spares a refusal.
  */
 type Schemas = components["schemas"];
 export type Agent = Schemas["Agent"];
@@ -14,6 +15,10 @@ export type AgentPermissions = Schemas["AgentPermissions"];
 export type AgentCreate = Schemas["AgentCreate"];
 export type AgentEdit = Schemas["AgentEdit"];
 export type AgentVersion = Schemas["AgentVersion"];
+/** A pack of a plugin a profile attaches, at the version of the plugin it pins (`agent_packs.PinnedPack`). */
+export type PinnedPack = Schemas["PinnedPack"];
+/** A pack a profile of the project may attach, with the versions it may pin (GET .../agent-packs). */
+export type AgentPack = Schemas["AgentPack"];
 
 /** `profiles.AXES`, in the API's order. */
 export const AXES = ["credential", "tool", "skill", "worker", "project", "model", "runtime", "environment"] as const satisfies readonly (keyof AgentPermissions)[];
