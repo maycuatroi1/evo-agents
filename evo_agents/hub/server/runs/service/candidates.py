@@ -220,6 +220,56 @@ def _agent_view(profile: Profile, rows, run, cause: str | None, writer: bool, pr
     )
 
 
+async def candidates_of(
+    conn: AsyncConnection,
+    *,
+    project: str,
+    project_id: int,
+    role: str,
+    owner_id: int,
+    kind: str,
+    state: str,
+    run_id: int,
+) -> RerunCandidates:
+    """The candidates to run run ``run_id`` of project ``project`` again for its owner ``owner_id``, read on ``conn``,
+    whatever state the run is in on it (the hub reads them in the transaction that fails the run); ``role`` is the
+    owner's role in the project, which decides whether an agent is fit."""
+    run = await _run(conn, run_id)
+    repos = _repos(run)
+    rows = (await conn.execute(workers_of(owner_id, project_id))).all()
+    accounts = await _accounts(conn, owner_id, project_id, run_id, {r.id: r.name for r in rows})
+    ap = tables.agent_profiles
+    listed = (await conn.execute(profile_select().where(ap.c.project_id == project_id).order_by(ap.c.id))).all()
+    by_id = {row.id: profile_of(row) for row in listed}
+    profile = by_id.get(run.profile_id) or next((p for p in by_id.values() if p.is_default), None)
+    if profile is None:  # a project that never made a profile: nothing limits the run
+        profile = SimpleNamespace(handle=project, permissions={}, instructions=None)
+    cause = run.failure_cause
+    views = [_worker_view(row, profile, run, repos, project, accounts, cause) for row in rows]
+    workers = []
+    for place, (candidate, _) in enumerate(sorted((v for v in views if v[0].fit), key=lambda v: v[1]), 1):
+        workers.append(candidate.model_copy(update={"rank": place}))
+    workers += [v[0] for v in views if not v[0].fit]
+    writer = has_role(role, "writer")
+    agents = [_agent_view(p, rows, run, cause, writer, project) for p in by_id.values() if p.deleted_at is None]
+    agents.sort(key=lambda a: (not a.fit, not a.is_default, a.handle))
+    place = 0
+    for index, agent in enumerate(agents):
+        if agent.fit:
+            place += 1
+            agents[index] = agent.model_copy(update={"rank": place})
+    return RerunCandidates(
+        run_id=run_id,
+        project=project,
+        kind=kind,
+        state=state,
+        failure_cause=cause,
+        workers=workers,
+        agents=agents,
+        accounts=[account for _, account in accounts[0]],
+    )
+
+
 async def rerun_candidates(engine, user: Principal, project: str, run_id: RunId) -> RerunCandidates:
     """The candidates to run the failed run ``run_id`` of ``project`` again, for its owner alone (``owned_run``);
     409 for a run that did not fail."""
@@ -227,39 +277,13 @@ async def rerun_candidates(engine, user: Principal, project: str, run_id: RunId)
         access, owned = await owned_run(conn, user, project, run_id, "list candidates for")
         if owned.state != "failed":
             raise HTTPException(409, f"run {run_id} is {owned.state}: only a failed run has candidates to run it again")
-        run = await _run(conn, run_id)
-        repos = _repos(run)
-        rows = (await conn.execute(workers_of(owned.dispatched_by, access.project_id))).all()
-        accounts = await _accounts(conn, owned.dispatched_by, access.project_id, run_id, {r.id: r.name for r in rows})
-        ap = tables.agent_profiles
-        listed = (
-            await conn.execute(profile_select().where(ap.c.project_id == access.project_id).order_by(ap.c.id))
-        ).all()
-        by_id = {row.id: profile_of(row) for row in listed}
-        profile = by_id.get(run.profile_id) or next((p for p in by_id.values() if p.is_default), None)
-        if profile is None:  # a project that never made a profile: nothing limits the run
-            profile = SimpleNamespace(handle=project, permissions={}, instructions=None)
-        cause = run.failure_cause
-        views = [_worker_view(row, profile, run, repos, access.name, accounts, cause) for row in rows]
-        workers = []
-        for place, (candidate, _) in enumerate(sorted((v for v in views if v[0].fit), key=lambda v: v[1]), 1):
-            workers.append(candidate.model_copy(update={"rank": place}))
-        workers += [v[0] for v in views if not v[0].fit]
-        writer = has_role(access.role, "writer")
-        agents = [_agent_view(p, rows, run, cause, writer, access.name) for p in by_id.values() if p.deleted_at is None]
-        agents.sort(key=lambda a: (not a.fit, not a.is_default, a.handle))
-        place = 0
-        for index, agent in enumerate(agents):
-            if agent.fit:
-                place += 1
-                agents[index] = agent.model_copy(update={"rank": place})
-    return RerunCandidates(
-        run_id=run_id,
-        project=project,
-        kind=owned.kind,
-        state=owned.state,
-        failure_cause=cause,
-        workers=workers,
-        agents=agents,
-        accounts=[account for _, account in accounts[0]],
-    )
+        return await candidates_of(
+            conn,
+            project=access.name,
+            project_id=access.project_id,
+            role=access.role,
+            owner_id=owned.dispatched_by,
+            kind=owned.kind,
+            state=owned.state,
+            run_id=run_id,
+        )

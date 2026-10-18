@@ -85,6 +85,8 @@ PLUGIN_BACKEND_TABLES = frozenset({"plugin_tokens", "plugin_backends"})
 SETTINGS_TABLES = frozenset({"hub_settings"})
 # migration 0038: the outbox of the events and notifications the hub delivers to plugins
 PLUGIN_POINT_TABLES = frozenset({"plugin_deliveries"})
+# migration 0039: the chat of a plan's failures and the triage thread of each failed run
+TRIAGE_TABLES = frozenset({"triage_chats", "run_triage"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

@@ -39,7 +39,7 @@ parked run hands them to the run that resumes it. A plan run that ends ``failed`
 ``run_failed``, and one that ends ``done`` with every step of its plan done the notice ``plan_finished``
 (``notifications.notify``); one that ends ``done`` because a new run resumes it sends nothing. A run of one step or an
 author run sends ``run_failed`` when its worker failed it with a cause of ``runs.PREFLIGHT_CAUSES`` (a repo the project
-lists no origin for, a credential or a program missing: ``notify_preflight_failure``), and the move keeps the cause
+lists no origin for, a credential or a program missing: ``run_notices.notify_preflight_failure``), and the move keeps the cause
 the worker reported as the run's failure_cause.
 
 ``release_runs`` is what happens to the runs of a revoked worker, and ``recover_runs`` (the job hub.recover_runs,
@@ -530,6 +530,13 @@ async def write_step(
     return None
 
 
+async def run_ended(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> None:
+    """Open the triage thread of a failed run and send the owner the notice its end calls for (``run_notices``)."""
+    from evo_agents.hub.server import run_notices  # it reads runs through the routes that import this module
+
+    await run_notices.run_ended(conn, found, old, new, reason=reason)
+
+
 async def record_move(
     conn: AsyncConnection, run_id: int, old: str, new: str, *, reason: str, token_id: int | None = None
 ) -> int | None:
@@ -547,7 +554,7 @@ async def record_move(
         await changes.judge_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "author":  # it writes no step: the plan it authors reaches the hub through the run's own command
-        await notify_preflight_failure(conn, found, new)
+        await run_ended(conn, found, old, new, reason=reason)
         return None
     if found.kind == "chat":  # it writes no step: its agent's reactions and replies are in its chat
         from evo_agents.hub.server.chat_runs import chat_run_moved  # it queues runs through the routes that import this
@@ -556,48 +563,16 @@ async def record_move(
         return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
-        await notify_plan_run_end(conn, found, old, new, reason=reason)
+        await run_ended(conn, found, old, new, reason=reason)
         from evo_agents.hub.server import changes  # it reads runs through the routes that import this module
 
         await changes.builder_ended(conn, found, old, new, reason=reason)
         return revision
-    await notify_preflight_failure(conn, found, new)
+    await run_ended(conn, found, old, new, reason=reason)
     updates_for = step_updates(found, old, new, reason)
     if updates_for is None:
         return None
     return await write_step(conn, found, updates_for, token_id=token_id)
-
-
-async def notify_preflight_failure(conn: AsyncConnection, found: RunStep, new: str) -> int | None:
-    """Send the owner of run ``found``, a run of one step or an author run, the notice ``run_failed`` when it failed
-    with a cause of runs.PREFLIGHT_CAUSES (a repo without origin, a credential or a program missing), which only the
-    owner can mend; a plan, review or judge run sends it for every failure elsewhere. The notification's id, or None."""
-    if new != "failed" or found.failure_cause not in runs.PREFLIGHT_CAUSES:
-        return None
-    from evo_agents.hub.server import notifications  # it reads runs through the routes that import this module
-
-    error = found.error or found.failure_cause
-    what = f"Run #{found.run_id} of step {found.step_key} of {found.plan_id}"
-    if found.kind == "author":
-        what = f"Author run #{found.run_id}"
-    return await notifications.notify(
-        conn,
-        user_id=found.dispatcher_id,
-        kind="notice",
-        notice_kind="run_failed",
-        project_id=found.project_id,
-        run_id=found.run_id,
-        title=f"{what} failed ({found.failure_cause})",
-        body=error,
-        details={
-            "run_kind": found.kind,
-            "plan_id": found.plan_id,
-            "step_key": found.step_key,
-            "failure_cause": found.failure_cause,
-            "error": error,
-        },
-        link=notifications.run_link(found.project, found.run_id),
-    )
 
 
 async def release_plan_steps(
@@ -661,58 +636,6 @@ async def reported_steps(conn: AsyncConnection, run_id: int) -> list[str]:
     people number them."""
     keys = (await conn.execute(_reported_steps(run_id))).scalars().all()
     return sorted(keys, key=_natural)
-
-
-def _every_step_done(body) -> bool:
-    steps = body.get("steps") if isinstance(body, dict) else None
-    if not isinstance(steps, list) or not steps:
-        return False
-    return all(isinstance(step, dict) and step.get("status") == "done" for step in steps)
-
-
-async def notify_plan_run_end(conn: AsyncConnection, found: RunStep, old: str, new: str, *, reason: str) -> int | None:
-    """Send the owner of plan run ``found`` the notice its end calls for: ``run_failed`` when it failed (its last
-    attempt lost included, which fails), ``plan_finished`` when it ended done with every step of its plan done. A run
-    done because a new run resumes it, and any other move, send nothing. The notification's id, or None."""
-    from evo_agents.hub.server import notifications  # it reads runs through the routes that import this module
-
-    link = notifications.run_link(found.project, found.run_id)
-    if new == "failed":
-        error = found.error or reason
-        return await notifications.notify(
-            conn,
-            user_id=found.dispatcher_id,
-            kind="notice",
-            notice_kind="run_failed",
-            project_id=found.project_id,
-            run_id=found.run_id,
-            title=f"Plan run #{found.run_id} of {found.plan_id} failed",
-            body=error,
-            details={"plan_id": found.plan_id, "error": error},
-            link=link,
-        )
-    if new != "done" or old == "parked":
-        return None
-    pl = tables.plans
-    body = (
-        await conn.execute(select(pl.c.body).where(pl.c.project_id == found.project_id, pl.c.plan_id == found.plan_id))
-    ).scalar_one_or_none()
-    if body is None or not _every_step_done(body):
-        return None
-    steps = await reported_steps(conn, found.run_id)
-    done = f"steps {', '.join(steps)}" if steps else "no step of its own"
-    return await notifications.notify(
-        conn,
-        user_id=found.dispatcher_id,
-        kind="notice",
-        notice_kind="plan_finished",
-        project_id=found.project_id,
-        run_id=found.run_id,
-        title=f"Plan {found.plan_id} finished",
-        body=f"Plan run #{found.run_id} ended with every step of the plan done; it did {done}.",
-        details={"plan_id": found.plan_id, "steps": steps},
-        link=link,
-    )
 
 
 # Runs that lose their worker
