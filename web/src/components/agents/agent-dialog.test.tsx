@@ -128,14 +128,20 @@ describe("AgentDialog", () => {
     expect(await screen.findByText("Đã tạo agent @reviewer")).toBeInTheDocument();
   });
 
-  it("attaches an agent pack at the version installed, lets the admin pin another, and sends it with the agent", async () => {
+  it("attaches an agent pack at the version installed, lets the admin pin another, and sends the packs whole", async () => {
     const user = userEvent.setup();
-    api.answer = answer(() => json({ ...SAVED, packs: [{ pack: "acme/notes", plugin: "acme", name: "notes", version: "1.1.0" }] }, 201));
-    renderVi(<Harness onSaved={vi.fn()} />);
-    const dialog = screen.getByRole("dialog", { name: "Agent mới" });
-    await user.type(within(dialog).getByLabelText("Handle"), "reviewer");
-    await user.type(within(dialog).getByLabelText("Tên"), "Reviewer");
-
+    let patched: unknown = null;
+    api.answer = (request) => {
+      if (request.method === "PATCH") {
+        return request.json().then((body) => {
+          patched = body;
+          return json({ ...SAVED, packs: [{ pack: "acme/notes", plugin: "acme", name: "notes", version: "1.1.0" }], version: 2 });
+        });
+      }
+      return answer(() => json({}, 500))(request);
+    };
+    renderVi(<Harness agent={SAVED} onSaved={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Sửa @reviewer" });
     const field = within(dialog).getByTestId("agent-packs-field");
     expect(within(field).getByTestId("agent-packs-count")).toHaveTextContent("Chưa gắn gói nào.");
     await user.click(await within(field).findByRole("checkbox", { name: /^acme\/notes/ }));
@@ -146,9 +152,7 @@ describe("AgentDialog", () => {
     expect(within(field).getByTestId("agent-packs-count")).toHaveTextContent("Đã gắn 1, tối đa 16.");
 
     await user.click(within(dialog).getByTestId("agent-save"));
-    await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
-    const body = await api.seen.find((request) => request.method === "POST")?.clone().json();
-    expect(body.packs).toEqual([{ plugin: "acme", name: "notes", version: "1.1.0" }]);
+    await waitFor(() => expect(patched).toEqual({ packs: [{ plugin: "acme", name: "notes", version: "1.1.0" }], if_version: 1 }));
   });
 
   it("keeps a pack the project no longer offers listed with a tag, so the admin can remove it", async () => {
