@@ -402,6 +402,21 @@ class RunProfile(BaseModel):
     )
 
 
+class RunPack(BaseModel):
+    """An agent pack the run's profile attaches (``evo_agents.plugins.agent_packs``), as the hub holds the version of
+    its plugin the profile pins: the worker downloads the plugin's bundle, checks it, and builds the pack from its
+    ``packs/<name>/`` into the run's directory for the agent's runtime."""
+
+    pack: str = Field(description="<plugin>/<name>")
+    plugin: str
+    name: str
+    version: str = Field(description="the version of the plugin the profile pins")
+    sha256: str = Field(description="what the downloaded bundle must hash to")
+    size: int
+    url: str = Field(description="presigned GET of the plugin's bundle; a bearer credential until it expires")
+    expires_at: datetime
+
+
 class PluginRuntime(BaseModel):
     """A runtime a plugin enabled on a project declares (``evo_agents.plugins.runtimes``): the command of an ACP agent,
     at the plugin's version the hub has installed."""
@@ -509,6 +524,11 @@ class RunSpec(BaseModel):
         None,
         description="the environment of a plugin the claim picked from the run's profile, at the plugin's version "
         "installed now, which the worker's container provider runs the agent in; null: the worker's host",
+    )
+    packs: list[RunPack] = Field(
+        default_factory=list,
+        description="the agent packs the run's profile attaches, in its order, each at the version it pins, which the "
+        "worker builds into the run's directory for its runtime; empty for a profile that attaches none",
     )
 
 

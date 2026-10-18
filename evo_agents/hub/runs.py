@@ -133,8 +133,11 @@ PLUGIN_RUNTIMES = "plugin_runtimes"
 # a daemon that runs a run's agent in the environment its claim names (evo_agents.worker.environments): a container of
 # a plugin's environment, through Docker or Podman; the hub hands a run of such an environment to no other
 ENVIRONMENTS = "environments"
+# a daemon that builds the agent packs of a run's profile, of the plugins its owner accepted, into the run's directory
+# and hands them to its runtime (evo_agents.worker.packs); the hub hands a run whose profile attaches one to no other
+AGENT_PACKS = "agent_packs"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
-WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES, PLUGIN_RUNTIMES, ENVIRONMENTS)
+WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES, PLUGIN_RUNTIMES, ENVIRONMENTS, AGENT_PACKS)
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
 # A runtime's name, any included: one of RUNTIMES, or a plugin's <plugin>/<name> (evo_agents.plugins.runtimes). The hub

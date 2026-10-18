@@ -899,6 +899,36 @@ def test_0040_gives_every_profile_the_environment_axis_and_runs_their_environmen
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0040") :]
 
 
+def test_0041_gives_every_profile_an_empty_list_of_agent_packs_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0040")
+    ap = hub_tables.agent_profiles
+    axes = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+    eight = {axis: {"mode": "all"} for axis in axes}
+    pack = {"plugin": "sandbox", "name": "review", "version": "1.0.0"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        default = one(conn, _profile_row(ids, "demo", eight, default=True))
+        reader = one(conn, _profile_row(ids, "reader", {**eight, "tool": {"mode": "allowlist", "allow": ["read"]}}))
+    move_to(hub_db, "0041")
+    assert dict(query(hub_db, select(ap.c.id, ap.c.packs))) == {default: [], reader: []}
+    with live.connect(hub_db) as conn:
+        conn.execute(update(ap).values(packs=[pack]).where(ap.c.id == reader))
+        for bad in (
+            update(ap).values(packs=[pack]).where(ap.c.id == default),  # a default profile attaches none
+            update(ap).values(packs={"plugin": "sandbox"}).where(ap.c.id == reader),  # a list only
+            update(ap).values(packs=[pack] * 17).where(ap.c.id == reader),  # at most 16
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    assert dict(query(hub_db, select(ap.c.id, ap.c.packs))) == {default: [], reader: [pack]}
+    move_to(hub_db, "0040", down=True)
+    assert "packs" not in columns(hub_db, "agent_profiles")
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # the check of schema 0040 is back
+            conn.execute(update(ap).values(instructions="be brief").where(ap.c.id == default))
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0041") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)
