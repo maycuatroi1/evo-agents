@@ -3,7 +3,8 @@
 Every row carries ``tx_from`` and ``tx_to`` (build ids). A build writes only what changed: rows that
 disappeared or changed get ``tx_to``, new versions get ``tx_from``; then the build flips to ``ready``.
 Readers pin the latest ready build B and see rows with ``tx_from <= B < tx_to``, so a build in progress
-is never visible, and retracting a fact keeps its history queryable.
+is never visible, and retracting a fact keeps its history queryable until retention deletes the builds older than
+its period, but the latest two, and the rows only they read (``history_floor``, ``drop_history``).
 
 Provenance is stored as a circuit: each element has derivations, and a derivation is the AND of its
 ownership units and of the elements it needs. An element is alive while one derivation holds (OR).
@@ -95,6 +96,10 @@ CREATE TABLE IF NOT EXISTS node_fts_rows (
 """
 
 LIVE = "tx_from <= :b AND (tx_to IS NULL OR tx_to > :b)"
+HISTORY_TABLES = ("units", "nodes", "edges", "derivations", "where_prov")  # the tables whose rows carry tx_from, tx_to
+# Builds retention always keeps: the latest, and the one before it, which a reader that read the latest build id just
+# before a build landed may still be reading.
+KEEP_BUILDS = 2
 
 
 def edge_id(src: str, rel: str, dst: str) -> str:
@@ -452,6 +457,44 @@ class Store:
             rows = self.db.execute(f"SELECT content FROM {table} WHERE {LIVE} ORDER BY {order}", {"b": b})
             parts.append([r[0] for r in rows])
         return sha256(canonical_json(parts))
+
+    # -- history -------------------------------------------------------------------------------
+
+    def history_floor(self, cutoff: str, keep: int = KEEP_BUILDS) -> int | None:
+        """The oldest build retention keeps (``evo_agents.kg.retention``): of the latest ``keep`` ready builds and
+        every ready build finished at ``cutoff`` or later, the first. None when the store has no ready build."""
+        latest = self.db.execute(
+            "SELECT build_id FROM builds WHERE status = 'ready' ORDER BY build_id DESC LIMIT ?", (keep,)
+        ).fetchall()
+        if not latest:
+            return None
+        recent = self.db.execute(
+            "SELECT min(build_id) FROM builds WHERE status = 'ready' AND finished_at >= ?", (cutoff,)
+        ).fetchone()[0]
+        return min(row[0] for row in latest) if recent is None else min(recent, *(row[0] for row in latest))
+
+    def history(self, floor: int) -> dict[str, int]:
+        """What no build from ``floor`` on reads: per table, the rows closed at ``floor`` or before, and the builds
+        before ``floor``."""
+        out = {
+            table: self.db.execute(
+                f"SELECT count(*) FROM {table} WHERE tx_to IS NOT NULL AND tx_to <= ?", (floor,)
+            ).fetchone()[0]
+            for table in HISTORY_TABLES
+        }
+        out["builds"] = self.db.execute("SELECT count(*) FROM builds WHERE build_id < ?", (floor,)).fetchone()[0]
+        return out
+
+    def drop_history(self, floor: int) -> dict[str, int]:
+        """Delete what ``history(floor)`` counts, in one transaction; what went. Every row a build from ``floor`` on
+        reads stays, so its content hash and the next build's diff are those they were."""
+        with self.db:
+            out = {
+                table: self.db.execute(f"DELETE FROM {table} WHERE tx_to IS NOT NULL AND tx_to <= ?", (floor,)).rowcount
+                for table in HISTORY_TABLES
+            }
+            out["builds"] = self.db.execute("DELETE FROM builds WHERE build_id < ?", (floor,)).rowcount
+        return out
 
     def counts(self, b: int) -> dict:
         out = {}

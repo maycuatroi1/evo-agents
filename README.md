@@ -147,6 +147,25 @@ build that runs links again only the items whose text or structure changed or th
 now resolves elsewhere, and rewrites only the rows of the full-text index that changed. `kg serve` opens the store
 read-only.
 
+Old data on the machine goes by retention periods (`evo-agents kg prune`): `logs` (default 1d) for run logs, blobs
+and rows of the runs table, `history` (1d) for the builds of the graph, and `memo` (14d) for memo rows after their
+last use. An old run log is deleted once no record of it is the one the corpus holds, and one still in use is
+rewritten without the records the corpus no longer holds, as `kg scrub --purge` does. A log the hub has not received
+is never touched: `hub kg push` records which runs the hub holds, and a run of a source above the hub sink never goes
+there. A blob goes once no log left and no item refers to it, the graph keeps its latest two builds and the builds of
+the period, and a memo row goes when neither the period nor the latest build used it. None of it changes what a build
+makes: `kg build --verify --cold` gives the same hash before and after. `kg prune` counts and changes nothing,
+`--delete` deletes after a yes (`--yes` when no terminal can answer), and `--logs`, `--history` and `--memo` set the
+periods of one pass. `kg prune --schedule on` counts, asks, and saves the periods in `~/.evo/kg/retention.json`: from
+then on every `kg sync --due --all`, the LaunchAgent's command, prunes each project once a day and appends a `prune`
+line with the counts to its `audit.jsonl`. The schedule is off until the owner turns it on.
+
+```sh
+evo-agents kg prune --all                    # count, change nothing
+evo-agents kg prune --all --delete           # delete what the periods make old, after a yes
+evo-agents kg prune --schedule on            # count, ask, then prune with every scheduled sync
+```
+
 ## Using it from Claude Code
 
 ```sh

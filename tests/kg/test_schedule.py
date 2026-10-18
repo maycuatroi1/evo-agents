@@ -1,5 +1,6 @@
 """The LaunchAgent plist. launchctl is never called: every command goes to a recording fake."""
 
+import datetime as dt
 import json
 import os
 import plistlib
@@ -9,7 +10,10 @@ import sys
 import pytest
 
 from evo_agents.cli import main
-from evo_agents.kg import schedule
+from evo_agents.kg import retention, schedule
+from evo_agents.kg.scrub import holding_sources
+from evo_agents.kg.sync import sync_project
+from tests.kg.conftest import doc
 
 SYNC = ["kg", "sync", "--due", "--all", "--build"]
 POSIX_PATHS = pytest.mark.skipif(os.name == "nt", reason="the plist names POSIX paths and the gui/<uid> domain")
@@ -145,3 +149,82 @@ def test_schedule_install_on_windows_names_the_command_for_task_scheduler(home, 
     with pytest.raises(schedule.ScheduleError, match="Task Scheduler.*kg sync --due --all --build"):
         schedule.install(run=FakeLaunchctl())
     assert not schedule.plist_path().exists()
+
+
+# Pruning with the scheduled sync (evo_agents.kg.retention)
+
+
+def sync_due_all(capsys, *extra: str) -> tuple[int, dict]:
+    code = main(["kg", "sync", "--due", "--all", "--json", *extra])
+    return code, json.loads(capsys.readouterr().out)
+
+
+def superseded(project, fake) -> list[str]:
+    """Two syncs of the same document: the first run's log is old as soon as a period of 0 says so."""
+    runs = []
+    for text in ("one", "two"):
+        fake.set(items=[doc("a", f"# a\n\n{text}\n")])
+        (result,) = sync_project(project)
+        runs.append(result.run_id)
+    return runs
+
+
+def test_scheduled_pruning_is_off_until_the_owner_turns_it_on_after_a_count(fake_project, kg_env, capsys):
+    project, fake = fake_project
+    runs = superseded(project, fake)
+    assert retention.load_config(kg_env) == retention.Config()  # off, with the default periods
+    assert retention.load_config(kg_env).periods == {"logs": "1d", "history": "1d", "memo": "14d"}
+    code, body = sync_due_all(capsys)
+    assert code == 0 and "prune" not in body  # the first automatic deletion waits for the owner
+    assert len(project.corpus().log_files()) == 2
+
+    zero = ["--logs", "0", "--history", "0", "--memo", "0"]
+    assert main(["kg", "prune", "--schedule", "on", *zero]) == 2  # no terminal to ask, no --yes
+    assert main(["kg", "prune", "--schedule", "on", "--delete", "--yes"]) == 2
+    capsys.readouterr()
+    assert main(["kg", "prune", "--schedule", "on", "--yes", *zero]) == 0
+    out = capsys.readouterr().out
+    assert "run logs: delete 1" in out and "Scheduled pruning is on" in out  # the count comes first
+    config = retention.load_config(kg_env)
+    assert config.scheduled and config.periods == {"logs": "0", "history": "0", "memo": "0"} and config.changed_at
+    assert len(project.corpus().log_files()) == 2  # turning it on deletes nothing yet
+
+    with holding_sources(project.root):  # a sync of the project is running: it waits for the next pass
+        code, body = sync_due_all(capsys)
+    assert code == 0 and body["prune"]["projects"][0]["busy"] and body["prune"]["ok"]
+    code, body = sync_due_all(capsys)
+    (pruned,) = body["prune"]["projects"]
+    assert code == 0 and pruned["project"] == project.name and pruned["deleted"]["logs"] == 1
+    assert [p.name for p in project.corpus().log_files()] == [f"{runs[1]}.jsonl.gz"]
+    code, body = sync_due_all(capsys)
+    assert body["prune"]["projects"] == []  # pruned less than a day ago
+
+    later = dt.datetime.now(dt.UTC) + retention.EVERY
+    (again,) = retention.prune_scheduled(kg_env, now=later)
+    assert again.deleted is not None and again.deleted["logs"] == 0
+
+    assert main(["kg", "prune", "--schedule", "off"]) == 0
+    assert not retention.load_config(kg_env).scheduled
+    assert retention.prune_scheduled(kg_env, now=later + retention.EVERY) is None
+
+
+def test_a_config_the_schedule_cannot_read_fails_the_scheduled_run(kg_env, capsys):
+    kg_env.mkdir(parents=True, exist_ok=True)
+    retention.config_path(kg_env).write_text('{"scheduled": true, "periods": {"logs": "3 days"}}')
+    assert main(["kg", "sync", "--due", "--all"]) == 1
+    assert "FAIL prune: period '3 days' is not 0 or a number" in capsys.readouterr().out
+    assert main(["kg", "prune", "--all"]) == 2
+    assert "period '3 days'" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("value", "seconds"), [("0", 0), ("30m", 1800), ("12h", 43200), ("3d", 259200), ("2w", 1209600), (" 1d ", 86400)]
+)
+def test_periods_are_zero_or_a_number_with_a_unit(value, seconds):
+    assert retention.parse_period(value).total_seconds() == seconds
+
+
+@pytest.mark.parametrize("value", ["3", "-1d", "1y", "", "d", None, 3])
+def test_a_period_without_a_unit_or_with_another_is_refused(value):
+    with pytest.raises(retention.RetentionError):
+        retention.parse_period(value)
