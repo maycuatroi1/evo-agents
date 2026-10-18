@@ -290,6 +290,22 @@ and `["sandbox/box"]` waits for a worker that can. Schema 0040 gave every profil
 default profile's eight axes, all, the rule; a profile version written before it names seven axes, and the hub reads
 the one it does not name as `all`.
 
+A profile may also attach agent packs of plugins its project enabled (`docs/plugins.md`, Agent packs): `packs`, at
+most 16, each `{"plugin", "name", "version"}` and once, pinned at a version of its plugin the hub holds as a bundle,
+whose manifest declares the pack and that runs on this release; a pin sent without `version` takes the version
+installed now. A plugin that is not enabled in the project or is turned off, a version the hub does not hold, one of
+the hub's image (it has no bundle) or one that declares no such pack is a 422 that says which and that nothing
+changed. The pin holds when the plugin moves on: only an edit moves it, and an edit sends the packs whole, as a new
+version of the profile. `GET /v1/projects/{p}/agent-packs` lists what a profile of the project may attach, each with
+the version installed now and every version that qualifies, the newest first. The default profile attaches none.
+
+A pack a profile attaches counts as named on its skill and tool axes: its skills pass the skill axis and its MCP
+servers the tool axis (`mcp:<server>`), since pinning the pack at a version is the admin's consent to what that
+version holds. The axes still limit everything else (an allowlist of tools that leaves out `bash` keeps it out for a
+pack's skill too), and a pack widens no other axis. Schema 0041 adds `packs` to each profile, `[]` for every profile
+before it and always for a default one; each version written since keeps them in its body, and a version written
+before it attaches none. Going back to 0040 drops them: a profile that attached packs runs without them.
+
 ### Runs under a profile
 
 `POST /v1/projects/{p}/runs`, `.../plan-runs` and `.../author-runs` take `profile`, a handle (`--agent` on `hub run
@@ -309,6 +325,8 @@ which allowlist leaves what out and that nothing was dispatched, when:
 - the environment axis names no environment the project registers, or allows none (422); a pinned worker whose
   daemon does not say it runs environments (feature `environments`), or whose owner has not accepted the plugin of
   any environment the profile allows, and the axis does not allow `host` (409).
+- the pinned worker's daemon does not say it builds agent packs (feature `agent_packs`), or its owner has not
+  accepted the plugin of each pack the profile attaches, in the worker's plugins (409).
 
 The run records `profile_id` and `profile_version`, and `Run` shows `profile` (the handle), `profile_id` and
 `profile_version`. The hub applies that version's rules to the run: a worker claims it only when the worker axis names
@@ -317,7 +335,12 @@ the worker takes, and, for a profile that needs it, its daemon lists `agent_prof
 run asking for `any` runtime takes the first of the worker's the profile allows. The claim records the environment it
 picked in the run (`environment`: `<plugin>/<name>`, null for the host) and hands its declaration
 (`RunSpec.environment`). The claim carries the profile at that version (`RunSpec.profile`: handle, version, name, instructions,
-permissions) for the worker to apply. A rerun goes under the profile of the run it reruns, at its version now, checked
+permissions) for the worker to apply. A run whose profile attaches packs goes only to a worker whose daemon lists
+`agent_packs` and whose owner accepted each pack's plugin; the claim hands each pack at the version the profile pins
+(`RunSpec.packs`: `pack`, `plugin`, `name`, `version`, and the `url` of a presigned GET of that version's bundle
+with its `sha256`, `size` and `expires_at`). A run whose pack's plugin is no longer enabled in its project, whose
+pinned version the hub no longer holds, or that the hub cannot hand out for want of a blob store fails at the
+claim, saying why. A rerun goes under the profile of the run it reruns, at its version now, checked
 again; the next attempt of a lost run and a run that resumes a parked one keep the profile and version. A run of the
 night shift goes under the project's default. A run from before 0030 has no profile and runs as before.
 
@@ -337,10 +360,13 @@ lease row records the profile and version it was handed out under.
 | `DELETE .../agents/{handle}` | `hub agent delete HANDLE` | an admin of the project |
 | `PUT` and `DELETE .../agents/{handle}/avatar` | `--avatar PATH`, `--no-avatar` | an admin of the project |
 | `GET .../agents/{handle}/avatar` | | a member |
+| `GET .../agent-packs`, the agent packs a profile of the project may attach | | a member |
 
 `--allow AXIS:ITEM` (repeatable) makes an axis an allowlist of the items given for it, `--none AXIS` an allowlist of
 nothing, and on `edit` `--all AXIS` allows everything again; `edit` sends the other axes as it read them, with
-`if_version`. For example:
+`if_version`. `--pack PLUGIN/NAME[@VERSION]` (repeatable) attaches the agent packs given, in that order, each at
+VERSION or the version installed now; on `edit` they replace the packs the profile attached, and `--no-packs` drops
+them. For example:
 
 ```sh
 evo-agents hub agent create reviewer --name Reviewer --project evo-agents --allow tool:read --allow tool:mcp:github \

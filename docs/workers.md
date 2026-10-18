@@ -1363,6 +1363,49 @@ fetched. Claude Code's check of its MCP servers fails the run the same way as th
 goes in. Otherwise the log says what the profile limits. A run whose profile limits the session is never handed to a
 person in a terminal UI, which applies no profile: an interactive run fails, and a takeover is refused.
 
+### Agent packs
+
+A run whose agent profile attaches agent packs of plugins ([hub.md](hub.md), Agent profiles;
+[plugins.md](plugins.md#agent-packs)) carries them in its claim as `packs`: each pack at the version of its plugin the
+profile pins, with a presigned GET of that version's bundle, its size and its SHA-256. The daemon lists
+`agent_packs` in its heartbeat's `features`, and the hub hands it such a run only when the owner accepted each pack's
+plugin in the worker's `plugins`, as for runtimes and environments of plugins.
+
+Before the run's first agent starts, the daemon builds the packs (`evo_agents.worker.packs`) into
+`runs/<run>/packs/<plugin>/<pack>/`, emptied first. It downloads each bundle once, checks its size and SHA-256
+against the claim, reads it whole as the hub did when it was published, checks that it is the plugin and version the
+claim names, that it declares the pack and that the owner accepted the plugin, then writes the pack's files with
+their modes. It leaves out the pack's `.mcp.json`, whose servers each runtime gets through its own configuration
+instead, and writes the `.claude-plugin/plugin.json` of a Claude Code plugin named `<plugin>.<pack>`. Two packs that
+name the same MCP server fail the build. The run's log says which packs it built and what each holds.
+
+| | claude-code | opencode | codex |
+| --- | --- | --- | --- |
+| skills | each pack a local plugin (`plugins` of claude-agent-sdk, `--plugin-dir`), named `<plugin>.<pack>:<skill>` | `skills.paths` in `OPENCODE_CONFIG_CONTENT`, by their own names | the app-server's `skills/extraRoots/set`, by their own names |
+| subagents, hooks | the plugin | refused | refused |
+| MCP servers | `mcp_servers`, by their own names: stdio, http, sse | an `mcp` entry each in `OPENCODE_CONFIG_CONTENT`, `local` or `remote` | `mcp_servers` in the thread's `config`: stdio and http; sse refused |
+| instructions | after the profile's in `--append-system-prompt` | after the profile's in `system` | after the profile's in `developer_instructions` |
+
+- Claude Code gets a pack's MCP servers under their own names rather than as the plugin's, which it would name
+  `plugin:<plugin>:<server>`, a name a profile's `allowedMcpServers` cannot hold.
+- opencode and Codex list skills by their bare names, so two packs that hold a skill of the same name fail the run
+  there; Claude Code tells them apart by the plugin.
+- The runtimes of plugins (ACP) load no pack.
+
+On the skill and tool axes of the run's profile a pack counts as named, as the hub reads it: an allowlist of the skill
+axis gains the pack's skills as the runtime names them, and one of the tool axis `mcp:<server>` for each of its
+servers (`evo_agents.worker.runtimes.profiles`). An axis of mode `all` stays as it is, and no other axis widens, so an
+allowlist of tools without `bash` keeps the agent from the shell when a pack's skill asks for it too. A pack's hooks
+are commands Claude Code runs itself at its events, not tools of the agent, so no axis limits them: pinning a pack
+that has hooks is consent to them. With a tool allowlist, Codex turns off the MCP servers of the owner's and the
+worktree's `config.toml` the profile leaves out, and keeps those of the packs.
+
+A pack that does not build, or that holds what the run's runtime does not load (`Adapter.pack_refusal`), fails the
+run with cause `runtime` before its agent starts: the run's error and its log say which pack and what. In a container
+of a plugin's environment, each pack's directory is mounted read-only at its own path. A run with packs is never
+handed to a person in a terminal UI, which loads none. Checked against Claude Code 2.1.296, opencode 1.18.34 and
+codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a pack built so.
+
 ### A run on the machine
 
 1. The daemon takes the run's leases from the hub (`POST /v1/worker/runs/{id}/credentials`, see
