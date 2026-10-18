@@ -26,6 +26,13 @@ if os.name == "nt":
     os.environ["HOME"] = os.environ["USERPROFILE"] = tempfile.mkdtemp(prefix="evo-home-")
 
 
+@pytest.fixture(autouse=True)
+def _no_hub_home_of_this_machine(monkeypatch):
+    """No EVO_HUB_HOME of the shell running pytest: a test that points HOME at a temporary directory expects the
+    hub login under it, and must never read, overwrite or delete the login of the machine somewhere else."""
+    monkeypatch.delenv("EVO_HUB_HOME", raising=False)
+
+
 def pytest_addoption(parser):
     # pyproject.toml sets asyncio_default_fixture_loop_scope for pytest-asyncio, which some environments have
     # installed; where it is missing, declare the key so pytest does not warn that it is unknown.

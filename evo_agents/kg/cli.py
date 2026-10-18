@@ -293,7 +293,8 @@ def _hook_payload() -> dict:
 def cmd_hook_session_start(args) -> int:
     """SessionStart hook for Claude Code: a short note on the bound project, and the session label when the
     session already read from the graph (a resumed session). Only names and counts the pipeline derived;
-    never source text, which would reach the model with system-reminder authority."""
+    never source text, which would reach the model with system-reminder authority. When to call the graph is
+    said once, in the instructions of the server that serves the kg_* tools, not here again."""
     from evo_agents.kg.sessions import current_session_id, describe, read_session
     from evo_agents.kg.status import project_status, render_status
 
@@ -305,7 +306,6 @@ def cmd_hook_session_start(args) -> int:
     session = read_session(current_session_id(_hook_payload()))
     if session is not None:
         note += "\n" + describe(session)
-    note += "\nUse the evo-kg tools (kg_search, kg_context, kg_node) before grepping for named things."
     print(json.dumps({"hookSpecificOutput": {"hookEventName": "SessionStart", "additionalContext": note}}))
     return 0
 

@@ -11,6 +11,10 @@ The GitHub URLs are configurable so tests and Playwright can point the hub at a 
 The blob store (Cloudflare R2, or any S3 API) is configured by the four EVO_HUB_S3_* variables together: none of
 them leaves it unconfigured, so the blob routes answer 503 and ``hub worker`` refuses to start; some but not all of
 them is a ConfigError naming the first one missing. The key pair is registered as secrets like the DSN password.
+EVO_HUB_S3_INTERNAL_ENDPOINT, optional, is where the api and the worker reach the same store themselves, such as the
+store's address on the platform's network when EVO_HUB_S3_ENDPOINT is a public hostname behind a proxy that caps a
+request's body; the presigned URLs handed to clients keep EVO_HUB_S3_ENDPOINT. Set without the four, it is a
+ConfigError.
 EVO_HUB_BLOB_CONCURRENCY caps the uploads one process checks and copies in the store at once, every commit together
 (``evo_agents.hub.blobs``). EVO_HUB_KG_KEEP_ARTIFACTS is how many of each project's newest built graphs keep their
 artifact in the bucket (``evo_agents.hub.kg_prune``); at least 1, since the api reads the newest.
@@ -113,6 +117,7 @@ MIN_PLUGIN_HOST_TOKEN = MIN_HOST_TOKEN  # characters of the secret the api and t
 PLUGIN_HOST_VARIABLES = ("EVO_HUB_PLUGIN_HOST_URL", "EVO_HUB_PLUGIN_HOST_TOKEN")
 LOGIN = re.compile(r"[A-Za-z0-9][A-Za-z0-9_-]{0,99}")  # a GitHub login, as the users table accepts it
 S3_VARIABLES = ("EVO_HUB_S3_ENDPOINT", "EVO_HUB_S3_BUCKET", "EVO_HUB_S3_ACCESS_KEY_ID", "EVO_HUB_S3_SECRET_ACCESS_KEY")
+S3_INTERNAL_ENDPOINT = "EVO_HUB_S3_INTERNAL_ENDPOINT"  # optional: where the hub itself reaches the store
 BUCKET = re.compile(r"[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]")  # an S3 bucket name, as R2 accepts it
 SECRETS_KEY_BYTES = 32  # the AES-256-GCM key of evo_agents.hub.server.sealing
 SECRETS_KEY = re.compile(r"[A-Za-z0-9_-]{43}=?")  # 32 bytes in base64url, padded or not
@@ -157,6 +162,7 @@ class HubConfig:
     s3_bucket: str | None = None
     s3_access_key_id: str | None = None  # never logged
     s3_secret_access_key: str | None = None  # never logged or returned
+    s3_internal_endpoint: str | None = None  # where the api and worker call the store; None: s3_endpoint
     blob_concurrency: int = DEFAULT_BLOB_CONCURRENCY  # uploads one process seals or publishes at once
     kg_keep_artifacts: int = DEFAULT_KG_KEEP_ARTIFACTS  # newest graphs per project whose artifact the retention keeps
     run_log_days: int = DEFAULT_RUN_LOG_DAYS  # days a finished run's events are kept
@@ -340,7 +346,8 @@ def _secret(env: Mapping[str, str], name: str, minimum: int = 1) -> str | None:
 
 
 def _blob_store(env: Mapping[str, str]) -> dict:
-    """The S3 settings, all four or none; the key pair is registered as secrets before anything can fail."""
+    """The S3 settings, all four or none, and the optional internal endpoint; the key pair is registered as secrets
+    before anything can fail."""
     endpoint_name, bucket_name, key_name, secret_name = S3_VARIABLES
     key_id, secret = _secret(env, key_name), _secret(env, secret_name)
     values = {
@@ -357,7 +364,13 @@ def _blob_store(env: Mapping[str, str]) -> dict:
         )
     if values["s3_bucket"] and not BUCKET.fullmatch(values["s3_bucket"]):
         raise ConfigError(bucket_name, f"{bucket_name} must be an S3 bucket name, got {values['s3_bucket']!r}")
-    return values
+    internal = _url(env, S3_INTERNAL_ENDPOINT, None)
+    if internal and missing:
+        raise ConfigError(
+            S3_INTERNAL_ENDPOINT,
+            f"{S3_INTERNAL_ENDPOINT} is set but the blob store is not: set {', '.join(S3_VARIABLES)} too, or unset it",
+        )
+    return {**values, "s3_internal_endpoint": internal}
 
 
 def _secrets_key(env: Mapping[str, str]) -> bytes | None:

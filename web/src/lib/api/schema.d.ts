@@ -588,6 +588,49 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/plans/{plan_id}/abandon": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Abandon
+         * @description Move an active or completed plan to the completed area as abandoned, or superseded when ``superseded_by``
+         *     names the plan that replaces it. The date and reason are kept on the plan; no step changes status. A plan that is
+         *     abandoned already is left as it is.
+         */
+        post: operations["abandon_v1_projects__project__plans__plan_id__abandon_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/plans/{plan_id}/reopen": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Reopen
+         * @description Put an abandoned or superseded plan back in the active area, without its abandon keys. Any other plan is a
+         *     409: a completed plan is not reopened by this.
+         */
+        post: operations["reopen_v1_projects__project__plans__plan_id__reopen_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/memories": {
         parameters: {
             query?: never;
@@ -8529,6 +8572,21 @@ export interface components {
             /** Updated By */
             updated_by: string;
         };
+        /** PlanAbandon */
+        PlanAbandon: {
+            /**
+             * Reason
+             * @description why the plan is dropped
+             */
+            reason: string;
+            /**
+             * Superseded By
+             * @description the plan that replaces it; the status is then superseded
+             */
+            superseded_by?: string | null;
+            /** If Revision */
+            if_revision?: number | null;
+        };
         /** PlanComplete */
         PlanComplete: {
             /** If Revision */
@@ -8653,7 +8711,7 @@ export interface components {
             step?: number | string | null;
             /**
              * Updates
-             * @description status, done_at, fixed_at, answered_at, merged_at, note, evidence
+             * @description status, done_at, descoped_at, fixed_at, answered_at, merged_at, note, evidence
              */
             updates: {
                 [key: string]: string;
@@ -8700,6 +8758,11 @@ export interface components {
              * @description the caller's own local run (kind local) whose session writes the plan: the revision records it (Revision.run_id) and the run takes the plan; 404 for any other run
              */
             run_id?: number | null;
+        };
+        /** PlanReopen */
+        PlanReopen: {
+            /** If Revision */
+            if_revision?: number | null;
         };
         /** PlanRunDispatch */
         PlanRunDispatch: {
@@ -11616,6 +11679,21 @@ export interface components {
              * @description per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest
              */
             tool_result_chars?: components["schemas"]["ToolChars"][] | null;
+            /**
+             * Spool Results
+             * @description results the spool hook cut, each written whole to a file on the machine; null when a client that did not count them pushed the digest
+             */
+            spool_results?: number | null;
+            /**
+             * Spool Original Chars
+             * @description the characters those results had before the cut; null when a client that did not count them pushed the digest
+             */
+            spool_original_chars?: number | null;
+            /**
+             * Spool Reads
+             * @description calls that named the spool directory, the agent reading a spool file again; null when a client that did not count them pushed the digest
+             */
+            spool_reads?: number | null;
         };
         /**
          * SettingsLayer
@@ -14622,6 +14700,168 @@ export interface operations {
         requestBody?: {
             content: {
                 "application/json": components["schemas"]["PlanComplete"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    abandon_v1_projects__project__plans__plan_id__abandon_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlanAbandon"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__plans__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    reopen_v1_projects__project__plans__plan_id__reopen_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                plan_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["PlanReopen"] | null;
             };
         };
         responses: {

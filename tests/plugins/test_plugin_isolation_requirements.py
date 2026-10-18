@@ -108,7 +108,8 @@ def test_plugin_hostile_requirements_reading_another_file_show_nothing_of_it(tmp
     with pytest.raises(PlacementError) as refused:
         build_env(where, "backend/requirements.txt")
     assert "evo-hub-secret" not in str(refused.value)
-    assert "not '-r /" in str(refused.value)  # the line itself, cut short, so the author sees what to fix
+    # the line itself, cut short, so the author sees what to fix: -r and the start of its path, / or C:
+    assert f"not '-r {str(secret)[:2]}" in str(refused.value)
 
 
 def test_plugin_isolation_requirements_need_the_wheels_next_to_them(tmp_path):
@@ -140,6 +141,8 @@ def test_plugin_isolation_requirements_accept_every_normalized_version(version):
     assert parse_requirements(f"ok=={version} --hash=sha256:{DIGEST}\n")[0].version == version
 
 
+# Windows has no mode bits for a directory, and refuses to remove the read-only one the host makes (WinError 5).
+@pytest.mark.skipif(os.name != "posix", reason="a directory's mode is POSIX; Windows cannot remove a read-only one")
 def test_plugin_isolation_requirements_pip_runs_in_an_empty_directory_no_one_writes(tmp_path, monkeypatch):
     """venv and pip run in a directory of their own that holds nothing and that only root may write, removed after,
     so no file there can stand for a requirement."""

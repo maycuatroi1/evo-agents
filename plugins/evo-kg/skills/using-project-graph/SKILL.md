@@ -1,6 +1,6 @@
 ---
 name: using-project-graph
-description: Use the project knowledge graph (MCP server evo-kg). Before editing, renaming or changing the signature of a function, class or file, call kg_impact to list its callers and other dependents, and update each one. Before grepping for anything with a name - requirements and use-case codes, plans and steps, seams, documents and sections, repos, files and symbols - find and trace it in the graph, with evidence and sensitivity labels. Use grep when asked to find an exact string, and for code you just edited.
+description: Project knowledge graph (MCP server evo-kg). Call kg_impact before renaming or changing a function, class or file, and kg_search before grepping for a named requirement, plan, step, seam, document or symbol. Grep for exact strings and code you just edited.
 ---
 
 # Using the project graph
