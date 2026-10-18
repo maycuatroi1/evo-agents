@@ -8,6 +8,7 @@ import type { ReactNode } from "react";
 
 import { useNow } from "@/hooks/use-now";
 import { percent, stepLabel } from "@/lib/plans";
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
 import { runTiming } from "./model";
@@ -29,7 +30,7 @@ function stateDuration(run: Run, now: number | null): number | null {
  */
 export function useStatusLine(run: Run): string {
   const t = useTranslations("runs.detail.header");
-  const tRuntime = useTranslations("runs.runtime");
+  const tRuntime = useRuntimeName();
   const gap = useGap();
   const now = useNow(isActiveState(run.state));
   const ms = stateDuration(run, now);

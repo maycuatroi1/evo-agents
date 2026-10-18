@@ -20,8 +20,19 @@ import { MAX_LABELS, MAX_SLOTS, MIN_SLOTS, type Worker } from "./queries";
 
 type WorkerUpdate = components["schemas"]["WorkerUpdate"];
 
+/** `manifest.PLUGIN_ID` and `runs.MAX_WORKER_PLUGINS` of the API: the plugins whose runtimes a worker takes, by id. */
+const PLUGIN_ID = /^[a-z][a-z0-9-]{0,62}$/;
+const MAX_PLUGINS = 16;
+
+/** Plugin ids typed as labels are: unique, in order, each checked against the API's pattern. */
+export function parsePlugins(input: string): { plugins: string[]; invalid: string[]; tooMany: boolean } {
+  const words = [...new Set(input.split(/[\s,]+/).map((word) => word.trim()).filter(Boolean))];
+  const plugins = words.filter((word) => PLUGIN_ID.test(word));
+  return { plugins, invalid: words.filter((word) => !PLUGIN_ID.test(word)), tooMany: plugins.length > MAX_PLUGINS };
+}
+
 /**
- * Change the worker's slots, labels or name: each field the body gives, at least one. Only its owner may; the daemon
+ * Change the worker's slots, labels, name or plugins: each field the body gives, at least one. Only its owner may; the daemon
  * takes the new values from the answer to its next heartbeat. It lives here, not in queries.ts, because queries.ts
  * sits in a chunk every route loads first, and this card loads on demand (next/dynamic in worker-detail.tsx).
  */
@@ -30,12 +41,12 @@ async function updateWorker(api: ApiClient, id: number, body: WorkerUpdate): Pro
   return call(api.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: id } }, body, headers }));
 }
 
-type Form = { name: string; slots: string; labels: string };
+type Form = { name: string; slots: string; labels: string; plugins: string };
 type Field = keyof Form;
 type Errors = Partial<Record<Field, string>>;
 
 function formOf(worker: Worker): Form {
-  return { name: worker.name, slots: String(worker.slots), labels: worker.labels.join(", ") };
+  return { name: worker.name, slots: String(worker.slots), labels: worker.labels.join(", "), plugins: worker.plugins.join(", ") };
 }
 
 function sameLabels(a: string[], b: string[]): boolean {
@@ -43,7 +54,8 @@ function sameLabels(a: string[], b: string[]): boolean {
 }
 
 /**
- * The owner's settings of a worker: its name, slots and labels, saved with PATCH /v1/workers/{id}. The fields show what
+ * The owner's settings of a worker: its name, slots, labels and the plugins whose runtimes it takes, saved with PATCH
+ * /v1/workers/{id}. The fields show what
  * the hub holds until the owner types; a save sends only the fields that differ, and once the hub answers the page and
  * the list read the worker again, so the header, the Scope card and the Slots line show the new values. What the hub
  * refuses (a name taken, a value out of range, the worker revoked meanwhile) stays at the form until the next try.
@@ -84,8 +96,11 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
     const labels = parseLabels(form.labels);
     if (labels.invalid.length) found.labels = t("labelsInvalid", { labels: labels.invalid.join(", ") });
     else if (labels.tooMany) found.labels = t("labelsTooMany", { max: MAX_LABELS });
+    const plugins = parsePlugins(form.plugins);
+    if (plugins.invalid.length) found.plugins = t("pluginsInvalid", { plugins: plugins.invalid.join(", ") });
+    else if (plugins.tooMany) found.plugins = t("pluginsTooMany", { max: MAX_PLUGINS });
     setErrors(found);
-    const first = (["name", "slots", "labels"] as const).find((key) => found[key]);
+    const first = (["name", "slots", "labels", "plugins"] as const).find((key) => found[key]);
     if (first) {
       document.getElementById(`${ids}-${first}`)?.focus();
       return;
@@ -95,6 +110,7 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
     if (name !== worker.name) body.name = name;
     if (slots !== worker.slots) body.slots = slots;
     if (!sameLabels(labels.labels, worker.labels)) body.labels = labels.labels;
+    if (!sameLabels(plugins.plugins, worker.plugins)) body.plugins = plugins.plugins;
     if (Object.keys(body).length === 0) {
       setEdits(null); // what was typed is what the hub holds already
       return;
@@ -200,6 +216,28 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
                 {t("labelsHint")}
               </p>
               <FieldError id={`${ids}-labels-error`} text={errors.labels} />
+            </div>
+            <div className="flex min-w-0 flex-col gap-1.5 md:col-span-2">
+              <Label htmlFor={`${ids}-plugins`}>{t("plugins")}</Label>
+              <Input
+                id={`${ids}-plugins`}
+                name="plugins"
+                value={form.plugins}
+                onChange={(event) => set("plugins", event.target.value)}
+                placeholder={t("pluginsPlaceholder")}
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
+                maxLength={1100}
+                className="h-9 font-mono placeholder:font-sans"
+                aria-invalid={errors.plugins ? true : undefined}
+                aria-describedby={describedBy("plugins")}
+                data-testid="worker-settings-plugins"
+              />
+              <p id={`${ids}-plugins-hint`} className="text-xs text-muted-foreground">
+                {t("pluginsHint")}
+              </p>
+              <FieldError id={`${ids}-plugins-error`} text={errors.plugins} />
             </div>
           </fieldset>
           {error ? <FormError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}

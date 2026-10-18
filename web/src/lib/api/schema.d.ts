@@ -1221,7 +1221,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels or name: its owner only, from a web session or with their machine token.
+         * @description Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine
+         *     token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -6379,11 +6380,10 @@ export interface components {
             steps: (number | string)[];
             /**
              * Runtime
-             * @description any: the claiming worker picks one it has
+             * @description any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422
              * @default any
-             * @enum {string}
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Mode
              * @default headless
@@ -7033,12 +7033,17 @@ export interface components {
             runs: components["schemas"]["RunControl"][];
             /** @description the worker's settings as the hub holds them, which its owner may change (PATCH /v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none */
             settings: components["schemas"]["WorkerSettings"];
+            /**
+             * Plugin Runtimes
+             * @description for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise
+             */
+            plugin_runtimes?: components["schemas"]["PluginRuntime"][];
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
             /**
              * Runtimes
-             * @description the runtimes on the machine: {"claude-code": {"available": true, "version": "2.1.289"}}
+             * @description the runtimes on the machine: {"claude-code": {"available": true, "version": "2.1.289"}}, and those of the plugins its owner accepted that the hub sent it (plugin_runtimes of the answer), as <plugin>/<name>
              */
             runtimes?: {
                 [key: string]: components["schemas"]["RuntimeReport"];
@@ -7066,7 +7071,7 @@ export interface components {
             run_kinds?: string[] | null;
             /**
              * Features
-             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
         };
@@ -8312,10 +8317,9 @@ export interface components {
             worker: string | null;
             /**
              * Runtime
-             * @description any until a worker claims the run
-             * @enum {string}
+             * @description any until a worker claims the run; a plugin's runtime is <plugin>/<name>
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /** Model */
             model: string | null;
             /**
@@ -8706,11 +8710,10 @@ export interface components {
             worker_id?: number | null;
             /**
              * Runtime
-             * @description any: the claiming worker picks one it has
+             * @description any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422
              * @default any
-             * @enum {string}
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Model
              * @description the model to use, as its runtime names it (opencode: provider/model); null: the runtime's
@@ -9069,6 +9072,42 @@ export interface components {
              * @description whether its plugins may be core plugins, which run in the hub's processes
              */
             core: boolean;
+        };
+        /**
+         * PluginRuntime
+         * @description A runtime a plugin enabled on a project declares (``evo_agents.plugins.runtimes``): the command of an ACP agent,
+         *     at the plugin's version the hub has installed.
+         */
+        PluginRuntime: {
+            /**
+             * Runtime
+             * @description <plugin>/<name>, as runs name it
+             */
+            runtime: string;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Version
+             * @description the plugin's installed version
+             */
+            version: string;
+            /** Title */
+            title: string;
+            /**
+             * Command
+             * @description the program, found on the worker's PATH unless absolute, then its arguments
+             */
+            command: string[];
+            /**
+             * Models
+             * @description the models the agent offers, which the worker reports
+             */
+            models: string[];
+            /**
+             * Secrets
+             * @description the variables the agent needs, from the run's leases or the worker's environment
+             */
+            secrets: string[];
         };
         /** PluginVersion */
         PluginVersion: {
@@ -10180,15 +10219,14 @@ export interface components {
             pinned_worker_id: number | null;
             /**
              * Requested Runtime
-             * @enum {string}
+             * @description as the dispatch asked: any, a runtime of the core or a plugin's
              */
-            requested_runtime: "any" | "claude-code" | "opencode" | "codex";
+            requested_runtime: string;
             /**
              * Runtime
-             * @description any until a worker claims the run
-             * @enum {string}
+             * @description any until a worker claims the run; a plugin's runtime is <plugin>/<name>
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Model
              * @description the model the dispatch asked for; null: the runtime's own choice
@@ -11047,9 +11085,9 @@ export interface components {
             session_id?: string | null;
             /**
              * Runtime
-             * @enum {string}
+             * @description a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration
              */
-            runtime: "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Model
              * @description the model the dispatch asked for; null: the runtime's own choice
@@ -11110,6 +11148,8 @@ export interface components {
             session_per_step: boolean;
             /** @description the agent profile the run went under; null for a run from before schema 0030 */
             profile?: components["schemas"]["RunProfile"] | null;
+            /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
+            plugin_runtime?: components["schemas"]["PluginRuntime"] | null;
         };
         /** RunState */
         RunState: {
@@ -12548,11 +12588,16 @@ export interface components {
             slots: number;
             /** Labels */
             labels: string[];
+            /**
+             * Plugins
+             * @description the plugins whose runtimes it takes, as its owner set them
+             */
+            plugins: string[];
             /** Projects */
             projects: string[];
             /**
              * Runtimes
-             * @description the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none
+             * @description the runtimes its last heartbeat reported, keyed claude-code, opencode, codex or <plugin>/<name>, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none
              */
             runtimes: {
                 [key: string]: unknown;
@@ -12680,6 +12725,11 @@ export interface components {
             name: string;
             /** Labels */
             labels: string[];
+            /**
+             * Plugins
+             * @description the plugins whose runtimes the worker takes; a hub before 0039 sends none
+             */
+            plugins?: string[];
         };
         /**
          * WorkerUpdate
@@ -12698,6 +12748,11 @@ export interface components {
              * @description unique among the owner's workers not revoked
              */
             name?: string | null;
+            /**
+             * Plugins
+             * @description the plugins whose runtimes it takes; [] for none
+             */
+            plugins?: string[] | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
@@ -19453,8 +19508,8 @@ export interface operations {
                 days?: number;
                 /** @description the runs of this plan */
                 plan_id?: string | null;
-                /** @description the runs of this runtime */
-                runtime?: ("claude-code" | "opencode" | "codex") | null;
+                /** @description the runs of this runtime, of the core or a plugin's */
+                runtime?: string | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;

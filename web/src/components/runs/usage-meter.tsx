@@ -3,6 +3,7 @@
 import { useFormatter, useTranslations } from "next-intl";
 import { useId, useMemo } from "react";
 
+import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
 import { isActiveState, type Run } from "./queries";
@@ -43,7 +44,7 @@ export function useCost() {
 
 export function UsageMeter({ run, events }: { run: Pick<Run, "usage" | "state" | "runtime">; events: Parameters<typeof runUsage>[1] }) {
   const t = useTranslations("runs.detail.usage");
-  const tRuntime = useTranslations("runs.runtime");
+  const tRuntime = useRuntimeName();
   const format = useFormatter();
   const costText = useCost();
   const id = useId();
