@@ -176,9 +176,12 @@ Hooks:
   origin/main)`), counted from the checkout without the network.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
   label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it.
-- PreToolUse, before Grep, Glob, or `rg` or `grep` in Bash, may add a note with the ids of graph
-  nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
-  off.
+- PostToolUse, after Grep, or `rg` or `grep` at the head of a Bash command, adds a note beside the
+  result when a matched line falls in a symbol or file of the graph: at most four lines after its
+  header, each naming by id who calls it (or imports the file), its tests and the plan steps that
+  name it. It never changes, cuts or blocks the result, and says nothing when there is nothing to
+  add. Set `EVO_KG_GREP_HINTS=0` to turn it off. [docs/kg.md](docs/kg.md) says how it places a
+  matched line.
 
 The plugin needs [uv](https://docs.astral.sh/uv/) on `PATH` and pins the release it runs, the version in its
 `plugin.json`: the server starts with `uvx --from evo-ak==<version> evo-agents`, which downloads and caches that version

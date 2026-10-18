@@ -31,8 +31,6 @@
     "evo_agents/kg/pipeline/link.py::Linker.scan": {"complexity": 43, "statements": 120},
     "evo_agents/kg/protocol/__init__.py::StreamChecker.feed": {"complexity": 21},
     "evo_agents/kg/protocol/conformance.py::run_conformance": {"statements": 56},
-    "evo_agents/kg/search_hint.py::_command_search": {"complexity": 23},
-    "evo_agents/kg/search_hint.py::find_hints": {"complexity": 22, "statements": 64},
     "evo_agents/kg/sync.py::sync_source": {"complexity": 22, "statements": 88},
     "evo_agents/schema.py::Validator._check_node": {"complexity": 27},
     "evo_agents/worker/cli.py::cmd_step": {"complexity": 26, "statements": 90},
