@@ -381,8 +381,8 @@ REVIEW_TOOLS = [
     {
         "name": "decision_list",
         "description": (
-            "The decisions the agents of the project's plan runs and author runs asked their owners, newest first, "
-            "with the answer; one an author run asked before it put a plan has no plan."
+            "The decisions the agents of the project's plan runs, author runs and local sessions asked their owners, "
+            "newest first, with the answer; one asked by a run that has put no plan has no plan."
         ),
         "inputSchema": {
             "type": "object",
