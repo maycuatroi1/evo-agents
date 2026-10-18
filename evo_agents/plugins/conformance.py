@@ -194,7 +194,10 @@ class Session:
 
 async def _run_backend(manifest: Manifest, root: Path, report: Report, timeout: float) -> None:
     where = placement(root, manifest.id, manifest.version)
-    process = BackendProcess(backend_command(where, manifest.backend["entry"]), backend_env(where), where.data)
+    # The author's own plugin, under the caller's user: root too (CI runs this as root in the hub's image), which the
+    # trampoline refuses unless told, so that the plugin host never runs a backend as root by mistake.
+    command = backend_command(where, manifest.backend["entry"], keep_root=True)
+    process = BackendProcess(command, backend_env(where), where.data)
     try:
         await process.start()
     except OSError as exc:

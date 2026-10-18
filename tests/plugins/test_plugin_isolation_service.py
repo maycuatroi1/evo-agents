@@ -7,6 +7,8 @@ the host ran on asyncio's own loop (``asyncio.run``). This test starts the servi
 stand-in for the hub's /internal/plugin-host/ routes, and checks through the service's own routes that:
 
 - the sample, the hostile and the faulty fixtures start and answer;
+- a backend holds no file descriptor but 0, 1 and 2, although uvloop ignores close_fds and the host holds an
+  inheritable descriptor (the review of PR #72: one reached the backend as fd 12, with copies of its stdio);
 - as root (CI's plugin-host-root job, in the hub's image) each runs under a user of its own, and the hostile one
   reads no secret, writes into no other plugin's directories and signals no other user's process; the limits hold;
 - stopping the service (SIGTERM, as Docker stops it) leaves no process of a plugin's user behind, a child that left
@@ -142,7 +144,7 @@ def _call(port: int, plugin: str, method: str, params: dict) -> dict:
 class Service:
     """``evo-agents hub plugin-host`` in a subprocess, its output in a file for the assertion messages."""
 
-    def __init__(self, hub_url: str, data_dir: Path, log: Path):
+    def __init__(self, hub_url: str, data_dir: Path, log: Path, inherited: int):
         self.port, self.log = _free_port(), log
         command = [sys.executable, "-m", "evo_agents", "hub", "plugin-host", "--hub-url", hub_url]
         command += ["--data-dir", str(data_dir), "--host", "127.0.0.1", "--port", str(self.port)]
@@ -151,7 +153,9 @@ class Service:
         source = str(Path(evo_agents.__file__).resolve().parents[1])  # this checkout, not an installed copy
         env = {**os.environ, **HUB_SECRETS, "PYTHONPATH": source, "EVO_HUB_LOG_LEVEL": "INFO"}
         self.output = log.open("wb")
-        self.proc = subprocess.Popen(command, env=env, cwd=str(data_dir), stdout=self.output, stderr=subprocess.STDOUT)
+        self.proc = subprocess.Popen(
+            command, env=env, cwd=str(data_dir), stdout=self.output, stderr=subprocess.STDOUT, pass_fds=(inherited,)
+        )
 
     def tail(self) -> str:
         if not self.output.closed:
@@ -198,7 +202,9 @@ def test_plugin_isolation_host_service_runs_backends_as_production_does(plugin_r
     Hub.minted, Hub.reports = [], []
     hub = ThreadingHTTPServer(("127.0.0.1", 0), Hub)
     threading.Thread(target=hub.serve_forever, daemon=True).start()
-    service = Service(f"http://127.0.0.1:{hub.server_address[1]}", plugin_root, tmp_path / "plugin-host.log")
+    inherited = os.open(tmp_path / "inherited", os.O_CREAT | os.O_WRONLY, 0o600)  # the host's, inheritable there
+    service = Service(f"http://127.0.0.1:{hub.server_address[1]}", plugin_root, tmp_path / "plugin-host.log", inherited)
+    os.close(inherited)
     try:
         service.wait_live()
         backends = service.wait_running(set(PLUGINS))
@@ -218,6 +224,7 @@ def test_plugin_isolation_host_service_runs_backends_as_production_does(plugin_r
     assert code in (0, -signal.SIGTERM) and "Application shutdown complete" in service.tail(), (code, service.tail())
     assert sorted(Hub.minted) == sorted(PLUGINS) and token.startswith("evp_service-")  # one token per start
     assert Hub.reports, "the host reported no status to the hub"
+    assert report["fds"] == [0, 1, 2], report  # no descriptor of the host's, whatever its loop passed on
     if not as_root():  # isolation process: a developer's machine; the host's /proc is readable, its env is not passed
         assert {item["isolation"] for item in backends} == {"process"}
         assert not [where for where in report["found"] if where.startswith("env:")], report

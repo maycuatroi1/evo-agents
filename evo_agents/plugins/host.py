@@ -175,6 +175,12 @@ class Backend:
         prepare_data(self.where, owner)
         build_env(self.where, self.manifest.backend.get("requirements"), owner)
 
+    async def _replaced(self) -> None:
+        """Wait for the stop of the backend this one replaces, whatever it ends with. Shielded: cancelling this start
+        must not cancel that stop half way, which would leave its processes running under the same user."""
+        if self._after is not None:
+            await asyncio.gather(asyncio.shield(self._after), return_exceptions=True)
+
     async def _built(self) -> None:
         """Wait for a placing under way, whatever it ends with."""
         if self._building is not None:
@@ -203,7 +209,7 @@ class Backend:
         if self.manifest.backend is None:
             raise PlacementError(f"plugin {self.name} has no backend to run")
         if self._after is not None:  # the backend this one replaces shares its user: let it stop first
-            await asyncio.gather(self._after, return_exceptions=True)
+            await self._replaced()
             self._after = None
         owner = self._owner()
         await self._built()  # the placing of a start that was cancelled, which runs on in its thread
@@ -312,12 +318,14 @@ class Backend:
             raise BackendUnavailable(f"plugin {self.name} did not answer: {exc}") from None
 
     async def stop(self) -> None:
-        """Stop the backend: a start under way is cancelled, what runs under the plugin's user killed (pip's install
-        included), the placing it was doing waited for, the process stopped, and in isolation uid every process of
-        the plugin's user killed again. Only then may the backend that replaces this one, under the same user, start."""
+        """Stop the backend: a start under way is cancelled, the stop of the backend it replaced waited for, what runs
+        under the plugin's user killed (pip's install included), the placing it was doing waited for, the process
+        stopped, and in isolation uid every process of the plugin's user killed again. Only then may the backend that
+        replaces this one, under the same user, start."""
         if self._starting is not None and not self._starting.done():
             self._starting.cancel()
             await asyncio.gather(self._starting, return_exceptions=True)
+        await self._replaced()  # a start cancelled while it waited for it
         owner = identity(self.init.get("plugin_id", 0))
         await self._wind_down(owner)
         async with self._lock:
@@ -333,18 +341,21 @@ class Backend:
 @dataclass
 class Host:
     """The backends of the isolated plugins this host runs, by plugin name. ``mint`` asks the hub for a backend's
-    token at each start; ``allow_shared_user`` lets a host that is not root run backends under its own user."""
+    token at each start; ``allow_shared_user`` lets a host that is not root run backends under its own user.
+    ``stopping`` holds the stops of the backends ``retire`` let go of, until they end."""
 
     root: Path
     mint: Mint | None = None
     allow_shared_user: bool = False
     backends: dict[str, Backend] = field(default_factory=dict)
+    stopping: dict[str, asyncio.Future] = field(default_factory=dict)
 
     def place(self, manifest: Manifest, bundle: bytes, init: dict) -> Backend:
         """Register (or replace) the backend of ``manifest``; its version or ``initialize`` changing replaces it, the
-        new one starting only once the old one has stopped, since both run under the plugin's user."""
+        new one starting only once the old one has stopped, since both run under the plugin's user. So does a backend
+        placed again while the stop of a retired one of the same plugin still runs."""
         existing = self.backends.get(manifest.id)
-        stopping = None
+        stopping = self.stopping.get(manifest.id) if existing is None else None
         if existing is not None and (existing.manifest.version != manifest.version or existing.init != init):
             stopping = asyncio.ensure_future(existing.stop())
             existing = None
@@ -372,11 +383,29 @@ class Host:
         for backend in self.backends.values():
             backend.kick()
 
+    def retire(self, name: str) -> asyncio.Future | None:
+        """Forget the backend of ``name`` and stop it in the background, so the stop of one plugin, however long it
+        takes, never holds the caller (the reconcile loop) nor any other plugin; the stop, or None."""
+        backend = self.backends.pop(name, None)
+        if backend is None:
+            return None
+        stopping = asyncio.ensure_future(backend.stop())
+        self.stopping[name] = stopping
+        stopping.add_done_callback(lambda done: self._stopped(name, done))
+        return stopping
+
+    def _stopped(self, name: str, done: asyncio.Future) -> None:
+        if self.stopping.get(name) is done:
+            del self.stopping[name]
+        if not done.cancelled() and done.exception() is not None:
+            log.warning("plugin backend stop failed", extra={"contribution": name, "error": repr(done.exception())})
+
     def status(self) -> list[dict]:
         return [backend.status.as_dict() for backend in sorted(self.backends.values(), key=lambda b: b.name)]
 
     async def stop_all(self) -> None:
-        await asyncio.gather(*(backend.stop() for backend in self.backends.values()), return_exceptions=True)
+        stops = [backend.stop() for backend in self.backends.values()]
+        await asyncio.gather(*stops, *self.stopping.values(), return_exceptions=True)
 
 
 __all__ = [

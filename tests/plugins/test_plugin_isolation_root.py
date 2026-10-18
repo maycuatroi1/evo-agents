@@ -15,7 +15,8 @@ them as it holds EVO_HUB_PLUGIN_HOST_TOKEN in production) and a fresh named volu
   signal no process of another user: not the host, not docker-init, not the sibling backend;
 - a backend's data directory, which its user owns, is prepared again at the next start without CAP_FOWNER (H1);
 - pip runs under the backend's user and installs only the bundle's wheels; the environment is root's afterwards (C1);
-- stopping a backend kills every process of its user, a child that left the group with setsid() included (M2);
+- stopping a backend kills every process of its user, a child that left the group with setsid() included (M2), and
+  a process of that user that stops every other one (SIGSTOP) cannot stop the kill (the review of PR #72);
 - the limits of a backend's user hold;
 - a link another process of the backend's user plants in the environment pip fills is removed, never followed, and
   the modes there are reset; stopping a backend kills pip and waits for the placing it cancelled (the second L2).
@@ -27,6 +28,7 @@ import asyncio
 import importlib.util
 import json
 import os
+import signal as signals
 import stat
 import subprocess
 import sys
@@ -35,7 +37,7 @@ from pathlib import Path
 
 import pytest
 
-from evo_agents.plugins import environment
+from evo_agents.plugins import environment, process
 from evo_agents.plugins.environment import NPROC, UID_BASE
 from evo_agents.plugins.host import Host
 from evo_agents.plugins.process import processes_of
@@ -109,6 +111,7 @@ def test_plugin_hostile_root_backend_reads_writes_and_signals_nothing(plugin_roo
 
     report, status = asyncio.run(run())
     assert report["found"] == {} and report["wrote"] == {} and report["signalled"] == {}, report
+    assert report["fds"] == [0, 1, 2], report
     assert report["uid"] == UID_BASE + 3
     assert {item["isolation"] for item in status} == {"uid"}
     environ = Path("/proc/1/environ")
@@ -188,6 +191,74 @@ def test_plugin_crash_root_stop_kills_every_process_of_the_plugins_user(plugin_r
     orphan, main = asyncio.run(run())
     assert processes_of(UID_BASE + 5) == [], "the setsid() child outlived its backend"
     assert orphan != main
+
+
+STOPPER = """
+import os, signal
+while True:
+    try:
+        os.kill(-1, signal.SIGSTOP)
+    except OSError:
+        pass
+"""
+
+
+def _slow_killer(code: str, seconds: float) -> str:
+    """The killer with a pause between taking its user and kill(-1): the moment a process of the plugin's user had to
+    stop it in, some microseconds wide, made wide enough that a test meets it every time."""
+    lines = code.splitlines(keepends=True)
+    at = next(i for i, line in enumerate(lines) if line.lstrip().startswith("os.kill(-1"))
+    indent = lines[at][: len(lines[at]) - len(lines[at].lstrip())]
+    lines.insert(at, f"{indent}import time; time.sleep({seconds})\n")
+    return "".join(lines)
+
+
+def test_plugin_crash_root_a_process_of_the_plugins_user_cannot_stop_the_kill(plugin_root, monkeypatch):
+    """The review of PR #72: kill_user's killer took the plugin's user before it called kill(-1), so a process of that
+    user could stop it in between (SIGSTOP); the stop never ended, holding the lock and the backend that replaces it,
+    and the plugin ran on. STOPPER stops every process of its user but itself, in a loop, beside a backend of that
+    user, and the killer pauses between taking its user and killing (``_slow_killer``). The killer's real and saved
+    user is now one of its own, which no process of the plugin may signal."""
+    monkeypatch.setattr(process, "KILLER", _slow_killer(process.KILLER, 0.5))
+    user = UID_BASE + 15
+    stoppers: list[subprocess.Popen] = []
+
+    async def run() -> float:
+        host = Host(plugin_root)
+        backend = host.place(manifest("faulty"), bundle("faulty"), init("faulty", 15))
+        assert text(await backend.call("tool", tool("ok"), 30)) == "ok"
+        for _ in range(2):  # the one that runs stops the other: one stays at it
+            stoppers.append(
+                subprocess.Popen(
+                    [sys.executable, "-I", "-S", "-c", STOPPER],
+                    user=user,
+                    group=user,
+                    extra_groups=[],
+                    cwd="/",
+                    start_new_session=True,
+                    stdin=subprocess.DEVNULL,
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                )
+            )
+        await asyncio.sleep(1.0)  # they run, and have stopped the backend
+        started = time.monotonic()
+        await asyncio.wait_for(host.stop_all(), 45)
+        return time.monotonic() - started
+
+    try:
+        elapsed = asyncio.run(run())
+        for stopper in stoppers:
+            stopper.wait(timeout=10)
+    finally:  # what a failed run leaves: stopped killers and stoppers of the user
+        for pid in processes_of(user):
+            os.kill(pid, signals.SIGKILL)
+        for stopper in stoppers:
+            if stopper.poll() is None:
+                stopper.wait(timeout=10)
+    assert [stopper.returncode for stopper in stoppers] == [-signals.SIGKILL] * 2
+    assert processes_of(user) == [], "a process of the plugin's user outlived the stop"
+    assert elapsed < 40, elapsed
 
 
 def test_plugin_isolation_root_limits_count_the_plugins_user(plugin_root):
