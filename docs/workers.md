@@ -1783,12 +1783,15 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `checkout` | the fetch, or the worktree, went wrong for another reason |
 | `runtime` | the worker has no adapter for the runtime, cannot run it interactive, has no login the run may use, or cannot apply the run's agent profile |
 | `worker_stopped` | the daemon was stopped, or failed, while it held the run |
+| `branch_mismatch` | the worktree is on another branch than the run's: the worker compares full refs (`refs/heads/<branch>`), so a tag with the branch's name is no mismatch, and the error names both refs |
 | `rate_limit` | the agent's account hit its usage limit and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 | `account_auth` | the agent's account failed to authenticate (the API refused its token, a 401) and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 
-A run that fails for another reason (the agent's own error, the watchdog of the Curator) carries no cause, and neither
-does one an older daemon or the hub ended (a lost lease, a revoked worker); the Curator's figures read the cause of
-those from their error (`evo_agents.hub.review.run_cause`).
+Every run of kind step, plan, author or chat that ends `failed` carries a `failure_cause`: the worker's when it sent
+one; otherwise (the agent's own error, an older daemon, a failure the hub ended: a revoked worker, a lost lease on the
+last attempt) the hub reads it from the error the way the Curator's figures do (`evo_agents.hub.review.run_cause`) and
+writes a `system` event in the run's log saying the cause is a guess (`failure_cause_inferred: true`). A review or judge
+run keeps the cause its worker sent, and the Curator's figures read the rest from the error as before.
 
 ### An account's usage limit
 

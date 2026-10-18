@@ -165,16 +165,18 @@ class StepRun:
             await push.commit(run, wt)
         except gitops.GitError as exc:
             raise RunFailed(f"committing what the agent left failed: {exc}", verify=run.verify) from None
-        head_branch = await gitops.current_branch(wt)
-        if head_branch is None:
+        head_ref = await gitops.current_ref(wt)
+        if head_ref is None:
             raise RunFailed(
                 "HEAD is detached in the worktree: the worker does not push a detached HEAD", verify=run.verify
             )
-        if head_branch != self.local_branch:
+        expected_ref = gitops.branch_ref(self.local_branch)
+        if head_ref != expected_ref:  # full refs: a tag with the branch's name does not make them differ
             raise RunFailed(
-                f"the worktree is on {head_branch}, not {self.local_branch}: the agent switched branches, and the "
+                f"the worktree is on {head_ref}, not {expected_ref}: the agent switched branches, and the "
                 "worker does not push it",
                 verify=run.verify,
+                cause="branch_mismatch",
             )
         commit_sha = await gitops.rev(wt, "HEAD")
         diffstat = await gitops.diffstat(wt, self.base)

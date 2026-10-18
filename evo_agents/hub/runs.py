@@ -97,6 +97,7 @@ FAILURE_CAUSES = (
     "checkout",  # the checkout, the fetch or a worktree of the run went wrong
     "runtime",  # the worker has no adapter for the runtime, or cannot start the agent as the run asks
     "worker_stopped",  # the daemon was stopped, or failed, while the run was held
+    "branch_mismatch",  # the worktree is on another branch than the run's, compared by full ref
     "rate_limit",  # the agent's account hit its usage limit and the run could not move to another one
     "account_auth",  # the agent's account failed to authenticate (its token refused) and the run could not move
 )

@@ -81,7 +81,7 @@ from sqlalchemy import Integer, case, cast, delete, exists, extract, func, inser
 from sqlalchemy.exc import DBAPIError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import plugin_events, runs, tables
+from evo_agents.hub import plugin_events, review, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import MAX_EVIDENCE_BYTES
@@ -103,6 +103,8 @@ RECOVER_BATCH = 500  # expired runs one pass of the reaper takes
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 DECISION_WAIT = timedelta(seconds=runs.DECISION_WAIT_SECONDS)  # a run waiting this long for an answer is parked
 PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cancelled
+# The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error
+CAUSED_KINDS = ("step", "plan", "author", "chat")
 CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps them; NULL for any other kind
 # Columns a move may set besides the state, its times and the lease.
 MOVE_COLUMNS = frozenset(
@@ -194,7 +196,9 @@ def _move(run_id: int, old: str, new: str, error: str | None, columns: dict, lea
         values["handback_requested_at"] = None
     values |= {name: _column_value(value) for name, value in columns.items()}
     moved = update(r).values(**values).where(r.c.id == run_id, r.c.state == old)
-    return moved.returning(r.c.event_seq.label("seq"), r.c.project_id, r.c.kind, r.c.plan_id, r.c.step_key)
+    return moved.returning(
+        r.c.event_seq.label("seq"), r.c.project_id, r.c.kind, r.c.plan_id, r.c.step_key, r.c.error, r.c.failure_cause
+    )
 
 
 async def _insert_event(conn: AsyncConnection, run_id: int, seq: int, kind: str, body: dict) -> None:
@@ -253,8 +257,29 @@ async def move_run(
         from evo_agents.hub.server import credentials  # its routes read runs through the routes that import this module
 
         await credentials.end_leases(conn, run_id=run_id, by=f"run-{new}")
+    if new == "failed" and row.kind in CAUSED_KINDS and not row.failure_cause:
+        await infer_failure_cause(conn, run_id, row.error)
     await notify_events(conn, run_id)
     return await record_move(conn, run_id, old, new, reason=reason, token_id=token_id)
+
+
+async def infer_failure_cause(conn: AsyncConnection, run_id: int, error: str | None) -> str:
+    """Give failed run ``run_id``, whose row the caller holds locked and which carries no failure_cause (its worker
+    sent none, or the hub ended it), the one ``review.run_cause`` reads in its ``error`` (the way the Curator's figures
+    count it), and write a ``system`` event saying the cause is a guess, so triage knows how far to trust it."""
+    cause = review.run_cause(None, error, "failed")
+    r = tables.runs
+    await conn.execute(update(r).values(failure_cause=cause).where(r.c.id == run_id))
+    await write_event(
+        conn,
+        run_id,
+        {
+            "message": f"The worker named no cause for this failure; the hub guessed {cause} from the error.",
+            "failure_cause": cause,
+            "failure_cause_inferred": True,
+        },
+    )
+    return cause
 
 
 # The plan
