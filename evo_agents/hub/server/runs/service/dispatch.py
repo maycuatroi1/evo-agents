@@ -27,6 +27,7 @@ from evo_agents.hub.server.profile_store import ensure_default
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.run_state import notify_queued
 from evo_agents.hub.server.runs.models import ActiveRun, AuthorRunDispatch, Dispatch, PlanRunDispatch, Run, available
+from evo_agents.hub.server.runs.service import plugin_runtimes
 from evo_agents.hub.server.runs.service.accounts import Picked, pick_account, record_pick
 from evo_agents.hub.server.runs.service.audits import audit_run, run_target
 from evo_agents.hub.server.runs.service.profiles import Asked, Chosen, choose
@@ -40,6 +41,7 @@ from evo_agents.hub.server.runs.service.views import (
     run_views,
 )
 from evo_agents.hub.server.security import WEB, Principal
+from evo_agents.plugins.runtimes import is_plugin_runtime
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 
@@ -64,6 +66,7 @@ class Pinned:
     run_kinds: tuple[str, ...] = ()  # the kinds of run its daemon said it runs
     features: tuple[str, ...] = ()  # what its daemon said it does besides them (runs.HUB_FEATURES)
     labels: tuple[str, ...] = ()  # its owner's labels, which an agent profile's worker axis may name
+    plugins: tuple[str, ...] = ()  # the plugins whose runtimes its owner lets it take
 
 
 async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
@@ -83,6 +86,7 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
         w.c.run_kinds,
         w.c.features,
         w.c.labels,
+        w.c.plugins,
     ).where(w.c.id == worker_id)
     row = (await conn.execute(query)).one_or_none()
     if row is None or row.owner_id != user.user_id:  # the same answer for another member's worker and for no worker
@@ -102,7 +106,7 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
         )
     kinds, features = tuple(row.run_kinds or ()), tuple(row.features or ())
     found = (row.runtimes or {}, row.checkouts or {}, row.agent_version, kinds, features, tuple(row.labels or ()))
-    return Pinned(worker_id, name, *found)
+    return Pinned(worker_id, name, *found, plugins=tuple(row.plugins or ()))
 
 
 def unfit(
@@ -131,6 +135,15 @@ def unfit(
     usable = [name for name in runs.RUNTIMES if available(worker.runtimes.get(name))]
     if runtime == "any" and not usable:
         problems.append("it reports no runtime available")
+    elif is_plugin_runtime(runtime):
+        problems += plugin_runtimes.unfit(
+            runtime,
+            worker_id=worker.id,
+            agent_version=worker.agent_version,
+            features=worker.features,
+            plugins=worker.plugins,
+            runtimes=worker.runtimes,
+        )
     elif runtime != "any" and runtime not in usable:
         problems.append(f"it does not report {runtime} available")
     missing = [f"{project}/{repo}" for repo in repos if f"{project}/{repo}" not in worker.checkouts]

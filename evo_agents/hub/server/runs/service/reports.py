@@ -1,5 +1,6 @@
 """What a worker reports: its heartbeat (POST /v1/worker/heartbeat), which records the machine, extends the leases
-of the runs it holds and answers what to do with each, and the move of a run it holds (POST
+of the runs it holds and answers what to do with each, the worker's settings and, for a daemon that runs them, the
+runtimes of the plugins its owner accepted (``plugin_runtimes.offered``); and the move of a run it holds (POST
 /v1/worker/runs/{id}/state), checked against the transition table with the worker as actor."""
 
 from __future__ import annotations
@@ -17,11 +18,13 @@ from evo_agents.hub.server.runs.models import (
     NOT_HELD,
     HeartbeatAnswer,
     HeartbeatRequest,
+    PluginRuntime,
     Run,
     RunControl,
     StateReport,
     WorkerSettings,
 )
+from evo_agents.hub.server.runs.service import plugin_runtimes
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
@@ -98,9 +101,15 @@ async def record_heartbeat(
                 features=None if body.features is None else [k for k in body.features if k in runs.HUB_FEATURES],
             )
             .where(w.c.id == worker_id)
-            .returning(w.c.slots, w.c.name, w.c.labels)
+            .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins)
         )
         settings = WorkerSettings(**held.one()._mapping)
+        declared = []
+        if runs.PLUGIN_RUNTIMES in (body.features or ()):
+            declared = [
+                PluginRuntime(**runtime.to_json())
+                for runtime in await plugin_runtimes.offered(conn, worker_id, settings.plugins)
+            ]
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
         others = [run_id for run_id in reported if run_id not in extended]
         parked = {}
@@ -148,7 +157,7 @@ async def record_heartbeat(
             )
         else:
             controls.append(RunControl(id=run_id, held=False, state=None, lease_expires_at=None, cancel=True))
-    return HeartbeatAnswer(drain=drained_at is not None, runs=controls, settings=settings)
+    return HeartbeatAnswer(drain=drained_at is not None, runs=controls, settings=settings, plugin_runtimes=declared)
 
 
 SAME_COLUMNS = ("session_id", "commit_sha", "diffstat", "verify", "usage")  # what a report without a move may set

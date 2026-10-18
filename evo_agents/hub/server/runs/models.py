@@ -36,7 +36,14 @@ MAX_RUN_KINDS = 20
 MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes
 
 RunId = Annotated[int, Path(ge=1, le=MAX_ID)]
-RuntimeName = Literal[runs.RUNTIMES]  # an alias: a model with a field named runs cannot say runs.RUNTIMES
+# Any runtime's name, any included: one of the core's or a plugin's <plugin>/<name>. A dispatch takes one registered in
+# its project (``service.plugin_runtimes``), else 422.
+RuntimeName = Annotated[str, Field(pattern=runs.RUNTIME_NAME, max_length=127)]
+RUNTIME_HELP = (
+    "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or "
+    "<plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is "
+    "422"
+)
 ModelName = Annotated[str, Field(min_length=1, max_length=runs.MAX_MODEL_CHARS, pattern=LINE)]
 REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 409: {"model": ErrorBody}}
 StepKey = Annotated[str, Path(min_length=1, max_length=STEP_KEY_CHARS, description="the step's id, or its order")]
@@ -94,7 +101,7 @@ class Dispatch(BaseModel):
     steps: list[int | Annotated[str, Field(min_length=1, max_length=STEP_KEY_CHARS)]] = Field(
         min_length=1, max_length=MAX_DISPATCH_STEPS, description="step ids (or orders), one run each"
     )
-    runtime: Literal[REQUESTED_RUNTIMES] = Field("any", description="any: the claiming worker picks one it has")
+    runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     mode: Literal[runs.MODES] = "headless"
     worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours")
     approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
@@ -143,7 +150,7 @@ class AuthorRunDispatch(BaseModel):
 class PlanRunDispatch(BaseModel):
     plan_id: str = Field(pattern=PLAN_ID)
     worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the run to this worker of yours")
-    runtime: Literal[REQUESTED_RUNTIMES] = Field("any", description="any: the claiming worker picks one it has")
+    runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     model: ModelName | None = Field(
         None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
     )
@@ -243,8 +250,8 @@ class Run(BaseModel):
     worker_id: int | None = Field(description="the worker that claimed it")
     worker: str | None = Field(description="that worker's name")
     pinned_worker_id: int | None
-    requested_runtime: Literal[REQUESTED_RUNTIMES]
-    runtime: Literal[REQUESTED_RUNTIMES] = Field(description="any until a worker claims the run")
+    requested_runtime: str = Field(description="as the dispatch asked: any, a runtime of the core or a plugin's")
+    runtime: str = Field(description="any until a worker claims the run; a plugin's runtime is <plugin>/<name>")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
@@ -387,6 +394,23 @@ class RunProfile(BaseModel):
     permissions: dict = Field(description="the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}")
 
 
+class PluginRuntime(BaseModel):
+    """A runtime a plugin enabled on a project declares (``evo_agents.plugins.runtimes``): the command of an ACP agent,
+    at the plugin's version the hub has installed."""
+
+    runtime: str = Field(description="<plugin>/<name>, as runs name it")
+    plugin: str
+    version: str = Field(description="the plugin's installed version")
+    title: str
+    command: list[str] = Field(
+        description="the program, found on the worker's PATH unless absolute, then its arguments"
+    )
+    models: list[str] = Field(description="the models the agent offers, which the worker reports")
+    secrets: list[str] = Field(
+        description="the variables the agent needs, from the run's leases or the worker's environment"
+    )
+
+
 class RunSpec(BaseModel):
     id: int
     kind: Literal[runs.RUN_KINDS]
@@ -404,7 +428,7 @@ class RunSpec(BaseModel):
         None, description="the parked plan run this one goes on from: reuse its worktrees and resume its session"
     )
     session_id: str | None = Field(None, description="the agent session to resume; null for a new one")
-    runtime: Literal[runs.RUNTIMES]
+    runtime: str = Field(description="a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration")
     model: str | None = Field(description="the model the dispatch asked for; null: the runtime's own choice")
     mode: Literal[runs.MODES]
     approval: Literal[runs.APPROVALS]
@@ -442,6 +466,11 @@ class RunSpec(BaseModel):
     profile: RunProfile | None = Field(
         None, description="the agent profile the run went under; null for a run from before schema 0030"
     )
+    plugin_runtime: PluginRuntime | None = Field(
+        None,
+        description="for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the "
+        "worker runs through its adapter of ACP; null for a runtime of the core",
+    )
 
 
 class Claim(BaseModel):
@@ -475,7 +504,9 @@ class CheckoutReport(BaseModel):
 class HeartbeatRequest(BaseModel):
     runtimes: dict[RuntimeName, RuntimeReport] = Field(
         default_factory=dict,
-        description='the runtimes on the machine: {"claude-code": {"available": true, "version": "2.1.289"}}',
+        description='the runtimes on the machine: {"claude-code": {"available": true, "version": "2.1.289"}}, and '
+        "those of the plugins its owner accepted that the hub sent it (plugin_runtimes of the answer), as "
+        "<plugin>/<name>",
     )
     checkouts: dict[Annotated[str, Field(pattern=CHECKOUT_KEY)], CheckoutReport] = Field(
         default_factory=dict,
@@ -499,8 +530,9 @@ class HeartbeatRequest(BaseModel):
         description="what the daemon does besides its kinds of run: session_per_step, a plan run with a session for "
         "each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; "
         "agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the "
-        "agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A "
-        "feature this hub does not know is left out",
+        "agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP. One that says none "
+        "takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is "
+        "left out",
     )
 
     def stored(self) -> tuple[dict, dict]:
@@ -556,6 +588,9 @@ class WorkerSettings(BaseModel):
     slots: int = Field(ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
     name: str
     labels: list[str]
+    plugins: list[str] = Field(
+        default_factory=list, description="the plugins whose runtimes the worker takes; a hub before 0039 sends none"
+    )
 
 
 class HeartbeatAnswer(BaseModel):
@@ -564,6 +599,11 @@ class HeartbeatAnswer(BaseModel):
     settings: WorkerSettings = Field(
         description="the worker's settings as the hub holds them, which its owner may change (PATCH "
         "/v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none"
+    )
+    plugin_runtimes: list[PluginRuntime] = Field(
+        default_factory=list,
+        description="for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a "
+        "project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise",
     )
 
 

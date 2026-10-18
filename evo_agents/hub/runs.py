@@ -74,6 +74,7 @@ OFFLINE_AFTER_SECONDS = 300  # a worker with no heartbeat for longer than this i
 LEASE_SECONDS = 300  # a claim and each heartbeat set a held run's lease to expire this long after now
 CLAIM_WAIT_SECONDS = 25  # the longest a claim waits for a run before answering that there is none
 MAX_SLOTS = 16  # runs a worker holds at once at most (workers.slots, as schema 0026 bounds it); 1 is the least
+MAX_WORKER_PLUGINS = 16  # plugins whose runtimes a worker takes (workers.plugins, as schema 0039 bounds it)
 MAX_ATTEMPTS = 3  # runs of one dispatch, the first included; the last one's expired lease fails it
 # The next attempt of a run lost on a worker goes back to that worker only once it is steady: its heartbeats have
 # come for STEADY_SECONDS, none more than STEADY_GAP_SECONDS after the one before (unlike a laptop that slept, or one
@@ -125,10 +126,17 @@ SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a ne
 AUTHOR_DECISIONS = "author_decisions"
 # a daemon whose adapters apply a run's agent profile (evo_agents.hub.profiles): tool, skill and model, instructions
 AGENT_PROFILES = "agent_profiles"
+# a daemon that takes the runtimes of the plugins its owner accepted, each an ACP agent run by its adapter of ACP
+# (evo_agents.plugins.runtimes, evo_agents.worker.runtimes.acp); the hub hands a run of such a runtime to no other
+PLUGIN_RUNTIMES = "plugin_runtimes"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
-WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES)
+WORKER_FEATURES = (SESSION_PER_STEP, AUTHOR_DECISIONS, AGENT_PROFILES, PLUGIN_RUNTIMES)
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
-RUNTIMES = ("claude-code", "opencode", "codex")
+RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
+# A runtime's name, any included: one of RUNTIMES, or a plugin's <plugin>/<name> (evo_agents.plugins.runtimes). The hub
+# takes a run of a runtime registered in its project (evo_agents.hub.server.runs.service.plugin_runtimes), not every
+# name of this shape; schema 0039 holds runs to it.
+RUNTIME_NAME = "^(" + "|".join(("any", *RUNTIMES)) + r"|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$"
 MAX_MODEL_CHARS = 200  # a run's model, one line (runs.model, as schema 0010 bounds it), and each model a runtime lists
 MAX_RUNTIME_MODELS = 200  # the models a heartbeat lists for one runtime
 MAX_EVIDENCE_BYTES = 16 * 1024  # runs.evidence, as schema 0009 bounds it

@@ -305,7 +305,7 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
     for state in runs.LOCAL_STATES:  # local runs, a session each (0033)
         add_run(conn, ids, state, kind="local")
     assert query_kinds(conn) == set(runs.SHOWN_KINDS)
-    for runtime in ("any", *runs.RUNTIMES):
+    for runtime in ("any", *runs.RUNTIMES, "sandbox/fake"):  # a plugin's runtime, <plugin>/<name> (0039)
         for mode in runs.MODES:
             for approval in runs.APPROVALS:
                 step = f"{runtime}-{mode}-{approval}"
