@@ -64,6 +64,27 @@ def bundle_of(base: Path, **changes) -> Bundle:
     return pack(write_plugin(base / f"{data['id']}-{data['version']}", data))
 
 
+def pack_files(name: str = "reviewer", *, top: str | None = None) -> dict[str, str]:
+    """The files of an agent pack ``name`` holding each kind of component, under ``packs/<name>/`` or ``top``."""
+    base = f"packs/{name}/" if top is None else top
+    mcp = {
+        "mcpServers": {
+            "lint": {"command": "${CLAUDE_PLUGIN_ROOT}/bin/lint", "args": ["--fast"], "env": {"MODE": "strict"}},
+            "docs": {"type": "http", "url": "https://docs.example.test/mcp", "headers": {"X-Team": "acme"}},
+        }
+    }
+    files = {
+        "skills/review/SKILL.md": "---\nname: review\ndescription: >\n  Review a diff\n  for bugs\n---\nRead it.\n",
+        "skills/review/checklist.md": "- tests\n",
+        "agents/critic.md": "---\nname: critic\ndescription: A second look\n---\nBe terse.\n",
+        "hooks/hooks.json": json.dumps({"hooks": {"Stop": [{"hooks": [{"type": "command", "command": "true"}]}]}}),
+        ".mcp.json": json.dumps(mcp),
+        "INSTRUCTIONS.md": "Cite the line you review.\n",
+        "bin/lint": "#!/bin/sh\nexit 0\n",
+    }
+    return {base + path: text for path, text in files.items()}
+
+
 def public_key(seed: bytes = SEED) -> str:
     """The Ed25519 public key of ``seed``, 32 bytes in base64, as EVO_HUB_PLUGIN_PUBLISHERS takes it."""
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey

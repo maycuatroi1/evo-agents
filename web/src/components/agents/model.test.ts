@@ -2,8 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { Agent } from "@/lib/agents";
 
-import { avatarProblem, createBody, draftOf, draftProblems, editBody, emptyDraft, fileBase64, hasProblems, versionChanges, withItem, withoutItem } from "./model";
+import { avatarProblem, createBody, draftOf, draftProblems, editBody, emptyDraft, fileBase64, hasProblems, packKey, versionChanges, withItem, withoutItem, withoutPack, withPack } from "./model";
 import { optionsFrom } from "./options";
+import { packRows } from "./packs-field";
 
 function agent(overrides: Partial<Agent> = {}): Agent {
   return {
@@ -18,6 +19,7 @@ function agent(overrides: Partial<Agent> = {}): Agent {
     is_default: false,
     permissions: { tool: { mode: "allowlist", allow: ["read"] } },
     restricted: ["tool"],
+    packs: [],
     version: 3,
     created_by: "octo",
     created_at: "2026-10-14T03:00:00Z",
@@ -66,7 +68,10 @@ describe("what the form sends", () => {
     expect(body).not.toHaveProperty("color");
     expect(body.permissions?.runtime).toEqual({ mode: "allowlist", allow: ["claude-code"] });
     expect(body.permissions?.tool).toEqual({ mode: "all" });
+    expect(body.permissions?.environment).toEqual({ mode: "all" });
     expect(createBody({ ...draft, color: "#16a34a" }).color).toBe("#16a34a");
+    draft.permissions.environment = { mode: "allowlist", allow: ["sandbox/box", "host"] };
+    expect(createBody(draft).permissions?.environment).toEqual({ mode: "allowlist", allow: ["sandbox/box", "host"] });
   });
 
   it("edits only what changed, against the version the form opened on", () => {
@@ -108,6 +113,66 @@ describe("an agent's versions", () => {
   });
 });
 
+describe("the agent packs an agent attaches", () => {
+  const notes = { plugin: "acme", name: "notes", version: "1.2.0" };
+  const lint = { plugin: "acme", name: "lint", version: "2.0.0" };
+
+  it("reads the pins of the agent, attaches a pack once and changes its version in place", () => {
+    const current = agent({ packs: [{ pack: "acme/notes", plugin: "acme", name: "notes", version: "1.2.0" }] });
+    expect(draftOf(current).packs).toEqual([notes]);
+    expect(packKey(notes)).toBe("acme/notes");
+    const two = withPack([notes], lint);
+    expect(two).toEqual([notes, lint]);
+    expect(withPack(two, { ...notes, version: "1.1.0" })).toEqual([{ ...notes, version: "1.1.0" }, lint]);
+    expect(withoutPack(two, "acme/notes")).toEqual([lint]);
+  });
+
+  it("refuses more than 16 packs", () => {
+    const draft = { ...emptyDraft(), handle: "ok", name: "Ok" };
+    draft.packs = Array.from({ length: 16 }, (_, i) => ({ plugin: "acme", name: `p${i}`, version: "1.0.0" }));
+    expect(draftProblems(draft, { creating: true, projects: [] }).packs).toBeUndefined();
+    draft.packs = [...draft.packs, { plugin: "acme", name: "p16", version: "1.0.0" }];
+    expect(draftProblems(draft, { creating: true, projects: [] }).packs).toBe("tooMany");
+  });
+
+  it("creates with the packs only when some are attached, and edits them whole when any changed", () => {
+    const draft = { ...emptyDraft(), handle: "reviewer", name: "Reviewer" };
+    expect(createBody(draft)).not.toHaveProperty("packs");
+    expect(createBody({ ...draft, packs: [notes] }).packs).toEqual([notes]);
+
+    const current = agent({ packs: [{ pack: "acme/notes", plugin: "acme", name: "notes", version: "1.2.0" }, { pack: "acme/lint", ...lint }] });
+    expect(editBody(draftOf(current), current)).toBeNull();
+    const edited = draftOf(current);
+    edited.packs = withPack(edited.packs, { ...lint, version: "2.1.0" });
+    expect(editBody(edited, current)).toEqual({ packs: [notes, { ...lint, version: "2.1.0" }], if_version: 3 });
+    edited.packs = [];
+    expect(editBody(edited, current)).toEqual({ packs: [], if_version: 3 });
+  });
+
+  it("never sends packs for the project's default agent", () => {
+    const current = agent({ handle: "demo", is_default: true, permissions: {}, restricted: [], instructions: "" });
+    const draft = draftOf(current);
+    draft.packs = [notes];
+    expect(editBody(draft, current)).toBeNull();
+  });
+
+  it("names the packs among what a version changed, a version from before them having none", () => {
+    const older = { name: "Reviewer", permissions: {} };
+    expect(versionChanges({ ...older, packs: [] }, older)).toEqual([]);
+    expect(versionChanges({ ...older, packs: [notes] }, { ...older, packs: [] })).toEqual(["packs"]);
+    expect(versionChanges({ ...older, packs: [{ ...notes, version: "1.3.0" }] }, { ...older, packs: [notes] })).toEqual(["packs"]);
+  });
+
+  it("lists the packs the project offers, then those attached that it no longer offers", () => {
+    const offered = [{ pack: "acme/lint", plugin: "acme", name: "lint", title: "Lint", description: "Checks style.", installed_version: "2.0.0", versions: ["2.0.0", "1.0.0"] }];
+    const rows = packRows(offered, [notes, lint]);
+    expect(rows.map((row) => [row.key, row.installed, row.versions, row.detail])).toEqual([
+      ["acme/lint", "2.0.0", ["2.0.0", "1.0.0"], "Lint: Checks style."],
+      ["acme/notes", null, [], null],
+    ]);
+  });
+});
+
 describe("the form's choices", () => {
   const worker = (name: string, labels: string[], status = "online", models: string[] = []) =>
     ({ name, owner: "octo", labels, status, runtimes: { "claude-code": { available: true, models }, codex: { available: false, models: ["gpt-5"] } } }) as never;
@@ -141,6 +206,7 @@ describe("the form's choices", () => {
     expect(options.byAxis.project.map((option) => option.value)).toEqual(["docs"]);
     expect(options.byAxis.tool.map((option) => option.value)).toEqual(["read", "edit", "bash", "web", "agent"]);
     expect(options.byAxis.runtime.map((option) => option.value)).toEqual(["claude-code", "opencode", "codex"]);
+    expect(options.byAxis.environment).toEqual([{ value: "host", tag: "host" }]);
   });
 
   it("names the lists the hub did not answer, and still offers the App's token and the API's words", () => {

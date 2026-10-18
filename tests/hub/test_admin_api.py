@@ -238,7 +238,7 @@ def test_the_trail_filters_by_action_project_and_time(client, github, hub_db, ad
     assert [row["id"] for row in until] == [grants[2]["id"]]  # until is exclusive
 
     actions = client.get("/v1/admin/audit/actions", headers=admin).json()
-    assert actions == ["auth.login", "grant.put"]
+    assert actions == ["auth.login", "grant.put", *live.image_actions()]
 
 
 @pytest.mark.parametrize(
@@ -333,7 +333,7 @@ def test_a_memory_action_is_filed_under_the_memory_s_project(client, hub_db):
 
     asyncio.run(write())
     trail = tables.audit
-    rows = sql(hub_db, select(trail.c.action, trail.c.project_id).order_by(trail.c.id))
+    rows = sql(hub_db, select(trail.c.action, trail.c.project_id).where(live.not_by_the_image()).order_by(trail.c.id))
     assert rows == [("memory.put", project_id), ("auth.logout", None), ("custom.thing", project_id)]
 
 
@@ -438,7 +438,11 @@ def test_the_audit_retention_prunes_rows_older_than_evo_hub_audit_days_and_logs_
     # what reads the trail goes on: its pages, its actions and the admin overview
     page = audit_page(client, admin, action="grant.put", limit=200)
     assert [row["id"] for row in page["items"]] == [recent, past_a_month, within_a_year]
-    assert client.get("/v1/admin/audit/actions", headers=admin).json() == ["auth.login", "grant.put"]
+    assert client.get("/v1/admin/audit/actions", headers=admin).json() == [
+        "auth.login",
+        "grant.put",
+        *live.image_actions(),
+    ]
     assert client.get("/v1/admin/overview", headers=admin).status_code == 200
 
     assert prune_audit(client) == {"deleted": 0, "days": 365}  # nothing left that old

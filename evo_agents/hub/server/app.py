@@ -292,7 +292,9 @@ def create_app(config: HubConfig) -> FastAPI:
     from evo_agents.hub.server import (
         account_views,
         accounts,
+        agent_packs,
         agent_profiles,
+        agent_types,
         branding,
         chat_agents,
         chat_members,
@@ -306,6 +308,7 @@ def create_app(config: HubConfig) -> FastAPI:
         rate_limits,
         run_leases,
         secrets,
+        task_dispatch,
     )
     from evo_agents.hub.server.sealing import Sealer
 
@@ -317,6 +320,10 @@ def create_app(config: HubConfig) -> FastAPI:
         account_views.router,
         rate_limits.worker_router,
         agent_profiles.router,
+        agent_packs.router,
+        agent_types.router,
+        task_dispatch.router,
+        task_dispatch.worker_router,
         chats.router,
         chat_members.router,
         chat_events.router,

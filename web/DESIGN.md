@@ -247,7 +247,8 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Chats, a group chat; New chat | `MessagesSquare`; `Plus` |
 | A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
 | A chat run's run; the draft pull request an agent's message links; leave a chat | `Activity`; `GitPullRequestDraft`; `LogOut` |
-| An agent's axes: credentials, tools, skills, workers, projects, models, runtimes | `KeyRound`, `Wrench`, `Sparkles`, `Server`, `FolderKanban`, `BrainCircuit`, `SquareTerminal` |
+| An agent's axes: credentials, tools, skills, workers, projects, models, runtimes, environments | `KeyRound`, `Wrench`, `Sparkles`, `Server`, `FolderKanban`, `BrainCircuit`, `SquareTerminal`, `Container` |
+| An agent pack of a plugin, which an agent attaches | `Package` |
 | Memories | `BookOpen` |
 | Skills | `Sparkles` |
 | Inbox; the bell in the top bar | `Inbox`; `Bell` |
@@ -255,7 +256,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
-| Plugins, the store and a project's; a plugin enabled in a project; disabled there | `Puzzle`; `Plug`; `Unplug` |
+| Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
 | A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
 | Sidebar toggle | `PanelLeft` |
@@ -743,7 +744,9 @@ Shared pieces built on them:
   the project gets New agent in the head; everyone else a note that only an admin changes agents. An agent's page puts
   the avatar before the h1 and `@handle` (copyable), Default, Deleted and `vN` beside it; About (the description and
   the instructions in mono on `surface-sunken`) and Permissions (each axis with its icon, what it governs, then "Every
-  ..." or the allowlist as chips; an empty allowlist says Nothing allowed in `attention`) on the left; the Avatar
+  ..." or the allowlist as chips; an empty allowlist says Nothing allowed in `attention`) and Agent packs (each pack
+  the agent attaches as `<plugin>/<pack>` in mono with its pinned version as a tag, or None; not on the default) on
+  the left; the Avatar
   card (Upload image or Change image and Remove for an admin, each a new version, a toast), Details and Versions (who,
   when, and what each version changed against the one before) in a 22 rem column from `xl`; then Recent runs, the
   project's latest 200 runs kept to the agent's, which the route composes from `components/runs/agent-runs.tsx`. Edit
@@ -751,12 +754,17 @@ Shared pieces built on them:
   and says the handle stays taken. New agent and Edit are one dialog (`agent-dialog.tsx`): the handle (creating only,
   after an `@`), the name, the description, the colour as round swatches of the hub's palette with a check on the one
   chosen, Auto (the hub picks by the handle; creating only) and a custom colour, the avatar (creating only; uploaded
-  right after the agent is created), the instructions and the seven axes (`axis-field.tsx`). Each axis is All or Only
+  right after the agent is created), the instructions, the eight axes (`axis-field.tsx`) and Agent packs
+  (`packs-field.tsx`). Each axis is All or Only
   these (`Segmented`); Only these lists what the hub has for it, read when the form opens (`options.ts`: the admin's
   secrets and `github-app`, the global and project skills, the workers they see and those workers' labels as
   `label:<label>`, the models the workers list, the other projects of their grants, the API's tool words and
   runtimes), with a filter past eight, and takes a name typed by hand for what the admin cannot see, refused where it
-  is typed when its shape is wrong. The form repeats the hub's checks and shows them once Save was tried; an edit sends
+  is typed when its shape is wrong. Agent packs lists the packs of the plugins the project enabled (`agent-packs`),
+  each a checkbox with `<plugin>/<pack>` in mono and its title; a pack checked is pinned at the version installed,
+  and a small select beside it pins another version the hub holds. A pack the agent attaches that the project no
+  longer offers stays listed with No longer offered in `attention`, so the admin can remove it; at most 16, counted
+  under the list. The form repeats the hub's checks and shows them once Save was tried; an edit sends
   only what changed with `if_version`, and Save stays off until something did. The project's default agent shows only
   its name, description, colour and avatar, with a note that it keeps every permission and no instructions.
 - `components/chats`, group chats (`/chats` and `/chats/{id}`, first in the sidebar's hub group; docs/hub.md, Group
@@ -813,7 +821,11 @@ Shared pieces built on them:
   again, and the stream's `end` replaces the composer with why the visitor can no longer read it. While the page is in
   view, what it shows is read (POST .../read), so its unread count and the sidebar's drop. A chat run's page carries
   the Chat run tag (`MessagesSquare`) and links back to the message it answers; the runs list shows it with that tag
-  and "A turn of @handle in a group chat".
+  and "A turn of @handle in a group chat". A task run (one turn of a plugin's agent type on a task the plugin handed
+  it; docs/plugins.md, Agent types) carries the Task run tag (`Puzzle`), says under its title that it works on the
+  branch the hub recorded for it (`task/<id of the run the dispatch made>`, a later attempt's too), which the hub opens
+  as a draft pull request, and the runs list shows it with that tag and "A task a plugin handed to @handle, on branch
+  task/N", linked to the run's page.
 - The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
   the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
   picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are

@@ -1,0 +1,129 @@
+"""The core plugin builder: the agent type @builder, which changes the hub's settings and a client's plugins through
+group chat, never without an admin's approval (criterion a12 of plan hub-agent-plugins; ``docs/plugins.md``,
+Builder).
+
+An admin of a project that enabled the plugin enables its agent type, which creates the profile @builder there with
+the pack ``builder/builder``: its instructions and two skills, one for writing evo-agents plugins (the manifest,
+plugin/1, the iframe bridge of a page, signing, the CI that publishes a version to the hub) and one for changing the
+branding, the features, the config of a plugin and an agent profile. The type takes work from the project's admins
+alone (``mentioned_by: admin``): a writer who mentions @builder gets the hub's refusal in the thread.
+
+Two routes for a change:
+
+- A declarative one (the branding of the hub, a layer of features, a layer of a plugin's config in the project, an
+  agent profile of the project) is a proposal: the agent calls the tool ``builder__propose`` of the hub's /mcp, which
+  checks the change, keeps it pending in builder_proposals, shows it in the thread and tells the admins who may
+  approve it. An admin approves or rejects it in the thread (``approve 12``, ``reject 12``), from the Inbox, or with
+  the routes under /v1/x/builder/<project>/proposals; approved, the hub applies it as the setting's next version, which
+  ``rollback 12`` makes a copy of the one before (``proposals``).
+- A change of code is the chat run itself: the agent works on the client's plugin repo the chat run checks out, pushes
+  its branch and the hub opens the draft pull request; the repo's CI (the skill's ``ci.yml``) tests, packs, signs and
+  publishes the version to the hub, where it waits as available until a hub admin upgrades to it.
+
+The hub imports this package for the manifest only; ``server`` holds the tool, the event and the routes, and
+``proposals`` what they share.
+"""
+
+SERVER = "evo_agents.core_plugins.builder.server"
+KINDS = ("branding", "features", "plugin_config", "agent")  # evo_agents.hub.tables_settings.PROPOSAL_KINDS
+MAX_SUMMARY_CHARS = 500
+MAX_FIELDS = 50  # fields one proposal sets or unsets
+
+INSTRUCTIONS = (
+    "You are @builder, the agent that changes this hub and the client's plugins for the project's admins. You change "
+    "nothing yourself: a change of a setting is a proposal (the tool builder__propose) that an admin approves, and a "
+    "change of code is a branch of the plugin's repo whose draft pull request the hub opens. Follow the instructions "
+    "of your pack."
+)
+
+PROPOSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["kind", "summary"],
+    "properties": {
+        "kind": {
+            "enum": list(KINDS),
+            "description": "branding: the hub's name and colours; features: a layer of features (target.layer); "
+            "plugin_config: a layer of a plugin's config in the project (target.plugin, target.agent); agent: an "
+            "agent profile of the project (target.agent)",
+        },
+        "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": MAX_SUMMARY_CHARS,
+            "description": "what the change does and why, for the admin who approves it",
+        },
+        "target": {
+            "type": "object",
+            "additionalProperties": False,
+            "properties": {
+                "layer": {"enum": ["hub", "project"], "description": "features: the hub's own layer or the project's"},
+                "plugin": {"type": "string", "pattern": "^[a-z][a-z0-9-]{0,62}$", "description": "plugin_config"},
+                "agent": {
+                    "type": "string",
+                    "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                    "description": "agent: the profile's handle; plugin_config: the agent layer of that profile",
+                },
+            },
+        },
+        "set": {"type": "object", "description": "field -> new value"},
+        "unset": {"type": "array", "items": {"type": "string"}, "description": "fields the layer stops setting"},
+    },
+}
+
+MANIFEST = {
+    "id": "builder",
+    "version": "1.0.0",
+    "publisher": "evo-agents",
+    "tier": "core",
+    "name": "Builder",
+    "description": "@builder: changes the hub's settings and the client's plugins through chat, once an admin approves.",
+    "engines": {"evo-agents": ">=0.16"},
+    "plugin_api": 1,
+    "permissions": ["chats:read"],
+    "contributes": {
+        "agent_packs": [
+            {
+                "name": "builder",
+                "title": "Builder",
+                "description": "Writing evo-agents plugins, and proposing changes of the hub's settings.",
+            }
+        ],
+        "agent_types": [
+            {
+                "name": "builder",
+                "title": "Builder",
+                "description": "Proposes changes of settings for an admin to approve, and changes plugins by pull request.",
+                "mentioned_by": "admin",
+                "packs": ["builder"],
+                "profile": {
+                    "handle": "builder",
+                    "name": "Builder",
+                    "description": "Changes the hub's settings and the client's plugins, once an admin approves.",
+                    "instructions": INSTRUCTIONS,
+                },
+            }
+        ],
+        "mcp_tools": [
+            {
+                "name": "propose",
+                "title": "Propose a change of a setting",
+                "description": "Propose a change of the hub's branding, a layer of features, a layer of a plugin's "
+                "config or an agent profile of the project, which an admin approves before the hub applies it. Only "
+                "the agent of a chat run of @builder may call it; it applies nothing.",
+                "python": f"{SERVER}:propose",
+                "input_schema": PROPOSE_SCHEMA,
+            }
+        ],
+        "events": [
+            {
+                "name": "answers",
+                "title": "An admin's answer to a proposal in its thread",
+                "on": ["chat.message"],
+                "python": f"{SERVER}:on_message",
+            }
+        ],
+        "routes": [{"name": "proposals", "title": "The proposals of @builder", "python": f"{SERVER}:router"}],
+        "tables": [{"name": "builder_proposals", "title": "The changes @builder proposed, and what became of them"}],
+    },
+}

@@ -216,7 +216,9 @@ async def project_tool_stats(
         int, Query(ge=1, le=MAX_STATS_DAYS, description="the last days in UTC to count, today included")
     ] = STATS_DAYS,
     plan_id: Annotated[str | None, Query(pattern=plan_routes.PLAN_ID, description="the runs of this plan")] = None,
-    runtime: Annotated[Literal[runs.RUNTIMES] | None, Query(description="the runs of this runtime")] = None,
+    runtime: Annotated[
+        str | None, Query(pattern=runs.RUNTIME_NAME, description="the runs of this runtime, of the core or a plugin's")
+    ] = None,
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
 ) -> ProjectToolStats:
     """The tool figures of the runs of the plans the caller may read that ended in the last ``days`` days, per tool and

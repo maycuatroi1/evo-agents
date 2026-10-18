@@ -7,6 +7,9 @@ here.
   ``--dangerously-skip-permissions``, and the preset system prompt of Claude Code with HEADLESS_NOTE, BACKGROUND_NOTE
   and SUBAGENT (a fresh subagent with a plan handoff) appended (``--append-system-prompt``). The owner's settings,
   hooks, plugins and CLAUDE.md load as for ``claude`` itself.
+- The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) load as local plugins
+  (``plugins``, ``--plugin-dir``), with their skills, subagents and hooks; their MCP servers go in ``mcp_servers`` by
+  their own names, and their instructions after the profile's in the appended system prompt.
 - The system prompt holds nothing of the machine, the worktree or the step, so a new session reads it from the cache a
   session in another worktree, run or step wrote: the preset leaves its dynamic sections out
   (``exclude_dynamic_sections``, sent in the SDK's initialize request; the CLI's
@@ -124,6 +127,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from evo_agents.hub import author, curator, digest, runs
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, ProfileRefused, RunContext, command_output
 from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
@@ -145,7 +149,6 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
-    which,
     with_peak,
     write_launcher,
 )
@@ -598,6 +601,8 @@ class ClaudeCodeAdapter(QueueAdapter):
     runtime = "claude-code"
     binary = "claude"
     interactive = True
+    pack_kinds = packs.KINDS
+    pack_transports = packs.TRANSPORTS
     background_wait = BACKGROUND_WAIT
     follow_up_after = FOLLOW_UP_AFTER
     turn_grace = TURN_GRACE
@@ -663,7 +668,7 @@ class ClaudeCodeAdapter(QueueAdapter):
 
         dropped = dropped_env(self.context)
         profile = profiles.profile_of(self.context)
-        append = profiles.with_instructions(SYSTEM_NOTE, profile)
+        append = packs.with_instructions(profiles.with_instructions(SYSTEM_NOTE, profile), self.context.packs)
         settings = {
             "cwd": str(self.context.worktree),
             "cli_path": cli_path,
@@ -690,13 +695,14 @@ class ClaudeCodeAdapter(QueueAdapter):
         limits = profiles.claude_settings(profile)
         disallowed = limits.pop("disallowed_tools", [])
         kind = self.context.run.get("kind")
-        if kind in ("author", "chat"):  # nobody at this machine answers a question tool
+        if kind in ("author", "chat", "task"):  # nobody at this machine answers a question tool
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
         if disallowed:
             settings["disallowed_tools"] = disallowed
-        if kind == "chat":  # an @handle or @path in the chat's words never makes Claude Code read a file
+        if kind in ("chat", "task"):  # an @handle or @path in the chat's words or the task never makes it read a file
             settings["verbatim_prompts"] = True
         settings.update(limits)
+        settings.update(packs.claude_options(self.context.packs))
         hooks = profiles.claude_hooks(profile)
         if hooks is not None:
             settings["hooks"] = hooks
@@ -716,11 +722,13 @@ class ClaudeCodeAdapter(QueueAdapter):
         yield {}  # an async generator
 
     async def _open(self) -> None:
-        program = which(self.binary, self.context.env)
+        environment = self.context.environment
+        program = environment.program(self.binary, self.context.env)
         self._dir = Path(tempfile.mkdtemp(prefix="evo-claude-"))
         self.pid_file = self._dir / "pid"
         unset = (API_KEY,) if drops_api_key(self.context) else ()  # the SDK passes on the daemon's own
-        self.options = self.build_options(str(write_launcher(self._dir, program, unset=unset)))
+        command = environment.command(program, context=self.context, directory=self._dir)
+        self.options = self.build_options(str(write_launcher(self._dir, *command, unset=unset)))
         self._client = self.make_client(self.options)
         self._input_open = True
         await self._client.connect(prompt=self._input())

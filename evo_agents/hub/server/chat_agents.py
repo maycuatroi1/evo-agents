@@ -362,7 +362,7 @@ async def create_chat(request: Request, run_id: RunId, body: AgentChatIn, user: 
 # The pull request of a chat run's branch
 
 
-async def _open_draft(app, target, branch: str, title: str, text: str) -> tuple[dict, bool]:
+async def open_draft(app, target, branch: str, title: str, text: str) -> tuple[dict, bool]:
     """(the draft pull request of ``branch`` on ``target`` (owner, name), whether the hub opened it now). On a repo
     whose GitHub takes no draft, a pull request whose title starts with ``chat_runs.DRAFT_TITLE``."""
     owner, name = target
@@ -419,7 +419,7 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
         # The handle in code spans: a bare @handle on GitHub would mention the GitHub user of that login
         text = f"Opened by the hub for `@{run.profile.handle}`, from chat {found.chat_id} (run #{run_id}). Not merged."
         try:
-            made, opened = await _open_draft(app, target, body.branch, title[:240], text)
+            made, opened = await open_draft(app, target, body.branch, title[:240], text)
             url, number, draft = made.get("html_url"), made.get("number"), made.get("draft") is not False
         except (GitHubRefused, GitHubUnavailable) as exc:
             problem = str(exc)
