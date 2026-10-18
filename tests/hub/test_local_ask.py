@@ -105,6 +105,31 @@ def test_the_answer_given_in_the_dialog_is_reported_to_its_decisions(own_home, m
     assert hub.state == "running"
 
 
+def test_the_picks_of_a_multiselect_question_are_reported_as_text_and_a_single_pick_as_its_option(
+    own_home, monkeypatch, capsys
+):
+    hub = ask_hub(monkeypatch)
+    several = {
+        "questions": [
+            {
+                "question": "Which plugins?",
+                "multiSelect": True,
+                "options": [{"label": "SRS, tasks (core)"}, {"label": "Isolated"}, {"label": "Runtime"}],
+            },
+            {"question": "Which hub?", "multiSelect": True, "options": [{"label": "M1"}, {"label": "Omelet"}]},
+        ]
+    }
+    asked = payload(own_home, tool_name="AskUserQuestion", tool_use_id="toolu_ask", tool_input=several)
+    fire("local-ask", asked, monkeypatch, capsys)
+    answers = {"Which plugins?": ["SRS, tasks (core)", "Isolated"], "Which hub?": ["Omelet"]}
+    assert fire("local-tool", {**asked, "tool_response": {"answers": answers}}, monkeypatch, capsys) == (0, "", "")
+    reported = [(p, b) for m, p, b in hub.calls if p.endswith("/answered")]
+    assert reported == [
+        (f"{BASE}/decisions/101/answered", {"text": "SRS, tasks (core); Isolated"}),
+        (f"{BASE}/decisions/102/answered", {"option": "2"}),
+    ]
+
+
 def test_a_dialog_the_hub_answered_first_gets_a_409_that_is_left_alone(own_home, monkeypatch, capsys):
     hub = ask_hub(monkeypatch)
     hub.answered = {101: 409, 102: 409}
