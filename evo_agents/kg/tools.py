@@ -26,7 +26,10 @@ INSTRUCTIONS = (
 TOOLS = [
     {
         "name": "kg_search",
-        "description": "Find nodes by name, id, path, code or words. Returns ids to pass to kg_node or kg_context.",
+        "description": (
+            "Find nodes by name, id, path, code or words, best first; a plan step, section or document is followed by "
+            "the files, symbols and documents it mentions. Returns ids to pass to kg_node or kg_context."
+        ),
         "inputSchema": {
             "type": "object",
             "properties": {

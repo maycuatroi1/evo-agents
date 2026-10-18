@@ -572,7 +572,7 @@ def find_hints(
         matches: dict[str, list[tuple[str, int, str]]] = {}
         found: dict[str, dict] = {}
         for term in terms:
-            ids = store.search(term, b, limit=50)
+            ids = store.search(term, b, limit=50, any_word=False)  # a name, not words: no OR of its parts
             _check(deadline)
             target, shape = words(term), _shape(term)
             for nid, node in store.nodes(ids, b).items():

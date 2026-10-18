@@ -155,6 +155,9 @@ class _Extractor:
         kind = "class" if isinstance(node, ast.ClassDef) else ("method" if cls else "function")
         anchor = top if parent else node.name
         sym = {"qualname": qual, "name": node.name, "kind": kind, "top": anchor, "line": node.lineno, "parent": parent}
+        doc = ast.get_docstring(node)
+        if doc:
+            sym["doc"] = doc
         self.symbols.append(sym)
         self.quals.add(qual)
         if isinstance(node, ast.ClassDef):
@@ -240,7 +243,7 @@ class _Extractor:
         if via:
             self.xrefs.append({**call, "via": via})
 
-    def result(self) -> dict:
+    def result(self, doc: str | None = None) -> dict:
         known = {s["qualname"] for s in self.symbols}
         calls = [{k: v for k, v in c.items() if k != "member"} for c in self.calls if c["callee"] in known]
         inherited = [  # self.m() to a method the class does not define: up its chain, in the link stage
@@ -254,14 +257,16 @@ class _Extractor:
             if key not in seen:
                 seen.add(key)
                 xrefs.append(x)
-        return {"symbols": self.symbols, "imports": self.imports, "calls": calls, "xrefs": xrefs}
+        out = {"symbols": self.symbols, "imports": self.imports, "calls": calls, "xrefs": xrefs}
+        return {**out, "doc": doc} if doc else out
 
 
 def extract(text: str, path: str) -> dict | None:
-    """Return {"symbols", "imports", "calls", "xrefs"} or None if the file does not parse.
+    """Return {"symbols", "imports", "calls", "xrefs", ["doc"]} or None if the file does not parse; doc is the
+    module's docstring.
 
     symbols: {qualname, name, kind (class|function|method), top (top-level anchor), line, parent, [bases],
-    [returns], [items]}
+    [returns], [items], [doc]}
     imports: {module, top}; calls: {caller, callee, line, top}; xrefs: {caller, line, top, via}
     """
     try:
@@ -274,4 +279,4 @@ def extract(text: str, path: str) -> dict | None:
             ex.collect_import(node, "_module")
     body = [n for n in tree.body if not isinstance(n, (ast.Import, ast.ImportFrom))]
     ex.visit_body(body, "_module", None, None, ex.module_env, ex.module_types)
-    return ex.result()
+    return ex.result(ast.get_docstring(tree))
