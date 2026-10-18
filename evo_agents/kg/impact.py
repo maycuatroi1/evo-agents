@@ -20,6 +20,7 @@ class Impact:
 
     build: int
     depth: int
+    limit: int = 20  # dependents the text lists per hop (documents: doc_limit); the rest are counted
     seeds: dict[str, dict] = field(default_factory=dict)
     reached: dict[str, dict] = field(default_factory=dict)  # {"hop", "node", "edge", "rels", "hub"} by node id
     mentions: dict[str, list[dict]] = field(default_factory=dict)  # mentions edges by the node that mentions
@@ -29,6 +30,11 @@ class Impact:
     ambiguous: list[dict] = field(default_factory=list)
     unmatched: list[str] = field(default_factory=list)
     missing: int = 0
+
+    @property
+    def doc_limit(self) -> int:
+        """Documents the text lists: a quarter as many as dependents per hop, since they are only to re-check."""
+        return max(1, self.limit // 4)
 
 
 def seed_coverage(seeds: Iterable[dict]) -> list[dict]:

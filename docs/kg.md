@@ -45,6 +45,14 @@ seed, pass the symbols you change instead of their file, or a diff, and grep for
 Beyond the seeds, a reached node with more than 150 edges is a hub: it comes back with `hub: true` and
 `(hub, not expanded)`, and the walk does not go through it, since half the graph depends on it.
 
+The text lists the first `limit` dependents of each hop (default 20, at most 500), strongest edge first and then by
+id, and a quarter as many documents to re-check, those that mention the most reached nodes first, each with three of
+the nodes it mentions. A hop or a group with more ends with a line such as
+`... 6 more at hop 2: raise limit (up to 500), or pass the symbols you change instead of their file`. So
+`kg_impact paths=["evo_agents/kg/store.py"]` on the graph of evo-agents (43 dependents, 55 documents) is about 6,100
+characters, where it was over 25,000. The structured result keeps every dependent and document whatever `limit` is,
+since the Curator's tier check reads them all, and says in `left_out` what the text did not list.
+
 A text over about 25,000 characters ends with a handle for `kg_more`; the structured result then keeps only its
 `summary`.
 
@@ -63,6 +71,8 @@ An MCP client gets the text alone, which is what its model reads; the structured
 | `impacted` | per dependent: `hop`, `node`, `rel`, `rels`, `status`, `to` (the node it depends on), `hub` |
 | `documents` | per document or section: `node` and the reached nodes it `mentions` |
 | `cut` | the seeds with more edges than were read, with how many there are |
+| `limit` | the dependents the text lists per hop |
+| `left_out` | what the text did not list: `hops`, the number per hop (`{"2": 6}`), and `documents` |
 | `ambiguous`, `unmatched`, `not_found` | paths that name several files or none, ids not found or not visible |
 | `summary` | dependents and documents, and seeds cut |
 
@@ -126,3 +136,23 @@ interface's or trait's declaration included, in every language whose inheritance
 
 A core install, without the `graphify` extra, gives symbols to Python files only: files in other languages enter the
 graph as files, and `kg status` warns with the number of files per language and the command that installs the extra.
+
+## The text of every tool
+
+The text is what an agent's model reads, so it is kept short and readable:
+
+- A file, a section and a symbol are named by a readable id: `evo-agents:evo_agents/kg/store.py`,
+  `harness:docs/x.md#setup`, `evo-agents:evo_agents/kg/store.py::Store.search`, the form `bindings/*.yaml` uses. The
+  stored ids (`evo-agents:file:evo_agents/kg/store.py`, `symbol:evo-agents:evo_agents/kg/store.py::Store.search`)
+  stay in the structured result, and every tool takes both forms. Other ids (`plan:x/step:2`, `repo:x`) are as stored.
+- A line names the node's kind, its name when the id does not end with it, its status, the line of a symbol, the
+  status and number of a plan step. The URI is left to `kg_node`, whose props and evidence carry it.
+- The label most nodes of a result share is printed once, under the first line (`label of every node: public,U`);
+  a node with another label names it on its line.
+- `kg_context` keeps its whole text, header, nodes and edges, within `budget_tokens`, counted as UTF-8 bytes / 3,
+  and says how many nodes and edges it reached that did not fit (`left_out` in the structured result).
+- Each tool takes, besides its own argument names, those agents often use for them (`evo_agents/kg/refs.py`,
+  ALIASES): `files`, `targets`, `target`, `changed` or `name` for kg_impact's `paths`, `budget` or `max_tokens` for
+  kg_context's `budget_tokens`, `source` and `target` for kg_path's `from` and `to`. Any other unknown name is an
+  error that lists the tool's arguments. kg_impact reads a path that names no file as an id, and an id that names no
+  node and looks like a path as a path.
