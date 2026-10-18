@@ -606,7 +606,7 @@ def test_a_parked_author_run_resumed_by_a_reply_takes_the_answers_and_waits_agai
 @pytest.mark.parametrize(
     ("kind", "why"),
     [
-        ("step", "run 41 is a run of one step: only the agent of a plan run or an author run uses"),
+        ("step", "run 41 is a run of one step: only the agent of a plan run or an author run or a chat run uses"),
         ("review", "run 41 is a review run, which reads only"),
         ("judge", "run 41 is a judge run, which reads and judges only"),
     ],

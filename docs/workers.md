@@ -503,6 +503,13 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
+A chat run's agent can ask its owner decisions too, of the category `triage` alone, on a daemon with the feature
+`chat_decisions` (`docs/notifications.md`, "A decision of a chat run"). Its turn ends with the decision open and the run
+goes `waiting`, on its slot and its lease, until every decision has an answer or the owner writes in the thread; the
+answer goes to the run's inbox and the agent goes on in the same session. After 10 minutes of waiting the reaper parks
+the run, and the answer or a reply then queues a chat run on the same worker that resumes the session, the worktrees
+and the branch. A chat run that asks nothing ends after its turn.
+
 ## Local runs
 
 A local run (kind `local`, `evo_agents.hub.server.local_runs`) is a Claude Code session on a member's own machine

@@ -136,7 +136,7 @@ class OverviewDecision(BaseModel):
     )
     plan_title: str | None
     step_key: str | None = Field(description="the step it is about, when the agent named one")
-    category: Literal[runs.LOCAL_DECISION_CATEGORIES]
+    category: Literal[runs.SHOWN_DECISION_CATEGORIES]
     question: str
     owner: str = Field(description="the login of the run's owner, the one member who may answer")
     yours: bool = Field(description="whether you are that owner")
@@ -532,8 +532,11 @@ def _parks_at(state: str, waiting_since: datetime | None, parked_at: datetime | 
 def _decision(row, wait: timedelta) -> OverviewDecision:
     fields = dict(row._mapping)
     waiting_since, parked_at = fields.pop("waiting_since"), fields.pop("parked_at")
-    if fields.pop("run_kind") == "local":  # no worker holds it and nothing parks it: it waits as long as it takes
+    kind = fields.pop("run_kind")
+    if kind == "local":  # no worker holds it and nothing parks it: it waits as long as it takes
         return OverviewDecision(**fields, parks_at=None)
+    if kind == "chat":  # the hub parks a chat run sooner, so a worker's slot is not held for long
+        wait = min(wait, timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS))
     return OverviewDecision(**fields, parks_at=_parks_at(fields["run_state"], waiting_since, parked_at, wait))
 
 

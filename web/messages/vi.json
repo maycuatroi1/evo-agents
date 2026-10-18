@@ -3987,7 +3987,8 @@
       "spend_money": "Tốn tiền",
       "architecture": "Kiến trúc",
       "scope": "Phạm vi",
-      "question": "Câu hỏi"
+      "question": "Câu hỏi",
+      "triage": "Run lỗi"
     },
     "noticeKind": {
       "push_default_branch": "Đã push lên nhánh mặc định",

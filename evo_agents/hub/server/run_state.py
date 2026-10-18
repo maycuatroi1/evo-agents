@@ -102,6 +102,7 @@ MAX_NOTE_CHARS = 1000  # a note the hub sets on a step
 RECOVER_BATCH = 500  # expired runs one pass of the reaper takes
 LEASE = timedelta(seconds=runs.LEASE_SECONDS)  # the api's own comes from EVO_HUB_RUN_LEASE_SECONDS
 DECISION_WAIT = timedelta(seconds=runs.DECISION_WAIT_SECONDS)  # a run waiting this long for an answer is parked
+CHAT_DECISION_WAIT = timedelta(seconds=runs.CHAT_DECISION_WAIT_SECONDS)  # the same for a chat run: its slot is short
 PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cancelled
 # The kinds whose failed runs always carry a failure_cause: the worker's, else the hub's guess from the error
 CAUSED_KINDS = ("step", "plan", "author", "chat")
@@ -559,7 +560,7 @@ async def record_move(
     if found.kind == "chat":  # it writes no step: its agent's reactions and replies are in its chat
         from evo_agents.hub.server.chat_runs import chat_run_moved  # it queues runs through the routes that import this
 
-        await chat_run_moved(conn, run_id, new)
+        await chat_run_moved(conn, run_id, new, old)
         return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
@@ -789,15 +790,22 @@ async def end_timed_out(engine: AsyncEngine, batch: int, ended: Counter) -> None
             ended[new] += 1
 
 
-async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter) -> None:
-    """Park every run that has waited ``wait`` for its owner's answer, or cancel it when its cancel was asked for,
-    each in a transaction of its own; count them in ``ended``."""
+async def park_waiting(
+    engine: AsyncEngine, batch: int, wait: timedelta, ended: Counter, chat_wait: timedelta | None = None
+) -> None:
+    """Park every run that has waited ``wait`` for its owner's answer (a chat run ``chat_wait``, which is ``wait``
+    when none is given), or cancel it when its cancel was asked for, each in a transaction of its own; count them in
+    ``ended``."""
     r = tables.runs
-    waited_long = (r.c.state == "waiting", r.c.kind != "local", r.c.waiting_since < func.now() - wait)
+    chat_wait = wait if chat_wait is None else chat_wait
+    waited_long = (
+        r.c.state == "waiting",
+        r.c.kind != "local",
+        r.c.waiting_since < func.now() - case((r.c.kind == "chat", chat_wait), else_=wait),
+    )
     async with engine.begin() as conn:
         query = select(r.c.id).where(*waited_long).order_by(r.c.waiting_since).limit(batch)
         waited = (await conn.execute(query)).scalars().all()
-    hours = _hours(wait)
     for run_id in waited:
         async with engine.begin() as conn:
             lock = (
@@ -809,9 +817,9 @@ async def park_waiting(engine: AsyncEngine, batch: int, wait: timedelta, ended: 
             if row is None:  # answered, ended or taken by another pass meanwhile
                 continue
             if row.kind == "author":  # it waits for a reply in its chat, not for an answer to a decision
-                reason = f"nobody replied in its chat within {hours}"
+                reason = f"nobody replied in its chat within {_hours(wait)}"
             else:
-                reason = f"nobody answered its decision within {hours}"
+                reason = f"nobody answered its decision within {_hours(chat_wait if row.kind == 'chat' else wait)}"
             new = "cancelled" if row.cancel else "parked"
             await move_run(conn, run_id, "waiting", new, "reaper", reason=reason)
             ended[new] += 1
@@ -838,6 +846,8 @@ async def expire_parked(engine: AsyncEngine, batch: int, parked_for: timedelta, 
 def _hours(span: timedelta) -> str:
     """``span`` in words: whole hours up to two days, then whole days, else seconds."""
     seconds = int(span.total_seconds())
+    if seconds % 60 == 0 and seconds < 3600:
+        return f"{seconds // 60} minute{'s' if seconds != 60 else ''}"
     if seconds % 3600 == 0 and seconds <= 2 * 86400:
         return f"{seconds // 3600} hour{'s' if seconds != 3600 else ''}"
     if seconds % 86400 == 0:
@@ -897,7 +907,7 @@ async def recover_runs(
                     reason=reason,
                 )
             ] += 1
-    await park_waiting(engine, batch, decision_wait, ended)
+    await park_waiting(engine, batch, decision_wait, ended, min(decision_wait, CHAT_DECISION_WAIT))
     await expire_parked(engine, batch, parked_for, ended)
     from evo_agents.hub.server import local_runs  # it moves runs through this module
 

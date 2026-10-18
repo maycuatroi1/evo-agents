@@ -34,7 +34,7 @@ from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.run_events import write_user_message
-from evo_agents.hub.server.run_state import notify_queued, write_event
+from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.worker_fit import unfit_worker, workers_of
 
@@ -208,6 +208,49 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand, left: float) -> in
     return new_id
 
 
+async def go_on_parked(conn: AsyncConnection, parked_id: int, why: str, *, token_id: int | None = None) -> int:
+    """Queue the run that goes on in the session of chat run ``parked_id``, which waited for its owner's answer and was
+    parked, whose row the caller holds locked, and end the parked run done; the new run's id. The new run is the
+    parked one's for the thread, the person, the worker and the agent time used so far; the decisions of the parked
+    run still open and the messages of its inbox the worker has not handed to the agent go to it. ``why`` ends the
+    new run's first event, such as "as owner answered decision #3"."""
+    r = tables.runs
+    row = (
+        await conn.execute(
+            select(
+                r.c.dispatched_by,
+                r.c.dispatched_via,
+                r.c.chat_id,
+                r.c.chat_message_id,
+                r.c.hop,
+                r.c.usage,
+                r.c.run_seconds,
+            ).where(r.c.id == parked_id)
+        )
+    ).one()
+    spent, budget = await chat_spend(conn, row.chat_id)
+    values = {
+        "dispatched_by": row.dispatched_by,
+        "dispatched_via": row.dispatched_via,
+        "chat_message_id": row.chat_message_id,
+        "hop": row.hop,
+        "run_seconds": row.run_seconds,
+        "budget": rules.run_budget(max(budget - spent, 0.0) + curator.run_cost(row.usage)),
+    }
+    await move_run(
+        conn, parked_id, "parked", "done", "owner", reason="resumed in a new run", token_id=token_id, decisions=None
+    )
+    new_id = (await conn.execute(_continue_run(parked_id, values))).scalar_one()
+    d, i = tables.decisions, tables.run_inbox
+    await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
+    await conn.execute(update(i).values(run_id=new_id).where(i.c.run_id == parked_id, i.c.delivered_at.is_(None)))
+    await write_event(
+        conn, new_id, {"text": f"goes on in the session of run #{parked_id}, {why}", "resume_of_run_id": parked_id}
+    )
+    await notify_queued(conn, new_id)
+    return new_id
+
+
 async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
     """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>."""
     profile = hand.profile
@@ -276,6 +319,10 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
     spent, budget = await chat_spend(conn, hand.chat.chat_id)
     if spent >= budget:
         return None, _spent(spent, budget)
+    if session is not None and session.state == "parked" and session.session_id:
+        new_id = await go_on_parked(conn, session.id, f"as {hand.author} wrote in the thread")
+        await _to_inbox(conn, new_id, hand)
+        return new_id, None
     if session is not None and session.state == "done" and session.session_id and not session.revoked:
         return await _go_on(conn, session, hand, budget - spent), None
     worker, why = await pick_worker(conn, hand)
@@ -459,10 +506,12 @@ async def _untaken(conn: AsyncConnection, run_id: int) -> list:
     return (await conn.execute(query.order_by(i.c.id))).scalars().all()
 
 
-async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str) -> int | None:
+async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str | None = None) -> int | None:
     """What chat run ``run_id`` moving to ``new`` does in its chat: the agent's reaction on the message that started it,
     the hub's reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run
     that goes on in its session with them (its id)."""
+    if old == "parked" and new == "done":  # it waited for an answer and a new run goes on in its session (go_on_parked)
+        return None
     found = await chat_run(conn, run_id)
     if found is None:
         return None

@@ -2038,7 +2038,7 @@ export interface paths {
         put?: never;
         /**
          * Ask
-         * @description Ask the owner of a plan run or an author run this worker holds a decision, and notify them.
+         * @description Ask the owner of a plan run, an author run or a chat run this worker holds a decision, and notify them.
          */
         post: operations["ask_v1_worker_runs__run_id__decisions_post"];
         delete?: never;
@@ -6190,7 +6190,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
             /** Question */
             question: string;
             /**
@@ -6246,7 +6246,7 @@ export interface components {
              * @description the agent asks only about these
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "triage";
             /** Question */
             question: string;
             /**
@@ -7465,7 +7465,7 @@ export interface components {
              * @default question
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
             /** Question */
             question: string;
             /**
@@ -8249,7 +8249,7 @@ export interface components {
              * Category
              * @enum {string}
              */
-            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question";
+            category: "deploy" | "delete_data" | "live_migration" | "external_send" | "spend_money" | "architecture" | "scope" | "question" | "triage";
             /** Question */
             question: string;
             /**
