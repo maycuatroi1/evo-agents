@@ -100,20 +100,21 @@ def test_an_all_access_profile_starts_opencode_and_codex_exactly_as_a_run_withou
     needs("aiohttp")
     needs("openai_codex")
     seen = []
+    owner = {"XDG_CONFIG_HOME": str(tmp_path / "xdg"), "CODEX_HOME": str(tmp_path / "codex-home")}
     for run in ({"model": MODEL}, {"model": MODEL, "profile": DEFAULT}):
-        adapter = _opencode(tmp_path, _opencode_samples, **run)
+        adapter = _opencode(tmp_path, _opencode_samples, env=owner, **run)
         asyncio.run(_collect(adapter))
         seen.append((adapter.fake.requests, adapter.server_env()))
     assert seen[0] == seen[1]
     assert seen[1][0][0][2]["permission"] == opencode_module.RUN_RULES and ("mcp",) not in seen[1][0]
-    assert "OPENCODE_CONFIG_CONTENT" not in seen[1][1]
+    assert json.loads(seen[1][1]["OPENCODE_CONFIG_CONTENT"]) == {"compaction": {"prune": True}}, "no permission"
     started = []
     for run in ({"effort": "low"}, {"effort": "low", "profile": DEFAULT}):
-        adapter = _codex(tmp_path, _codex_samples, **run)
+        adapter = _codex(tmp_path, _codex_samples, env=owner, **run)
         asyncio.run(_collect(adapter))
         started.append(adapter.fake.log[0])
     assert started[0] == started[1]
-    assert started[1][1]["config"] == {"model_reasoning_effort": "low"}
+    assert started[1][1]["config"] == {**codex_module.compact_config({}), "model_reasoning_effort": "low"}
     assert started[1][1]["developer_instructions"] == codex_module.DEVELOPER_NOTE
 
 
@@ -254,7 +255,8 @@ def test_a_profile_keeps_the_session_to_its_models_and_refuses_a_run_on_another(
 
 def test_opencode_under_a_profile_denies_the_tools_skills_and_mcp_servers_it_leaves_out(tmp_path):
     limited = profile(tool=["read", "mcp:github"], skill=["dataviz"], model=[MODEL], instructions=INSTRUCTIONS)
-    adapter = _opencode(tmp_path, _opencode_samples, model=MODEL, profile=limited)
+    owner = {"XDG_CONFIG_HOME": str(tmp_path / "xdg")}  # no opencode config of the machine's
+    adapter = _opencode(tmp_path, _opencode_samples, model=MODEL, profile=limited, env=owner)
 
     async def go():
         adapter.fake_mcp = {"github": {"status": "connected"}, "my.slack": {"status": "connected"}}
@@ -288,7 +290,8 @@ def test_opencode_under_a_profile_denies_the_tools_skills_and_mcp_servers_it_lea
     )
     assert prompt[2]["system"].endswith(INSTRUCTIONS)
     content = json.loads(adapter.server_env()["OPENCODE_CONFIG_CONTENT"])
-    assert content == {"permission": {**dict.fromkeys(denied, "deny"), "skill": {"*": "deny", "dataviz": "allow"}}}
+    permission = {**dict.fromkeys(denied, "deny"), "skill": {"*": "deny", "dataviz": "allow"}}
+    assert content == {"compaction": {"prune": True}, "permission": permission}
 
 
 def test_opencode_under_a_profile_merges_its_permissions_over_the_owners_config_content():
@@ -351,6 +354,8 @@ def test_codex_under_a_profile_turns_off_the_features_and_mcp_servers_it_leaves_
         "features": off,
         "web_search": "disabled",
         "mcp_servers": {"slack": {"enabled": False}, "local-db": {"enabled": False}},
+        "model_auto_compact_token_limit": 200_000,
+        "tool_output_token_limit": 8_000,
         "model_reasoning_effort": "low",
     }
     adapter = _codex(

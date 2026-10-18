@@ -79,7 +79,13 @@ if pg.DSN:
     from tests.hub.test_curator import NIGHT, charter_body, fire, night, written  # noqa: F401 (night: a fixture)
     from tests.hub.test_mcp import failed, hub, ok  # noqa: F401 (hub: a fixture)
     from tests.hub.test_plans import registration
-    from tests.hub.test_runs import OWNER, PROJECT, audit_rows, members, web_client  # noqa: F401 (web_client: a fixture)
+    from tests.hub.test_runs import (  # noqa: F401 (web_client: a fixture)
+        OWNER,
+        PROJECT,
+        audit_rows,
+        members,
+        web_client,
+    )
 
 
 @pytest.fixture
