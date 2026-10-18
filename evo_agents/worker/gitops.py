@@ -367,10 +367,25 @@ async def restore(cwd: Path, head: str, *, expected_git_dir: str, env: Mapping[s
     await git(cwd, "clean", "-ffdxq", env=local)
 
 
-async def current_branch(cwd: Path) -> str | None:
-    """The branch checked out at ``cwd``; None when HEAD is detached."""
-    code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "--short", "HEAD", check=False)
+HEADS = "refs/heads/"
+
+
+def branch_ref(name: str) -> str:
+    """The full ref of local branch ``name``: ``refs/heads/<name>``."""
+    return name if name.startswith("refs/") else f"{HEADS}{name}"
+
+
+async def current_ref(cwd: Path) -> str | None:
+    """The full ref HEAD names at ``cwd`` (``refs/heads/<branch>``); None when HEAD is detached. ``--short`` would
+    print ``heads/<branch>`` in a repo that has a tag of the same name, so nothing compares that."""
+    code, out, _ = await git(cwd, "symbolic-ref", "--quiet", "HEAD", check=False)
     return out.strip() if code == 0 and out.strip() else None
+
+
+async def current_branch(cwd: Path) -> str | None:
+    """The branch checked out at ``cwd``, by the name it has under ``refs/heads/``; None when HEAD is detached."""
+    ref = await current_ref(cwd)
+    return ref[len(HEADS) :] if ref and ref.startswith(HEADS) else ref
 
 
 @dataclass(frozen=True)

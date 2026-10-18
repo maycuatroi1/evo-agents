@@ -225,8 +225,11 @@ class ChatRun:
         head_branch = await gitops.current_branch(path)
         if head_branch != workspace.local_branch:
             raise RunFailed(
-                f"the worktree of {name} is on {head_branch or 'a detached HEAD'}, not {workspace.local_branch}: the "
-                "agent switched branches, and the worker does not push it"
+                f"the worktree of {name} is on "
+                f"{gitops.branch_ref(head_branch) if head_branch else 'a detached HEAD'}, not "
+                f"{gitops.branch_ref(workspace.local_branch)}: the agent switched branches, and the worker does not "
+                "push it",
+                cause="branch_mismatch",
             )
         run.check()
 
