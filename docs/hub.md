@@ -197,6 +197,23 @@ evo-agents hub logout                                 # revokes this machine's t
 The token and the hub URL stay in `~/.evo/hub` (mode 0700, files 0600). A hub URL must be https, or http to a
 loopback address. No command prints a token.
 
+One machine can be signed in to two hubs. `EVO_HUB_HOME` names the directory of a second login, and every command,
+hook and the MCP proxy then read the token, the hub URL and their state files (`hook-state.json`, `memory-state.json`,
+`digest-state.json`, `local/`, `backups/`) from there instead of `~/.evo/hub`. A harness whose project lives on the
+other hub sets it in the `env` of its `.claude/settings.json`, so only the sessions of that harness go there:
+
+```json
+{ "env": { "EVO_HUB_HOME": "~/.evo/hub-lumen" } }
+```
+
+```sh
+EVO_HUB_HOME=~/.evo/hub-lumen evo-agents hub login --url https://hub.other.example
+```
+
+A leading `~/` is expanded, since Claude Code passes the value as written; a blank value counts as unset, and a
+relative path is refused, because hooks start in whatever directory the session is in. The worker doctor still checks
+`~/.evo/hub/token` only.
+
 In the browser, the web sends you to GitHub (`/v1/auth/web/login`, with state and PKCE), and the callback sets the
 session cookie (HttpOnly, Secure, SameSite=Lax). Web sign-in needs four variables: the client id and secret, the
 session secret, and the public URL. Until all four are set, its routes answer 503 while the CLI's device flow keeps
