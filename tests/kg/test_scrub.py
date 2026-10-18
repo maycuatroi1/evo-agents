@@ -105,6 +105,7 @@ def synced_before_redaction(tmp_path, kg_env, monkeypatch):
     add_secrets(tmp_path / "demo-app")
     with monkeypatch.context() as patched:
         patched.setattr(git_connector, "redact_file", lambda text, path: (text, {}))
+        patched.setattr(git_connector, "read_input", lambda ctx: "sha256:a connector that does not redact")
         assert all(r.ok for r in sync_project(project))
         assert build_project(project).ok
     assert files_holding(project.root)  # the control: the values are on disk
@@ -381,6 +382,7 @@ def test_scrub_purge_drops_the_records_a_change_of_ref_superseded(tmp_path, kg_e
     guard = "    deletion: {max_removal_ratio: 0.1, min_scope: 0}\n"
     with monkeypatch.context() as patched:
         patched.setattr(git_connector, "redact_file", lambda text, path: (text, {}))
+        patched.setattr(git_connector, "read_input", lambda ctx: "sha256:a connector that does not redact")
         main_run = sync_source(git_project(tmp_path, kg_env, repo, "main", guard), "app")
     assert main_run.ok and files_holding(kg_env / "proj")  # the control: the value is on disk
     project = git_project(tmp_path, kg_env, repo, "deploy", guard)

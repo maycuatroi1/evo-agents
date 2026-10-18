@@ -217,7 +217,7 @@ class HubSession(Session):
         else:
             self.clearance = (ceiling.level, ceiling.location)
 
-    def _store(self) -> tuple[Store, int]:
+    def _graph(self) -> tuple[Store, int]:
         b = self.graph_store.latest_ready()
         if b is None:
             raise ToolError(f"build {self.graph.build_id} of project {self.project.name} holds no ready graph")

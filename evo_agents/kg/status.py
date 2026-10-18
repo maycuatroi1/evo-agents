@@ -97,7 +97,7 @@ def project_status(project: Project) -> dict:
         from evo_agents.kg.store import StaleSchema, Store
 
         try:
-            store = Store.open_existing(project)
+            store = Store.open_readonly(project)
         except StaleSchema as exc:
             store, status["graph"], status["ok"] = None, {"ready": False, "error": str(exc)}, False
         if store is not None:

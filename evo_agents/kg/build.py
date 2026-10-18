@@ -6,25 +6,34 @@ evaluates the provenance circuit, computes labels, checks node keys, and writes 
 Its coverage names, per source, what the build holds; for a git source that includes the commit read
 (``evo_agents.kg.freshness``).
 A store written by an older schema is rebuilt from the corpus log into a new file that replaces it.
+
+A build does only what changed. A link task is done again only for an item whose own text or structure changed or
+that read an entry of the identifier index that now holds something else (``Memo.run_traced``), and the store
+rewrites only the rows of the full-text index that changed. A build whose corpus state and inputs (the code, the
+config, the cursors: ``build_inputs``) are those of the store's latest build is not done at all (``unchanged``).
 """
 
 from __future__ import annotations
 
+import json
 import shutil
+import sqlite3
 import tempfile
 import time
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from evo_agents import __version__
 from evo_agents.kg import audit
 from evo_agents.kg import search as text_search
+from evo_agents.kg import store as kg_store
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.freshness import add_reads
 from evo_agents.kg.ids import utc_now
 from evo_agents.kg.memo import Memo
 from evo_agents.kg.pipeline.binding import BINDING_VERSION, binding_item
-from evo_agents.kg.pipeline.link import LINK_VERSION, build_index, index_digest, link_item
+from evo_agents.kg.pipeline.link import LINK_VERSION, Held, build_index, index_digest, link_traced
 from evo_agents.kg.pipeline.stages import (
     DIRECTORY_CONNECTORS,
     MAP_VERSION,
@@ -41,7 +50,7 @@ from evo_agents.kg.policy import Label, Policy, join_all, meet_all
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds
-from evo_agents.kg.store import SCHEMA_VERSION, Graph, Store, edge_id, key_conflicts
+from evo_agents.kg.store import Graph, StaleSchema, Store, edge_id, key_conflicts
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 STRUCTURED_KINDS = {"manifest", "contracts", "plan", "code", "markdown", "config"}  # config: tsconfig.json aliases
@@ -78,12 +87,18 @@ class BuildReport:
     seconds: float = 0.0
     verify: dict | None = None
     rebuilt_from: str | None = None  # the older store schema this build replaced, if any
+    skipped: bool = False  # nothing changed since build ``build_id``, which stays the latest (``unchanged``)
 
     def summary_line(self) -> str:
         if not self.ok:
             return f"build FAILED for {self.project}: " + "; ".join(self.errors[:5])
+        if self.skipped:
+            return (
+                f"build {self.build_id} for {self.project} is current: {self.nodes} nodes, {self.edges} edges;"
+                " the corpus and the config have not changed since, so nothing was built"
+            )
         rebuilt = (
-            f", store rebuilt from the log (schema {self.rebuilt_from} -> {SCHEMA_VERSION})"
+            f", store rebuilt from the log (schema {self.rebuilt_from} -> {kg_store.SCHEMA_VERSION})"
             if self.rebuilt_from
             else ""
         )
@@ -197,28 +212,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
         first[rec.item_id] = mapped + structured
 
     index = build_index(first, identifiers)
-    idx = index_digest(index)
-
-    # Link and binding, per item.
-    second: dict[str, list[dict]] = {}
-    for rec in records:
-        r = rec.record
-        structured, shash = structure_out[rec.item_id]
-        if r["kind"] == "binding":
-            out, _ = memo.run(
-                "binding",
-                BINDING_VERSION,
-                {"item": rec.item_id, "hash": r["hash"], "index": idx},
-                lambda rec=rec, r=r: binding_item(r, body(rec), index),
-            )
-        else:
-            out, _ = memo.run(
-                "link",
-                LINK_VERSION,
-                {"item": rec.item_id, "hash": r["hash"], "structure": shash, "index": idx},
-                lambda rec=rec, r=r, st=structured: link_item(r, corpus.fragments(r), body(rec), st, index),
-            )
-        second[rec.item_id] = out
+    second = link_items(records, structure_out, index, memo, corpus, body)
 
     # Assembly.
     nodes: dict[str, dict] = {}
@@ -374,6 +368,36 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     return graph, coverage, errors, issues
 
 
+def link_items(records, structure_out: dict, index: dict, memo: Memo, corpus: Corpus, body) -> dict[str, list[dict]]:
+    """Link and binding, per item. A link task is traced (``Memo.run_traced``): it runs again when its item or its
+    structure changed, or when an entry of the index it read holds something else. A binding task is keyed by the
+    whole index, whose digest is taken only when the project has bindings."""
+    held = Held(index)
+    idx = None
+    second: dict[str, list[dict]] = {}
+    for rec in records:
+        r = rec.record
+        structured, shash = structure_out[rec.item_id]
+        if r["kind"] == "binding":
+            idx = idx or index_digest(index)
+            out, _ = memo.run(
+                "binding",
+                BINDING_VERSION,
+                {"item": rec.item_id, "hash": r["hash"], "index": idx},
+                lambda rec=rec, r=r: binding_item(r, body(rec), index),
+            )
+        else:
+            out, _ = memo.run_traced(
+                "link",
+                LINK_VERSION,
+                {"item": rec.item_id, "hash": r["hash"], "structure": shash},
+                lambda rec=rec, r=r, st=structured: link_traced(r, corpus.fragments(r), body(rec), st, index),
+                held.digest,
+            )
+        second[rec.item_id] = out
+    return second
+
+
 def search_texts(graph: Graph, records, corpus: Corpus, body, notes: dict[str, list[str]]) -> list[str]:
     """Fill ``graph.texts`` and ``graph.paths``, what the full-text index holds besides names (``kg.search``): the
     sections of a document, the text of an item that is neither code nor a plan (a plan's text is on its plan and
@@ -452,11 +476,26 @@ def memo_path(project: Project) -> Path:
 
 
 def build_project(
-    project: Project, *, store: Store | None = None, memo: Memo | None = None, verify: bool = False, cold: bool = False
+    project: Project,
+    *,
+    store: Store | None = None,
+    memo: Memo | None = None,
+    verify: bool = False,
+    cold: bool = False,
+    force: bool = False,
 ) -> BuildReport:
     """Build the project's graph and append one line to its audit log, whether the build succeeds, fails or
     raises. ``verify`` rebuilds into a temporary store, which adds no line of its own: the outcome is this
-    build's ``verified``."""
+    build's ``verified``. A build into the project's own store is skipped, unless ``force``, when its latest build
+    was made of the same corpus state with the same inputs (``unchanged``): the report names that build, with
+    ``skipped`` set, and the audit log gets no line, since nothing was built."""
+    if store is None and not force:
+        report = unchanged(project)
+        if report is not None:
+            if verify:
+                report.verify = verify_build(project, report.content_hash, cold=cold)
+                report.ok = report.verify["match"]
+            return report
     started_at = utc_now()
     report = BuildReport(project.name, ok=False)
     crashed = None
@@ -470,6 +509,59 @@ def build_project(
         raise
     finally:
         audit.record_build(project.root, report, started=started_at, finished=utc_now(), exception=crashed)
+    return report
+
+
+def build_inputs(project: Project, corpus: Corpus) -> str | None:
+    """Digest of what a build makes of the corpus state besides the state: the code (evo-agents' version, the store
+    schema, each stage's version, the graphify it would use), the project's knowledge.yaml and ontology, and the
+    cursors its coverage copies (``freshness.add_reads``). None when the ontology does not load, which fails a build."""
+    from evo_agents.kg.extract import graphify as gfy
+
+    try:
+        ontology = project.ontology
+    except ProjectError:
+        return None
+    sources = sorted(s["id"] for s in project.sources() if isinstance(s.get("id"), str))
+    parts = {
+        "code": [__version__, kg_store.SCHEMA_VERSION, MAP_VERSION, STRUCTURE_VERSION, LINK_VERSION, BINDING_VERSION],
+        "graphify": gfy.version() if gfy.available() else None,
+        "knowledge": project.knowledge,
+        "ontology": ontology,
+        "cursors": {sid: corpus.cursor(sid) for sid in sources},
+    }
+    return sha256(json.dumps(parts, sort_keys=True, ensure_ascii=False, separators=(",", ":"), default=str))
+
+
+def unchanged(project: Project) -> BuildReport | None:
+    """The report of the latest build in the project's store (``graph.sqlite``) when it was made of the corpus state
+    the project has now, with the inputs it has now (``build_inputs``): a build would write that graph again. None
+    otherwise, and when the store is missing, of another schema, or holds no ready build."""
+    corpus = project.corpus()
+    try:
+        state, inputs = corpus.state_digest(), build_inputs(project, corpus)
+    finally:
+        corpus.close()
+    path = project.root / "graph.sqlite"
+    if inputs is None or not path.exists():
+        return None
+    try:
+        store = Store.open_file(path)
+    except (StaleSchema, sqlite3.Error):
+        return None
+    try:
+        b = store.latest_ready()
+        row = store.build_row(b) if b is not None else None
+        if row is None or row["state_digest"] != state or row["stats"].get("inputs") != inputs:
+            return None
+        size = row["stats"].get("size") or store.counts(b)
+    finally:
+        store.close()
+    coverage = row["coverage"]
+    report = BuildReport(project.name, ok=True, build_id=b, content_hash=row["content_hash"], skipped=True)
+    report.nodes, report.edges, report.units = size["nodes"], size["edges"], size["units"]
+    report.coverage, report.warnings = coverage, coverage.get("warnings", [])
+    report.issues, report.dangling_edges = coverage.get("issues", []), coverage.get("dangling_edges", 0)
     return report
 
 
@@ -495,14 +587,14 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         target = project.root / "graph.sqlite"
         if store is None:
             found = Store.stored_schema(target)
-            if found not in (None, SCHEMA_VERSION):
+            if found not in (None, kg_store.SCHEMA_VERSION):
                 report.rebuilt_from = found
             store = Store.staging(target) if report.rebuilt_from else Store(target)
         b = store.write(
             graph,
             state_digest=corpus.state_digest(),
             coverage=coverage,
-            stats={"memo": report.memo},
+            stats={"memo": report.memo, "inputs": build_inputs(project, corpus)},
             policy=project.policy,
         )
         if report.rebuilt_from:

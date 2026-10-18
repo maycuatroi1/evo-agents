@@ -202,7 +202,9 @@ symbol or module, the comment right above a definition in another language or at
 requirement's code. `đ` is indexed and searched as `d`. URIs and repo names are not indexed. A body longer than
 100,000 characters is cut there, and the build counts the cut ones in its coverage (`search.cut`, with samples).
 
-The index holds the latest build only and is rewritten with it. The build's content hash covers the store's schema and
-what the index holds, so two builds with the same hash answer searches alike. Store schema 3 added the index's
+The index holds the latest build only. A build deletes and inserts only the rows whose content changed:
+`node_fts_rows` keeps each node's row id and digest, and an index without it is written again whole. The build's
+content hash covers the store's schema and what the index holds, so two builds with the same hash answer searches
+alike. Store schema 3 added the index's
 `kind` and `path` columns, `nodes_name` and `node_alias`: an older store is rebuilt from the corpus log by the next
 `kg build` or `kg sync --build`, and readers refuse it until then.
