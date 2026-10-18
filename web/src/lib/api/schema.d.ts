@@ -4472,7 +4472,7 @@ export interface components {
             permissions: components["schemas"]["AgentPermissions"];
             /**
              * Restricted
-             * @description the axes that are allowlists, in the order of the seven
+             * @description the axes that are allowlists, in the order of the eight
              */
             restricted: string[];
             /** Version */
@@ -4562,7 +4562,7 @@ export interface components {
             instructions?: string | null;
             /** Color */
             color?: string | null;
-            /** @description the seven axes whole; an axis left out allows all */
+            /** @description the eight axes whole; an axis left out allows all */
             permissions?: components["schemas"]["AgentPermissions"] | null;
             /**
              * If Version
@@ -4627,7 +4627,7 @@ export interface components {
         };
         /**
          * AgentPermissions
-         * @description What the runs of a profile may use, on seven axes; an axis left out allows all.
+         * @description What the runs of a profile may use, on eight axes; an axis left out allows all.
          */
         AgentPermissions: {
             /** @description secret names, and github-app for the App's token */
@@ -4642,8 +4642,10 @@ export interface components {
             project?: components["schemas"]["AgentAxis"];
             /** @description model names, as a runtime names them */
             model?: components["schemas"]["AgentAxis"];
-            /** @description claude-code, opencode, codex */
+            /** @description claude-code, opencode, codex, and plugins' runtimes <plugin>/<name> */
             runtime?: components["schemas"]["AgentAxis"];
+            /** @description where the agent runs, in order of preference: host, the worker's own machine, and plugins' environments <plugin>/<name>, each a container; all runs on the host */
+            environment?: components["schemas"]["AgentAxis"];
         };
         /** AgentReactionIn */
         AgentReactionIn: {
@@ -7071,7 +7073,7 @@ export interface components {
             run_kinds?: string[] | null;
             /**
              * Features
-             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run whose agent runs in a container of a plugin's environment. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
         };
@@ -10390,6 +10392,11 @@ export interface components {
              */
             profile_version?: number | null;
             /**
+             * Environment
+             * @description the environment of a plugin, <plugin>/<name>, its claim picked from the environment axis of its profile, a container its agent runs in; null for a run on the worker's host, and before a claim
+             */
+            environment?: string | null;
+            /**
              * Chat Id
              * @description a chat run's group chat; null for any other run
              */
@@ -10732,6 +10739,48 @@ export interface components {
              */
             day: string;
         };
+        /**
+         * RunEnvironment
+         * @description An environment a plugin enabled on a project declares (``evo_agents.plugins.run_environments``): a container
+         *     image pinned by its digest, at the plugin's version the hub has installed.
+         */
+        RunEnvironment: {
+            /**
+             * Environment
+             * @description <plugin>/<name>, as the environment axis of a profile names it
+             */
+            environment: string;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Version
+             * @description the plugin's installed version
+             */
+            version: string;
+            /** Title */
+            title: string;
+            /**
+             * Provider
+             * @default container
+             * @constant
+             */
+            provider: "container";
+            /**
+             * Image
+             * @description [registry/]repository[:tag]@sha256:<digest>, pulled and run by that digest
+             */
+            image: string;
+            /**
+             * Network
+             * @enum {string}
+             */
+            network: "none" | "outbound";
+            /**
+             * Mounts
+             * @description besides the worktree and the run's home
+             */
+            mounts?: components["schemas"]["RunMount"][];
+        };
         /** RunEvent */
         RunEvent: {
             /**
@@ -10929,6 +10978,37 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /**
+         * RunMount
+         * @description A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``).
+         */
+        RunMount: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "tmpfs" | "volume";
+            /**
+             * Target
+             * @description the absolute path in the container
+             */
+            target: string;
+            /**
+             * Name
+             * @description a volume's name within the plugin; the worker names it evo-<plugin>-<name>
+             */
+            name?: string | null;
+            /**
+             * Read Only
+             * @default false
+             */
+            read_only: boolean;
+            /**
+             * Size Mb
+             * @description a tmpfs's size; null: the engine's default
+             */
+            size_mb?: number | null;
+        };
         /** RunPlugin */
         RunPlugin: {
             /** Name */
@@ -10968,7 +11048,7 @@ export interface components {
             instructions: string;
             /**
              * Permissions
-             * @description the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}
+             * @description the eight axes, each {mode: all} or {mode: allowlist, allow: [...]}; an axis a version from before the axis does not name allows all
              */
             permissions: {
                 [key: string]: unknown;
@@ -11150,6 +11230,8 @@ export interface components {
             profile?: components["schemas"]["RunProfile"] | null;
             /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
             plugin_runtime?: components["schemas"]["PluginRuntime"] | null;
+            /** @description the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host */
+            environment?: components["schemas"]["RunEnvironment"] | null;
         };
         /** RunState */
         RunState: {
@@ -12590,7 +12672,7 @@ export interface components {
             labels: string[];
             /**
              * Plugins
-             * @description the plugins whose runtimes it takes, as its owner set them
+             * @description the plugins whose runtimes and environments it takes, as its owner set them
              */
             plugins: string[];
             /** Projects */
@@ -12727,7 +12809,7 @@ export interface components {
             labels: string[];
             /**
              * Plugins
-             * @description the plugins whose runtimes the worker takes; a hub before 0039 sends none
+             * @description the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none
              */
             plugins?: string[];
         };
@@ -12750,7 +12832,7 @@ export interface components {
             name?: string | null;
             /**
              * Plugins
-             * @description the plugins whose runtimes it takes; [] for none
+             * @description the plugins whose runtimes and environments it takes; [] for none
              */
             plugins?: string[] | null;
         };

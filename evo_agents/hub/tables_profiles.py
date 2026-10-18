@@ -4,7 +4,7 @@ attributes (``tables.agent_profiles``, ``tables.agent_profile_versions``): queri
 agent_profiles holds each profile as it is now (``evo_agents.hub.profiles``): its project, its handle (unique on the
 hub, soft-deleted profiles included, so an old message keeps its author), name, description, instructions, colour,
 avatar (a blob of kind agent-avatar the project holds), whether it is its project's default (one per project), its
-permissions on the seven axes, its version, who created it and when, and when it was soft-deleted.
+permissions on the axes of ``evo_agents.hub.profiles.AXES`` (seven in 0030, eight since 0040), its version, who created it and when, and when it was soft-deleted.
 agent_profile_versions holds the profile as each version had it, written in the transaction that made the version.
 
 The same revision gives runs and credential_leases a profile_id and profile_version: the profile a run was

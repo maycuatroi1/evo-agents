@@ -853,6 +853,52 @@ def test_0039_takes_runs_of_plugins_runtimes_and_the_plugins_of_a_worker_and_goi
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0039") :]
 
 
+def _profile_row(ids, handle: str, permissions: dict, *, default: bool = False):
+    """The INSERT of an agent profile of demo, the default one with ``default``, returning its id."""
+    ap = hub_tables.agent_profiles
+    row = {"project_id": ids["project"], "handle": handle, "name": handle, "color": "#475569"}
+    row |= {"is_default": default, "permissions": permissions, "created_by": ids["user"]}
+    return insert(ap).values(row).returning(ap.c.id)
+
+
+def test_0040_gives_every_profile_the_environment_axis_and_runs_their_environment_and_going_back_takes_them(hub_db):
+    move_to(hub_db, "0039")
+    t, ap = hub_tables, hub_tables.agent_profiles
+    seven = {axis: {"mode": "all"} for axis in ("credential", "tool", "skill", "worker", "project", "model", "runtime")}
+    eight = {**seven, "environment": {"mode": "all"}}
+    limited = {**seven, "tool": {"mode": "allowlist", "allow": ["read"]}}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        default = one(conn, _profile_row(ids, "demo", seven, default=True))
+        reader = one(conn, _profile_row(ids, "reader", limited))
+        with pytest.raises(errors.CheckViolation):  # a default profile's seven axes, all, before 0040
+            conn.execute(update(ap).values(permissions=eight).where(ap.c.id == default))
+    move_to(hub_db, "0040")
+    held = dict(query(hub_db, select(ap.c.id, ap.c.permissions)))
+    assert held == {default: eight, reader: {**limited, "environment": {"mode": "all"}}}
+    boxed = {**eight, "environment": {"mode": "allowlist", "allow": ["sandbox/box", "host"]}}
+    with live.connect(hub_db) as conn:
+        conn.execute(update(ap).values(permissions=boxed).where(ap.c.id == reader))
+        for bad in (
+            update(ap).values(permissions=seven).where(ap.c.id == default),  # the eight axes, all, now
+            update(ap).values(permissions=boxed).where(ap.c.id == default),
+            _author_run(ids, environment="host"),  # NULL is the host
+            _author_run(ids, environment="Sandbox/box"),
+            _author_run(ids, environment="sandbox/box/x"),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+        boxed_run = one(conn, _author_run(ids, environment="sandbox/box"))
+        host_run = one(conn, _author_run(ids))
+    on = dict(query(hub_db, select(t.runs.c.id, t.runs.c.environment)))
+    assert on == {boxed_run: "sandbox/box", host_run: None}
+    move_to(hub_db, "0039", down=True)
+    assert "environment" not in columns(hub_db, "runs")
+    held = dict(query(hub_db, select(ap.c.id, ap.c.permissions)))
+    assert held == {default: seven, reader: seven}, "the axis went, its allowlist with it"
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0040") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

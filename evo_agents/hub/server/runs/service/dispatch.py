@@ -66,7 +66,7 @@ class Pinned:
     run_kinds: tuple[str, ...] = ()  # the kinds of run its daemon said it runs
     features: tuple[str, ...] = ()  # what its daemon said it does besides them (runs.HUB_FEATURES)
     labels: tuple[str, ...] = ()  # its owner's labels, which an agent profile's worker axis may name
-    plugins: tuple[str, ...] = ()  # the plugins whose runtimes its owner lets it take
+    plugins: tuple[str, ...] = ()  # the plugins whose runtimes and environments its owner lets it take
 
 
 async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:

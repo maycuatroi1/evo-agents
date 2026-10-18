@@ -26,7 +26,9 @@ it was revoked: starting the backend again revokes the plugin's older tokens. pl
 said of each backend it runs: the version, its state, the isolation it has, its process id, how many times it was
 started again, since when it runs, the last failure, when it is tried again, and when the host said so.
 
-workers.plugins (0039) lists the plugins whose runtimes a worker takes, as its owner set them.
+workers.plugins (0039) lists the plugins whose runtimes and environments a worker takes, as its owner set them.
+runs.environment (0040) is the environment of a plugin, <plugin>/<name>, that a run's claim picked from the
+environment axis of its agent profile; NULL for a run on the worker's host.
 
 plugin_deliveries (0038) is the outbox of the extension points (``evo_agents.hub.plugin_events``): one event or
 notification for one plugin in one project, its kind, the contribution it goes to, its payload, its state, tries, when
@@ -64,7 +66,8 @@ def _stamp(name: str) -> Column:
 
 def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table, Table]:
     """(plugins, plugin_versions, project_plugins, plugin_configs, run_plugins), added to ``metadata``; the column of
-    a run's own layer added to ``runs``, and the plugins a worker takes the runtimes of to ``workers``."""
+    a run's own layer and its environment added to ``runs``, and the plugins a worker takes the runtimes and
+    environments of to ``workers``."""
     plugins = Table(
         "plugins",
         metadata,
@@ -165,8 +168,9 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         ),
     )
     runs.append_column(Column("plugin_config", JSONB))
-    # the plugins whose runtimes a worker takes, as its owner set them (0039)
+    # the plugins whose runtimes and environments a worker takes, as its owner set them (0039)
     metadata.tables["workers"].append_column(Column("plugins", ARRAY(Text), nullable=False, server_default="{}"))
+    runs.append_column(Column("environment", Text))  # the environment of a plugin the claim picked; NULL: host (0040)
     run_plugins = Table(
         "run_plugins",
         metadata,

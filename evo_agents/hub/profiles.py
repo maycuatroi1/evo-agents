@@ -1,5 +1,5 @@
 """Agent profiles: who an agent of a project is (handle, name, avatar, colour, description, instructions) and what its
-runs may use, on seven axes (``docs/hub.md``, section "Agent profiles").
+runs may use, on eight axes (``docs/hub.md``, section "Agent profiles").
 
 A profile belongs to a project, whose admins manage it; every member of the project reads it. Its handle is unique on
 the hub and never equal to the name of a project, except for the project's default profile, whose handle is the
@@ -17,11 +17,16 @@ allowlist never grows by itself when a secret, a skill or a worker is added. Wha
 - ``project``: project names, the other projects whose runs the profile may take (its own always);
 - ``model``: model names, as a runtime names them;
 - ``runtime``: ``claude-code``, ``opencode``, ``codex``, and the runtimes of plugins, ``<plugin>/<name>``
-  (``evo_agents.plugins.runtimes``).
+  (``evo_agents.plugins.runtimes``);
+- ``environment``: where the agent runs, in order of preference: ``host``, the worker's own machine, and the
+  environments of plugins, ``<plugin>/<name>``, each a container (``evo_agents.plugins.run_environments``). An axis of
+  mode all runs on the host, as every run ran before the axis; so does a profile version written before it, which
+  names seven axes (``rule``).
 
-The hub enforces credential, skill, worker, project, model and runtime when it dispatches, hands out and leases a
-run; the worker's adapter enforces tool, skill and model in the agent session, from the profile the claim carries
-(``RunSpec.profile``). A worker whose daemon does not say it does (``runs.AGENT_PROFILES``) never claims a run whose
+The hub enforces credential, skill, worker, project, model, runtime and environment when it dispatches, hands out and
+leases a run (a claim picks the first environment of the allowlist the claiming worker takes); the worker's adapter
+enforces tool, skill and model in the agent session, from the profile the claim carries (``RunSpec.profile``), and
+its container provider the environment (``evo_agents.worker.environments``). A worker whose daemon does not say it does (``runs.AGENT_PROFILES``) never claims a run whose
 profile limits tool, skill or model, or adds instructions. Every edit of a profile raises its version; a run records
 the profile and version it was dispatched under, and the hub applies that version's rules to it.
 
@@ -34,9 +39,10 @@ import hashlib
 import re
 
 from evo_agents.hub.runs import MAX_MODEL_CHARS, RUNTIMES
+from evo_agents.plugins.run_environments import HOST, is_environment
 from evo_agents.plugins.runtimes import is_plugin_runtime
 
-AXES = ("credential", "tool", "skill", "worker", "project", "model", "runtime")
+AXES = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
 MODES = ("all", "allowlist")
 ALL, ALLOWLIST = MODES
 
@@ -115,6 +121,10 @@ def item_problem(axis: str, item: str) -> str | None:
         if item in RUNTIMES or is_plugin_runtime(item):
             return None
         return f"runtime {item!r} is none of {', '.join(RUNTIMES)}, nor a plugin's <plugin>/<name>"
+    if axis == "environment":
+        return (
+            None if is_environment(item) else f"environment {item!r} is neither {HOST} nor a plugin's <plugin>/<name>"
+        )
     return f"{axis!r} is no axis: {', '.join(AXES)}"
 
 
@@ -129,12 +139,12 @@ def problems(permissions: dict) -> list[str]:
     it is one."""
     found = [f"{axis!r} is no axis: {', '.join(AXES)}" for axis in permissions if axis not in AXES]
     for axis in AXES:
-        rule = permissions.get(axis)
-        if not isinstance(rule, dict) or rule.get("mode") not in MODES:
+        given = permissions.get(axis)
+        if not isinstance(given, dict) or given.get("mode") not in MODES:
             found.append(f"{axis}: mode is all or allowlist")
             continue
-        allow = rule.get("allow", [])
-        if rule["mode"] == ALL and allow:
+        allow = given.get("allow", [])
+        if given["mode"] == ALL and allow:
             found.append(f"{axis}: an axis of mode all takes no allow list")
         elif len(allow) > MAX_ALLOW:
             found.append(f"{axis}: at most {MAX_ALLOW} items")
@@ -142,14 +152,21 @@ def problems(permissions: dict) -> list[str]:
     return found
 
 
+def rule(permissions: dict | None, axis: str) -> dict:
+    """The rule of ``axis`` in ``permissions``: ``{"mode": "all"}`` for an axis they do not name (a profile version
+    written before the axis existed) or for a run without a profile."""
+    found = (permissions or {}).get(axis)
+    return found if isinstance(found, dict) else {"mode": ALL}
+
+
 def limited(permissions: dict | None, axis: str) -> bool:
     """Whether ``axis`` of ``permissions`` is an allowlist; never for a run without a profile."""
-    return bool(permissions) and (permissions.get(axis) or {}).get("mode") == ALLOWLIST
+    return rule(permissions, axis).get("mode") == ALLOWLIST
 
 
 def allowed(permissions: dict | None, axis: str) -> list[str] | None:
     """The allowlist of ``axis``; None when the axis allows all (or there is no profile)."""
-    return list(permissions[axis].get("allow", [])) if limited(permissions, axis) else None
+    return list(rule(permissions, axis).get("allow", [])) if limited(permissions, axis) else None
 
 
 def allows(permissions: dict | None, axis: str, item: str) -> bool:

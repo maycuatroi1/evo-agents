@@ -64,10 +64,12 @@ OLD_FEATURES = [feature for feature in FEATURES if feature != runs.PLUGIN_RUNTIM
 FOUND = {"available": True, "version": None, "reason": None, "models": ["small", "large"]}
 
 
-def install(db, *, runtimes=(FAKE,), name: str = "sandbox", version: str = "1.0.0") -> int:
-    """Plugin ``name`` installed at ``version``, declaring ``runtimes``, as the store would hold it."""
+def install(db, *, runtimes=(FAKE,), name: str = "sandbox", version: str = "1.0.0", contributes=None) -> int:
+    """Plugin ``name`` installed at ``version``, declaring ``runtimes`` (or ``contributes`` whole), as the store would
+    hold it."""
     p, v, users = tables.plugins, tables.plugin_versions, tables.users
-    data = manifest(id=name, version=version, permissions=None, config=None, contributes={"runtimes": list(runtimes)})
+    contributes = {"runtimes": list(runtimes)} if contributes is None else contributes
+    data = manifest(id=name, version=version, permissions=None, config=None, contributes=contributes)
     with live.engine(db).begin() as conn:
         admin_id = conn.execute(select(users.c.id).where(users.c.login == live.ADMIN)).scalar_one()
         plugin_id = conn.execute(insert(p).values(name=name, publisher="acme").returning(p.c.id)).scalar_one()

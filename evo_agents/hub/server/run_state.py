@@ -105,19 +105,8 @@ DECISION_WAIT = timedelta(seconds=runs.DECISION_WAIT_SECONDS)  # a run waiting t
 PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cancelled
 CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps them; NULL for any other kind
 # Columns a move may set besides the state, its times and the lease.
-MOVE_COLUMNS = frozenset(
-    {
-        "worker_id",
-        "runtime",
-        "session_id",
-        "commit_sha",
-        "diffstat",
-        "verify",
-        "evidence",
-        "usage",
-        "failure_cause",
-    }
-)
+MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
+MOVE_COLUMNS |= {"evidence", "usage", "failure_cause"}
 
 
 # Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it.
