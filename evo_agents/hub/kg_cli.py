@@ -14,7 +14,10 @@ value; ``--purge`` says what it is about to delete, asks (or takes ``--yes``), a
 ``hub`` sends every call to the hub's /mcp as a tools/call (``RemoteSession``), the seven tools with the same names and
 results, so an MCP client sees no difference. ``auto`` takes the hub when this machine is signed in and the hub has
 a successful build of the project it can show the caller, and the local store otherwise, including when the hub does
-not answer within PROBE_TIMEOUT. Standard library only.
+not answer within PROBE_TIMEOUT. Inside a run of this machine's worker (``mcp_proxy.run_credentials``), ``auto`` and
+``hub`` ask the hub as the agent of that run, with the worker's token and X-Evo-Run, as ``evo-agents hub mcp`` does
+there: the hub binds the session to the run's project, so a run whose worktree names no project of this machine, or
+whose machine is not signed in, still reads its graph. Standard library only.
 """
 
 from __future__ import annotations
@@ -400,10 +403,11 @@ class RemoteSession:
     (``evo_agents.hub.mcp_proxy.McpClient``) that asks for the structured result too, as a local Session gives it. A
     hub that cannot be reached or refuses the call gives a tool error naming the hub."""
 
-    def __init__(self, hub: Hub, project: str, sink: str):
+    def __init__(self, hub: Hub, project: str | None, sink: str, run: int | None = None):
         self.hub = hub
         self.project = project
         self.sink = sink
+        self.run = run  # the run whose agent asks, with a worker's token: the hub binds the session to its project
 
     def call(self, name: str, args: dict) -> dict:
         from evo_agents.hub.mcp_proxy import McpClient
@@ -412,7 +416,7 @@ class RemoteSession:
         if name not in {tool["name"] for tool in TOOLS}:
             return _error(f"unknown tool {name!r}")
         try:
-            client = McpClient(self.hub.url, self.hub.token, self.project, self.sink)
+            client = McpClient(self.hub.url, self.hub.token, self.project, self.sink, run=self.run)
             return client.call_tool(name, args or {}, {DATA_META: True})
         except HubError as exc:
             return _error(f"{exc} (hub {self.hub.url})")
@@ -431,6 +435,11 @@ def open_session(backend: str, project: str | None, sink: str):
 
     if backend == "local":
         return make_session(project, sink)
+    from evo_agents.hub.mcp_proxy import run_credentials
+
+    run = run_credentials()
+    if run is not None:  # the hub knows the run's project; a worker token reads no build list to probe
+        return RemoteSession(Hub(run.url, run.token), project, sink, run=run.run)
     try:
         name = resolve_project(project).name
     except ProjectError as exc:

@@ -144,7 +144,9 @@ server binds to the project of the session directory; pass `--project` in `.mcp.
 run `evo-agents kg bind --project NAME DIR` once to tie a directory and everything below it to a project
 (`kg bind --list` and `kg bind --remove DIR` manage those bindings). When the machine is signed in to a
 hub that has a graph of the project, the server answers from the hub with the same tools
-(`kg serve --backend auto`, the default; `local` and `hub` force one or the other).
+(`kg serve --backend auto`, the default; `local` and `hub` force one or the other). Inside a run of a worker,
+`auto` and `hub` ask the hub with the run's worker token, signed in or not, and only `local` reads a graph built on
+the machine ([docs/credentials.md](docs/credentials.md)).
 
 | Tool | Use |
 |---|---|
@@ -166,7 +168,8 @@ Hooks:
 
 - SessionStart prints a short note: the bound project and the snapshot age.
 - PostToolUse, after every evo-kg call, joins the labels of what the result revealed into a session
-  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it.
+  label under `~/.evo/kg/sessions/`. It only rises; `kg_status` shows it. In a session without evo-kg,
+  `evo-agents hub mcp` joins the labels of the `kg_*` results the hub serves into the same label.
 - PreToolUse, before Grep, Glob, or `rg` or `grep` in Bash, may add a note with the ids of graph
   nodes named like the search. It never allows or blocks the call. Set `EVO_KG_GREP_HINTS=0` to turn it
   off.
@@ -186,7 +189,8 @@ claude plugin install evo-hub@evo-agents
 The `evo-hub` plugin registers the MCP server `evo-hub` (`evo-agents hub mcp`, which carries the session to the
 hub's `/mcp`), a `using-agent-hub` skill, and six hooks. Its tools are the seven `kg_*` tools and `memory_search`,
 `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`, `skill_list`, `hub_projects` and
-`run_tool_stats`. In a harness
+`run_tool_stats`. A session that has the evo-kg plugin too gets the `kg_*` tools and the graph's instructions from
+evo-kg alone: evo-hub leaves them out (it reads `enabledPlugins` of Claude Code's settings). In a harness
 whose `harness.yaml` names `hub.project`, plans live on the hub and the files under `plans/` are read-only copies:
 mark a step with `plan_step`, `evo-agents hub plan step` or `evo harness step`, never by editing the YAML. To hand a
 plan to a new session or a subagent, give it `plan_handoff` (or `evo-agents hub plan handoff PLAN --step KEY`) rather
@@ -203,12 +207,15 @@ Hooks (`evo-agents hub hook session-start|stop|post-tool-use|user-prompt|local-t
   them (state in `~/.evo/hub/memory-state.json`).
 - Stop also pushes the digest of a session of 6 messages or more to the project of its directory: calls and errors
   per tool and per Bash program, what the person wrote, model and tokens, the largest context one model call read
-  (`peak_context_tokens`), the compactions and the characters of each tool's results, with every string that looks
-  like a secret replaced on the machine first. A digest the hub did not take waits for a later Stop
+  (`peak_context_tokens`), the compactions, the characters of each tool's results, and how many results the spool
+  below cut, their size before the cut and the reads of spool files, with every string that looks like a secret
+  replaced on the machine first. A digest the hub did not take waits for a later Stop
   (`~/.evo/hub/digest-state.json`); the session of a worker run pushes none.
-- PostToolUse writes a result of Bash, Read, Grep or an MCP tool longer than 10,000 characters (`EVO_SPOOL_THRESHOLD`)
-  to `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
-  tail, its size and the file's path instead.
+- PostToolUse writes a result of Bash, Grep, WebFetch or an MCP tool longer than 10,000 characters
+  (`EVO_SPOOL_THRESHOLD`), and a Read longer than 40,000 (`EVO_SPOOL_READ_THRESHOLD`), to
+  `~/.evo/tool-output/<session>/` (mode 0600, kept 7 days, never sent to the hub) and gives the model its head, its
+  tail, its size and the file's path instead; the tools of evo-hub and evo-kg, which cut their own text, and a plan's
+  handoff pass whole.
 
 - UserPromptSubmit, a second PostToolUse hook (`local-tool`), Stop and SessionEnd put a local Claude Code session
   of a hub project on the hub as a run of kind `local` (shown as local in the runs list): `running` while the agent
@@ -274,7 +281,10 @@ evo-agents hub notifications --unread
 A plan run does every step in one agent session unless it is dispatched with `--session-per-step`: then each step
 gets a new session whose prompt carries the plan's handoff instead of what the sessions before it read, and the run's
 usage lists the session of each step. A Claude Code agent on a worker compacts its context as it nears 200,000 tokens
-(`EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` on the worker sets another window).
+(`EVO_WORKER_CLAUDE_CODE_AUTO_COMPACT_WINDOW` on the worker sets another window). A Codex agent compacts there too and
+keeps 8,000 tokens of each tool output (`EVO_WORKER_CODEX_AUTO_COMPACT_TOKEN_LIMIT`,
+`EVO_WORKER_CODEX_TOOL_OUTPUT_TOKEN_LIMIT`), and opencode clears old tool outputs (`EVO_WORKER_OPENCODE_COMPACTION_PRUNE`
+turns that off); what the owner's own codex or opencode config sets stays.
 
 The agent on a worker runs with the full rights of the machine's owner, and only that owner dispatches runs to it.
 [docs/workers.md](docs/workers.md) describes the protocol and plan runs, [docs/hub.md](docs/hub.md) every `hub run`

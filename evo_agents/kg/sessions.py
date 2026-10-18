@@ -6,8 +6,14 @@
     v, session_id, level, location, integrity, projects, results_read, last_updated
 
 The record only rises: a join never lowers the level or the location, never turns integrity U back into T,
-and never drops a project. It names levels and projects, never ids or text from the results. kg_status and
-the SessionStart note print it.
+and never drops a project; a record that exists but cannot be read is left as it is, and the join fails rather
+than start the record again from one result. It names levels and projects, never ids or text from the results.
+kg_status and the SessionStart note print it.
+
+In a session without the evo-kg plugin the same kg_* tools come from the hub, through ``evo-agents hub mcp``, which
+joins each result into the same record with ``record_read`` itself (``evo_agents.hub.mcp_proxy.note_read``), so a
+read of the graph counts whichever server answered it. TOOL_PREFIXES therefore stays evo-kg's alone: a hook wired by
+hand to the hub's tools as well would count those reads twice.
 
 The labels come from the result itself. The server sends an MCP client the text alone, with READ_META in
 the ``_meta`` of its text block: the project, the join of every label the result reveals (nodes, edges,
@@ -171,6 +177,20 @@ def _locked(path: Path):
         os.close(fd)  # closing releases the lock
 
 
+def _stored(path: Path) -> dict:
+    """The record at ``path`` that a join starts from: {} when there is none yet. Any other failure to read it, such
+    as a file this process may not read or one that holds no JSON object, raises, so a join never replaces a record
+    it could not read with one that has lost its levels and projects."""
+    try:
+        text = path.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return {}
+    data = json.loads(text)
+    if not isinstance(data, dict):
+        raise ValueError(f"the session record {path.name} holds no JSON object")
+    return data
+
+
 def _write(path: Path, record: dict) -> None:
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=f".{path.stem}.", suffix=".tmp")  # mode 0600
     try:
@@ -186,7 +206,8 @@ def _write(path: Path, record: dict) -> None:
 def record_read(session_id, data: dict, home: Path | None = None) -> dict | None:
     """Join the labels in one evo-kg result into the session's record; return the new record, or None when the
     session id is unusable or the result names no label (an error, kg_status, kg_more). ``data`` is a READ_META,
-    whose results_read gives the count, or a structuredContent, whose labelled elements are counted."""
+    whose results_read gives the count, or a structuredContent, whose labelled elements are counted. Raises, and
+    writes nothing, when the record exists but cannot be read (``_stored``)."""
     path = session_path(session_id, home)
     found, count = labels_in(data)
     given = data.get("results_read")
@@ -202,7 +223,7 @@ def record_read(session_id, data: dict, home: Path | None = None) -> dict | None
     with contextlib.suppress(OSError):
         os.chmod(path.parent, 0o700)
     with _locked(path.parent / ".lock"):
-        old = read_session(session_id, home) or {}
+        old = _stored(path)
         entries = [*found, old] if old else found
         levels = _vocabulary(policy.levels, (e.get("level") for e in entries))
         locations = _vocabulary(policy.locations, (e.get("location") for e in entries))

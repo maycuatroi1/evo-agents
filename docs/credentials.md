@@ -515,7 +515,10 @@ the token in that order, and are left as they are.
 The agent reaches the hub's MCP through `evo-agents hub mcp`. Inside a run (`EVO_RUN_ID` set and a worker token on
 the machine) it sends the worker token with `X-Evo-Run`, and the hub gives it a principal scoped to the run's
 project, at most writer, never admin, at most the level its owner's grant allows. Once the run ends the worker token
-no longer opens `/mcp` for it. A worker machine needs no machine token at all. The scope is the run the request
+no longer opens `/mcp` for it. `evo-agents kg serve` (the evo-kg plugin's server, which serves the `kg_*` tools of a
+session that has it) does the same inside a run: with `--backend auto` or `hub` it asks the hub's `/mcp` with the
+worker token and `X-Evo-Run`, so the run reads its project's graph on the hub whether or not the machine is signed in
+or knows the worktree's project. A worker machine needs no machine token at all. The scope is the run the request
 names, not a token of the agent's own: the agent holds the worker's token as its daemon does (see "The agent can act
 as its worker" below).
 

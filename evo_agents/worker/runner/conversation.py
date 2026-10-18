@@ -17,6 +17,7 @@ from __future__ import annotations
 import contextlib
 import json
 from collections.abc import Awaitable, Callable
+from dataclasses import replace
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -35,6 +36,7 @@ from evo_agents.worker.runner.common import (
     wait_or,
 )
 from evo_agents.worker.runner.transitions import answer_note, waits_for_owner
+from evo_agents.worker.runtimes.common import with_first_request
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -190,11 +192,16 @@ class Conversation:
 
     async def turns(self, cls, prompt: str, session_id: str | None) -> None:
         """Turns of the agent until one ends with nothing to wait for: after each, the owner's messages that came in
-        the meantime, or the answer the run waits for, start the next in the same session."""
+        the meantime, or the answer the run waits for, start the next in the same session. The usage of each turn's
+        outcome holds the first request of the session's first turn that reports one (``with_first_request``), null
+        when the session started in the terminal UI."""
         run = self.run
         terminal_first = run.mode == "interactive"
+        start, unseen = len(self.usages), terminal_first  # the usages of this session's turns follow
         while True:
-            run.outcome, session_id = await run.agent.turns(cls, prompt, session_id, terminal_first=terminal_first)
+            outcome, session_id = await run.agent.turns(cls, prompt, session_id, terminal_first=terminal_first)
+            turns = [*self.usages[start:], outcome.usage]
+            run.outcome = replace(outcome, usage=with_first_request(outcome.usage, turns, unseen=unseen))
             self.usages.append(run.outcome.usage)
             terminal_first = False
             self.session_id = session_id or self.session_id
