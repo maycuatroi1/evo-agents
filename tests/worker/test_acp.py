@@ -155,7 +155,12 @@ def test_acp_turn_maps_the_updates_to_the_hubs_events_and_grants_permissions(age
     assert outcome == Outcome(
         True,
         None,
-        {"cost": 0.045, common.PEAK_CONTEXT: 5300, "context_window": 200000},
+        {
+            "cost": 0.045,
+            common.PEAK_CONTEXT: 5300,
+            **dict.fromkeys(common.FIRST_REQUEST),  # ACP reports no cache tokens
+            "context_window": 200000,
+        },
         "permission: allow-onceWrote a.txt.",
     )
     assert adapter.session_id == "sess-1" and adapter.agent_info["name"] == "fake-acp"
