@@ -477,7 +477,9 @@ evo-agents hub plan step rollout 2 done --evidence "pytest: 12 passed"
 evo-agents hub plan patch rollout --step 2 --set note="merged at abc1234"
 evo-agents hub plan history rollout
 evo-agents hub plan handoff rollout --step 3          # what a new session needs to take step 3 up
-evo-agents hub plan complete rollout                  # every step done: move it to completed
+evo-agents hub plan complete rollout                  # every step done or descoped: move it to completed
+evo-agents hub plan abandon rollout --reason "replaced" [--superseded-by rollout-v2]  # completed as abandoned/superseded
+evo-agents hub plan reopen rollout                    # an abandoned plan back to active
 evo-agents hub plan export . --commit                 # write the copies, commit exactly the ones that changed
 ```
 

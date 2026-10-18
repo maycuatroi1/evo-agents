@@ -3024,6 +3024,78 @@
       ],
       "json": null
     },
+    "hub plan abandon": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--superseded-by"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "area",
+          "revision",
+          "digest",
+          "label",
+          "body",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "created",
+          "changed",
+          "warnings"
+        ],
+        "schema": "evo_agents__hub__server__plans__Written"
+      }
+    },
     "hub plan complete": {
       "positionals": [
         {
@@ -3465,6 +3537,62 @@
         "schema": "evo_agents__hub__server__plans__Written"
       }
     },
+    "hub plan reopen": {
+      "positionals": [
+        {
+          "name": "plan",
+          "metavar": "PLAN",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "plan_id",
+          "area",
+          "revision",
+          "digest",
+          "label",
+          "body",
+          "created_at",
+          "updated_at",
+          "updated_by",
+          "created",
+          "changed",
+          "warnings"
+        ],
+        "schema": "evo_agents__hub__server__plans__Written"
+      }
+    },
     "hub plan show": {
       "positionals": [
         {
@@ -3560,7 +3688,8 @@
             "done",
             "in_progress",
             "pending",
-            "blocked"
+            "blocked",
+            "descoped"
           ]
         }
       ],
@@ -7658,7 +7787,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -8302,7 +8431,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -8367,7 +8496,7 @@
               }
             },
             "413": {
-              "description": "Request Entity Too Large",
+              "description": "Content Too Large",
               "content": {
                 "application/json": {
                   "schema": {
@@ -8377,7 +8506,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -8459,7 +8588,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -8833,7 +8962,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -8843,7 +8972,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -8945,7 +9074,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -8955,7 +9084,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -9549,7 +9678,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -9559,7 +9688,242 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plans/{plan_id}/abandon": {
+        "post": {
+          "tags": [
+            "plans"
+          ],
+          "summary": "Abandon",
+          "description": "Move an active or completed plan to the completed area as abandoned, or superseded when ``superseded_by``\nnames the plan that replaces it. The date and reason are kept on the plan; no step changes status. A plan that is\nabandoned already is left as it is.",
+          "operationId": "abandon_v1_projects__project__plans__plan_id__abandon_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Plan Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlanAbandon"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Written"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Conflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/plans/{plan_id}/reopen": {
+        "post": {
+          "tags": [
+            "plans"
+          ],
+          "summary": "Reopen",
+          "description": "Put an abandoned or superseded plan back in the active area, without its abandon keys. Any other plan is a\n409: a completed plan is not reopened by this.",
+          "operationId": "reopen_v1_projects__project__plans__plan_id__reopen_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "plan_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Plan Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/PlanReopen"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Payload"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Written"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Conflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Content Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -9807,7 +10171,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -9817,7 +10181,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -9972,7 +10336,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -10158,7 +10522,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -10168,7 +10532,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "409": {
               "content": {
@@ -10773,7 +11137,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -10869,7 +11233,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -11195,7 +11559,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -11360,7 +11724,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -11464,7 +11828,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -11570,7 +11934,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -11760,7 +12124,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -11954,7 +12318,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -12628,7 +12992,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -12822,7 +13186,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -12975,7 +13339,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -13139,7 +13503,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -13397,7 +13761,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -13662,7 +14026,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -13802,7 +14166,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -14312,7 +14676,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -14610,7 +14974,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -14704,7 +15068,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -15600,7 +15964,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -15610,7 +15974,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -15718,7 +16082,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -15977,7 +16341,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "description": "Validation Error",
@@ -16345,7 +16709,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -16355,7 +16719,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -16542,7 +16906,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -16552,7 +16916,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -16647,7 +17011,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -16948,7 +17312,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -17570,7 +17934,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -17665,7 +18029,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -17783,7 +18147,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -17888,7 +18252,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -17993,7 +18357,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -18113,7 +18477,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -18229,7 +18593,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -18341,7 +18705,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -18446,7 +18810,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "413": {
               "content": {
@@ -18456,7 +18820,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             }
           }
         }
@@ -18653,7 +19017,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -18755,7 +19119,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -20051,7 +20415,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -20255,7 +20619,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -20350,7 +20714,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -20614,7 +20978,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "502": {
               "content": {
@@ -21144,7 +21508,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -21154,7 +21518,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -21575,7 +21939,7 @@
               }
             },
             "413": {
-              "description": "Request Entity Too Large",
+              "description": "Content Too Large",
               "content": {
                 "application/json": {
                   "schema": {
@@ -21902,7 +22266,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -23057,7 +23421,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -23247,7 +23611,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -23341,7 +23705,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -23537,7 +23901,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -23547,7 +23911,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -23651,7 +24015,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         },
@@ -25265,7 +25629,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25350,7 +25714,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25435,7 +25799,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25520,7 +25884,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25605,7 +25969,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -25823,7 +26187,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -25929,7 +26293,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -26035,7 +26399,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -26131,7 +26495,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -26387,7 +26751,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -26573,7 +26937,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -26899,7 +27263,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27005,7 +27369,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27253,7 +27617,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27507,7 +27871,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -27934,7 +28298,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -28062,7 +28426,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -28156,7 +28520,7 @@
                   }
                 }
               },
-              "description": "Request Entity Too Large"
+              "description": "Content Too Large"
             },
             "422": {
               "content": {
@@ -28166,7 +28530,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             },
             "503": {
               "content": {
@@ -28323,7 +28687,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -28451,7 +28815,7 @@
               }
             },
             "422": {
-              "description": "Unprocessable Entity",
+              "description": "Unprocessable Content",
               "content": {
                 "application/json": {
                   "schema": {
@@ -28624,7 +28988,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -28796,7 +29160,7 @@
                   }
                 }
               },
-              "description": "Unprocessable Entity"
+              "description": "Unprocessable Content"
             }
           }
         }
@@ -38811,6 +39175,47 @@
           ],
           "title": "Plan"
         },
+        "PlanAbandon": {
+          "properties": {
+            "reason": {
+              "type": "string",
+              "maxLength": 4096,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why the plan is dropped"
+            },
+            "superseded_by": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Superseded By",
+              "description": "the plan that replaces it; the status is then superseded"
+            },
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "PlanAbandon"
+        },
         "PlanComplete": {
           "properties": {
             "if_revision": {
@@ -39085,10 +39490,10 @@
                 "type": "string"
               },
               "type": "object",
-              "maxProperties": 7,
+              "maxProperties": 8,
               "minProperties": 1,
               "title": "Updates",
-              "description": "status, done_at, fixed_at, answered_at, merged_at, note, evidence"
+              "description": "status, done_at, descoped_at, fixed_at, answered_at, merged_at, note, evidence"
             },
             "if_revision": {
               "type": "integer",
@@ -39189,6 +39594,24 @@
             "body"
           ],
           "title": "PlanPut"
+        },
+        "PlanReopen": {
+          "properties": {
+            "if_revision": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "If Revision"
+            }
+          },
+          "type": "object",
+          "title": "PlanReopen"
         },
         "PlanRunDispatch": {
           "properties": {
