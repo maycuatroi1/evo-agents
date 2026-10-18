@@ -255,7 +255,7 @@ the step `mentions` a commit, and the commit `changes` the file.
 
 **Plans.** In a harness whose harness.yaml names a hub project, the hub holds the plans and `plans/` only copies of
 them, which lag whenever nobody exported. `kg sync` then has the harness connector read the plans through the hub
-(`evo_agents/hub/kg_plans.py`, `evo_agents/kg/connectors/_hub_plans.py`): each plan the signed-in member sees becomes
+(`evo_agents/hub/kg_plans.py`, `evo_agents/kg/connectors/hub_plans.py`): each plan the signed-in member sees becomes
 the item `plans/<area>/<id>.yaml` holding its copy at the revision the hub holds, whatever the file on disk says,
 with the hub's label on it (which raises the source's label, never lowers it) and a link to its page on the hub. One
 request lists the revisions; a plan is fetched only when its revision is new to the source's cursor or its copy on
@@ -276,7 +276,7 @@ step's `repo` first, then of every repo; a SHA no source read keeps a `Commit` n
 `commit:<repo>@<sha>`, as before.
 
 **Pull requests.** For a repo whose `origin` in harness.yaml is on GitHub, the git source also reads its pull
-requests (`evo_agents/kg/connectors/_github.py`): an item `<source>:pr:<number>`, a node of kind `PullRequest`
+requests (`evo_agents/kg/connectors/github.py`): an item `<source>:pr:<number>`, a node of kind `PullRequest`
 named by its title, with `number`, `status` (open, closed or merged), `head` and `base` branches and
 `merge_commit` in its props, and a `merged_as` edge to the commit that merged it when a source read that commit. The
 body and the comments of a pull request are never read; the item is labelled integrity U for its title. A step

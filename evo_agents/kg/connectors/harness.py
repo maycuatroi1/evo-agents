@@ -11,7 +11,7 @@ points (default ``bindings/``), so a harness whose ``bindings/`` holds another t
 In a harness whose harness.yaml names a hub project, the hub holds the plans and ``plans/`` only copies of them: the
 run reads the plans through ``ctx.plans``, which ``kg sync`` passes, and each plan the hub holds becomes the item of
 its copy at the hub's revision, with the hub's label and a link to its page, whatever the file on disk holds
-(``_hub_plans``). A plan the hub does not list is read from disk, and so is every plan when the hub is not read.
+(``hub_plans``). A plan the hub does not list is read from disk, and so is every plan when the hub is not read.
 """
 
 from __future__ import annotations
@@ -21,7 +21,7 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.harness import Harness, load_yaml
-from evo_agents.kg.connectors import _git, _hub_plans
+from evo_agents.kg.connectors import _git, hub_plans
 from evo_agents.kg.connectors._files import (
     DEFAULT_EXCLUDE,
     asset_item,
@@ -136,14 +136,14 @@ def run(ctx):
     include, exclude = ctx.source.get("include"), ctx.source.get("exclude")
 
     assets = ctx.source.get("assets", True)
-    from_hub, cursor = yield from _hub_plans.read(ctx, root)
+    from_hub, cursor = yield from hub_plans.read(ctx, root)
     count = 0
     for full, rel in walk(root):
         kind = harness_kind(rel, bindings)
         wanted = kind is not None and selected(rel, include or ["*.md", "*.mdx", "*.yaml", "*.yml"], exclude)
         if not wanted and not (assets and not matches(rel, DEFAULT_EXCLUDE + list(exclude or []))):
             continue
-        if _hub_plans.plan_copy(rel) in from_hub:
+        if hub_plans.plan_copy(rel) in from_hub:
             continue  # a copy of a plan the hub holds: the hub's revision stands for it below
         data = full.read_bytes()
         rev_time = times.get(rel) if rel in clean else None
@@ -163,7 +163,7 @@ def run(ctx):
         count += 1
     for plan_id, plan in sorted(from_hub.items()):
         if selected(f"plans/{plan['area']}/{plan_id}.yaml", include or ["*.yaml"], exclude):
-            yield _hub_plans.item(sid, plan, repo_name)
+            yield hub_plans.item(sid, plan, repo_name)
             count += 1
     if cursor is not None:
         yield {"type": "state", "cursor": cursor}

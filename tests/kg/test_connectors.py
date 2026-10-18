@@ -12,6 +12,7 @@ from evo_agents.kg import retention
 from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import _files, _git
 from evo_agents.kg.connectors import git as git_connector
+from evo_agents.kg.connectors import github as github_api
 from evo_agents.kg.corpus import Corpus
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol.conformance import run_conformance
@@ -466,8 +467,6 @@ def github_pull(number: int, updated: str, **extra) -> dict:
 @pytest.fixture
 def github(monkeypatch):
     """GitHub stood in for: the pages it answers, and the requests it got as (repo, page)."""
-    from evo_agents.kg.connectors import _github
-
     fake = type("FakeGitHub", (), {})()
     fake.pages, fake.asked = [], []
 
@@ -476,9 +475,9 @@ def github(monkeypatch):
         fake.asked.append((project, number))
         return fake.pages[number - 1] if number <= len(fake.pages) else []
 
-    monkeypatch.setattr(_github, "_page", page)
-    monkeypatch.setattr(_github, "enabled", lambda env=None: True)
-    monkeypatch.setattr(_github, "token", lambda env=None: TOKEN)
+    monkeypatch.setattr(github_api, "_page", page)
+    monkeypatch.setattr(github_api, "enabled", lambda env=None: True)
+    monkeypatch.setattr(github_api, "token", lambda env=None: TOKEN)
     return fake
 
 
@@ -552,16 +551,14 @@ def test_git_reads_only_the_pull_requests_updated_since_the_newest_it_saw(tmp_pa
 
 
 def test_git_run_stays_ok_when_github_cannot_be_read_and_keeps_its_cursor(tmp_path, kg_env, github, monkeypatch):
-    from evo_agents.kg.connectors import _github
-
     project = make_project(tmp_path, kg_env)
     github.pages = [[github_pull(7, "2026-10-02T00:00:00Z")]]
     assert sync_project(project, ["app"])[0].ok
 
     def refused(project, number, secret):
-        raise _github.PullsError(f"GitHub answered HTTP 401 for the pull requests of {project}")
+        raise github_api.PullsError(f"GitHub answered HTTP 401 for the pull requests of {project}")
 
-    monkeypatch.setattr(_github, "_page", refused)
+    monkeypatch.setattr(github_api, "_page", refused)
     write(tmp_path / "demo-app/docs/new.md", "# New\n")
     commit(tmp_path / "demo-app")
     (result,) = sync_project(project, ["app"])
@@ -628,31 +625,27 @@ def test_a_default_prune_keeps_the_commits_and_pull_requests_a_later_run_reads_o
 
 
 def test_git_reads_no_pull_request_without_a_token_or_when_turned_off(tmp_path, monkeypatch):
-    from evo_agents.kg.connectors import _github
-
     repo = make_repo(tmp_path / "app")
     harness = Harness(
         tmp_path, {"name": "h", "repos": [{"name": "app", "path": str(repo), "origin": "git@github.com:acme/app.git"}]}
     )
-    monkeypatch.setattr(_github, "_page", lambda *a: pytest.fail("asked GitHub"))
-    monkeypatch.setattr(_github, "enabled", lambda env=None: True)
-    monkeypatch.setattr(_github, "token", lambda env=None: None)
+    monkeypatch.setattr(github_api, "_page", lambda *a: pytest.fail("asked GitHub"))
+    monkeypatch.setattr(github_api, "enabled", lambda env=None: True)
+    monkeypatch.setattr(github_api, "token", lambda env=None: None)
     msgs = list(ConnectorRun(ConnectorContext("p", {"id": "app", "connector": "git", "repo": "app"}, harness)))
     assert msgs[-1]["status"] == "ok" and not any(m.get("kind") == "pr" for m in msgs)
     assert any(m["type"] == "log" and m["level"] == "info" and "no GitHub token" in m["message"] for m in msgs)
-    monkeypatch.setattr(_github, "token", lambda env=None: pytest.fail("looked for a token"))
+    monkeypatch.setattr(github_api, "token", lambda env=None: pytest.fail("looked for a token"))
     source = {"id": "app", "connector": "git", "repo": "app", "pulls": False}
     assert list(ConnectorRun(ConnectorContext("p", source, harness)))[-1]["status"] == "ok"
 
 
 def test_github_token_comes_from_the_source_then_the_environment(monkeypatch):
-    from evo_agents.kg.connectors import _github
-
     monkeypatch.setenv("GITHUB_TOKEN", "from-env")
-    assert _github.token({"GH_TOKEN": "from-source"}) == "from-source"
-    assert _github.token({}) == "from-env"
-    assert _github.enabled({}) is False  # the suite turns the reading off (tests/conftest.py)
-    assert _github.enabled({"EVO_KG_PULLS": "1"}) is True
+    assert github_api.token({"GH_TOKEN": "from-source"}) == "from-source"
+    assert github_api.token({}) == "from-env"
+    assert github_api.enabled({}) is False  # the suite turns the reading off (tests/conftest.py)
+    assert github_api.enabled({"EVO_KG_PULLS": "1"}) is True
 
 
 # The plans of the hub, in a harness whose harness.yaml names a hub project
