@@ -216,6 +216,31 @@ def test_post_tool_error_exits_zero_with_a_note(kg_env, monkeypatch, capsys, unb
     assert err.startswith("evo-kg post-tool hook skipped: PermissionError")
 
 
+@pytest.mark.parametrize("trouble", ["unreadable", "not-json", "not-an-object"])
+def test_post_tool_leaves_a_record_it_cannot_read_as_it_is(kg_env, monkeypatch, capsys, unbound, trouble):
+    payload = sample()
+    assert post(monkeypatch, capsys, payload)[0] == 0
+    path = sessions.session_path(payload["session_id"])
+    before = {"unreadable": path.read_text(encoding="utf-8"), "not-json": '{"level": "secr', "not-an-object": "[]"}
+    before = before[trouble]
+    path.write_text(before, encoding="utf-8")
+    if trouble == "unreadable":  # as when the file belongs to another user; patched, since root reads any file
+        read_text = Path.read_text
+
+        def refuse(self, *args, **kwargs):
+            if self == path:
+                raise PermissionError(13, "Permission denied", str(self))
+            return read_text(self, *args, **kwargs)
+
+        monkeypatch.setattr(Path, "read_text", refuse)
+    code, out, err = post(monkeypatch, capsys, payload)
+    assert (code, out) == (0, "")
+    expected = {"unreadable": "PermissionError", "not-json": "JSONDecodeError", "not-an-object": "ValueError"}
+    assert err.startswith(f"evo-kg post-tool hook skipped: {expected[trouble]}")
+    assert path.read_bytes().decode("utf-8") == before  # never started again from this one result
+    assert sorted(p.name for p in path.parent.iterdir()) == [".lock", path.name]
+
+
 def test_post_tool_file_permissions(kg_env, monkeypatch, capsys, unbound):
     folder = sessions.sessions_dir()
     folder.mkdir(parents=True, mode=0o755)
