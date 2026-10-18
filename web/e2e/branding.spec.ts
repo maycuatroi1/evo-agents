@@ -92,7 +92,7 @@ test("a hub admin brands the hub, and the sidebar, the page and the sign-in page
   // With nothing set again, the web is its own.
   await clearHubSettings();
   await page.reload();
-  await expect(page.getByTestId("brand")).toHaveText("evo-agents hub");
+  await expect(page.getByTestId("brand")).toHaveText("Evo Agent Hub");
   await expect(page.locator('style[data-testid="hub-branding"]')).toHaveCount(0);
   expect(await brandVariable(page)).toBe("#2f4bd8");
 });
