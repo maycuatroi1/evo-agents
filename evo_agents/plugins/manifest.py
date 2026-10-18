@@ -21,6 +21,11 @@ A runtime (``runtimes``) names one of ``acp``, the command of an agent that spea
 any plugin may declare (``evo_agents.plugins.runtimes``), and ``python``, a core plugin's adapter of a runtime of the
 worker; within the bounds of MAX_COMMAND_ITEMS, MAX_RUNTIME_MODELS and MAX_RUNTIME_SECRETS, each model and secret once.
 
+An environment (``environments``) is a container image pinned by its digest, its network and at most
+MAX_ENVIRONMENT_MOUNTS mounts (``evo_agents.plugins.run_environments``): a volume names itself and a tmpfs does not,
+only a tmpfs has a size, each target is a normalized absolute path, once, and none is ``/`` or under the kernel's
+file systems (FORBIDDEN_TARGETS).
+
 The schema file is read where the package installs it, next to the harness schemas, without importing
 ``evo_agents.harness``. Standard library only, besides ``evo_agents.schema``.
 """
@@ -28,6 +33,7 @@ The schema file is read where the package installs it, next to the harness schem
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 from dataclasses import dataclass, field
 from functools import cache
@@ -48,6 +54,8 @@ CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notific
 MAX_COMMAND_ITEMS = 32  # the program and arguments of an ACP runtime's command
 MAX_RUNTIME_MODELS = 200  # the models an ACP runtime lists, as a worker's heartbeat bounds them
 MAX_RUNTIME_SECRETS = 20  # the variables an ACP runtime's agent needs
+MAX_ENVIRONMENT_MOUNTS = 8  # the mounts an environment declares, besides those the worker always makes
+FORBIDDEN_TARGETS = ("/proc", "/sys", "/dev")  # no mount of an environment goes there, nor under them, nor on /
 PERMISSIONS = (
     "runs:read",
     "runs:dispatch",
@@ -138,14 +146,14 @@ class Manifest:
 
 def is_per_project(data: dict) -> bool:
     """Whether a project enables the plugin of manifest ``data`` for anything: it is isolated, asks for a permission,
-    takes a config, or contributes an MCP tool, a job, an event, a page, an ACP runtime or a route under
-    /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of members and routes of its own) runs hub-wide wherever it is
+    takes a config, or contributes an MCP tool, a job, an event, a page, an ACP runtime, an environment or a route
+    under /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of members and routes of its own) runs hub-wide wherever it is
     installed: the hub's store lists it, installed with the image, and no project enables it. ``data`` is a manifest
     that was read once (the store keeps it so), not checked again here."""
     contributes = data.get("contributes") or {}
     if data.get("tier", "isolated") == "isolated" or data.get("permissions") or data.get("config"):
         return True
-    if any(contributes.get(point) for point in ("mcp_tools", "jobs", "events", "pages")):
+    if any(contributes.get(point) for point in ("mcp_tools", "jobs", "events", "pages", "environments")):
         return True
     if any("acp" in item for item in contributes.get("runtimes") or ()):
         return True
@@ -199,6 +207,8 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return _page_problems(where, item, core)
     if point == "runtimes":
         return _runtime_problems(where, item)
+    if point == "environments":
+        return _environment_problems(where, item)
     return []
 
 
@@ -217,6 +227,39 @@ def _runtime_problems(where: str, item: dict) -> list[str]:
         found += [
             f"{where}.{key}: {value!r} is listed twice" for value in sorted(set(values)) if values.count(value) > 1
         ]
+    return found
+
+
+def _environment_problems(where: str, item: dict) -> list[str]:
+    """What is wrong with environment ``item``: at most MAX_ENVIRONMENT_MOUNTS mounts, each target once, normalized and
+    clear of FORBIDDEN_TARGETS; a volume with a name and no size, a tmpfs without a name."""
+    mounts = item.get("mounts") or []
+    found = [f"{where}.mounts: at most {MAX_ENVIRONMENT_MOUNTS} items"] if len(mounts) > MAX_ENVIRONMENT_MOUNTS else []
+    targets = [mount["target"] for mount in mounts]
+    found += [
+        f"{where}.mounts: target {target!r} is listed twice"
+        for target in sorted(set(targets))
+        if targets.count(target) > 1
+    ]
+    for index, mount in enumerate(mounts):
+        found += _mount_problems(f"{where}.mounts[{index}]", mount)
+    return found
+
+
+def _mount_problems(where: str, mount: dict) -> list[str]:
+    target = mount["target"]
+    found = []
+    if posixpath.normpath(target) != target or target.startswith("//"):
+        found.append(f"{where}.target: {target!r} is not a normalized absolute path")
+    if target == "/" or any(target == top or target.startswith(top + "/") for top in FORBIDDEN_TARGETS):
+        found.append(f"{where}.target: {target!r} is /, or one of {', '.join(FORBIDDEN_TARGETS)} or under it")
+    if mount["type"] == "volume":
+        if "name" not in mount:
+            found.append(f"{where}: a volume names itself (name)")
+        if "size_mb" in mount:
+            found.append(f"{where}.size_mb: only a tmpfs has a size")
+    elif "name" in mount:
+        found.append(f"{where}.name: only a volume has a name")
     return found
 
 
