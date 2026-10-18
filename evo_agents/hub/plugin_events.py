@@ -4,16 +4,18 @@ points).
 ``emit`` stores, in the caller's transaction, one delivery of an event for each plugin enabled in the event's project
 whose installed version takes it and whose grant there lets it read it: a run's state (``run.state``, with
 ``runs:read``), a message of a group chat (``chat.message``, with ``chats:read``), a step of a plan (``plan.step``,
-with ``plans:read``). An events contribution takes the kinds its ``on`` names, or every kind when it names none. The
-table plugin_deliveries is the outbox: nothing goes out while the transaction is open, and nothing is lost when the
-hub stops after the commit. ``emit_notification`` does the same for a notification of a project, to each isolated
-plugin's channel there, with ``notifications:send``: a core plugin's channel is a kind of members' channel instead,
-which ``evo_agents.hub.server.notifications`` sends as it sends Telegram's.
+with ``plans:read``), the end of a task run (``task.result``, with ``runs:dispatch``), which ``emit_task_result``
+stores for the plugin of the run's agent type alone (``evo_agents.hub.task_runs``). An events contribution takes the
+kinds its ``on`` names, or every kind when it names none. The table plugin_deliveries is the outbox: nothing goes out
+while the transaction is open, and nothing is lost when the hub stops after the commit. ``emit_notification`` does
+the same for a notification of a project, to each isolated plugin's channel there, with ``notifications:send``: a core
+plugin's channel is a kind of members' channel instead, which ``evo_agents.hub.server.notifications`` sends as it
+sends Telegram's.
 
 A payload carries ids and states, never a text the project's labels may keep from a plugin: a run's id, kind and
-states, a message's ids, a step's id and statuses, a notification's kind, member and link with the words a restricted
-project's Telegram message carries (``telegram.what_waits``). A plugin that needs more asks the hub with its token,
-under its grant.
+states, a message's ids, a step's id and statuses, a task's ids, state, branch and pull requests, a notification's
+kind, member and link with the words a restricted project's Telegram message carries (``telegram.what_waits``). A
+plugin that needs more asks the hub with its token, under its grant.
 
 ``deliver`` is the job hub.deliver_plugin_events, every minute. It takes the pending deliveries that are due, each in
 a transaction of its own with ``FOR UPDATE SKIP LOCKED``, checks again that the plugin is installed, turned on,
@@ -55,6 +57,7 @@ PERMISSION = {
     "run.state": "runs:read",
     "chat.message": "chats:read",
     "plan.step": "plans:read",
+    "task.result": "runs:dispatch",
     NOTIFICATION: "notifications:send",
 }
 MAX_ATTEMPTS = 8
@@ -88,16 +91,18 @@ async def _subscribers(conn: AsyncConnection, kind: str, project_id: int) -> lis
     return found
 
 
-async def emit(conn: AsyncConnection, kind: str, project_id: int | None, payload: dict) -> int:
-    """Store a delivery of the event ``kind`` of project ``project_id`` for each plugin that takes it, in the caller's
-    transaction; how many."""
+async def emit(
+    conn: AsyncConnection, kind: str, project_id: int | None, payload: dict, *, plugin_id: int | None = None
+) -> int:
+    """Store a delivery of the event ``kind`` of project ``project_id`` for each plugin that takes it (plugin
+    ``plugin_id`` alone when given), in the caller's transaction; how many."""
     if project_id is None:
         return 0
-    found = await _subscribers(conn, kind, project_id)
+    found = [item for item in await _subscribers(conn, kind, project_id) if plugin_id in (None, item[0])]
     if found:
         values = [
-            {"plugin_id": plugin_id, "project_id": project_id, "kind": kind, "contribution": name, "payload": payload}
-            for plugin_id, name in found
+            {"plugin_id": taker, "project_id": project_id, "kind": kind, "contribution": name, "payload": payload}
+            for taker, name in found
         ]
         await conn.execute(insert(tables.plugin_deliveries), values)
     return len(found)
@@ -108,6 +113,12 @@ async def emit_run_state(conn: AsyncConnection, run_id: int, row, old: str, new:
     ``run_state.move_run`` got back from its UPDATE (project_id, kind, plan_id and step_key)."""
     change = {"run_id": run_id, "run_kind": row.kind, "from": old, "to": new, "actor": actor}
     return await emit(conn, "run.state", row.project_id, {**change, "plan_id": row.plan_id, "step": row.step_key})
+
+
+async def emit_task_result(conn: AsyncConnection, project_id: int, plugin_id: int, payload: dict) -> int:
+    """Store the ``task.result`` event of a task run that ended, ``payload`` (``task_runs``), for plugin ``plugin_id``,
+    the plugin of the run's agent type, alone."""
+    return await emit(conn, "task.result", project_id, payload, plugin_id=plugin_id)
 
 
 async def emit_notification(conn: AsyncConnection, notification_id: int, project_id: int | None) -> int:

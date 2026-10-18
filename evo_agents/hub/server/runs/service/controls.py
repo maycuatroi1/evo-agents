@@ -31,6 +31,8 @@ from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity, r
 from evo_agents.hub.server.security import WEB, Principal
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
+# How a run of each kind that is never rerun runs again.
+AGAIN = {"chat": "mention its agent in the chat again", "task": "its plugin hands the task to its agent type again"}
 
 
 async def owned_run(conn: AsyncConnection, user: Principal, project: str, run_id: int, action: str):
@@ -232,8 +234,8 @@ async def rerun_in(
         raise HTTPException(
             409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
         )
-    if kind == "chat":
-        raise HTTPException(409, f"run {run_id} is a chat run: mention its agent in the chat again")
+    if kind in AGAIN:
+        raise HTTPException(409, f"run {run_id} is a {kind} run: {AGAIN[kind]}")
     if state not in runs.TERMINAL_STATES:
         raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
     runtime_now = runtime or asked_runtime

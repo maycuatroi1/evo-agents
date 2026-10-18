@@ -108,19 +108,8 @@ PARKED_FOR = timedelta(days=runs.PARKED_DAYS)  # a run parked this long is cance
 CAUSED_KINDS = ("step", "plan", "author", "chat")
 CHAT_COLUMNS = ("chat_id", "chat_message_id", "hop")  # a chat run's retry keeps them; NULL for any other kind
 # Columns a move may set besides the state, its times and the lease.
-MOVE_COLUMNS = frozenset(
-    {
-        "worker_id",
-        "runtime",
-        "session_id",
-        "commit_sha",
-        "diffstat",
-        "verify",
-        "evidence",
-        "usage",
-        "failure_cause",
-    }
-)
+MOVE_COLUMNS = frozenset({"worker_id", "runtime", "environment", "session_id", "commit_sha", "diffstat", "verify"})
+MOVE_COLUMNS |= {"evidence", "usage", "failure_cause"}
 
 
 # Agent time, in an UPDATE of runs (whose right-hand sides read the row as it was) or a query of it.
@@ -562,6 +551,11 @@ async def record_move(
 
         await chat_run_moved(conn, run_id, new, old)
         return None
+    if found.kind == "task":  # it writes no step: its plugin gets the event task.result when it ends
+        from evo_agents.hub.server.task_dispatch import task_run_ended  # it queues runs through the routes too
+
+        await task_run_ended(conn, run_id, new)
+        return None
     if found.kind == "plan":
         revision = await release_plan_steps(conn, found, new, reason=reason, token_id=token_id)
         await run_ended(conn, found, old, new, reason=reason)
@@ -646,7 +640,8 @@ def _next_attempt(run_id: int):
     """The next attempt of run ``run_id``: the same step, ``parent_run_id`` pointing back, the attempt one higher and
     the runtime the dispatch asked for. It keeps the dispatch's credential, so a worker that takes runs dispatched
     from the web only takes the retry of one too, and never the retry of a run dispatched with a token; the schedule,
-    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config."""
+    night and caps of a run the night shift queued; the agent profile and version it went under; its plugin config; a
+    task run's agent type and pull requests."""
     r = tables.runs
     copied = (
         "kind",
@@ -674,6 +669,8 @@ def _next_attempt(run_id: int):
         "profile_id",
         "profile_version",
         "plugin_config",
+        "agent_type_id",
+        "pulls",
         *CHAT_COLUMNS,
     )
     source = select(

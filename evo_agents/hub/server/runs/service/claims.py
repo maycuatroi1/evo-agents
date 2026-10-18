@@ -1,19 +1,28 @@
 """The claim of a worker (POST /v1/worker/claim): the claims waiting in this api process (``RunWakeups``), the run a
 worker may take now, its lease, and the RunSpec it is handed, prompt, plan, budget, Curator role, skills and agent
 profile included. The run's agent profile, at the version the run went under, decides which workers may take it and
-the runtime of a run that asks for any (``service.profiles``). A claim records the plugins of the run's project, each
-with its version and the digest of the run's effective config (``plugin_configs.record_run_plugins``)."""
+the runtime of a run that asks for any (``service.profiles``). A run of a plugin's runtime goes only to a worker that
+claims runs of it (``plugin_runtimes.claimable``), with the runtime's declaration as the plugin enabled on the run's
+project has it now; one whose plugin is no longer enabled there fails at the claim, saying why. The run's
+environment is the first of its profile's environment axis that the worker takes (``plugin_environments.picked``):
+the host for an axis that allows all, else host or a plugin's environment the worker's owner accepted and its daemon
+runs (``runs.ENVIRONMENTS``), recorded in runs.environment and handed with its declaration; a run whose allowlist
+names no environment its project still registers fails at the claim, saying why. A run whose profile attaches agent
+packs goes only to a worker whose daemon builds them and whose owner accepted each pack's plugin, with a presigned GET
+of the bundle of each at the version the profile pins (``agent_packs.tickets``); one the hub cannot hand a pack fails
+at the claim, saying why. A claim records the plugins of the run's project, each with its version and the digest of
+the run's effective config (``plugin_configs.record_run_plugins``)."""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import UTC, datetime, timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import BigInteger, Text, case, column, exists, func, literal, or_, select, true
+from sqlalchemy import BigInteger, Text, any_, case, column, exists, func, literal, or_, select, true
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -21,6 +30,7 @@ from evo_agents.hub import author, curator, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import MAX_GET_TTL
 from evo_agents.hub.plans import PlanProblem, step_index
+from evo_agents.hub.server.agent_packs import tickets
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.plugin_configs import record_run_plugins
 from evo_agents.hub.server.run_state import RUNS_CHANNEL, move_run
@@ -29,14 +39,26 @@ from evo_agents.hub.server.runs.models import (
     ClaimedBudget,
     CuratorSpec,
     PlanCopy,
+    PluginRuntime,
     Run,
+    RunEnvironment,
+    RunPack,
     RunSkill,
     RunSpec,
     available,
 )
-from evo_agents.hub.server.runs.service.profiles import claim_clause, pick_runtime, run_profile, runtime_rule
+from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service.profiles import (
+    claim_clause,
+    pick_runtime,
+    run_packs,
+    run_profile,
+    runtime_rule,
+)
 from evo_agents.hub.server.runs.service.views import current_plan, lost_here, run_view, steady, text_or_none
 from evo_agents.hub.server.security import Principal
+from evo_agents.plugins.run_environments import ContainerEnvironment
+from evo_agents.plugins.runtimes import AcpRuntime
 
 log = logging.getLogger("evo_agents.hub.server.runs")  # the package's one logger, as before it was split
 
@@ -91,7 +113,8 @@ class RunWakeups:
 
 async def worker_of(conn: AsyncConnection, user: Principal):
     """The row of the worker whose token made the request, locked: id, owner_id, name, slots, runtimes, checkouts,
-    drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features and labels. 403 when there is none."""
+    drained_at, revoked_at, agent_version, dispatch_from, run_kinds, features, labels and plugins. 403 when there is
+    none."""
     w = tables.workers
     query = (
         select(
@@ -108,6 +131,7 @@ async def worker_of(conn: AsyncConnection, user: Principal):
             w.c.run_kinds,
             w.c.features,
             w.c.labels,
+            w.c.plugins,
         )
         .where(w.c.token_id == user.token_id)
         .with_for_update()
@@ -136,29 +160,35 @@ def _claimable(
     runtimes: list[str],
     pairs: list[tuple[int, str]],
     *,
+    offered: tuple[str, ...] = (),
+    environments: tuple[str, ...] = (),
     plan_runs: bool,
     web_only: bool,
     review_runs: bool = False,
     judge_runs: bool = False,
     author_runs: bool = False,
     chat_runs: bool = False,
+    task_runs: bool = False,
     step_sessions: bool = False,
     steady: bool = True,
     profile_gate=None,
 ):
-    """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its
-    owner, in ``projects``, pinned to no other worker, asking for any runtime or one of ``runtimes``, of a repo it
-    has a checkout of (``pairs`` of project id and repo), and, while the worker is not ``steady``, not the next
-    attempt of a run it lost (``lost_here``). A run of one step needs a checkout of its repo, and a plan run one of
-    every repo in its repos and a daemon of runs.PLAN_RUN_AGENT or later (``plan_runs``); a review run one of every
-    repo in its repos and a daemon that says it runs review runs (``review_runs``), and a judge run likewise
-    (``judge_runs``); an author run one of its first repo, the project's harness, and a daemon that says it runs
-    author runs (``author_runs``): the worker leaves out the other repos it has no checkout of. A chat run is pinned
-    to the worker the hub picked for it and needs a daemon that says it runs chat runs (``chat_runs``). A plan run
-    with a session per step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs
-    dispatched from the web only (``web_only``) passes over the others, those dispatched before schema 0011 included;
-    and it takes only the runs whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``). Each row is
-    the run's id, the runtime it asked for, its kind and its profile's runtime axis."""
+    """The oldest queued run the worker may take now, locked, passing over one another claim holds locked: of its owner,
+    in ``projects``, pinned to no other worker, asking for any runtime (when it has one of the core) or one of
+    ``runtimes`` or ``offered`` (runtimes of plugins), of a repo it has a checkout of (``pairs`` of project id and
+    repo), and, while the worker is not ``steady``, not the next attempt of a run it lost (``lost_here``). A run of one
+    step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT
+    or later (``plan_runs``); a review run one of every repo in its repos and a daemon that says it runs review runs
+    (``review_runs``), and a judge run likewise (``judge_runs``); an author run one of its first repo, the project's
+    harness, and a daemon that says it runs author runs (``author_runs``): the worker leaves out the other repos it has
+    no checkout of. A chat run is pinned to the worker the hub picked for it and needs a daemon that says it runs chat
+    runs (``chat_runs``). A task run needs a checkout of one of its repos when it has any, a daemon that says it runs
+    task runs (``task_runs``) and, when its agent type names workers, to be one of them. A plan run with a session per
+    step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs dispatched from the web
+    only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes only the runs
+    whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``, with the plugins' ``environments`` it
+    takes). Each row is the run's id, the runtime it asked for, its kind, its profile's runtime axis, its project's id,
+    its profile's environment axis and the agent packs its profile attaches."""
     r = tables.runs
     pids = literal([pid for pid, _ in pairs], ARRAY(BigInteger))
     repos = literal([repo for _, repo in pairs], ARRAY(Text))
@@ -174,16 +204,21 @@ def _claimable(
     every_repo = ~exists().select_from(needed).where(~has_needed)
     own_repo = exists().where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == r.c.repo)
     harness = exists().where(checkouts.c.project_id == r.c.project_id, checkouts.c.repo == r.c.repos[0]["repo"].astext)
-    query = select(r.c.id, r.c.runtime, r.c.kind, runtime_rule()).where(
+    asked = [r.c.runtime.in_([*runtimes, *offered])]
+    if runtimes:  # any takes a runtime of the core, never a plugin's
+        asked.append(r.c.runtime == "any")
+    rules = (runtime_rule(), r.c.project_id, runtime_rule("environment"), run_packs())
+    query = select(r.c.id, r.c.runtime, r.c.kind, *rules).where(
         r.c.state == "queued",
         r.c.project_id.in_(projects),
         r.c.dispatched_by == owner_id,
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
-        or_(r.c.runtime == "any", r.c.runtime.in_(runtimes)),
+        or_(*asked),
         case(
             (r.c.kind.in_(("plan", "review", "judge")), every_repo),
             (r.c.kind == "author", harness),
             (r.c.kind == "chat", true()),  # pinned to the worker the hub picked, which works without a repo it lacks
+            (r.c.kind == "task", or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed))),
             else_=own_repo,
         ),
     )
@@ -201,11 +236,21 @@ def _claimable(
         query = query.where(r.c.kind != "author")
     if not chat_runs:
         query = query.where(r.c.kind != "chat")
+    query = query.where(or_(r.c.kind != "task", _task_worker(worker_id)) if task_runs else r.c.kind != "task")
     if not steady:
         query = query.where(~lost_here(worker_id))
     if profile_gate is not None:
         query = query.where(profile_gate)
     return query.order_by(r.c.id).limit(1).with_for_update(of=r, skip_locked=True)
+
+
+def _task_worker(worker_id: int):
+    """Whether worker ``worker_id`` may take the task run: its agent type names no worker, or names it."""
+    w, t, r = tables.workers, tables.project_agent_types, tables.runs
+    name = select(func.lower(w.c.name)).where(w.c.id == worker_id).scalar_subquery()
+    return exists().where(
+        t.c.id == r.c.agent_type_id, or_(func.cardinality(t.c.workers) == 0, name == any_(t.c.workers))
+    )
 
 
 class ClaimAbandoned(Exception):
@@ -287,7 +332,7 @@ async def _try_claim(
     async with engine.begin() as conn:
         found = await worker_of(conn, user)
         worker_id, owner_id, name, slots, reported, checkouts, drained_at, _, version, dispatch_from, *said = found
-        kinds, features, labels = said  # what its daemon says it runs: kinds of run, features (runs.HUB_FEATURES)
+        kinds, features, labels, plugins = said  # what its daemon says it runs: kinds of run, features (HUB_FEATURES)
         if drained_at is not None:
             return None
         r = tables.runs
@@ -295,40 +340,48 @@ async def _try_claim(
         if (await conn.execute(holding)).scalar_one() >= slots:
             return None
         runtimes = [runtime for runtime in runs.RUNTIMES if available((reported or {}).get(runtime))]
-        if not runtimes:
+        offered = plugin_runtimes.claimable(reported, plugins, features)
+        if not runtimes and not offered:
             return None
         served = {row.project_id: row.name for row in await conn.execute(_served(worker_id, owner_id))}
-        by_name = {project: project_id for project_id, project in served.items()}
-        pairs = []
-        for checkout in checkouts or {}:
-            project, _, repo = checkout.partition("/")
-            if project in by_name and repo:
-                pairs.append((by_name[project], repo))
+        pairs = _checkout_pairs(served, checkouts)
         if not pairs:
             return None
         w = tables.workers
         steadiness = select(func.coalesce(steady(w), False)).where(w.c.id == worker_id)
         is_steady = (await conn.execute(steadiness)).scalar_one()
+        environments = await plugin_environments.offered(conn, worker_id, plugins, features)
         query = _claimable(
             worker_id,
             owner_id,
             list(served),
             runtimes,
             pairs,
+            offered=tuple(offered),
+            environments=tuple(environments),
             plan_runs=runs.takes_plan_runs(version),
             web_only=dispatch_from == "web",
             review_runs="review" in (kinds or ()),
             judge_runs="judge" in (kinds or ()),
             author_runs="author" in (kinds or ()),
             chat_runs="chat" in (kinds or ()),
+            task_runs="task" in (kinds or ()),
             step_sessions=runs.SESSION_PER_STEP in (features or ()),
             steady=is_steady,
-            profile_gate=claim_clause(name, labels, runtimes, features),
+            profile_gate=claim_clause(name, labels, runtimes, features, offered, environments, plugins),
         )
         row = (await conn.execute(query)).one_or_none()
         if row is None:
             return None
-        run_id, asked, kind, rule = row
+        run_id, asked, kind, rule, project_id, environment_rule, packs = row
+        project = served[project_id]
+        placed = await _placed_or_failed(conn, run_id, asked if asked in offered else None, project_id, project)
+        if placed is not None:
+            placed = await _settled_or_failed(
+                conn, run_id, placed, (environment_rule, environments), project_id, (packs, blobs)
+            )
+        if placed is None:
+            return None
         skill = None
         if kind == "author":
             skill = await author_skill(conn)
@@ -345,7 +398,7 @@ async def _try_claim(
             "leased",
             "worker",
             reason=f"worker {name} claimed it",
-            columns={"worker_id": worker_id, "runtime": runtime},
+            columns={"worker_id": worker_id, "runtime": runtime, "environment": placed.environment},
             token_id=user.token_id,
             lease=lease,
         )
@@ -353,10 +406,112 @@ async def _try_claim(
         spec = await _run_spec(conn, run_id, tuple(features or ()))
         if skill is not None:
             spec.skills = [await _skill_ticket(blobs, skill)]
+        if placed.runtime is not None:
+            spec.plugin_runtime = PluginRuntime(**placed.runtime.to_json())
+        if placed.container is not None:
+            spec.environment = RunEnvironment(**placed.container.to_json())
+        spec.packs = list(placed.packs)
         if gone is not None and await gone():
             raise ClaimAbandoned(run_id)  # leaving the block rolls the transaction back
     log.info("run claimed", extra={"run_id": run_id, "worker_id": worker_id, "runtime": runtime})
     return spec
+
+
+def _checkout_pairs(served: dict[int, str], checkouts) -> list[tuple[int, str]]:
+    """(project id, repo) of each of the worker's ``checkouts`` (keyed <project>/<repo>) in a project it ``served``."""
+    by_name = {project: project_id for project_id, project in served.items()}
+    pairs = []
+    for checkout in checkouts or {}:
+        project, _, repo = checkout.partition("/")
+        if project in by_name and repo:
+            pairs.append((by_name[project], repo))
+    return pairs
+
+
+@dataclass(frozen=True)
+class Placed:
+    """Where a claimed run's agent runs, beyond the core: the declaration of the plugin's runtime it asked for, and
+    the environment of a plugin its claim picked with its declaration (None for both: the host)."""
+
+    project: str
+    runtime: AcpRuntime | None = None
+    environment: str | None = None
+    container: ContainerEnvironment | None = None
+    packs: tuple[RunPack, ...] = ()
+
+
+async def _placed_or_failed(
+    conn: AsyncConnection, run_id: int, runtime: str | None, project_id: int, project: str
+) -> Placed | None:
+    """Placed with the declaration of the plugin's runtime ``runtime`` (None for a runtime of the core) that run
+    ``run_id`` asks for; None once the run failed for want of one (``_declared_or_failed``)."""
+    if runtime is None:
+        return Placed(project)
+    declaration = await _declared_or_failed(conn, run_id, runtime, project_id, project)
+    return None if declaration is None else Placed(project, declaration)
+
+
+async def _environment_or_failed(
+    conn: AsyncConnection, run_id: int, placed: Placed, rule: dict | None, environments: list[str], project_id: int
+) -> Placed | None:
+    """``placed`` with the environment run ``run_id`` runs in, picked from its profile's environment axis ``rule``
+    among host and the ``environments`` of plugins the worker takes, with the declaration its project has now; None
+    once the run failed, as the reaper, for want of one: the plugin was disabled there since."""
+    place = await plugin_environments.picked(conn, project_id, rule, environments)
+    if place is not None:
+        environment, container = place
+        return replace(placed, environment=None if container is None else environment, container=container)
+    allow = ", ".join(plugin_environments.allowlist({"environment": rule}) or [])
+    refused = (
+        f"no environment the run's agent profile allows ({allow}) is registered in project {placed.project} now: the "
+        "plugin was disabled there, turned off or removed since the run was dispatched, or its version declares the "
+        "environment no more; enable it and dispatch the run again"
+    )
+    await move_run(conn, run_id, "queued", "failed", "reaper", reason=refused, error=refused)
+    log.warning("run of a plugin's environment failed at its claim", extra={"run_id": run_id})
+    return None
+
+
+async def _settled_or_failed(
+    conn: AsyncConnection, run_id: int, placed: Placed, where: tuple, project_id: int, packs: tuple
+) -> Placed | None:
+    """``placed`` with its environment, from ``where`` (the profile's environment axis, and the environments of plugins
+    the worker takes; ``_environment_or_failed``), and with the agent packs the profile attaches, from ``packs`` (them,
+    and the blob store; ``_packs_or_failed``); None once the run failed for want of either."""
+    placed = await _environment_or_failed(conn, run_id, placed, *where, project_id)
+    if placed is None or not packs[0]:
+        return placed
+    return await _packs_or_failed(conn, run_id, placed, project_id, *packs)
+
+
+async def _packs_or_failed(
+    conn: AsyncConnection, run_id: int, placed: Placed, project_id: int, packs: list[dict], blobs
+) -> Placed | None:
+    """``placed`` with the agent packs ``packs`` of run ``run_id``'s profile, each with a presigned GET of its plugin's
+    bundle from the blob store ``blobs``; None once the run failed, as the reaper, for want of one."""
+    found, refused = await tickets(conn, blobs, project_id, placed.project, packs)
+    if refused is None:
+        return replace(placed, packs=tuple(found))
+    await move_run(conn, run_id, "queued", "failed", "reaper", reason=refused, error=refused)
+    log.warning("run of agent packs failed at its claim", extra={"run_id": run_id})
+    return None
+
+
+async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, project_id: int, project: str):
+    """The declaration of the plugin's runtime ``runtime`` that run ``run_id`` asks for, as project ``project`` has it
+    now; None once the run failed, as the reaper, for want of one: the plugin was disabled there since."""
+    declaration = await plugin_runtimes.declared(conn, project_id, runtime)
+    if declaration is not None:
+        return declaration
+    plugin = runtime.partition("/")[0]
+    refused = (
+        f"runtime {runtime} is no longer registered in project {project}: plugin {plugin} was disabled there, turned "
+        "off or removed since the run was dispatched, or its version declares the runtime no more; enable it and "
+        "dispatch the run again"
+    )
+    await move_run(conn, run_id, "queued", "failed", "reaper", reason=refused, error=refused)
+    log.warning("run of a plugin's runtime failed at its claim", extra={"run_id": run_id, "runtime": runtime})
+    return None
 
 
 async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...] = ()) -> RunSpec:
@@ -397,6 +552,11 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
         from evo_agents.hub.server.chat_runs import chat_prompt  # it queues runs through this package
 
         prompt = await chat_prompt(conn, run_id, view.branch, [repo.model_dump() for repo in view.repos or []])
+        title = view.title
+    elif view.kind == "task":
+        from evo_agents.hub.server.task_dispatch import task_prompt  # it queues runs through this package
+
+        prompt = await task_prompt(conn, view)
         title = view.title
     elif view.kind == "judge":
         from evo_agents.hub.server.changes import judge_prompt  # it queues runs through this package

@@ -18,7 +18,8 @@ named volume at /plugins ($EVO_PLUGIN_HOST_TEST_ROOT), as deploy/hub/docker-comp
 - stopping a backend kills every process of its user, a child that left the group with setsid() included (M2), and
   a process of that user that stops every other one (SIGSTOP) cannot stop the kill (the review of PR #72), nor can
   spinners and watchers that demote whatever kills them delay it (the second review), nor a process whose first
-  thread exited hide from it;
+  thread exited hide from it, and a child the backend cloned onto the host (CLONE_PARENT) is reaped, not left a
+  zombie (the third review);
 - the limits of a backend's user hold;
 - a link another process of the backend's user plants in the environment pip fills is removed, never followed, and
   the modes there are reset; stopping a backend kills pip and waits for the placing it cancelled (the second L2).
@@ -251,15 +252,16 @@ def test_plugin_crash_root_a_process_of_the_plugins_user_cannot_stop_the_kill(pl
 
     try:
         elapsed = asyncio.run(run())
-        for stopper in stoppers:
-            stopper.wait(timeout=10)
+        # The stoppers are this process's children, as a backend's clone(CLONE_PARENT) is the host's: the host reaped
+        # them once killed (process.reap_zombies), so their pids are gone, neither running nor zombies.
+        left = {stopper.pid: _state_of(stopper.pid) for stopper in stoppers}
     finally:  # what a failed run leaves: stopped killers and stoppers of the user
         for pid in processes_of(user):
             os.kill(pid, signals.SIGKILL)
         for stopper in stoppers:
             if stopper.poll() is None:
                 stopper.wait(timeout=10)
-    assert [stopper.returncode for stopper in stoppers] == [-signals.SIGKILL] * 2
+    assert not any(left.values()), f"stoppers that outlived the stop, or zombies the host left: {left}"
     assert processes_of(user) == [], "a process of the plugin's user outlived the stop"
     assert elapsed < 40, elapsed
 
@@ -427,6 +429,41 @@ def test_plugin_crash_root_a_process_whose_first_thread_exited_is_still_killed(p
             os.kill(pid, signals.SIGKILL)
         if leader.poll() is None:
             leader.wait(timeout=10)
+    assert processes_of(user) == []
+
+
+def _parent_of(pid: int) -> int | None:
+    try:
+        text = Path(f"/proc/{pid}/status").read_text()
+    except OSError:
+        return None
+    return next((int(line.split()[1]) for line in text.splitlines() if line.startswith("PPid:")), None)
+
+
+def test_plugin_crash_root_a_child_the_backend_cloned_onto_the_host_is_reaped(plugin_root):
+    """The third review of PR #72: a child a backend makes with clone(CLONE_PARENT) has the backend's parent, the host,
+    for its own, and the event loop waits only for what it started: once that child ended, it stayed a zombie of the
+    plugin's user until the host ended, holding a pid and one of the processes RLIMIT_NPROC gives that user. Stopping
+    the backend now reaps it."""
+    if platform.machine() not in ("x86_64", "aarch64"):
+        pytest.skip(f"no clone(2) number for {platform.machine()}")
+    user = UID_BASE + 23
+
+    async def run() -> int:
+        host = Host(plugin_root)
+        backend = host.place(manifest("faulty"), bundle("faulty"), init("faulty", 23))
+        child = int(text(await backend.call("tool", tool("clone_parent"), 30)))
+        deadline = time.monotonic() + 10
+        while _state_of(child) != "Z":
+            assert time.monotonic() < deadline, "the cloned child did not end"
+            await asyncio.sleep(0.05)
+        assert _parent_of(child) == os.getpid(), "the clone is not the host's child"
+        assert child not in processes_of(user)  # a zombie: no kill reaches it, only its parent's wait
+        await host.stop_all()
+        return child
+
+    child = asyncio.run(run())
+    assert not (_state_of(child) == "Z" and _parent_of(child) == os.getpid()), "the zombie outlived the stop"
     assert processes_of(user) == []
 
 

@@ -29,14 +29,14 @@ import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
 import { CHAT_TAB, chatKey, decisionAnchor, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions } from "./run-actions";
-import { RunNotes } from "./run-notes";
-import { RunTriage } from "./run-triage";
+import { RunNotices } from "./run-notes";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
 import { LocalRunDetails } from "./local-run-details";
 import { RunDecisions } from "./run-decisions";
 import { RunHeader } from "./run-header";
 import { RunLogCard, type SessionTab } from "./run-log";
+import { taskBranch } from "./model";
 import { runControls } from "./run-model";
 import { useDescribeMove, useSessionTab, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
@@ -190,6 +190,8 @@ function RunPage({ run }: { run: Run }) {
                     chunks
                   ),
               })
+            : run.kind === "task"
+            ? t("taskSub", { agent: run.profile ?? run.project, branch: taskBranch(run) })
             : authoring
             ? run.plan_id
               ? t.rich("authorPlanSub", { plan: run.plan_id, title, planLink })
@@ -336,8 +338,7 @@ function RunPage({ run }: { run: Run }) {
           )}
         </RunActions>
       )}
-      {screen || local ? null : <RunNotes run={run} controls={controls} />}
-      {screen || local ? null : <RunTriage run={run} owner={controls.owner} />}
+      {screen || local ? null : <RunNotices run={run} controls={controls} />}
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
       {/* Under 768 px: the decision, the trace's latest rows, then the details as flat sections, in the page's order. */}
       {overview ? decisionCard : null}

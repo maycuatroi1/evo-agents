@@ -256,7 +256,7 @@ test("the owner keeps a worker to runs dispatched from the web, which a token ca
   expect(await dispatchFromOf()).toBe("any");
 });
 
-test("the owner changes a worker's slots, labels and name, and the hub's refusals show at the form", async ({ page, member }) => {
+test("the owner changes a worker's slots, labels, plugins and name, and the hub's refusals show at the form", async ({ page, member }) => {
   const me = await member([{ role: "writer", maxLevel: "internal" }]);
   const project = me.projects[0];
   await seedRunPlan(me, project);
@@ -272,7 +272,10 @@ test("the owner changes a worker's slots, labels and name, and the hub's refusal
   const name = settings.getByLabel("Name");
   const slots = settings.getByLabel("Slots");
   const labels = settings.getByLabel("Labels");
+  const plugins = settings.getByLabel("Plugins");
   await expect(name).toHaveValue(live.worker.name);
+  await expect(plugins).toHaveValue("");
+  await expect(main.getByTestId("worker-plugins")).toHaveText("None");
   await expect(slots).toHaveValue("1");
   await expect(main.getByTestId("worker-scope")).toContainText("1 of 1 in use");
   await expect(main.getByTestId("worker-runs")).toContainText("Holds 1 run now, no slot free.");
@@ -298,19 +301,28 @@ test("the owner changes a worker's slots, labels and name, and the hub's refusal
   await expect(name).toHaveValue(live.worker.name);
   await expect(settings.getByTestId("worker-settings-discard")).toHaveCount(0);
 
+  // A plugin id the hub does not take: said at the field, and nothing is sent.
+  await plugins.fill("Sandbox");
+  await settings.getByTestId("worker-settings-save").click();
+  await expect(settings).toContainText("Not a plugin id: Sandbox.");
+  await expect(plugins).toHaveAttribute("aria-invalid", "true");
+  await expect(plugins).toBeFocused();
+
   const renamed = uniqueName("roomy");
   await name.fill(renamed);
   await slots.fill("2");
   await labels.fill("gpu, linux");
+  await plugins.fill("sandbox");
   await settings.getByTestId("worker-settings-save").click();
   await expect(toast(page, `Settings of ${renamed} saved`)).toContainText("next heartbeat");
   await expect(main.getByRole("heading", { level: 1 })).toContainText(renamed);
   await expect(main.getByTestId("worker-scope")).toContainText("1 of 2 in use");
   await expect(main.getByTestId("worker-scope")).toContainText("linux");
+  await expect(main.getByTestId("worker-plugins")).toHaveText("sandbox");
   await expect(main.getByTestId("worker-runs")).toContainText("Holds 1 run now, 1 slot free.");
   await expect(slots).toHaveValue("2");
   await expect(settings.getByTestId("worker-settings-save")).toBeDisabled();
-  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({ name: renamed, slots: 2, labels: ["gpu", "linux"] });
+  expect((await workersOf(me)).find((w) => w.id === live.worker.id)).toMatchObject({ name: renamed, slots: 2, labels: ["gpu", "linux"], plugins: ["sandbox"] });
   expect(await claimRun(live)).not.toBeNull(); // the hub counts the held runs against the new slots
 
   // The list shows the new values.

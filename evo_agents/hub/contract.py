@@ -113,8 +113,16 @@ def _subparsers(parser: argparse.ArgumentParser) -> dict[str, argparse.ArgumentP
 
 def _value_type(action: argparse.Action) -> str:
     from evo_agents.hub.cli import _positive
+    from evo_agents.hub.run_cli_options import runtime_name
 
-    types = {None: "string", str: "string", int: "integer", float: "number", _positive: "integer"}
+    types = {
+        None: "string",
+        str: "string",
+        int: "integer",
+        float: "number",
+        _positive: "integer",
+        runtime_name: "string",
+    }
     if action.type not in types:
         raise ValueError(f"{'/'.join(action.option_strings) or action.dest}: no contract type for {action.type!r}")
     return types[action.type]

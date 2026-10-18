@@ -43,6 +43,7 @@ const SAVED: Agent = {
   is_default: false,
   permissions: {},
   restricted: ["tool"],
+  packs: [],
   version: 1,
   created_by: "octo",
   created_at: "2026-10-14T03:00:00Z",
@@ -57,6 +58,9 @@ function answer(post: (request: Request) => Response | Promise<Response>) {
     if (url.pathname === "/v1/skills") return json([]);
     if (url.pathname === "/v1/workers") return json([]);
     if (url.pathname === "/v1/projects") return json([{ name: "demo", role: "admin" }]);
+    if (url.pathname === "/v1/projects/demo/agent-packs") {
+      return json([{ pack: "acme/notes", plugin: "acme", name: "notes", title: "Notes", description: "Keeps notes.", installed_version: "1.2.0", versions: ["1.2.0", "1.1.0"] }]);
+    }
     if (url.pathname === "/v1/projects/demo/agents" && request.method === "POST") return post(request);
     return json({ error: "not_found", message: url.pathname }, 404);
   };
@@ -122,6 +126,60 @@ describe("AgentDialog", () => {
     expect(body.permissions.model).toEqual({ mode: "all" });
     expect(saved).toHaveBeenCalledWith(SAVED);
     expect(await screen.findByText("Đã tạo agent @reviewer")).toBeInTheDocument();
+  });
+
+  it("attaches an agent pack at the version installed, lets the admin pin another, and sends the packs whole", async () => {
+    const user = userEvent.setup();
+    let patched: unknown = null;
+    api.answer = (request) => {
+      if (request.method === "PATCH") {
+        return request.json().then((body) => {
+          patched = body;
+          return json({ ...SAVED, packs: [{ pack: "acme/notes", plugin: "acme", name: "notes", version: "1.1.0" }], version: 2 });
+        });
+      }
+      return answer(() => json({}, 500))(request);
+    };
+    renderVi(<Harness agent={SAVED} onSaved={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Sửa @reviewer" });
+    const field = within(dialog).getByTestId("agent-packs-field");
+    expect(within(field).getByTestId("agent-packs-count")).toHaveTextContent("Chưa gắn gói nào.");
+    await user.click(await within(field).findByRole("checkbox", { name: /^acme\/notes/ }));
+    const version = within(field).getByRole("combobox", { name: "Phiên bản của acme/notes" });
+    expect(version).toHaveValue("1.2.0");
+    expect(within(version).getByRole("option", { name: "1.2.0 (đang cài)" })).toBeInTheDocument();
+    await user.selectOptions(version, "1.1.0");
+    expect(within(field).getByTestId("agent-packs-count")).toHaveTextContent("Đã gắn 1, tối đa 16.");
+
+    await user.click(within(dialog).getByTestId("agent-save"));
+    await waitFor(() => expect(patched).toEqual({ packs: [{ plugin: "acme", name: "notes", version: "1.1.0" }], if_version: 1 }));
+  });
+
+  it("keeps a pack the project no longer offers listed with a tag, so the admin can remove it", async () => {
+    const user = userEvent.setup();
+    const current: Agent = { ...SAVED, packs: [{ pack: "old/notes", plugin: "old", name: "notes", version: "0.9.0" }], version: 2 };
+    let patched: unknown = null;
+    api.answer = (request) => {
+      if (request.method === "PATCH") {
+        return request.json().then((body) => {
+          patched = body;
+          return json({ ...current, packs: [], version: 3 });
+        });
+      }
+      return answer(() => json({}, 500))(request);
+    };
+    renderVi(<Harness agent={current} onSaved={vi.fn()} />);
+    const dialog = screen.getByRole("dialog", { name: "Sửa @reviewer" });
+    const field = within(dialog).getByTestId("agent-packs-field");
+    const gone = await within(field).findByRole("checkbox", { name: /^old\/notes/ });
+    expect(gone).toBeChecked();
+    expect(within(field).getByText("Không còn được cung cấp")).toBeInTheDocument();
+    expect(within(field).getByRole("option", { name: "0.9.0 (hub không còn giữ)" })).toBeInTheDocument();
+    await user.click(gone);
+    expect(within(field).queryByRole("checkbox", { name: /^old\/notes/ })).toBeNull();
+    await user.click(within(dialog).getByTestId("agent-save"));
+    await waitFor(() => expect(screen.getByTestId("open-state")).toHaveTextContent("closed"));
+    expect(patched).toEqual({ packs: [], if_version: 2 });
   });
 
   it("keeps a refusal of the hub in the dialog, with what it said", async () => {

@@ -265,9 +265,9 @@ function Scope({ worker, isOwner }: { worker: Worker; isOwner: boolean }) {
         <dt className="text-muted-foreground">{t("slots")}</dt>
         <dd className="tabular-nums">{t("slotsValue", { held: worker.held_runs, slots: worker.slots })}</dd>
         <dt className="text-muted-foreground">{t("labels")}</dt>
-        <dd className="min-w-0">
-          <ChipList items={worker.labels} empty={t("noLabels")} />
-        </dd>
+        <dd className="min-w-0"><ChipList items={worker.labels} empty={t("noLabels")} /></dd>
+        <dt className="text-muted-foreground">{t("plugins")}</dt>
+        <dd className="min-w-0" data-testid="worker-plugins"><ChipList items={worker.plugins} empty={t("noPlugins")} /></dd>
         <dt className="text-muted-foreground">{t("permissions")}</dt>
         <dd className="flex items-start gap-1.5 text-attention">
           <TriangleAlert className="mt-0.5 size-3.5 shrink-0" aria-hidden="true" />

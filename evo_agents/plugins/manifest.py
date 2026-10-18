@@ -17,6 +17,22 @@ tables come from the hub's own chain of migrations, never from the plugin at run
 A page (``pages``) of an isolated plugin names its HTML file in the bundle under ``pages/`` (``entry``), which the web
 shows in a sandboxed iframe; a core plugin's page is native, a page of the hub's web itself, and names no entry.
 
+A runtime (``runtimes``) names one of ``acp``, the command of an agent that speaks the Agent Client Protocol, which
+any plugin may declare (``evo_agents.plugins.runtimes``), and ``python``, a core plugin's adapter of a runtime of the
+worker; within the bounds of MAX_COMMAND_ITEMS, MAX_RUNTIME_MODELS and MAX_RUNTIME_SECRETS, each model and secret once.
+
+An environment (``environments``) is a container image pinned by its digest, its network and at most
+MAX_ENVIRONMENT_MOUNTS mounts (``evo_agents.plugins.run_environments``): a volume names itself and a tmpfs does not,
+only a tmpfs has a size, each target is a normalized absolute path, once, and none is ``/`` or under the kernel's
+file systems (FORBIDDEN_TARGETS).
+
+An agent pack (``agent_packs``) is a directory ``packs/<name>/`` of the bundle laid out as a Claude Code plugin, which
+an agent profile attaches; ``evo_agents.plugins.agent_packs`` reads it and ``bundle.read_bundle`` checks it.
+
+An agent type (``agent_types``) is the template of an agent profile with the packs, the environment, the jobs, the
+events and the pages it uses, each of them a contribution of the plugin itself, named once; no two types of a plugin
+share a handle (``evo_agents.hub.task_runs``).
+
 The schema file is read where the package installs it, next to the harness schemas, without importing
 ``evo_agents.harness``. Standard library only, besides ``evo_agents.schema``.
 """
@@ -24,6 +40,7 @@ The schema file is read where the package installs it, next to the harness schem
 from __future__ import annotations
 
 import json
+import posixpath
 import re
 from dataclasses import dataclass, field
 from functools import cache
@@ -40,7 +57,16 @@ PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json 
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
 CORE_ONLY_POINTS = ("tables",)  # what only a core plugin contributes
+# what a project enables a plugin for, besides its permissions, its config and its routes and runtimes of a project
+PROJECT_POINTS = ("mcp_tools", "jobs", "events", "pages", "agent_packs", "agent_types", "environments")
+# the keys of an agent type that name contributions of the plugin's own, and the point of each
+AGENT_TYPE_POINTS = {"packs": "agent_packs", "jobs": "jobs", "events": "events", "pages": "pages"}
 CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notification_channels.kind), never "web"
+MAX_COMMAND_ITEMS = 32  # the program and arguments of an ACP runtime's command
+MAX_RUNTIME_MODELS = 200  # the models an ACP runtime lists, as a worker's heartbeat bounds them
+MAX_RUNTIME_SECRETS = 20  # the variables an ACP runtime's agent needs
+MAX_ENVIRONMENT_MOUNTS = 8  # the mounts an environment declares, besides those the worker always makes
+FORBIDDEN_TARGETS = ("/proc", "/sys", "/dev")  # no mount of an environment goes there, nor under them, nor on /
 PERMISSIONS = (
     "runs:read",
     "runs:dispatch",
@@ -131,14 +157,17 @@ class Manifest:
 
 def is_per_project(data: dict) -> bool:
     """Whether a project enables the plugin of manifest ``data`` for anything: it is isolated, asks for a permission,
-    takes a config, or contributes an MCP tool, a job, an event, a page or a route under /v1/x/<id>/<project>. A core
-    plugin that does none of that (Telegram: a channel of members and routes of its own) runs hub-wide wherever it is
-    installed: the hub's store lists it, installed with the image, and no project enables it. ``data`` is a manifest
-    that was read once (the store keeps it so), not checked again here."""
+    takes a config, or contributes an MCP tool, a job, an event, a page, an agent pack, an agent type, an ACP runtime,
+    an environment or a route under /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of
+    members and routes of its own) runs hub-wide wherever it is installed: the hub's store lists it, installed with
+    the image, and no project enables it. ``data`` is a manifest that was read once (the store keeps it so), not
+    checked again here."""
     contributes = data.get("contributes") or {}
     if data.get("tier", "isolated") == "isolated" or data.get("permissions") or data.get("config"):
         return True
-    if any(contributes.get(point) for point in ("mcp_tools", "jobs", "events", "pages")):
+    if any(contributes.get(point) for point in PROJECT_POINTS):
+        return True
+    if any("acp" in item for item in contributes.get("runtimes") or ()):
         return True
     return any("prefix" not in item for item in contributes.get("routes") or ())
 
@@ -155,6 +184,7 @@ def _semantics(data: dict) -> list[str]:
         for index, item in enumerate(items):
             found.extend(_contribution_problems(data["id"], point, index, item, core))
     found.extend(_backend_problems(data, core))
+    found.extend(_agent_type_problems(data.get("contributes") or {}))
     try:
         parse_spec(data["engines"]["evo-agents"])
     except SpecError as exc:
@@ -188,7 +218,84 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
         return [f"{where}: a core plugin's channel is a kind of members' channel: {CHANNEL_KIND}, not web"]
     if point == "pages":
         return _page_problems(where, item, core)
+    if point == "runtimes":
+        return _runtime_problems(where, item)
+    if point == "environments":
+        return _environment_problems(where, item)
     return []
+
+
+def _agent_type_problems(contributes: dict) -> list[str]:
+    """What is wrong with the agent types of ``contributes``: each names packs, jobs, events, pages and an environment
+    of the plugin's own, each once, and no two share a handle."""
+    found, handles = [], []
+    for index, item in enumerate(contributes.get("agent_types") or ()):
+        where = f"contributes.agent_types[{index}]"
+        handles.append(item["profile"]["handle"])
+        for key, point in AGENT_TYPE_POINTS.items():
+            own = {entry["name"] for entry in contributes.get(point) or ()}
+            named = item.get(key) or []
+            alien = [name for name in dict.fromkeys(named) if name not in own]
+            found += [f"{where}.{key}: {name!r} is not one of the plugin's {point}" for name in alien]
+            twice = sorted({name for name in named if named.count(name) > 1})
+            found += [f"{where}.{key}: {name!r} is named twice" for name in twice]
+        environment = item.get("environment")
+        if environment is not None and environment not in {e["name"] for e in contributes.get("environments") or ()}:
+            found.append(f"{where}.environment: {environment!r} is not one of the plugin's environments")
+    for handle in sorted({handle for handle in handles if handles.count(handle) > 1}):
+        found.append(f"contributes.agent_types: two agent types have the handle {handle!r}")
+    return found
+
+
+def _runtime_problems(where: str, item: dict) -> list[str]:
+    """What is wrong with runtime ``item``: it names one of acp and python, within the bounds, each model and secret
+    once."""
+    if ("acp" in item) == ("python" in item):
+        return [f"{where}: a runtime names one of acp (an ACP agent's command) and python (a core plugin's adapter)"]
+    found = []
+    if len(item.get("acp", {}).get("command", ())) > MAX_COMMAND_ITEMS:
+        found.append(f"{where}.acp.command: at most {MAX_COMMAND_ITEMS} items")
+    for key, bound in (("models", MAX_RUNTIME_MODELS), ("secrets", MAX_RUNTIME_SECRETS)):
+        values = item.get(key) or []
+        if len(values) > bound:
+            found.append(f"{where}.{key}: at most {bound} items")
+        found += [
+            f"{where}.{key}: {value!r} is listed twice" for value in sorted(set(values)) if values.count(value) > 1
+        ]
+    return found
+
+
+def _environment_problems(where: str, item: dict) -> list[str]:
+    """What is wrong with environment ``item``: at most MAX_ENVIRONMENT_MOUNTS mounts, each target once, normalized and
+    clear of FORBIDDEN_TARGETS; a volume with a name and no size, a tmpfs without a name."""
+    mounts = item.get("mounts") or []
+    found = [f"{where}.mounts: at most {MAX_ENVIRONMENT_MOUNTS} items"] if len(mounts) > MAX_ENVIRONMENT_MOUNTS else []
+    targets = [mount["target"] for mount in mounts]
+    found += [
+        f"{where}.mounts: target {target!r} is listed twice"
+        for target in sorted(set(targets))
+        if targets.count(target) > 1
+    ]
+    for index, mount in enumerate(mounts):
+        found += _mount_problems(f"{where}.mounts[{index}]", mount)
+    return found
+
+
+def _mount_problems(where: str, mount: dict) -> list[str]:
+    target = mount["target"]
+    found = []
+    if posixpath.normpath(target) != target or target.startswith("//"):
+        found.append(f"{where}.target: {target!r} is not a normalized absolute path")
+    if target == "/" or any(target == top or target.startswith(top + "/") for top in FORBIDDEN_TARGETS):
+        found.append(f"{where}.target: {target!r} is /, or one of {', '.join(FORBIDDEN_TARGETS)} or under it")
+    if mount["type"] == "volume":
+        if "name" not in mount:
+            found.append(f"{where}: a volume names itself (name)")
+        if "size_mb" in mount:
+            found.append(f"{where}.size_mb: only a tmpfs has a size")
+    elif "name" in mount:
+        found.append(f"{where}.name: only a volume has a name")
+    return found
 
 
 def _page_problems(where: str, item: dict, core: bool) -> list[str]:

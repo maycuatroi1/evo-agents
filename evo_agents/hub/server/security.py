@@ -9,9 +9,11 @@ busy token does not write on every request. Revoked, expired and unknown credent
 ``evo-agents hub login`` (``evo-agents worker join`` on the worker's routes).
 
 ``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and the paths under PUBLIC_PREFIXES, and fails
-closed: a route added later needs a credential unless it is listed there. The one public prefix serves the files of
-plugins' pages to their sandboxed frames, whose requests carry no cookie: a ticket in the path is their credential
-(``evo_agents.hub.server.plugin_pages``). A machine token arrives as ``Authorization: Bearer`` and a web session as
+closed: a route added later needs a credential unless it is listed there. Each public prefix checks a credential of
+its own. One serves the files of plugins' pages to their sandboxed frames, whose requests carry no cookie: a ticket in
+the path is their credential (``evo_agents.hub.server.plugin_pages``). The other is the API of the hub for plugins,
+whose credential is a plugin token, ``Authorization: Bearer evp_...`` (``evo_agents.hub.server.task_dispatch``). A
+machine token arrives as ``Authorization: Bearer`` and a web session as
 the SESSION_COOKIE cookie; each is accepted only through its own channel. A write (POST, PUT, PATCH, DELETE) made
 with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the session secret that GET
 /v1/auth/web/csrf hands out; a Bearer request needs none, since a browser never adds that header by itself.
@@ -88,8 +90,9 @@ PUBLIC_PATHS = frozenset(
         "/v1/branding/favicon",
     }
 )
-# Paths under these prefixes check their own credential, a ticket in the path (evo_agents.hub.server.plugin_pages).
-PUBLIC_PREFIXES = ("/v1/plugin-ui/",)
+# Paths under these prefixes check their own credential: a ticket in the path (evo_agents.hub.server.plugin_pages), or
+# a plugin token (evo_agents.hub.server.task_dispatch).
+PUBLIC_PREFIXES = ("/v1/plugin-ui/", "/v1/plugin-api/")
 # Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.
 SELF_CHECKED_WEBSOCKETS = (
     re.compile(r"/v1/projects/[^/]+/runs/[^/]+/terminal"),  # the browser's end: the session cookie, Origin, CSRF

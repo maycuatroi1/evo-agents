@@ -142,6 +142,8 @@ CANDIDATES = {
             "reasons": ["the owner is a writer of project evo-lms"],
         }
     ],
+    "cause_inferred": False,
+    "triage": None,
 }
 
 

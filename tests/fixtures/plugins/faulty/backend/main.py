@@ -1,8 +1,10 @@
 """A plugin backend that crashes or hangs on command, to test the host's timeout and backoff. Standard library only.
 
 The ``crash`` tool ends the process at once, ``hang`` never answers, ``ok`` answers, ``orphan`` starts a process
-that leaves the backend's process group and session (setsid) and answers its pid, and ``limits`` answers the
-resource limits the backend runs with, ``token`` the hub token ``initialize`` gave it. ``initialize``, ``ping`` and
+that leaves the backend's process group and session (setsid) and answers its pid, ``clone_parent`` makes a child that
+exits at once with clone(CLONE_PARENT), whose parent is then the backend's own (the host), and answers its pid (Linux,
+x86_64 and aarch64), and ``limits`` answers the resource limits the backend runs with, ``token`` the hub token
+``initialize`` gave it. ``initialize``, ``ping`` and
 ``shutdown`` behave. Each live start writes its pid to the file $EVO_FAULTY_PIDFILE when set, so a test can see the
 host started a fresh process after a crash.
 """
@@ -13,7 +15,7 @@ import subprocess
 import sys
 import time
 
-TOOLS = ("crash", "hang", "ok", "orphan", "limits", "token")
+TOOLS = ("crash", "hang", "ok", "orphan", "clone_parent", "limits", "token")
 state = {"token": None}
 
 
@@ -22,6 +24,23 @@ def _record_pid():
     if path:
         with open(path, "a", encoding="utf-8") as handle:
             handle.write(f"{os.getpid()}\n")
+
+
+def _clone_parent():
+    import ctypes
+    import platform
+    import signal
+
+    number = {"x86_64": 56, "aarch64": 220}[platform.machine()]  # clone(2)
+    syscall = ctypes.CDLL(None, use_errno=True).syscall
+    syscall.restype = ctypes.c_long
+    flags = 0x00008000 | signal.SIGCHLD  # CLONE_PARENT; no new stack, so the child goes on from here, as after fork()
+    child = syscall(*(ctypes.c_long(arg) for arg in (number, flags, 0, 0, 0, 0)))
+    if child == 0:
+        os._exit(0)
+    if child < 0:
+        raise OSError(ctypes.get_errno(), "clone")
+    return child
 
 
 def tool(params):
@@ -40,6 +59,8 @@ def tool(params):
             stderr=subprocess.DEVNULL,
         )
         return {"content": [{"type": "text", "text": str(child.pid)}]}
+    if name == "clone_parent":
+        return {"content": [{"type": "text", "text": str(_clone_parent())}]}
     if name == "limits":
         import resource
 
