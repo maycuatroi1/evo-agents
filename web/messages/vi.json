@@ -3621,6 +3621,7 @@
         "hubSays": "Hub báo: {message}"
       },
       "chatSub": "Một lượt của @{agent} trong group chat, bước chuyền {hop}. <chatLink>Mở tin mà run trả lời</chatLink>.",
+      "taskSub": "Một task plugin giao cho @{agent}: một lượt trên nhánh task/{id}, hub mở nhánh này thành draft pull request.",
       "header": {
         "back": "Plan {plan}",
         "step": "Bước {key}: {title}",
@@ -3828,6 +3829,11 @@
       "kind": "Chat run",
       "line": "Một lượt của @{agent} trong group chat",
       "lineProject": "{project}: một lượt của @{agent} trong group chat"
+    },
+    "taskRun": {
+      "kind": "Task run",
+      "line": "Một task plugin giao cho @{agent}, trên nhánh task/{id}",
+      "lineProject": "{project}: một task plugin giao cho @{agent}, trên nhánh task/{id}"
     },
     "account": {
       "label": "Tài khoản",

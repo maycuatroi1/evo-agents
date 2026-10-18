@@ -256,7 +256,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Home; a project's overview | `LayoutDashboard`; `FolderKanban` |
 | My memories; administration | `Brain`; `Shield` |
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
-| Plugins, the store and a project's; a plugin enabled in a project; disabled there | `Puzzle`; `Plug`; `Unplug` |
+| Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
 | A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
 | Sidebar toggle | `PanelLeft` |
@@ -821,7 +821,10 @@ Shared pieces built on them:
   again, and the stream's `end` replaces the composer with why the visitor can no longer read it. While the page is in
   view, what it shows is read (POST .../read), so its unread count and the sidebar's drop. A chat run's page carries
   the Chat run tag (`MessagesSquare`) and links back to the message it answers; the runs list shows it with that tag
-  and "A turn of @handle in a group chat".
+  and "A turn of @handle in a group chat". A task run (one turn of a plugin's agent type on a task the plugin handed
+  it; docs/plugins.md, Agent types) carries the Task run tag (`Puzzle`), says under its title that it works on the
+  branch `task/<run>` the hub opens as a draft pull request, and the runs list shows it with that tag and "A task a
+  plugin handed to @handle, on branch task/N", linked to the run's page.
 - The dispatch forms (Dispatch, Run plan, New plan and Revise with agent) have an Agent field (`runs/agent-field.tsx`,
   the picker in `agent-picker.tsx`, loaded with the form): the project's agents that take runs, the default first and
   picked, the avatar of the one picked, its description and what it limits. The workers the form matches and pins are

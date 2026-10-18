@@ -3621,6 +3621,7 @@
         "hubSays": "The hub says: {message}"
       },
       "chatSub": "A turn of @{agent} in a group chat, hop {hop}. <chatLink>Open the message it answers</chatLink>.",
+      "taskSub": "A task a plugin handed to @{agent}: one turn on branch task/{id}, which the hub opens as a draft pull request.",
       "header": {
         "back": "Plan {plan}",
         "step": "Step {key}: {title}",
@@ -3828,6 +3829,11 @@
       "kind": "Chat run",
       "line": "A turn of @{agent} in a group chat",
       "lineProject": "{project}: a turn of @{agent} in a group chat"
+    },
+    "taskRun": {
+      "kind": "Task run",
+      "line": "A task a plugin handed to @{agent}, on branch task/{id}",
+      "lineProject": "{project}: a task a plugin handed to @{agent}, on branch task/{id}"
     },
     "account": {
       "label": "Account",
