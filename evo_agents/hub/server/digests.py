@@ -173,6 +173,21 @@ class SessionDigest(BaseModel):
         description="per tool, the characters of its results the model read, the most first; null when a client that "
         "did not count them pushed the digest",
     )
+    spool_results: Count | None = Field(
+        None,
+        description="results the spool hook cut, each written whole to a file on the machine; null when a client that "
+        "did not count them pushed the digest",
+    )
+    spool_original_chars: Count | None = Field(
+        None,
+        description="the characters those results had before the cut; null when a client that did not count them "
+        "pushed the digest",
+    )
+    spool_reads: Count | None = Field(
+        None,
+        description="calls that named the spool directory, the agent reading a spool file again; null when a client "
+        "that did not count them pushed the digest",
+    )
 
 
 class DigestSummary(BaseModel):

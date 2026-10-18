@@ -22,6 +22,7 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from dataclasses import replace
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import curator, runs
@@ -33,6 +34,7 @@ from evo_agents.worker.runner.terminal import Terminal
 from evo_agents.worker.runner.transitions import running_from, why_stopped
 from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.claude_code import compact_window
+from evo_agents.worker.runtimes.common import with_first_request
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -236,9 +238,13 @@ class Agent:
     ) -> tuple[Outcome, str | None]:
         """Run the agent on ``prompt`` (in the session ``session_id``, or a new one) until its turn is over: headless,
         and in its terminal UI while a person drives it (``terminal_first``, or a takeover), each phase going on with
-        the session of the one before. How the last headless phase ended, and the session's id."""
+        the session of the one before. How the last headless phase ended, with the first request of the first headless
+        phase (``with_first_request``; null when the terminal UI, which reports no usage, came first), and the
+        session's id."""
         first_prompt = prompt
         in_terminal = terminal_first or self.takeover_asked
+        phases: list[dict | None] = []  # the usage of each headless phase, in order
+        unseen = in_terminal  # the run's first request in the session is the terminal UI's
         try:
             while True:
                 if in_terminal:
@@ -247,6 +253,8 @@ class Agent:
                     prompt = HANDBACK_PROMPT if session_id else first_prompt
                     continue
                 outcome = await self.headless(cls, prompt, session_id)
+                phases.append(outcome.usage)
+                outcome = replace(outcome, usage=with_first_request(outcome.usage, phases, unseen=unseen))
                 session_id = self.adapter.session_id or session_id
                 self.run.check()
                 outcome = await self.limits.after(outcome)
