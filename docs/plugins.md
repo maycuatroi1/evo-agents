@@ -218,6 +218,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `pages` | `name`, `title`, `icon`, `menu`, `entry` (isolated) | a native page of the hub's web, at `/p/<project>/x/<id>/<name>` | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
 | `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
 | `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
+| `agent_packs` | `name`, `title`, `description` | a directory `packs/<name>/` of the bundle laid out as a Claude Code plugin, which an agent profile attaches at a version of the plugin; a plugin of the hub's image has no bundle to build it from | the same (section Agent packs) |
 
 What a project does not enable is not there: every route, tool, job, event and channel of a plugin works in a project
 that enabled the plugin while the plugin is installed and turned on, and the hub checks it on each call, not once.
@@ -410,6 +411,63 @@ under it:
 ```sh
 evo-agents hub agent create @boxed --project evo-agents --name Boxed --allow environment:sandbox/box
 evo-agents hub run dispatch rollout 2 --project evo-agents --agent boxed
+```
+
+## Agent packs
+
+A plugin contributes agent packs: what an agent profile adds to its runs' agent besides its own instructions. A pack
+is the directory `packs/<name>/` of the bundle, laid out as a Claude Code plugin, and the manifest declares it by name:
+
+```json
+"contributes": {
+  "agent_packs": [
+    {"name": "reviewer", "title": "Reviewer kit", "description": "Review skills, a lint hook and the tracker's MCP server."}
+  ]
+}
+```
+
+```text
+packs/reviewer/
+  skills/review/SKILL.md     a skill: front matter with name (its directory's) and description
+  agents/critic.md           a subagent
+  hooks/hooks.json           hooks: an object whose "hooks" is an object
+  .mcp.json                  MCP servers: "mcpServers", each stdio (command, args, env) or remote (type http or sse, url, headers)
+  INSTRUCTIONS.md            text the agent's system prompt gains, at most 32 KiB
+  scripts/lint.sh            any other file: a resource a hook or a skill runs
+```
+
+`${CLAUDE_PLUGIN_ROOT}` in `.mcp.json` and `hooks.json` stands for the directory the worker builds the pack in. A
+pack holds at most 64 skills, 64 subagents and 20 MCP servers. What a Claude Code plugin may hold and no runtime of
+the worker is handed is refused: `commands/` (skills replace them), `output-styles/`, `.lsp.json`, `settings.json`
+and a `.claude-plugin/` directory, since the worker writes the plugin's manifest itself. `evo-agents plugin pack`
+(and so `plugin test` and `plugin sign`) reads every pack the manifest declares, and the hub refuses a bundle whose
+pack does not read when it is published, before any profile attaches it (`evo_agents/plugins/agent_packs.py`).
+
+**The hub registers a pack as `<plugin>/<name>`** (`sandbox/reviewer`) in each project that enabled the plugin, while
+the plugin is installed and on; a plugin that contributes one is enabled per project. `GET
+/v1/projects/{project}/agent-packs` lists them, each with the version installed now and every version the hub holds
+that declares the pack and runs on this release, the newest first.
+
+**A profile attaches packs pinned at a version of their plugin** (`docs/hub.md`, Agent profiles): at most 16, each
+once, at the version given or the one installed now. The pin holds when the plugin moves on; only an edit of the
+profile moves it, and that edit is a new version of the profile. A pack it attaches counts as named on its skill and
+tool axes: its skills pass the skill axis and its MCP servers the tool axis (`mcp:<server>`), since pinning the pack
+at a version is the admin's consent to what that version holds. The axes still limit everything else, and a pack
+widens no other axis. The project's default profile attaches none.
+
+**A worker builds packs only once its owner accepts the plugin**, in the worker's plugins (the same list as for
+runtimes and environments), and only with a daemon that says the feature `agent_packs`; another never claims the
+run. The worker builds each pack into the run's directory before the agent starts and hands it to the runtime in its
+own form (`docs/workers.md`, Agent packs): Claude Code loads it as a plugin, with every kind of component; opencode and
+Codex get its skills, MCP servers and instructions, and refuse a pack with subagents or hooks; the runtimes of plugins
+(ACP) take no pack. A pack the run's runtime cannot load fails the run before its agent starts, saying what.
+
+To try one, enable the plugin on a project, add it to a worker's plugins, attach the pack to an agent, and dispatch
+under it:
+
+```sh
+evo-agents hub agent create @reviewer --project evo-agents --name Reviewer --pack sandbox/reviewer@1.2.0
+evo-agents hub run dispatch rollout 2 --project evo-agents --agent reviewer
 ```
 
 ## Pages
