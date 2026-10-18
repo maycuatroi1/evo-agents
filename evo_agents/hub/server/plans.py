@@ -13,7 +13,10 @@ the plan and the revision, never its content, all in one transaction.
   revision records the run (``run_id``, which the revisions show).
 - PATCH sets keys of one item of a section, by index or (for steps) by step id, as ``evo harness step`` does, and
   needs ``if_revision`` too. A client that gets the 409 reads the plan again and retries on the new revision.
-- POST .../complete moves the plan to the completed area, only when every step is done.
+- POST .../complete moves the plan to the completed area, only when every step is done or descoped.
+- POST .../abandon moves an active or completed plan to the completed area as abandoned (or superseded by another
+  plan), with a date and a reason, leaving each step's status as it was; POST .../reopen puts an abandoned or
+  superseded plan back in the active area.
 
 Reads go through a sink of the project (X-Evo-Sink, by default its hub sink) and follow ``ProjectAccess.visible``;
 a plan the caller cannot see answers the same 404 as one that does not exist. Reading needs a grant on the project:
@@ -29,7 +32,7 @@ import asyncio
 import logging
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import PurePosixPath
 from typing import Annotated, Any, Literal
 
@@ -53,7 +56,9 @@ from evo_agents.hub.plans import (
     UPDATABLE,
     PlanProblem,
     PlanTooLarge,
+    abandoned_body,
     check_body,
+    reopened_body,
     step_index,
     step_key,
     summarize,
@@ -78,6 +83,8 @@ PLAN_CREATE = "plan.create"
 PLAN_PUT = "plan.put"
 PLAN_PATCH = "plan.patch"
 PLAN_COMPLETE = "plan.complete"
+PLAN_ABANDON = "plan.abandon"
+PLAN_REOPEN = "plan.reopen"
 SHOWN_PROBLEMS = 5
 
 
@@ -228,6 +235,18 @@ class PlanComplete(BaseModel):
     if_revision: int | None = Field(None, ge=1)
 
 
+class PlanAbandon(BaseModel):
+    reason: str = Field(min_length=1, max_length=4096, description="why the plan is dropped")
+    superseded_by: str | None = Field(
+        None, pattern=PLAN_ID, description="the plan that replaces it; the status is then superseded"
+    )
+    if_revision: int | None = Field(None, ge=1)
+
+
+class PlanReopen(BaseModel):
+    if_revision: int | None = Field(None, ge=1)
+
+
 class PlanError(Exception):
     """A refusal with more than a message: problems as ``detail``, or the held plan with a revision conflict."""
 
@@ -328,7 +347,7 @@ def step_counts(body: ColumnElement) -> tuple[Label, Label]:
     step = func.jsonb_array_elements(steps, type_=JSONB).column_valued("s")
     done = (
         select(func.count())
-        .where(func.jsonb_typeof(step) == "object", step["status"].astext == "done")
+        .where(func.jsonb_typeof(step) == "object", step["status"].astext.in_(["done", "descoped"]))
         .scalar_subquery()
     )
     return (
@@ -979,5 +998,90 @@ async def complete(
             )
             _logged(project, stored, "completed", user)
             return _written(access, stored, created=False, changed=True, warnings=[])
+    except PlanError as exc:
+        return _refusal(request, exc)
+
+
+@router.post("/{plan_id}/abandon", response_model=Written, responses=REFUSALS)
+async def abandon(request: Request, project: ProjectName, plan_id: PlanId, user: CurrentUser, payload: PlanAbandon):
+    """Move an active or completed plan to the completed area as abandoned, or superseded when ``superseded_by``
+    names the plan that replaces it. The date and reason are kept on the plan; no step changes status. A plan that is
+    abandoned already is left as it is."""
+    try:
+        async with request.app.state.engine.begin() as conn:
+            access = await project_access(conn, user, project)
+            _writer(access)
+            held = await _visible(conn, access, plan_id, None, lock=True)
+            label = access.push_label(held.label)
+            if payload.if_revision is not None and payload.if_revision != held.revision:
+                raise _stale(access, held, payload.if_revision)
+            if held.body.get("status") in ("abandoned", "superseded") and held.area == "completed":
+                _logged(project, held, "unchanged", user)
+                return _written(access, held, created=False, changed=False, warnings=[])
+            if payload.superseded_by is not None:
+                if payload.superseded_by == plan_id:
+                    raise PlanError(422, "a plan cannot be superseded by itself")
+                other = await _held(conn, access, payload.superseded_by)
+                if other is None or not access.visible(other.label, _sink(access, None)):
+                    raise PlanError(404, not_found(access.name, payload.superseded_by))
+            try:
+                body = abandoned_body(
+                    held.body, payload.reason, datetime.now(UTC).strftime("%Y-%m-%d"), payload.superseded_by
+                )
+                check_body(body, plan_id)
+            except PlanProblem as exc:
+                raise PlanError(422, str(exc)) from exc
+            warnings = await _warnings(conn, access, body, "completed")
+            stored = await _store(
+                conn,
+                access,
+                user,
+                held,
+                area="completed",
+                label=label,
+                body=body,
+                summary=f"{body['status']}: {payload.reason[:80]}",
+                action=PLAN_ABANDON,
+            )
+            _logged(project, stored, body["status"], user)
+            return _written(access, stored, created=False, changed=True, warnings=warnings)
+    except PlanError as exc:
+        return _refusal(request, exc)
+
+
+@router.post("/{plan_id}/reopen", response_model=Written, responses=REFUSALS)
+async def reopen(
+    request: Request, project: ProjectName, plan_id: PlanId, user: CurrentUser, payload: PlanReopen | None = None
+):
+    """Put an abandoned or superseded plan back in the active area, without its abandon keys. Any other plan is a
+    409: a completed plan is not reopened by this."""
+    given = payload.if_revision if payload else None
+    try:
+        async with request.app.state.engine.begin() as conn:
+            access = await project_access(conn, user, project)
+            _writer(access)
+            held = await _visible(conn, access, plan_id, None, lock=True)
+            label = access.push_label(held.label)
+            if given is not None and given != held.revision:
+                raise _stale(access, held, given)
+            try:
+                body = reopened_body(held.body)
+                check_body(body, plan_id)
+            except PlanProblem as exc:
+                raise PlanError(409, str(exc)) from exc
+            warnings = await _warnings(conn, access, body, "active")
+            stored = await _store(
+                conn,
+                access,
+                user,
+                held,
+                area="active",
+                label=label,
+                body=body,
+                summary="reopened: back to active",
+                action=PLAN_REOPEN,
+            )
+            _logged(project, stored, "reopened", user)
+            return _written(access, stored, created=False, changed=True, warnings=warnings)
     except PlanError as exc:
         return _refusal(request, exc)

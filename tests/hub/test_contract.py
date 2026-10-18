@@ -97,7 +97,7 @@ def test_every_hub_command_is_in_the_contract_with_its_options():
         "value": "string",
         "required": True,
         "repeatable": False,
-        "choices": ["done", "in_progress", "pending", "blocked"],
+        "choices": ["done", "in_progress", "pending", "blocked", "descoped"],
     }
     limit = next(o for o in printed["hub memory search"]["options"] if o["flags"] == ["--limit"])
     assert (limit["minimum"], limit["maximum"], limit["default"]) == (1, 50, 10)
