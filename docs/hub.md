@@ -466,14 +466,16 @@ columns.
 
 ### What a triage agent may do on its own
 
-The agent of a failed run's triage thread acts for the run's owner through two worker routes,
-`POST /v1/worker/runs/{id}/triage/rerun` and `.../triage/plan` (`evo_agents/hub/server/triage_actions.py`,
+The agent of a failed run's triage thread acts for the run's owner through three worker routes,
+`POST /v1/worker/runs/{id}/triage/rerun`, `.../triage/plan` and `.../triage/invite` (`evo_agents/hub/server/triage_actions.py`,
 `docs/workers.md`, "Failure triage"). The frame is code: `evo_agents/hub/triage_rules.py` allows a rerun for the causes
 of its policy table, at most 2 per chain of runs (by `parent_run_id`) and 1 per cause, within the chat's budget, and an
 edit of a plan only as a new revision that differs from the held one in the `verify` or `what` of pending steps of the
 run's repos, with no command of the `verify` dropped and a `what` only shorter. The whole plan is compared, so a step
 that is done, `acceptance`, `goal` and `non_goals` cannot change; the Curator's plans are refused as for a run
-dispatched by hand. Every success posts a `Decision:` line and an audit row (`run.triage_rerun`,
+dispatched by hand. When the error names another project, `.../triage/invite` puts the agent of that project in the
+chat by the rule of Group chats (the owner a writer there, the label of the chat held, else 409 said in the thread),
+and the agent hands it work by a mention, within the hop limit of 3. Every success posts a `Decision:` line and an audit row (`run.triage_rerun`,
 `run.triage_plan_edit`) in the same transaction.
 
 ## Plans and their copies in git

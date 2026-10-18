@@ -25,12 +25,12 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 from evo_agents.hub import chats, features, runs, tables, triage_rules
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server.chat_access import chat_access
-from evo_agents.hub.server.chat_members import label_now, put_agent, put_person
+from evo_agents.hub.server.chat_members import label_now, label_problems, put_agent, put_person
 from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply
 from evo_agents.hub.server.chat_store import add_member, insert_mentions, insert_message, member_event
 from evo_agents.hub.server.chat_views import person_author
 from evo_agents.hub.server.chats import resolve_mentions
-from evo_agents.hub.server.profile_store import ensure_default
+from evo_agents.hub.server.profile_store import by_id, ensure_default
 from evo_agents.hub.server.run_state import RunStep
 from evo_agents.hub.server.runs.service.candidates import candidates_of
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -155,7 +155,7 @@ def _line(text: str) -> str:
     return " ".join(str(text).split())
 
 
-async def _candidates(conn: AsyncConnection, found: RunStep, role: str | None) -> list[str]:
+async def _candidates(conn: AsyncConnection, found: RunStep, role: str | None, chat) -> list[str]:
     """The lines that say who could run the run again; one saying why there are none when they cannot be read."""
     try:
         async with conn.begin_nested():
@@ -173,7 +173,7 @@ async def _candidates(conn: AsyncConnection, found: RunStep, role: str | None) -
         log.warning("triage candidates not read", extra={"run_id": found.run_id, "error": type(exc).__name__})
         return ["Run again: the hub could not read who could."]
     workers = [w for w in found_for.workers if w.fit][:SHOWN]
-    agents = [a for a in found_for.agents if a.fit][:SHOWN]
+    agents = [a for a in found_for.agents if a.fit and a.project == found.project][:SHOWN]
     lines = ["Run again with:"]
     lines += [f"- worker {w.worker}" + (" (the run's own)" if w.is_run_worker else "") for w in workers]
     lines += [f"- agent {a.handle}" for a in agents]
@@ -184,6 +184,43 @@ async def _candidates(conn: AsyncConnection, found: RunStep, role: str | None) -
             if found_for.workers
             else "- the owner has no worker that takes this project"
         )
+    return lines + await _other_projects(conn, found_for, chat)
+
+
+async def _other_projects(conn: AsyncConnection, found_for, chat) -> list[str]:
+    """The lines about the projects the error names: whose agent can be invited, and what stops it for the others (no
+    writer role, a label of the chat someone does not clear). Nobody is invited here."""
+    if not found_for.other_projects:
+        return []
+    lines = ["The error names another project:"]
+    for other in found_for.other_projects:
+        fit = [a for a in found_for.agents if a.project == other.project and a.fit]
+        if not other.fit or not fit:
+            why = (
+                other.reasons[0]
+                if not other.fit
+                else f"no agent of {other.project} has a worker of the owner to run on"
+            )
+            lines.append(f"- {other.project} (the error names {other.named}): no one is invited: {why}.")
+            continue
+        profile = await by_id(conn, fit[0].profile_id)
+        try:
+            async with conn.begin_nested():
+                problems = await label_problems(conn, chat, profile) if profile is not None else []
+        except Exception as exc:
+            log.warning("triage label not read", extra={"error": type(exc).__name__})
+            lines.append(f"- {other.project}: the hub could not read the chat's label. No one is invited.")
+            continue
+        if problems:
+            lines.append(
+                f"- {other.project} (the error names {other.named}): agent {fit[0].handle} cannot join, the chat's label "
+                f"would pass someone in it: {'; '.join(problems)}. No one is invited."
+            )
+        else:
+            lines.append(
+                f"- {other.project} (the error names {other.named}): the owner is a writer there; the agent of this "
+                f"thread may invite one of its agents ({', '.join(a.handle for a in fit[:SHOWN])}) with `evo-agents worker triage invite`."
+            )
     return lines
 
 
@@ -274,7 +311,7 @@ async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
     depth, _ = await chain_of(conn, found.run_id)
     full = depth >= triage_rules.RERUN_CAP
     lines = _head(found, inferred)
-    lines += await _candidates(conn, found, await _role(conn, owner.user_id, found.project_id))
+    lines += await _candidates(conn, found, await _role(conn, owner.user_id, found.project_id), chat)
     if full:
         lines.append(
             f"The hub ran this step again {depth} times by itself already, the most: it asks no agent, and the "

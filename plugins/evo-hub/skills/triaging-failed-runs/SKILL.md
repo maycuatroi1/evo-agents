@@ -26,6 +26,11 @@ negotiable, so do not retry it in another form.
   every command of the old one; dropping a command is the owner's to decide. A `what` only gets shorter. Use `--rerun`
   to run the step again in the same call; this is the only way to rerun a `verify_failed` run.
 
+- When the error names another project (the first message says so, under "The error names another project"), invite its
+  agent: `evo-agents worker triage invite HANDLE --reason TEXT`, then hand it the work with `evo-agents worker chat
+  mention` (at most 3 hops). The hub refuses and says in the thread when the owner is no writer there or the chat's
+  label would pass someone in it; then invite no one and ask the owner.
+
 Never touch a step that is `done`, `acceptance`, `goal`, `non_goals`, a step of another repo, or the code to make a
 verify pass. At most 2 automatic reruns per chain of runs and 1 for each cause; when the chain is full the hub starts
 no agent. Reruns count in the chat's budget.

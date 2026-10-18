@@ -9,6 +9,11 @@ chat run does, and the hub checks the frame again on each call, so an agent that
 - POST /v1/worker/runs/{id}/triage/rerun: run the failed step again (``controls.rerun_in``), on a worker, runtime or
   account that is a fit candidate (``candidates.candidates_of``), for the causes of ``triage_rules.RERUN_CAUSES``, within
   the chain cap and the chat's budget.
+- POST /v1/worker/runs/{id}/triage/invite: invite the agent of another project, one the failed run's error names, into
+  the thread's chat, so a mention can hand it work (a chat's mention limits, the hop of 3, stay). It is the group chat's
+  own rule that decides (``chat_members.put_agent``): the owner needs the writer role there, and a label of the chat that
+  someone in it does not clear is the 409 of the hub. A refusal is said in the thread, in the agent's name, and invites
+  no one; the call answers 409 with the same reason.
 - POST /v1/worker/runs/{id}/triage/plan: change the ``verify`` or narrow the ``what`` of a pending step of the failed
   run's plan, as a new revision under the owner's name (``plans.write_plan``), only as ``triage_rules.edit_problems``
   allows; with ``rerun`` the rerun follows in the same transaction, so a refused rerun leaves the plan as it was.
@@ -26,17 +31,21 @@ from dataclasses import dataclass
 from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
-from evo_agents.hub import curator, runs, tables, triage_rules
+from evo_agents.hub import curator, profiles, runs, tables, triage_rules
 from evo_agents.hub.plans import MAX_VALUE_CHARS, PlanProblem, step_index
 from evo_agents.hub.server import audit, chat_agents
 from evo_agents.hub.server import plans as plan_routes
+from evo_agents.hub.server.chat_access import chat_access
+from evo_agents.hub.server.chat_members import put_agent
 from evo_agents.hub.server.chat_runs import agent_access, chat_run, chat_spend, post_agent
-from evo_agents.hub.server.errors import ErrorBody
+from evo_agents.hub.server.errors import CODES, ErrorBody
+from evo_agents.hub.server.profile_store import by_handle
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import REFUSALS, AccountName, Rerun, RunId
 from evo_agents.hub.server.runs.service.candidates import RerunCandidates, candidates_of
@@ -80,6 +89,19 @@ class TriagePlanIn(RerunOptions):
         if self.verify is None and self.what is None:
             raise ValueError("give verify, what, or both")
         return self
+
+
+class TriageInviteIn(BaseModel):
+    handle: str = Field(
+        min_length=1, max_length=100, pattern=profiles.HANDLE_PATTERN, description="the agent's handle, @ left out"
+    )
+    reason: Reason
+
+
+class TriageInvited(BaseModel):
+    message_id: int = Field(description="the Decision: line the hub posted in the thread, in the agent's name")
+    project: str = Field(description="the project of the agent invited")
+    added: bool = Field(description="false when the agent was in the chat already")
 
 
 class TriageActed(BaseModel):
@@ -391,3 +413,69 @@ async def edit_plan(request: Request, run_id: RunId, body: TriagePlanIn, user: C
         return plan_routes._refusal(request, exc)
     log.info("triage plan edit", extra={"run_id": frame.failed.id, "revision": now, "agent_run_id": run_id})
     return TriageActed(message_id=message_id, run_id=new_id, plan_revision=now)
+
+
+def _refused(request: Request, status: int, message: str) -> JSONResponse:
+    body = ErrorBody(error=CODES.get(status, f"http_{status}"), message=message)
+    content = body.model_dump(mode="json", exclude_none=True)
+    content["request_id"] = getattr(request.state, "request_id", None)
+    return JSONResponse(content, status_code=status)
+
+
+@worker_router.post(
+    "/runs/{run_id}/triage/invite", status_code=201, response_model=TriageInvited, responses={**REFUSALS}
+)
+async def invite(request: Request, run_id: RunId, body: TriageInviteIn, user: CurrentUser):
+    """Invite the agent ``handle`` of another project, one the failed run's error names, into the chat of this thread
+    for the run's owner; 422 for an agent of no project the error names, 409 (said in the thread too) when the owner is
+    no writer of its project or the chat's label or size forbids it."""
+    async with request.app.state.engine.begin() as conn:
+        frame = await _frame(conn, user, run_id)
+        failed = frame.failed
+        found = await candidates_of(
+            conn,
+            project=frame.project,
+            project_id=frame.access.project_id,
+            role=frame.access.role,
+            owner_id=frame.owner.user_id,
+            kind=failed.kind,
+            state="failed",
+            run_id=failed.id,
+        )
+        pointed = {o.project for o in found.other_projects if o.role is not None}  # a project with no grant: unseen
+        profile = await by_handle(conn, body.handle)
+        if profile is None or profile.project not in pointed or profile.deleted_at is not None:
+            names = ", ".join(sorted(pointed)) or "none"
+            raise HTTPException(
+                422,
+                f"agent {body.handle} is no agent of a project that the error of run {failed.id} names and the owner "
+                f"holds a grant on (projects: {names})",
+            )
+        other = next(o for o in found.other_projects if o.project == profile.project)
+        chat = await chat_access(conn, frame.owner, frame.chat_id, lock=True)
+        refusal = None
+        if not other.fit:
+            refusal = other.reasons[0]
+        else:
+            try:
+                async with conn.begin_nested():
+                    added = await put_agent(conn, frame.owner, chat, profile)
+            except HTTPException as exc:
+                refusal = str(exc.detail)
+        if refusal is not None:
+            await _said(
+                conn, frame, f"No one invited: agent {body.handle} of project {profile.project} did not join: {refusal}"
+            )
+            await _audit(conn, frame, audit.RUN_TRIAGE_INVITE, f" refused:@{body.handle}")
+            reply = _refused(request, 409, refusal)
+        else:
+            text = (
+                f"Decision: invited agent {body.handle} of project {profile.project} into this chat: {body.reason} "
+                f"Undo: remove it from the chat. Work goes to it by a mention of the agent of this thread, one hop "
+                f"further each time."
+            )
+            message_id = await _said(conn, frame, text)
+            await _audit(conn, frame, audit.RUN_TRIAGE_INVITE, f" invited:@{body.handle}")
+            reply = TriageInvited(message_id=message_id, project=profile.project, added=added)
+    log.info("triage invite", extra={"run_id": failed.id, "handle": body.handle, "agent_run_id": run_id})
+    return reply
