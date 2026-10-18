@@ -97,34 +97,49 @@ def _print_push(reports: list, error: str | None) -> None:
             print(f"     {line}")
 
 
-def _cmd_sync_due(args) -> int:
+def _sync_due_all(args) -> int:
+    """``kg sync --due --all``, the LaunchAgent's command: sync every project, push with --push, then prune what the
+    retention schedule asks for (``evo_agents.kg.retention``; off until ``kg prune --schedule on``)."""
+    from evo_agents.kg import cli_prune
     from evo_agents.kg.ids import utc_now
-    from evo_agents.kg.sync import sync_all_due, sync_due
+    from evo_agents.kg.sync import sync_all_due
+
+    if args.project or args.accept_removals:
+        print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
+        return 2
+    outcomes = sync_all_due(build=args.build)
+    ok = all(o.ok for o in outcomes)
+    pushed = _push() if args.push else None
+    if pushed is not None:
+        ok = ok and _push_json(*pushed)["ok"]
+    pruned = cli_prune.scheduled()
+    prune = cli_prune.scheduled_json(*pruned)
+    ok = ok and (prune is None or prune["ok"])
+    if args.json:
+        body = {"ok": ok, "projects": [o.to_json() for o in outcomes]}
+        if pushed is not None:
+            body["push"] = _push_json(*pushed)
+        if prune is not None:
+            body["prune"] = prune
+        _print_json(body)
+    else:
+        print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
+        for outcome in outcomes:
+            _print_due(outcome)
+        if pushed is not None:
+            _print_push(*pushed)
+        cli_prune.print_scheduled(*pruned)
+    return 0 if ok else 1
+
+
+def _cmd_sync_due(args) -> int:
+    from evo_agents.kg.sync import sync_due
 
     if args.source:
         print("error: --due picks the sources itself; drop --source", file=sys.stderr)
         return 2
     if args.all:
-        if args.project or args.accept_removals:
-            print("error: --all goes with --due, --build, --push and --json only", file=sys.stderr)
-            return 2
-        outcomes = sync_all_due(build=args.build)
-        ok = all(o.ok for o in outcomes)
-        pushed = _push() if args.push else None
-        if pushed is not None:
-            ok = ok and _push_json(*pushed)["ok"]
-        if args.json:
-            body = {"ok": ok, "projects": [o.to_json() for o in outcomes]}
-            if pushed is not None:
-                body["push"] = _push_json(*pushed)
-            _print_json(body)
-        else:
-            print(f"kg sync --due --all at {utc_now()}: {len(outcomes)} project(s)")
-            for outcome in outcomes:
-                _print_due(outcome)
-            if pushed is not None:
-                _print_push(*pushed)
-        return 0 if ok else 1
+        return _sync_due_all(args)
 
     project = _project(args)
     try:
@@ -439,7 +454,8 @@ def register(sub) -> None:
     hook = ksub.add_parser("hook", help="Claude Code hook entry points")
     add_hooks(hook.add_subparsers(dest="hook_name", required=True))
 
-    from evo_agents.kg import cli_graph, cli_scrub
+    from evo_agents.kg import cli_graph, cli_prune, cli_scrub
 
     cli_graph.register(ksub, with_project)
     cli_scrub.register(ksub)
+    cli_prune.register(ksub)

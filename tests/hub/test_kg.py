@@ -412,10 +412,15 @@ def test_pushing_the_same_run_twice_ingests_it_once(hub, tmp_path):
     (run_id,) = laptop.sync("docs", doc("guide", "How the app works."))
     first = push(hub, laptop)
     assert first.ok and first.pushed == [run_id]
+    corpus = laptop.project().corpus()
+    assert corpus.runs_on_hub() == {run_id}  # retention may delete its log now (evo_agents.kg.retention)
+    with corpus.db:
+        corpus.db.execute("DELETE FROM hub_runs")
     before = jobs(hub.db)
 
     again = push(hub, laptop)  # the hub lists the run: nothing is sent
     assert again.ok and again.pushed == [] and again.present == 1 and again.blobs == 0
+    assert corpus.runs_on_hub() == {run_id}  # recorded from the hub's list
     # the steps by hand, as a client that lost the answers would send them again
     log = laptop.logs()[0]
     state = hub.as_alice.call("POST", f"/v1/kg/{PROJECT}/runs", {"run_id": run_id, "log_sha256": sha(log.read_bytes())})

@@ -486,7 +486,7 @@ def test_rewrite_log_leaves_a_log_lacking_a_record_the_corpus_holds(fake_project
     first = Path(sync_project(project)[0].log)
     fake.set(items=[doc("a", VAULT, rev="2")], listing=False)
     sync_project(project)
-    winners, _ = scrub_module._winners(project.root)
+    winners, _ = scrub_module.winners_of(project.root)
     run_id = records_of(first)[0]["run_id"]
     before = first.read_bytes()
 

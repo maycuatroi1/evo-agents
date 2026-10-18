@@ -4,7 +4,7 @@ Layout under ``$EVO_KG_HOME/<project>/`` (default ``~/.evo/kg``), mode 0700::
 
     log/<run_id>.jsonl.gz   every message of one connector run, item text replaced by blob refs
     blobs/sha256/ab/cd...   item bodies and fragments
-    corpus.sqlite           the merged state sigma_p, rebuildable from the log
+    corpus.sqlite           the merged state sigma_p, rebuildable from the log; with the runs a hub holds (hub_runs)
     locks/<source>.lock     one sync per source at a time
     audit.jsonl             one line per sync and per build, counts and ids only (audit.py), mode 0600
 
@@ -80,6 +80,11 @@ CREATE TABLE IF NOT EXISTS lineages (
     lineage TEXT NOT NULL,
     epoch TEXT NOT NULL,
     run_id TEXT NOT NULL
+) STRICT;
+CREATE TABLE IF NOT EXISTS hub_runs (
+    run_id TEXT PRIMARY KEY,
+    hub TEXT NOT NULL,
+    at TEXT NOT NULL
 ) STRICT;
 """
 ITEM_COLUMNS = "item_id, source, deleted, k_epoch, k_time, k_rev, k_run, k_tie, record"
@@ -395,6 +400,17 @@ class Corpus:
                 json.dumps(detail or {}, ensure_ascii=False),
             ),
         )
+
+    def record_on_hub(self, run_ids: Iterable[str], hub: str) -> None:
+        """Remember that the hub at ``hub`` holds the runs ``run_ids`` (``hub kg push`` saw it say so): retention may
+        delete their logs (``evo_agents.kg.retention``). Commits."""
+        now = utc_now()
+        with self.db:
+            self.db.executemany("INSERT OR IGNORE INTO hub_runs VALUES (?, ?, ?)", [(r, hub, now) for r in run_ids])
+
+    def runs_on_hub(self) -> set[str]:
+        """The runs ``record_on_hub`` recorded."""
+        return {row[0] for row in self.db.execute("SELECT run_id FROM hub_runs")}
 
     def held(self, source: str | None = None) -> list[dict]:
         query = "SELECT run_id, source, scope, reason, ids FROM held"
