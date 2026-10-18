@@ -306,6 +306,7 @@ def create_app(config: HubConfig) -> FastAPI:
         rate_limits,
         run_leases,
         secrets,
+        triage_actions,
     )
     from evo_agents.hub.server.sealing import Sealer
 
@@ -322,6 +323,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_events.router,
         chat_events.stream_router,
         chat_agents.worker_router,
+        triage_actions.worker_router,
         plugins.router,
         plugins.publishers_router,
         project_plugins.router,

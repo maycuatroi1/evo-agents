@@ -7125,6 +7125,138 @@
         }
       ],
       "json": null
+    },
+    "worker triage plan": {
+      "positionals": [
+        {
+          "name": "step",
+          "metavar": "STEP",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--if-revision"
+          ],
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--verify"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--what"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--rerun"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--account"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--confirm-cause"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker triage rerun": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--reason"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--account"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--confirm-cause"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
     }
   },
   "openapi": {
@@ -29303,6 +29435,206 @@
             }
           }
         }
+      },
+      "/v1/worker/runs/{run_id}/triage/rerun": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Rerun",
+          "description": "Run the failed run of this triage thread again for its owner, inside the frame; 422 for a cause with no\nautomatic rerun, 409 when the chain of reruns, the chat's budget or an earlier rerun forbids it.",
+          "operationId": "rerun_v1_worker_runs__run_id__triage_rerun_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriageRerunIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TriageActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/triage/plan": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Edit Plan",
+          "description": "Change the ``verify`` or narrow the ``what`` of a pending step of the failed run's plan for its owner, as a new\nrevision under their name, inside the frame (``triage_rules.edit_problems``); with ``rerun`` the failed step is run\nagain in the same transaction, and a refused rerun leaves the plan as it was.",
+          "operationId": "edit_plan_v1_worker_runs__run_id__triage_plan_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriagePlanIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TriageActed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__plans__Conflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
       }
     },
     "components": {
@@ -48092,6 +48424,217 @@
             "duration_ms"
           ],
           "title": "ToolStat"
+        },
+        "TriageActed": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the Decision: line the hub posted in the thread, in the agent's name"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run queued again; null for a plan edit without a rerun"
+            },
+            "plan_revision": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Revision",
+              "description": "the revision the edit wrote; null for a rerun alone"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "run_id",
+            "plan_revision"
+          ],
+          "title": "TriageActed"
+        },
+        "TriagePlanIn": {
+          "properties": {
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "a worker of the owner, by name; a fit candidate"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime",
+              "description": "a runtime that worker has, for the rerun"
+            },
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "one of the owner's accounts ready on that worker"
+            },
+            "cause_confirmed": {
+              "type": "boolean",
+              "title": "Cause Confirmed",
+              "description": "true after the agent read the run's log and the cause the hub guessed is the right one",
+              "default": false
+            },
+            "step": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Step",
+              "description": "the step's id, a step that is pending"
+            },
+            "verify": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Verify",
+              "description": "the new verify: no command fewer"
+            },
+            "what": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 65536
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "What",
+              "description": "the new what: shorter than the old one"
+            },
+            "if_revision": {
+              "type": "integer",
+              "minimum": 1.0,
+              "title": "If Revision",
+              "description": "the revision of the plan the edit was made against"
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            },
+            "rerun": {
+              "type": "boolean",
+              "title": "Rerun",
+              "description": "run the failed step again once the plan is edited, in the same step",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "step",
+            "if_revision",
+            "reason"
+          ],
+          "title": "TriagePlanIn"
+        },
+        "TriageRerunIn": {
+          "properties": {
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "a worker of the owner, by name; a fit candidate"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime",
+              "description": "a runtime that worker has, for the rerun"
+            },
+            "account": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account",
+              "description": "one of the owner's accounts ready on that worker"
+            },
+            "cause_confirmed": {
+              "type": "boolean",
+              "title": "Cause Confirmed",
+              "description": "true after the agent read the run's log and the cause the hub guessed is the right one",
+              "default": false
+            },
+            "reason": {
+              "type": "string",
+              "maxLength": 600,
+              "minLength": 1,
+              "title": "Reason",
+              "description": "why, for the Decision: line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reason"
+          ],
+          "title": "TriageRerunIn"
         },
         "UploadItem": {
           "properties": {

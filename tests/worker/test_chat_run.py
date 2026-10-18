@@ -279,3 +279,54 @@ def test_a_chat_runs_agent_asks_a_triage_decision_waits_for_the_answer_and_goes_
     first, second = machine.starts()
     assert second["resume"] == first["session"], "the answer goes on in the agent's session"
     assert "Chosen option: retry." in second["prompt"]
+
+
+def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_frame(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "chat": [
+                {"cli": ["triage", "rerun", "--reason", "git is installed now", "--confirm-cause"]},
+                {"cli": ["triage", "rerun", "--reason", "try it", "--worker", "nowhere"]},
+                {
+                    "cli": [
+                        "triage",
+                        "plan",
+                        "2",
+                        "--if-revision",
+                        "3",
+                        "--verify",
+                        "make check && make lint",
+                        "--reason",
+                        "the lint was missing",
+                        "--rerun",
+                    ]
+                },
+                {"say": "Done."},
+            ],
+            "review": [{"cli": ["triage", "rerun", "--reason", "x"]}, {"result": {"summary": "Reviewed."}}],
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        rerun, refused, edited = [e for e in machine.commands() if e["run"] == run_id]
+        assert rerun["exit"] == 0 and "Ran the failed run again as run #" in rerun["stdout"]
+        assert refused["exit"] == 1 and "the owner has no worker nowhere" in refused["stderr"]
+        assert edited["exit"] == 0 and "Wrote revision 4 of the plan and ran the failed run again" in edited["stdout"]
+        first, second, third = hub.chat_calls
+        assert (first["route"], first["reason"], first["cause_confirmed"]) == (
+            "triage/rerun",
+            "git is installed now",
+            True,
+        )
+        assert third["route"] == "triage/plan" and third["rerun"] is True and third["if_revision"] == 3
+        assert (third["step"], third["verify"]) == ("2", "make check && make lint") and "what" not in third
+
+        review = hub.queue_review_run(["alpha"])
+        assert await hub.wait_state(review, "done", "failed", timeout=WAIT) == "done", hub.texts(review)
+        (bad,) = [e for e in machine.commands() if e["run"] == review]
+        assert bad["exit"] == 1 and "is a review run, whose agent does not talk in chats" in bad["stderr"]
+        assert len(hub.chat_calls) == 3
+
+    with_daemon(machine, body)

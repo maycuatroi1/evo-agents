@@ -199,54 +199,73 @@ async def rerun_run(engine, user: Principal, project: str, run_id: int, body: Re
     under the agent profile of the run at the profile's version now, checked again (``profiles.rerun_choice``), with
     the run's own layer of plugin config."""
     async with engine.begin() as conn:
-        access, row = await owned_run(conn, user, project, run_id, "rerun")
-        check_dispatcher(access)
-        _, _, state, plan_id, key, _, runtime, mode, approval, timeout_s, pinned, kind, model = row
-        if kind == "plan":
-            raise HTTPException(
-                409, f"run {run_id} is a plan run: dispatch the plan again with POST /v1/projects/{project}/plan-runs"
-            )
-        if kind in runs.CURATOR_KINDS:
-            raise HTTPException(
-                409, f"run {run_id} is a {kind} run, which only the night shift of the project's charter queues"
-            )
-        if kind == "author":
-            raise HTTPException(
-                409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
-            )
-        if kind == "chat":
-            raise HTTPException(409, f"run {run_id} is a chat run: mention its agent in the chat again")
-        if state not in runs.TERMINAL_STATES:
-            raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
-        held = await plan_routes._visible(conn, access, plan_id, None)
-        await refuse_curator_plan(conn, access, plan_id)
-        worker = None if pinned is None else await pinnable(conn, user, access, pinned)
-        picked = await rerun_picks(conn, user, access, run_id, body, worker)
-        chosen = await rerun_choice(conn, user, access, run_id, Asked(kind, runtime, model, worker, tuple(picked)))
-        await lock_plan(conn, access.project_id, plan_id)
-        activity = await plan_activity(conn, access.project_id, plan_id)
-        no_plan_run(activity, plan_id)
-        new_id = await queue_run(
-            conn,
-            access,
-            user,
-            held,
-            key,
-            activity.steps,
-            runtime=runtime,
-            model=chosen.model,
-            mode=mode,
-            approval=approval,
-            timeout_s=timeout_s,
-            pinned=worker,
-            parent=run_id,
-            picked=tuple(picked),
-            chosen=chosen,
-            plugin_config=await run_layer_of(conn, run_id),
-        )
-        accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
-        target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
-        await audit_run(conn, user, access, audit.RUN_RERUN, target)
-        view = await run_view(conn, new_id)
-    log.info("run rerun", extra={"run_id": new_id, "rerun_of": run_id, "login": user.login})
+        view = await rerun_in(conn, user, project, run_id, body)
+    log.info("run rerun", extra={"run_id": view.id, "rerun_of": run_id, "login": user.login})
     return view
+
+
+async def rerun_in(
+    conn: AsyncConnection,
+    user: Principal,
+    project: str,
+    run_id: int,
+    body: Rerun | None = None,
+    *,
+    worker_id: int | None = None,
+    runtime: str | None = None,
+) -> Run:
+    """``rerun_run`` in the caller's transaction. ``worker_id`` pins the rerun to that worker of ``user`` instead of
+    the run's own pin, and ``runtime`` asks for that runtime instead of the run's, with the profile's model then (the
+    triage of a failed run, ``evo_agents.hub.server.triage_actions``, is the one that changes either)."""
+    access, row = await owned_run(conn, user, project, run_id, "rerun")
+    check_dispatcher(access)
+    _, _, state, plan_id, key, _, asked_runtime, mode, approval, timeout_s, pinned, kind, model = row
+    if kind == "plan":
+        raise HTTPException(
+            409, f"run {run_id} is a plan run: dispatch the plan again with POST /v1/projects/{project}/plan-runs"
+        )
+    if kind in runs.CURATOR_KINDS:
+        raise HTTPException(
+            409, f"run {run_id} is a {kind} run, which only the night shift of the project's charter queues"
+        )
+    if kind == "author":
+        raise HTTPException(
+            409, f"run {run_id} is an author run: dispatch a new one with POST /v1/projects/{project}/author-runs"
+        )
+    if kind == "chat":
+        raise HTTPException(409, f"run {run_id} is a chat run: mention its agent in the chat again")
+    if state not in runs.TERMINAL_STATES:
+        raise HTTPException(409, f"run {run_id} is still {state}: a run is rerun once it has ended")
+    runtime_now = runtime or asked_runtime
+    model = None if runtime else model
+    held = await plan_routes._visible(conn, access, plan_id, None)
+    await refuse_curator_plan(conn, access, plan_id)
+    pin_to = pinned if worker_id is None else worker_id
+    worker = None if pin_to is None else await pinnable(conn, user, access, pin_to)
+    picked = await rerun_picks(conn, user, access, run_id, body, worker)
+    chosen = await rerun_choice(conn, user, access, run_id, Asked(kind, runtime_now, model, worker, tuple(picked)))
+    await lock_plan(conn, access.project_id, plan_id)
+    activity = await plan_activity(conn, access.project_id, plan_id)
+    no_plan_run(activity, plan_id)
+    new_id = await queue_run(
+        conn,
+        access,
+        user,
+        held,
+        key,
+        activity.steps,
+        runtime=runtime_now,
+        model=chosen.model,
+        mode=mode,
+        approval=approval,
+        timeout_s=timeout_s,
+        pinned=worker,
+        parent=run_id,
+        picked=tuple(picked),
+        chosen=chosen,
+        plugin_config=await run_layer_of(conn, run_id),
+    )
+    accounts = "".join(account.audit_text() for account in picked) + chosen.audit_text()
+    target = f"{run_target(project, plan_id, key, new_id)} rerun of run:{run_id}{accounts}"
+    await audit_run(conn, user, access, audit.RUN_RERUN, target)
+    return await run_view(conn, new_id)

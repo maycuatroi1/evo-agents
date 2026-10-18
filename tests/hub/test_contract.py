@@ -183,6 +183,8 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker propose",
         "worker put",
         "worker step",
+        "worker triage plan",
+        "worker triage rerun",
     ]
     put = printed["worker put"]
     assert [p["name"] for p in put["positionals"]] == ["file"]
@@ -204,6 +206,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "spend_money",
         "architecture",
         "scope",
+        "triage",
     ]
     notify = {o["flags"][0]: o for o in printed["worker notify"]["options"]}
     assert notify["--kind"]["choices"] == ["push_default_branch", "merge_default_branch"]

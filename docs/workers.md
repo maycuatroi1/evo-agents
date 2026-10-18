@@ -510,6 +510,24 @@ answer goes to the run's inbox and the agent goes on in the same session. After 
 the run, and the answer or a reply then queues a chat run on the same worker that resumes the session, the worktrees
 and the branch. A chat run that asks nothing ends after its turn.
 
+### Failure triage
+
+When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PLAN" (of the project when
+the run has no plan) and mentions the project's default agent, which makes a chat run for the run's owner
+(`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent). The agent reads
+the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
+`evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
+`triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker triage rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]` | `POST /v1/worker/runs/{id}/triage/rerun` | run the failed step again for its owner, on a fit candidate, for a cause with an automatic rerun: 201 with `run_id` and the `Decision:` line's `message_id`; 422 for another cause, a guessed cause not confirmed or a worker, runtime or account that is no fit; 409 when the chain has 2 reruns, the cause was rerun once in it, the run was rerun by its agent, or the chat's budget is spent; 404 for a run that is not the chat run of a triage thread |
+| `evo-agents worker triage plan STEP --if-revision N [--verify TEXT] [--what TEXT] --reason TEXT [--rerun]` | `POST .../triage/plan` | write a revision of the failed run's plan under the owner's name that changes the `verify` (no command fewer) or narrows the `what` of a step that is `pending` and of the run's repos; 422 for anything else (a step that is `done`, a key other than those two, `acceptance`, `goal`, `non_goals`, a step of another repo); with `--rerun` the rerun follows in the same transaction and a refused rerun leaves the plan as it was; `verify_failed` is rerun only this way |
+
+Each success posts a line that starts with `Decision:` in the thread, in the agent's name, with the reason and how to
+undo it, and writes an audit row (`run.triage_rerun`, `run.triage_plan_edit`) that names the failed run, the agent and
+the chat run. The agent acts as the owner only: another member's chat run is refused (403).
+
 ## Local runs
 
 A local run (kind `local`, `evo_agents.hub.server.local_runs`) is a Claude Code session on a member's own machine

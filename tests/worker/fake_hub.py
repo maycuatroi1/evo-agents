@@ -100,6 +100,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/chat", self._chat),
                 post("/v1/worker/runs/{id}/chat/{route}", self._in_chats),
                 post("/v1/worker/runs/{id}/chats", self._in_chats),
+                post("/v1/worker/runs/{id}/triage/{route}", self._in_triage),
                 post("/v1/worker/runs/{id}/uploads", self._uploads),
                 get("/v1/worker/runs/{id}/plan", self._plan),
                 web.put("/v1/worker/runs/{id}/plan", self._put_plan),
@@ -644,6 +645,26 @@ class FakeHub:
         else:
             answer = message
         return web.json_response(answer, status=200 if route == "chat/reactions" else 201)
+
+    async def _in_triage(self, request: web.Request) -> web.Response:
+        """What the agent of a chat run does for a failed run: recorded in ``chat_calls`` under triage/rerun or
+        triage/plan, and answered as the hub does; a worker named ``nowhere`` is refused."""
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "chat":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or is no chat run")
+        route = f"triage/{request.match_info['route']}"
+        body = await request.json()
+        self.chat_calls.append({"run_id": run_id, "route": route, **body})
+        if body.get("worker") == "nowhere":
+            raise _refusal(422, "the owner has no worker nowhere: their workers are mac-mini")
+        number = len(self.chat_calls)
+        again = route == "triage/rerun" or body.get("rerun")
+        answer = {
+            "message_id": 1000 + number,
+            "run_id": 600 + number if again else None,
+            "plan_revision": 4 if route == "triage/plan" else None,
+        }
+        return web.json_response(answer, status=201)
 
     async def _uploads(self, request: web.Request) -> web.Response:
         self._run(request)

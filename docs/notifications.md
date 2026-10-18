@@ -92,6 +92,8 @@ in the thread then queues a chat run pinned to the same worker that goes on in t
 (`resume_of_run_id` names the parked run, which is `done`), with the decisions still open and the unread inbox moved to
 it. When the run ends otherwise, its open decisions are `cancelled`. The Inbox, the web and Telegram answer such a
 decision through the same route as any other (migration 0040 allows the category).
+When the failure is one of the frame's (`docs/workers.md`, "Failure triage"), the agent acts by itself, each act with a
+`Decision:` line in the thread; the decision is for what is outside it.
 
 Only the run's owner answers, through the web or with a machine token of their own: another member gets 403,
 someone without a grant on the project 404, and the worker's own token 403, so the agent cannot answer itself. A
