@@ -23,6 +23,7 @@ EVO_HUB_API_INTERNAL_URL=http://127.0.0.1:8080 pnpm dev
 | `EVO_HUB_API_INTERNAL_URL` | runtime, and at build time for the rewrite | where server components reach the API; when set at build time, `/v1/*` is also forwarded there so the browser stays on one origin (local runs, Playwright, the image: `web/Dockerfile` builds with `http://api:8080` unless given `--build-arg EVO_HUB_API_INTERNAL_URL=...`) |
 | `EVO_HUB_WEB_TIME_ZONE` | runtime | time zone of dates rendered on the server, `Asia/Ho_Chi_Minh` by default |
 | `PORT`, `HOSTNAME` | runtime | where `pnpm start` (the standalone server) listens |
+| `EVO_WEB_FIXTURES` | build time | `1` builds the routes of the tests' fixtures too (`page.fixture.tsx`, `layout.fixture.tsx`: the native page of the core plugin notes); Playwright's build sets it, the image never does |
 
 Sign-in is GitHub's web flow on the API (`/v1/auth/web/login`), so the API needs
 `EVO_HUB_PUBLIC_URL` set to the address the browser uses for the web, plus the client secret and session
@@ -54,7 +55,9 @@ Playwright starts two servers: `e2e/hub_stack.py` (a database of its own on the 
 moto's S3 as the blob store, `evo-agents hub serve` from this checkout) and the web's production build. Tests
 sign in through the real web flow against the fake GitHub and seed projects, grants, memories and skills through
 the API; a skill bundle is downloaded from the moto bucket the way a browser follows a presigned URL, and the
-knowledge graph specs push a small synthetic graph and have the stack build it (`e2e/kg_seed.py`).
+knowledge graph specs push a small synthetic graph and have the stack build it (`e2e/kg_seed.py`). The plugin specs
+publish the sample plugin of `tests/fixtures/plugins/sample`, which the stack signs with a key the hub trusts, and the
+hub runs through `e2e/hub_serve.py`, which puts the tests' core plugin notes in its image.
 
 ```sh
 pnpm exec playwright install chromium firefox

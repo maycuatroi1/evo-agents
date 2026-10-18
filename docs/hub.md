@@ -31,6 +31,7 @@ design and `web/README.md` how to run and test it. The pages that read a route o
 | a project's plans, `/p/{project}/plans`, and a plan, `.../plans/{id}` | a plan's steps as Board (by status, the default), List (in plan order) or Graph (`?view=graph`): the graph of their dependencies top to bottom, a step under every step it waits for, lines solid when the step waited for is done and dashed while it is not, Ready steps tagged, a dependency implied by another one not drawn; a step selected (`&step=11`) dims what it neither waits for nor unblocks and opens a read-only inspector beside the graph from 1024 px and in a bottom sheet below, with its dependencies, what waits for it, What to do, Verify, Evidence, its acceptance criteria and a link to the step's page; the view is kept in the URL and on the browser for the next plan; New plan and Revise with agent, for a writer: a dialog takes the request, the worker and the model as Run plan does, and queues an author run (Workers and runs, below) | `POST /v1/projects/{project}/author-runs` |
 | Insights, `/p/{project}/insights` | the project's runs by UTC day over 7, 30 or 90 days: outcomes, failure rate, p50 and p90 run time, tokens by type, each chart with its table | `GET /v1/projects/{project}/runs/stats` |
 | Administration, `/admin` | what needs a hub admin, each row opening its list filtered; the rows of every table on `/admin/diagnostics` | `GET /v1/admin/overview`, `GET /v1/admin/stats` |
+| Plugins, `/admin/plugins` and `/admin/plugins/{name}`; a project's plugins, `/p/{project}/plugins` and `.../plugins/{name}`; a plugin's page, `/p/{project}/x/{plugin}/{page}` | for a hub admin, the store (versions, an upgrade waiting, Install, Upgrade, Remove), the trusted publishers, a plugin's backend and the hub's layer of its config; for a project's members, its plugins, enabled through a consent that lists what each asks for, and the form of the project's layer drawn from the plugin's config schema (a secret never shown again); the pages enabled plugins add to the project's menu, an isolated plugin's framed in a sandbox, a core plugin's native (`docs/plugins.md`, section Pages) | `GET /v1/plugins`, `GET /v1/plugin-publishers`, `GET /v1/projects/{project}/plugins`, `.../config`, `.../config/effective` |
 
 Cmd K or Ctrl K, or the top bar's search field, opens a command palette: runs, plans, workers and pages to jump to,
 and the actions the visitor's grants allow (Run plan, New plan, Revise with agent, Dispatch a step, Rerun, Register
@@ -59,9 +60,11 @@ A request carries one of three credentials:
   worker holds.
 
 Only the health checks, the OpenAPI document, the first steps of sign-in (`/v1/auth/config`, `/v1/auth/github`,
-`/v1/auth/web/login`, `/v1/auth/web/callback`) and a worker's join with a pairing code (`/v1/worker/join`) answer
-without one. A route added later needs a credential unless it is added to that list in
-`evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
+`/v1/auth/web/login`, `/v1/auth/web/callback`), a worker's join with a pairing code (`/v1/worker/join`), Telegram's
+webhook (its secret header is the credential), the hub's branding, which the sign-in page shows (`GET /v1/branding`,
+`/v1/branding/logo`, `/v1/branding/favicon`), and the files of a plugin's page under `/v1/plugin-ui/`, whose ticket
+in the path is the credential, answer without one. A route added later needs a credential unless it is added to
+`PUBLIC_PATHS` or `PUBLIC_PREFIXES` in `evo_agents/hub/server/security.py`. Postgres keeps only the SHA-256 of a token. A token nobody uses for 90 days
 expires, and each use moves the expiry forward. The join is public, so it is limited: 10 refused pairing codes from one
 client address within 10 minutes, and that address gets 429 with `Retry-After` (see `EVO_HUB_FORWARDED_ALLOW_IPS`
 below for the address behind a proxy).
@@ -82,6 +85,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
+| plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
 | knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
@@ -92,7 +96,10 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
-| telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (`docs/notifications.md`) |
+| telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
+| plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
+| branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
+| features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
 | worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
 
@@ -1106,6 +1113,176 @@ cache under `<data dir>/kg/home` holds the corpus as a machine's kg home does, o
 `EVO_KG_HOME=<data dir>/kg/home evo-agents kg scrub --all --purge --yes` in the worker's container cleans it the same
 way, or delete the cache, and the next build fetches what it needs again.
 
+## Plugins
+
+A plugin is a versioned bundle, a tar.gz with its manifest `evo-plugin.json` at the top, checked against
+`evo_agents/harness/schemas/plugin.schema.json` (seam plugin-v1): the plugin's id, version, publisher, tier, the
+evo-agents versions it runs on (`engines`), the plugin API it is written for (`plugin_api`), the JSON Schema of its
+config, the permissions it asks for and what it contributes to each extension point. `evo_agents.plugins` reads,
+packs, checks and places a plugin for the hub and the worker alike. An isolated plugin, the default tier, is installed
+on a hub from its store; a core plugin runs Python in the hub's and the worker's processes and is a Python package
+installed into the image, which declares itself in the entry point group `evo_agents.plugins`. The registries of
+runtime adapters and of kg connectors read the core plugins' contributions beside their own groups
+`evo_agents.worker.adapters` and `evo_agents.kg.connectors`, which keep working and win over them. What a plugin adds
+to the hub (channels of notifications, routes under `/v1/x/<plugin>/`, MCP tools named `<plugin>__<tool>` on `/mcp`,
+periodic jobs, events delivered at least once, pages in the project's part of the web, and the tables of a core plugin)
+works only in a project that enabled it, and each point has a version of its own: `docs/plugins.md`, sections Extension
+points and Pages.
+
+A publisher signs each bundle, and the operator lists the publishers the hub trusts in `EVO_HUB_PLUGIN_PUBLISHERS`
+(section Deploying). A publisher signs keyless with Sigstore from the CI workflow of its plugin repository
+(`sigstore sign` in GitHub Actions writes `BUNDLE.sigstore.json`); the hub accepts the signature when its
+certificate's issuer is GitHub Actions and its identity a run of the workflow the operator named, the repository's
+name compared ignoring case and the workflow's path exactly. A hub that cannot reach Sigstore trusts Ed25519 keys of
+the publisher instead (`evo_agents.plugins.signing.sign_ed25519` makes the signature). Only a publisher listed in
+`EVO_HUB_PLUGIN_CORE_PUBLISHERS` may publish a core plugin.
+
+The store keeps every version a hub admin published, never changed: the bundle in the blob store, held by the hub
+itself (kind `plugin-bundle`, outside any project), its SHA-256, size, manifest, publisher, signature and who signed it
+(tables `plugins` and `plugin_versions`, migration 0034). A plugin belongs to the publisher of its first version. Only
+a hub admin uses the store, through `/v1/plugins`, the web (Administration, Plugins, which also lists the publishers
+the operator trusts, from `GET /v1/plugin-publishers`) or the command line:
+
+```sh
+evo-agents hub plugin publish sandbox-1.2.0.tar.gz   # with sandbox-1.2.0.tar.gz.sigstore.json or .sig.json beside it
+evo-agents hub plugin publish sandbox-1.2.0.tar.gz --signature release.sig.json
+evo-agents hub plugin list                           # state, installed and latest version, the upgrade waiting
+evo-agents hub plugin show sandbox                   # every version, who signed it and what it asks for
+evo-agents hub plugin install sandbox                # the newest version that runs on this hub, or --version 1.2.0
+evo-agents hub plugin upgrade sandbox                # the newest above the installed one, or --version
+evo-agents hub plugin remove sandbox                 # every version stays in the store
+```
+
+Publishing reads the committed bundle back from the blob store and checks it whole before it records anything, and
+installing or upgrading checks the stored bytes again against the publishers and the release the hub has then. A
+refusal is a 422 whose message names its reason in parentheses and what to do: `malformed` (not a bundle, a manifest
+that does not read, a signature that is not one), `unsigned`, `altered` (the bytes are not the ones signed, or not the
+ones the store recorded), `untrusted` (a publisher the operator does not list, a workflow or key it did not name, a
+core plugin of a publisher that is not core), `invalid` (the signature does not verify) and `incompatible` (outside
+the plugin's `engines` or `plugin_api`). A signature the hub cannot check now, Sigstore's trust root out of reach, is a
+503 and records nothing. Each write is audited as `plugin.publish`, `plugin.install`, `plugin.upgrade` or
+`plugin.remove`, naming `plugin:<name>@<version>`.
+
+As the api starts, it turns off every installed plugin whose version no longer runs on its release, the hub having
+been upgraded past the plugin's `engines`: the plugin shows `disabled` with the reason, the audit trail
+`plugin.disable`, and every hub admin who has signed in gets the notice `plugin_disabled`. The hub serves on, and a
+failure of that check is logged without stopping the start. Upgrading the plugin to a version that runs, or installing
+one again, turns it back on.
+
+### Isolated backends and the plugin host
+
+An isolated plugin carries a backend: a program the hub runs outside the api and the worker, over the `plugin/1`
+protocol, in the **plugin host**, `evo-agents hub plugin-host`. The host is a service of its own, built from the same
+image (the `plugins` service of the compose file), that holds none of the hub's variables: not `EVO_HUB_DSN`, not
+`EVO_HUB_SECRETS_KEY`, not the blob store keys. It is given the hub's URL, the shared secret
+`EVO_HUB_PLUGIN_HOST_TOKEN` and a data directory, pulls the installed isolated plugins from the api's routes under
+`/internal/plugin-host/` (outside `/v1`, so the reverse proxy never forwards them), and runs each backend in a process
+of its own built from nothing, under a user of its own: the service runs as root with only SETUID, SETGID, CHOWN and
+KILL, its volume at `/plugins`, and a host that is not root starts no backend. The api reaches the host at
+`EVO_HUB_PLUGIN_HOST_URL` with the same shared secret, which must be at least 32 random characters and never a value
+an example showed; without both variables the api runs no backend and the service idles. The hub mints a backend's
+token at each start and revokes a plugin's tokens when it is removed or turned off. A backend that crashes or hangs
+makes the call fail within its timeout, and the host restarts it with a backoff; a hub admin reads each backend's
+state at `GET /v1/plugins/{name}/backend`. The compose file caps the service with `EVO_HUB_PLUGINS_CPUS`,
+`EVO_HUB_PLUGINS_MEMORY` and `EVO_HUB_PLUGINS_PIDS`. The protocol, the sandbox, the requirements a backend may name
+(hashed wheels in its bundle) and how an author checks a plugin with `evo-agents plugin test` are in
+`docs/plugins.md`.
+
+### Plugins in a project
+
+An installed plugin does nothing in a project until an admin of the project enables it there (table `project_plugins`,
+migration 0035). `GET /v1/projects/{project}/plugins/{name}` shows what the installed version asks for, each
+permission with what it lets the plugin do in the project; enabling grants exactly that list, which the request names
+back, and any other list is a 422. Once an upgrade asks for more, the plugin lists it under `pending`, and enabling it
+again grants the new list. What a plugin may do in a project is what was granted there that its installed version
+still asks for, and only while it is installed and turned on; `granted` says that grant, so an upgrade that asks for
+less narrows it at once. Disabling deletes the grant; the versions of its config stay. A call the web's bridge makes
+for a plugin's page carries `X-Evo-Plugin: <plugin>`, and the hub refuses it with 403 unless the plugin may make it
+now (docs/plugins.md, Pages). Readers and writers of the project read all of this; only its admins change it. The web does the same on the
+project's Plugins page: Enable opens the consent, which lists every permission in words and the pages the plugin adds,
+and grants exactly that list; a plugin's page there holds the form of the project's layer of its config.
+
+```sh
+evo-agents hub plugin list --project evo-agents                  # each installed plugin, enabled or not, what it asks for
+evo-agents hub plugin enable sandbox --project evo-agents        # prints what it asks for, then asks; --yes grants it
+evo-agents hub plugin disable sandbox --project evo-agents
+```
+
+A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
+schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the
+project (agent) and a run's own (`plugin_config` of `POST .../runs`, plain values only). A field takes its value from the
+highest layer that sets it, whole. The three stored layers keep every version (table `plugin_configs`): a write names
+the fields it sets and those it unsets, the others stay, and each write that changes something makes the next
+version; a rollback makes the next version a copy of an older one. A field the schema marks `"x-secret": true` is
+sealed with `EVO_HUB_SECRETS_KEY` (without the key, setting one is a 503) and never shown again: answers name it as
+set, and the digest of an effective config counts it by a fingerprint of its sealed value. When a worker claims a
+run, the hub records, for each plugin enabled on the run's project, the installed version and the digest of the run's
+effective config (table `run_plugins`, `GET .../runs/{id}/plugins`).
+
+```sh
+evo-agents hub plugin config sandbox --project evo-agents --set greeting=hi --set retries=2
+printf %s "$TOKEN" | evo-agents hub plugin config sandbox --project evo-agents --secret token
+evo-agents hub plugin config sandbox --project evo-agents --agent helper --set retries=4
+evo-agents hub plugin config sandbox --instance --set greeting=hello      # the hub's own layer, hub admins
+evo-agents hub plugin config sandbox --project evo-agents --versions
+evo-agents hub plugin rollback sandbox --project evo-agents --to 1
+evo-agents hub plugin config --project evo-agents --effective             # every plugin it enabled, for the default agent
+evo-agents hub plugin config --project evo-agents --run 412               # what run 412 ran with
+```
+
+Each change is audited in the project: `plugin.project-enable` and `plugin.grant` (with the permissions) when a plugin
+is enabled, `plugin.grant` when a grant changes, `plugin.project-disable`, and `plugin.config` for each new version of a
+layer, naming the fields that changed or the version a rollback copied, never a value.
+
+## Branding and features
+
+A hub admin gives the hub a brand of its own and turns off what its users do not need, from the web (Administration,
+Branding and Features) or the API. Neither needs a variable or a new image, so one image serves hubs that look and
+behave differently (`docs/hub-deployment.md`). A hub where nothing is set looks and answers as one without either.
+
+**Branding** is the product's name (60 characters at most), a logo that takes the mark's place, a favicon, and the
+colours of four tokens of `web/DESIGN.md` for each theme: `brand`, `brand-hover`, `brand-soft` and `on-brand`, and no
+other colour. A write is refused (422, naming the pair, its colours and its ratio) when the colours it leaves, each
+theme whole and an unset token at its default, miss a contrast of WCAG 2.2 AA: `brand` on `surface`, `canvas` and
+`brand-soft` at 4.5:1 and on `surface-selected` at 3:1, `brand-hover` on `surface` at 4.5:1, and `on-brand` on
+`brand` at 4.5:1. The logo and the favicon are PNG, JPEG or WebP images (the favicon may also be an ICO) of 256 KiB at
+most, sent as base64 in JSON; the hub keeps them in the blob store as blobs it holds itself (kind `branding-image`), so
+setting one needs the S3 variables. Unsetting a field brings back the web's own name, mark, favicon or colour.
+`GET /v1/branding` answers without a credential, since the sign-in page shows it.
+
+**Features** are what core declares can be turned off (`evo_agents.hub.features`):
+
+| Feature | Set for | Off means |
+| --- | --- | --- |
+| `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 |
+| `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
+| `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` answers 404 and the `kg_*` tools of `/mcp` return that error |
+| `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
+
+A feature is on until a layer turns it off. A project's layer, where it sets a feature, wins over the hub's, so a hub
+admin may turn a feature off for the whole hub and back on for one project. The 404 comes after authentication, so a
+request without a credential still gets 401, and a caller who cannot see the project gets the 404 of a project that
+does not exist. The web leaves out of its menus what is off for the project it shows, and answers 404 to its pages.
+
+Both are settings with versions, kept in `hub_settings` (migration 0037): a write names the fields it sets (`values`)
+and those it clears (`unset`), the others stay, and `if_version` makes it a 409 unless the layer is at that version
+now; a rollback makes the next version a copy of an older one. Each version is audited as `settings.branding` or
+`settings.features`. There is no command for them; a hub admin's machine token works with the API:
+
+```sh
+H="authorization: bearer $(cat ~/.evo/hub/token)"   # a hub admin's machine token, from evo-agents hub login
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/branding \
+  -d '{"values": {"name": "Acme Agents", "colors": {"light": {"brand": "#0b5cad"}, "dark": {"brand": "#6fb1ff"}}}}'
+base64 < logo.png | jq -Rs '{data: gsub("\n"; "")}' | curl -fsS -X PUT -H "$H" -H 'content-type: application/json' \
+  https://hub.example.org/v1/admin/branding/logo -d @-
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/features \
+  -d '{"values": {"chats": false, "kg": false}}'
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/projects/demo/features \
+  -d '{"values": {"kg": true}}'                                          # kg back on for demo alone
+curl -fsS -H "$H" -H 'content-type: application/json' https://hub.example.org/v1/admin/branding/rollback \
+  -d '{"version": 1}'
+```
+
 ## Blobs on R2
 
 Postgres holds metadata; the blob store holds bytes. The bucket stays private, and the access key the hub gets should
@@ -1121,7 +1298,8 @@ An upload takes three calls. The client asks `POST /v1/blobs/uploads` for presig
 the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blobs/commit`. The hub reads each upload
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
-Limits per kind: 10 MiB for a skill bundle, 256 MiB for a run log, 64 MiB for a source file.
+Limits per kind: 10 MiB for a skill bundle, 32 MiB for a plugin bundle, 256 MiB for a run log, 64 MiB for a source
+file.
 
 A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
 upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls
@@ -1272,17 +1450,22 @@ care, then run `ruff format` on it. `tests/hub/test_schema_metadata.py` checks t
 GitHub Actions (`.github/workflows/images.yml`) builds two images. A push to a branch builds both and pushes
 nothing; a `v*` tag pushes them to GHCR with the version as tag:
 
-- `ghcr.io/maycuatroi1/evo-agents-hub:<version>`, from `deploy/hub/Dockerfile`: api and worker. It runs as a non-root
-  user, serves on 8080, and its HEALTHCHECK calls `/v1/health/live`.
+- `ghcr.io/maycuatroi1/evo-agents-hub:<version>`, from `deploy/hub/Dockerfile`: api, worker and the plugin host. It
+  runs as a non-root user (the plugin host alone runs as root, section Isolated backends), serves on 8080, and its
+  HEALTHCHECK calls `/v1/health/live`.
 - `ghcr.io/maycuatroi1/evo-agents-hub-web:<version>`, from `web/Dockerfile`: the Next.js standalone server on 3000.
   `next build` fixes the `/v1` rewrite into the image, and the build argument `EVO_HUB_API_INTERNAL_URL` sets its
   target, `http://api:8080` by default. Build with `--build-arg EVO_HUB_API_INTERNAL_URL=<url>` for another address.
 
-`deploy/hub/docker-compose.yml` builds the three services from the checkout it is in and gives the images those names,
-tagged `EVO_HUB_VERSION`; `docker compose up` without `--build` pulls that release from GHCR instead. Postgres is not in it:
-point `EVO_HUB_DSN` at a database the platform manages, reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK`
-(default `dokploy-network`). The volumes `api-cache` and `worker-cache` are caches; deleting them loses nothing. Set
-the variables in the platform's environment, never in a committed file. `deploy/hub/.env.example` lists them:
+`deploy/hub/docker-compose.yml` builds the four services (api, worker, the plugin host `plugins`, and web) from the
+checkout it is in and gives the images those names, tagged `EVO_HUB_VERSION`; `docker compose up` without `--build`
+pulls that release from GHCR instead. Postgres is not in it: point `EVO_HUB_DSN` at a database the platform manages,
+reachable on the Docker network `EVO_HUB_PLATFORM_NETWORK` (default `dokploy-network`). The volumes `api-cache` and
+`worker-cache` are caches; deleting them loses nothing. `plugins-cache` holds the code and the environments of the
+isolated plugins, which the host places again, and each backend's own data directory, where a plugin may keep state:
+deleting it loses that state. A hub for a client, from the same images with its own branding, publishers and plugins,
+is in `docs/hub-deployment.md`. Set the variables in the platform's environment, never in a committed file.
+`deploy/hub/.env.example` lists them:
 
 | Variable | Used by | Meaning |
 | --- | --- | --- |
@@ -1307,8 +1490,13 @@ the variables in the platform's environment, never in a committed file. `deploy/
 | `EVO_HUB_GITHUB_APP_ID`, `EVO_HUB_GITHUB_APP_PRIVATE_KEY` | api, worker | the GitHub App that makes each run a token for its repos only: its ID or client ID, and its private key in PEM, where `\n` may stand for each line break; both or neither |
 | `EVO_HUB_CURATOR_APP_ID`, `EVO_HUB_CURATOR_APP_PRIVATE_KEY` | api, worker | the Curator's own GitHub App, evo-agents-curator, as the two above: every run of the Curator gets its GitHub token from it alone, and the hub checks with it that each repo's ruleset keeps it off the default branch; both or neither, and without them no run of the Curator gets a GitHub token (`docs/curator.md`) |
 | `EVO_HUB_TELEGRAM_BOT_TOKEN`, `EVO_HUB_TELEGRAM_WEBHOOK_SECRET` | api, worker | the hub's Telegram bot, as @BotFather gives its token, and the secret Telegram sends back with each update (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`); without either the Telegram channel is off and the hub runs on (`docs/notifications.md`). `evo-agents hub admin telegram --set-webhook` then points the bot at `EVO_HUB_PUBLIC_URL/v1/telegram/webhook` |
+| `EVO_HUB_PLUGIN_PUBLISHERS` | api | the publishers whose signed plugin bundles the hub accepts: comma-separated `ID=sigstore:OWNER/REPO/.github/workflows/FILE.yml` (a GitHub Actions workflow that signs keyless with Sigstore) or `ID=ed25519:KEY` (a public key, 32 bytes in base64) entries, several for one id; unset trusts nobody and every bundle is refused (section Plugins) |
+| `EVO_HUB_PLUGIN_CORE_PUBLISHERS` | api | the ids among those publishers whose plugins may be core plugins, comma-separated; each must be in `EVO_HUB_PLUGIN_PUBLISHERS` |
+| `EVO_HUB_PLUGIN_HOST_URL` | api, worker | where the api reaches the plugin host, such as `http://evo-agents-hub-plugins:8090`; with the token below, both or the api runs no isolated backend (section Isolated backends) |
+| `EVO_HUB_PLUGIN_HOST_TOKEN` | api, worker, plugins | the secret the api and the plugin host share, at least 32 random characters, refused when it is a value an example showed; the `plugins` service takes it and nothing else of the hub's |
 | `EVO_HUB_FORWARDED_ALLOW_IPS` | api | the reverse proxies whose `X-Forwarded-For` the api believes: IP addresses or networks, comma-separated, or `*`; unset keeps uvicorn's default, the loopback addresses (or its own `FORWARDED_ALLOW_IPS`) |
 | `EVO_HUB_WORKER_CPUS`, `EVO_HUB_WORKER_MEMORY` | compose | worker limits, default `2` and `4g` |
+| `EVO_HUB_PLUGINS_CPUS`, `EVO_HUB_PLUGINS_MEMORY`, `EVO_HUB_PLUGINS_PIDS` | compose | limits of the `plugins` service, every backend together, default `1`, `2g` and `512` |
 | `EVO_HUB_API_INTERNAL_URL` | web | where the web server reaches the api, default `http://evo-agents-hub-api:8080` (the api's network alias) |
 | `EVO_HUB_WEB_TIME_ZONE` | web | time zone of dates rendered on the server, default `Asia/Ho_Chi_Minh` |
 | `EVO_HUB_PLATFORM_NETWORK` | compose | the external network the database is on |

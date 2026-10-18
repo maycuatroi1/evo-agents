@@ -51,7 +51,7 @@ from evo_agents.hub.server.decisions import (
     AnswerIn,
     Decision,
     DecisionAsk,
-    _answer_target,
+    answer_target,
     decision_view,
     store_decision,
 )
@@ -65,9 +65,9 @@ from evo_agents.hub.server.run_events import (
     InboxAck,
     InboxMessage,
     RunStreams,
-    _deliver,
-    _undelivered,
+    deliver,
     store_events,
+    undelivered,
 )
 from evo_agents.hub.server.run_state import write_event, write_state
 from evo_agents.hub.server.runs.models import LINE, MAX_ID, REFUSALS, Run, RunId
@@ -525,7 +525,7 @@ async def answered_on_the_spot(
             await write_state(conn, run_id, "waiting", "running", "session", "the person answered on the spot")
         await conn.execute(_touch(run_id))
         await write_event(conn, run_id, {"text": f"decision #{decision_id} answered on the machine"})
-        target = _answer_target(project, row.plan_id, found.step_key, decision_id, run_id, body.option, "local")
+        target = answer_target(project, row.plan_id, found.step_key, decision_id, run_id, body.option, "local")
         await audit.record(
             conn,
             actor_id=user.user_id,
@@ -550,8 +550,8 @@ async def take_inbox(
         await _own(conn, user, project, run_id)
         await conn.execute(_touch(run_id))
         if ack is not None:
-            await conn.execute(_deliver(run_id, ack))
-        rows = (await conn.execute(_undelivered(run_id))).all()
+            await conn.execute(deliver(run_id, ack))
+        rows = (await conn.execute(undelivered(run_id))).all()
     return Inbox(messages=[InboxMessage(**row._mapping) for row in rows])
 
 

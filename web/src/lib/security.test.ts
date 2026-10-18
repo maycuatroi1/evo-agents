@@ -16,6 +16,7 @@ describe("contentSecurityPolicy", () => {
     const policy = directives(contentSecurityPolicy({ nonce: "abc123" }));
     expect(policy.get("script-src")).toEqual(["'self'", "'nonce-abc123'", "'strict-dynamic'", "'wasm-unsafe-eval'"]);
     expect(policy.get("frame-ancestors")).toEqual(["'none'"]);
+    expect(policy.get("frame-src")).toEqual(["'self'"]); // the sandboxed pages of plugins, served by the hub itself
     expect(policy.get("object-src")).toEqual(["'none'"]);
     expect(policy.get("base-uri")).toEqual(["'self'"]);
     expect(policy.get("form-action")).toEqual(["'self'"]);

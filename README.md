@@ -315,7 +315,9 @@ Cloudflare R2 bucket. `evo-agents hub serve`
 and `evo-agents hub worker` need the server extra: `pip install 'evo-ak[hub-server]'`. [docs/hub.md](docs/hub.md)
 covers the API and its OpenAPI document, sign-in from the CLI and the web, who sees what, the plan copies in git,
 workers and runs, blobs on R2, the job worker and its queue, and operations: migrations, backup, restore and
-health checks.
+health checks. [docs/plugins.md](docs/plugins.md) covers plugins: their extension points, the plugin host and the
+`plugin/1` protocol, pages and signing; [docs/hub-deployment.md](docs/hub-deployment.md) a hub for a client, from the
+same images, with its own branding, publishers and plugins.
 
 ### The web
 
@@ -411,7 +413,8 @@ docs/         hub.md: running and using the hub; workers.md: workers, runs, plan
               notifications.md: decisions, notices and notifications; credentials.md: secrets and the leases of
               worker runs; curator.md: the Curator, a project's night shift; structure.md: package boundaries
               and size budgets that CI checks, and how to split a module; kg.md: what kg_impact follows, and
-              its coverage per language
+              its coverage per language; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
+              hub for a client
 ```
 
 ## License

@@ -23,6 +23,24 @@ export function BrandMark({ className }: { className?: string }) {
   );
 }
 
+/**
+ * The hub's mark where the shell shows one: the logo the hub's branding sets (GET /v1/branding/logo), or the mark
+ * above without one. Decorative, as the mark is; the product's name is the text beside it.
+ */
+export function HubMark({ logoUrl, className }: { logoUrl?: string | null; className?: string }) {
+  if (!logoUrl) return <BrandMark className={className} />;
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- an image the hub API serves, at a size the CSS sets
+    <img
+      src={logoUrl}
+      alt=""
+      aria-hidden="true"
+      data-testid="hub-logo"
+      className={cn("size-8 shrink-0 rounded-sm object-contain", className)}
+    />
+  );
+}
+
 /** GitHub's mark (Simple Icons, CC0). */
 export function GitHubMark({ className }: { className?: string }) {
   return (

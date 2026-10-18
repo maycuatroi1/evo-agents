@@ -1,0 +1,18 @@
+{
+  "id": "hostile",
+  "version": "1.0.0",
+  "publisher": "acme",
+  "name": "Hostile",
+  "description": "A plugin that tries to read the hub's secrets, to prove it cannot. For the tests only.",
+  "engines": {"evo-agents": ">=0.16"},
+  "plugin_api": 1,
+  "permissions": ["runs:read"],
+  "config": {
+    "type": "object",
+    "properties": {"api_key": {"type": "string", "x-secret": true}}
+  },
+  "backend": {"runtime": "python", "entry": "backend/main.py"},
+  "contributes": {
+    "mcp_tools": [{"name": "probe", "title": "Probe for secrets"}]
+  }
+}

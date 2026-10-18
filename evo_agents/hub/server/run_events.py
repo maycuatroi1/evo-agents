@@ -392,7 +392,7 @@ async def post_events(request: Request, run_id: RunId, body: EventBatch, user: C
         return await store_events(request, conn, run_id, state, last_seq, acked, body.events)
 
 
-def _deliver(run_id: int, ack: int):
+def deliver(run_id: int, ack: int):
     """Mark the messages of run ``run_id`` up to ``ack`` delivered, and the decisions they answer, which reached the
     agent with them: one statement, the update of the inbox a data-modifying CTE of the update of decisions."""
     i, d = tables.run_inbox, tables.decisions
@@ -410,7 +410,7 @@ def _deliver(run_id: int, ack: int):
     )
 
 
-def _undelivered(run_id: int):
+def undelivered(run_id: int):
     i, u = tables.run_inbox, tables.users
     return (
         select(i.c.id, i.c.body.label("text"), u.c.login.label("sent_by"), i.c.created_at, i.c.decision_id)
@@ -430,8 +430,8 @@ async def take_inbox(request: Request, run_id: RunId, user: CurrentUser, body: I
         if state not in runs.HELD_STATES:
             raise HTTPException(404, NOT_HELD.format(id=run_id))
         if ack is not None:
-            await conn.execute(_deliver(run_id, ack))
-        rows = (await conn.execute(_undelivered(run_id))).all()
+            await conn.execute(deliver(run_id, ack))
+        rows = (await conn.execute(undelivered(run_id))).all()
     return Inbox(messages=[InboxMessage(**row._mapping) for row in rows])
 
 

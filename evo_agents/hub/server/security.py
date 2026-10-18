@@ -8,8 +8,10 @@ without use: using it pushes the expiry TOKEN_TTL past now, but the row is writt
 busy token does not write on every request. Revoked, expired and unknown credentials all get the same 401, which names
 ``evo-agents hub login`` (``evo-agents worker join`` on the worker's routes).
 
-``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and fails closed: a route added later needs a
-credential unless it is listed there. A machine token arrives as ``Authorization: Bearer`` and a web session as
+``Authenticate`` guards every path under /v1 except PUBLIC_PATHS and the paths under PUBLIC_PREFIXES, and fails
+closed: a route added later needs a credential unless it is listed there. The one public prefix serves the files of
+plugins' pages to their sandboxed frames, whose requests carry no cookie: a ticket in the path is their credential
+(``evo_agents.hub.server.plugin_pages``). A machine token arrives as ``Authorization: Bearer`` and a web session as
 the SESSION_COOKIE cookie; each is accepted only through its own channel. A write (POST, PUT, PATCH, DELETE) made
 with the cookie must also carry X-Evo-CSRF, an HMAC of the session under the session secret that GET
 /v1/auth/web/csrf hands out; a Bearer request needs none, since a browser never adds that header by itself.
@@ -80,9 +82,14 @@ PUBLIC_PATHS = frozenset(
         "/v1/auth/web/login",
         "/v1/auth/web/callback",
         "/v1/worker/join",  # a pairing code is the credential
-        "/v1/telegram/webhook",  # the secret token Telegram sends is the credential (evo_agents.hub.server.telegram)
+        "/v1/telegram/webhook",  # the secret token Telegram sends is the credential (core plugin telegram)
+        "/v1/branding",  # the sign-in page shows the hub's branding (evo_agents.hub.server.branding)
+        "/v1/branding/logo",
+        "/v1/branding/favicon",
     }
 )
+# Paths under these prefixes check their own credential, a ticket in the path (evo_agents.hub.server.plugin_pages).
+PUBLIC_PREFIXES = ("/v1/plugin-ui/",)
 # Websockets under /v1 whose routes check their own credential; every other one is closed before the app sees it.
 SELF_CHECKED_WEBSOCKETS = (
     re.compile(r"/v1/projects/[^/]+/runs/[^/]+/terminal"),  # the browser's end: the session cookie, Origin, CSRF
@@ -295,6 +302,11 @@ async def authenticate(engine, token: str, kind: str, config) -> Principal | Non
     return Principal(user_id, login, admin, token_id, kind, digest)
 
 
+def is_public(path: str) -> bool:
+    """Whether a request to ``path`` needs no credential of the hub: PUBLIC_PATHS, and PUBLIC_PREFIXES."""
+    return path in PUBLIC_PATHS or path.startswith(PUBLIC_PREFIXES)
+
+
 def unauthorized(request: Request, message: str, *, clear_cookie: bool = False) -> Response:
     response = error_response(request, 401, message, headers=WWW_AUTHENTICATE)
     if clear_cookie:  # the browser should stop sending a session that will never work again
@@ -303,7 +315,7 @@ def unauthorized(request: Request, message: str, *, clear_cookie: bool = False) 
 
 
 class Authenticate:
-    """Pure ASGI middleware: every request under /v1 outside PUBLIC_PATHS needs a live credential of a kind the path
+    """Pure ASGI middleware: every request under /v1 that is not public needs a live credential of a kind the path
     takes, a write made with the session cookie needs its CSRF header, and a request under WORKER_PREFIX needs the
     worker protocol header. The principal goes to ``request.state.principal``. A websocket under /v1 passes only to
     the routes of SELF_CHECKED_WEBSOCKETS, which check their own credential."""
@@ -321,16 +333,12 @@ class Authenticate:
                 await WebSocketClose(code=WEBSOCKET_REFUSED, reason=reason)(scope, receive, send)
             return
         worker_route = path.startswith(WORKER_PREFIX)
-        if (
-            scope["type"] != "http"
-            or not path.startswith(PROTECTED_PREFIX)
-            or (path in PUBLIC_PATHS and not worker_route)
-        ):
+        if scope["type"] != "http" or not path.startswith(PROTECTED_PREFIX) or (is_public(path) and not worker_route):
             await self.app(scope, receive, send)
             return
         request = Request(scope)
         refusal = self._protocol_refusal(request) if worker_route else None
-        if refusal is None and path not in PUBLIC_PATHS:
+        if refusal is None and not is_public(path):
             refusal = await self._check(request, worker_route)
         if refusal is not None:
             await refusal(scope, receive, send)

@@ -66,6 +66,10 @@ def build_parser() -> argparse.ArgumentParser:
     from evo_agents.worker.cli import register as register_worker
 
     register_worker(sub)
+
+    from evo_agents.plugins.cli import register as register_plugin
+
+    register_plugin(sub)
     return parser
 
 
