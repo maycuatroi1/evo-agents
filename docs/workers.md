@@ -691,8 +691,8 @@ it holds:
   "free_slots": 1,
   "runs": [12],
   "agent_version": "0.3.0",
-  "run_kinds": ["step", "plan", "review", "judge"],
-  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments"]
+  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task"],
+  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs"]
 }
 ```
 
@@ -713,8 +713,10 @@ with a new agent session for each step, `author_decisions`, an author run whose 
 `evo-agents worker ask` and waits for every answer of its turn (the hub then builds the author prompt with the rules of
 decisions; without it, the rules of a chat alone), and `agent_profiles`, a daemon whose adapters apply a run's agent
 profile (tools, skills and model in the session, the instructions in its system prompt), `plugin_runtimes`, a daemon
-that runs the runtimes of plugins through its adapter of ACP, and `environments`, a daemon that runs a run's agent in
-the environment its claim names, a container of a plugin's environment. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
+that runs the runtimes of plugins through its adapter of ACP, `environments`, a daemon that runs a run's agent in
+the environment its claim names, a container of a plugin's environment, and `agent_packs`, a daemon that builds the
+agent packs a run's profile attaches ([Agent packs](#agent-packs)). This daemon sends every kind of `runs.RUN_KINDS` and
+every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first

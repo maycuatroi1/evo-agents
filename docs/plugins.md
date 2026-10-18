@@ -186,8 +186,10 @@ their payloads from `GET /internal/plugin-host/plugins`, which mints nothing, an
 A pull that finds nothing changed restarts nothing. Removing a plugin, or the hub turning it off, revokes its tokens at
 once, and the host stops its backend at its next pull (every 60 seconds). Minting locks the plugin's row as both of
 those do, so neither can slip between minting's read and its insert, and a token opens nothing once its plugin is not
-installed or is turned off, whatever its own row says. No route of the hub takes a plugin's token yet; when the hub calls
-a plugin, the extension points check on that call that the plugin is installed, turned on, enabled by the project and
+installed or is turned off, whatever its own row says. A plugin's token is not a user token and never signs in: only the
+plugin API under `/v1/plugin-api/` takes it (a backend hands tasks to its agent types there, section Agent types), and
+each request may do only what the plugin's installed version asks for and the project granted. When the hub calls a
+plugin, the extension points check on that call that the plugin is installed, turned on, enabled by the project and
 granted what the call needs (section Extension points).
 
 ## Crashes, hangs and restarts
