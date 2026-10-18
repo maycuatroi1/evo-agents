@@ -328,6 +328,7 @@ class FakeCLI:
     def __init__(self, behaviour):
         self.behaviour = behaviour
         self.log: list[tuple] = []
+        self.requests: dict[str, dict] = {}  # the last control request of each subtype the SDK sent, as it sent it
         self.answers: dict[str, dict] = {}  # the response to a control request, by subtype; {} when it has none
         self.users: asyncio.Queue = asyncio.Queue()
         self.out: asyncio.Queue = asyncio.Queue()
@@ -348,6 +349,7 @@ class FakeCLI:
         if message["type"] == "control_request":
             subtype = message["request"]["subtype"]
             self.log.append(("control", subtype))
+            self.requests[subtype] = message["request"]
             answer = self.answers.get(subtype, {})
             response = {"subtype": "success", "request_id": message["request_id"], "response": answer}
             self.print({"type": "control_response", "response": response})
@@ -414,7 +416,12 @@ def test_claude_code_runs_with_full_permissions_in_the_worktree_under_the_daemon
     assert options.session_id == session and options.resume is None
     assert options.cwd == str(tmp_path / "worktree")
     append = f"{common.HEADLESS_NOTE}\n\n{claude_module.BACKGROUND_NOTE}\n\n{claude_module.SUBAGENT}"
-    assert options.system_prompt == {"type": "preset", "preset": "claude_code", "append": append}
+    assert options.system_prompt == {
+        "type": "preset",
+        "preset": "claude_code",
+        "append": append,
+        "exclude_dynamic_sections": True,
+    }
     assert "CLAUDECODE" not in options.env, "the agent is no child of a Claude Code session the daemon runs in"
     # The flags the SDK gives the CLI with these options (its own transport builds them; the fake took its place).
     from claude_agent_sdk._internal.transport.subprocess_cli import SubprocessCLITransport
@@ -425,6 +432,25 @@ def test_claude_code_runs_with_full_permissions_in_the_worktree_under_the_daemon
     assert f"--session-id={session}" in command and "--append-system-prompt" in command
     assert not Path(options.cli_path).exists(), "the launcher is removed with the run"
     assert adapter.cli.log == [("control", "initialize"), ("user", PROMPT), ("result", "SECOND"), ("end_input",)]
+
+
+def test_claude_codes_system_prompt_is_the_same_in_every_worktree_run_and_step(tmp_path):
+    """The preset leaves out what depends on the machine or the worktree (its auto memory path), and the text appended
+    names no worktree, run or step, so sessions anywhere share the system prompt's cache."""
+    (tmp_path / "one").mkdir()
+    (tmp_path / "two").mkdir()
+    first = _claude(tmp_path / "one", _samples, step_key="1")
+    asyncio.run(_collect(first))
+    second = _claude(tmp_path / "two", _samples, id=42, step_key="2", title="another step")
+    asyncio.run(_collect(second))
+    assert first.options.cwd != second.options.cwd
+    assert first.options.system_prompt == second.options.system_prompt
+    assert first.options.system_prompt["exclude_dynamic_sections"] is True
+    # The SDK sends the flag in its initialize request, not as a flag on the command line.
+    assert first.cli.requests["initialize"]["excludeDynamicSections"] is True
+    append = first.options.system_prompt["append"]
+    for unwanted in (str(tmp_path), "worktree", "41", "step 1", "adapters"):
+        assert unwanted not in append, unwanted
 
 
 def test_claude_codes_sample_events_come_out_in_the_hubs_kinds(tmp_path):
