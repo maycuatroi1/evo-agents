@@ -7,8 +7,9 @@ older tokens, so a token lives as long as the backend it was made for, and a hos
 gets the same payload and restarts nothing. Removing a plugin and the hub turning it off revoke its tokens at once
 (``revoke_tokens``, from ``plugin_store``), before its backend has stopped; minting locks the plugin's row as they do,
 and ``plugin_of_token`` takes no token of a plugin that is not installed or is turned off. A plugin token is not a user
-token: it never signs in, and it reaches the hub only on the routes the extension points of a plugin use (step 5),
-which check with ``plugin_of_token`` on each request. What it may do is what the plugin's installed version asks for
+token: it never signs in, and it reaches the hub only on the routes of the plugin API under ``/v1/plugin-api/`` (a
+plugin hands tasks to its agent types there, ``evo_agents.hub.server.task_dispatch``), which check with
+``plugin_of_token`` on each request. What it may do is what the plugin's installed version asks for
 and the projects that enabled it granted (``plugin_grants.project_grants``), and nothing else.
 
 ``backend_payload`` is what the host gives the backend in ``initialize`` (``evo_agents.plugins.protocol``), the token

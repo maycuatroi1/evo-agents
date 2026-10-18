@@ -107,6 +107,9 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
         row |= {"machine": "mac", "cwd": "/work/evo", "claude_email": "a@example.com", "last_activity_at": now}
         if state == "ended":
             row["finished_at"] = now
+    elif kind == "task":  # the work a plugin hands an agent type of its own, on no plan, its text the request (0042)
+        row |= {"kind": "task", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
+        row |= {"branch": "task/1", "repos": REPOS, "request": "Fix the wait.", "pulls": []}
     elif kind != "step":
         row["kind"] = kind
     row |= columns
@@ -114,6 +117,24 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     row.setdefault("requested_runtime", "any" if row.get("worker_id") is not None else row["runtime"])
     # None is SQL NULL, in the JSONB column repos too, where SQLAlchemy would write the JSON null
     return new_id(conn, tables.runs, **{name: null() if value is None else value for name, value in row.items()})
+
+
+def add_agent_type(conn, ids) -> int:
+    """Agent type triager of plugin sandbox, enabled in the seeded project under its own profile; its id."""
+    axes = ("credential", "tool", "skill", "worker", "project", "model", "runtime", "environment")
+    plugin = new_id(conn, tables.plugins, name="sandbox", publisher="acme")
+    profile = new_id(
+        conn,
+        tables.agent_profiles,
+        project_id=ids["project"],
+        handle="triager",
+        name="Triager",
+        color="#475569",
+        permissions={axis: {"mode": "all"} for axis in axes},
+        created_by=ids["user"],
+    )
+    values = {"project_id": ids["project"], "plugin_id": plugin, "name": "triager", "profile_id": profile}
+    return new_id(conn, tables.project_agent_types, run_as=ids["user"], daily_usd=5.0, enabled_by=ids["user"], **values)
 
 
 def add_worker(conn, ids, name: str, token_hash: str) -> int:
@@ -304,8 +325,11 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, kind="chat", chat_id=chat_id, chat_message_id=message)
     for state in runs.LOCAL_STATES:  # local runs, a session each (0033)
         add_run(conn, ids, state, kind="local")
+    agent_type = add_agent_type(conn, ids)
+    for state in runs.RUN_STATES:  # task runs, the work a plugin hands an agent type of its own (0042)
+        add_run(conn, ids, state, kind="task", agent_type_id=agent_type)
     assert query_kinds(conn) == set(runs.SHOWN_KINDS)
-    for runtime in ("any", *runs.RUNTIMES):
+    for runtime in ("any", *runs.RUNTIMES, "sandbox/fake"):  # a plugin's runtime, <plugin>/<name> (0039)
         for mode in runs.MODES:
             for approval in runs.APPROVALS:
                 step = f"{runtime}-{mode}-{approval}"

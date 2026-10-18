@@ -1264,7 +1264,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels or name: its owner only, from a web session or with their machine token.
+         * @description Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine
+         *     token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -2764,6 +2765,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/builder/{project}/proposals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Proposals
+         * @description The project's proposals of @builder, the newest first; those in ``state`` alone when given.
+         */
+        get: operations["list_proposals_v1_x_builder__project__proposals_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/builder/{project}/proposals/{proposal_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Show Proposal */
+        get: operations["show_proposal_v1_x_builder__project__proposals__proposal_id__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/builder/{project}/proposals/{proposal_id}/answer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Answer Proposal
+         * @description Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why
+         *     it could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the
+         *     others.
+         */
+        post: operations["answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/builder/{project}/proposals/{proposal_id}/rollback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Roll Back Proposal
+         * @description Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is
+         *     still at the version the proposal made.
+         */
+        post: operations["roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/telegram": {
         parameters: {
             query?: never;
@@ -3209,6 +3290,130 @@ export interface paths {
          * @description Drop the profile's avatar, as its next version: the web draws its initial on its colour again.
          */
         delete: operations["delete_avatar_v1_projects__project__agents__handle__avatar_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agent-packs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Packs
+         * @description The agent packs a profile of the project may attach, by plugin, then in its manifest's order.
+         */
+        get: operations["list_agent_packs_v1_projects__project__agent_packs_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agent-types": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Agent Types
+         * @description The agent types of the plugins the project enabled, by plugin, then in its manifest's order.
+         */
+        get: operations["list_agent_types_v1_projects__project__agent_types_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/agent-types/{plugin}/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Enable Agent Type
+         * @description Enable agent type ``name`` of ``plugin`` in the project, creating its profile the first time, or change how.
+         */
+        put: operations["enable_agent_type_v1_projects__project__agent_types__plugin___name__put"];
+        post?: never;
+        /**
+         * Disable Agent Type
+         * @description Turn agent type ``name`` of ``plugin`` off in the project: the plugin's tasks are refused; its profile stays.
+         */
+        delete: operations["disable_agent_type_v1_projects__project__agent_types__plugin___name__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/agent-types/{name}/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Dispatch Task
+         * @description Hand a task to agent type ``name`` of the plugin whose token the request carries: a run of kind task.
+         */
+        post: operations["dispatch_task_v1_plugin_api_projects__project__agent_types__name__tasks_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/plugin-api/projects/{project}/tasks/{task}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Task
+         * @description A task the plugin whose token the request carries handed, as its latest run has it.
+         */
+        get: operations["show_task_v1_plugin_api_projects__project__tasks__task__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/task/pulls": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Pushed
+         * @description The worker pushed the task run's branch of a repo: its draft pull request, kept on the run.
+         */
+        post: operations["pushed_v1_worker_runs__run_id__task_pulls_post"];
+        delete?: never;
         options?: never;
         head?: never;
         patch?: never;
@@ -4514,9 +4719,14 @@ export interface components {
             permissions: components["schemas"]["AgentPermissions"];
             /**
              * Restricted
-             * @description the axes that are allowlists, in the order of the seven
+             * @description the axes that are allowlists, in the order of the eight
              */
             restricted: string[];
+            /**
+             * Packs
+             * @description the agent packs it attaches, in order, each at the version it pins
+             */
+            packs: components["schemas"]["PinnedPack"][];
             /** Version */
             version: number;
             /** Created By */
@@ -4590,6 +4800,11 @@ export interface components {
              */
             color?: string | null;
             permissions?: components["schemas"]["AgentPermissions"];
+            /**
+             * Packs
+             * @description the agent packs it attaches, in order; see GET .../agent-packs
+             */
+            packs?: components["schemas"]["AgentPackPin"][];
         };
         /**
          * AgentEdit
@@ -4604,8 +4819,13 @@ export interface components {
             instructions?: string | null;
             /** Color */
             color?: string | null;
-            /** @description the seven axes whole; an axis left out allows all */
+            /** @description the eight axes whole; an axis left out allows all */
             permissions?: components["schemas"]["AgentPermissions"] | null;
+            /**
+             * Packs
+             * @description the agent packs it attaches, whole, in order; [] for none
+             */
+            packs?: components["schemas"]["AgentPackPin"][] | null;
             /**
              * If Version
              * @description 409 unless the profile is at this version now
@@ -4668,8 +4888,58 @@ export interface components {
             reply_to?: number | null;
         };
         /**
+         * AgentPack
+         * @description A pack a profile of the project may attach: of a plugin the project enabled, at one of ``versions``.
+         */
+        AgentPack: {
+            /**
+             * Pack
+             * @description <plugin>/<name>
+             */
+            pack: string;
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Installed Version
+             * @description the plugin's version installed now, which a pin without one takes
+             */
+            installed_version: string;
+            /**
+             * Versions
+             * @description the versions of the plugin the hub holds that declare the pack and run on this release, the newest first
+             */
+            versions: string[];
+        };
+        /**
+         * AgentPackPin
+         * @description A pack a profile attaches: pack ``name`` of plugin ``plugin`` at version ``version`` of the plugin.
+         */
+        AgentPackPin: {
+            /**
+             * Plugin
+             * @description the plugin's id
+             */
+            plugin: string;
+            /**
+             * Name
+             * @description the pack, as the plugin's manifest names it
+             */
+            name: string;
+            /**
+             * Version
+             * @description a version of the plugin the hub holds; left out: the one installed now, which the profile pins
+             */
+            version?: string | null;
+        };
+        /**
          * AgentPermissions
-         * @description What the runs of a profile may use, on seven axes; an axis left out allows all.
+         * @description What the runs of a profile may use, on eight axes; an axis left out allows all.
          */
         AgentPermissions: {
             /** @description secret names, and github-app for the App's token */
@@ -4684,8 +4954,10 @@ export interface components {
             project?: components["schemas"]["AgentAxis"];
             /** @description model names, as a runtime names them */
             model?: components["schemas"]["AgentAxis"];
-            /** @description claude-code, opencode, codex */
+            /** @description claude-code, opencode, codex, and plugins' runtimes <plugin>/<name> */
             runtime?: components["schemas"]["AgentAxis"];
+            /** @description where the agent runs, in order of preference: host, the worker's own machine, and plugins' environments <plugin>/<name>, each a container; all runs on the host */
+            environment?: components["schemas"]["AgentAxis"];
         };
         /** AgentReactionIn */
         AgentReactionIn: {
@@ -4699,6 +4971,78 @@ export interface components {
              * @default false
              */
             remove: boolean;
+        };
+        /**
+         * AgentType
+         * @description An agent type a plugin the project enabled contributes, and how the project enabled it (null: never).
+         */
+        AgentType: {
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /** Title */
+            title: string | null;
+            /** Description */
+            description: string | null;
+            /**
+             * Handle
+             * @description its profile's handle: the one the hub made, or the one its template names
+             */
+            handle: string;
+            /**
+             * Environment
+             * @description <plugin>/<name>, the environment its runs take
+             */
+            environment: string | null;
+            /**
+             * Packs
+             * @description the agent packs of the plugin it attaches, <plugin>/<name>
+             */
+            packs: string[];
+            /**
+             * Enabled
+             * @description enabled in the project and not turned off: the plugin may hand it tasks
+             */
+            enabled: boolean;
+            /** Run As */
+            run_as: string | null;
+            /** Workers */
+            workers: string[];
+            /** Daily Usd */
+            daily_usd: number | null;
+            /**
+             * Spent Usd
+             * @description what its task runs cost in the last 24 hours
+             */
+            spent_usd: number;
+            /** Enabled By */
+            enabled_by: string | null;
+            /** Enabled At */
+            enabled_at: string | null;
+            /** Disabled At */
+            disabled_at: string | null;
+        };
+        /**
+         * AgentTypeIn
+         * @description How a project runs an agent type: under whose name, on which of that member's workers, at what cost a day.
+         */
+        AgentTypeIn: {
+            /**
+             * Run As
+             * @description the member whose name its runs go under: a writer or an admin of the project
+             */
+            run_as: string;
+            /**
+             * Workers
+             * @description the workers of run_as its runs may take, by name; none: any the profile allows
+             */
+            workers?: string[];
+            /**
+             * Daily Usd
+             * @description what its task runs may cost in 24 hours; a task past it is refused
+             */
+            daily_usd: number;
         };
         /** AgentVersion */
         AgentVersion: {
@@ -5056,6 +5400,97 @@ export interface components {
             started_at: string | null;
             /** Finished At */
             finished_at: string | null;
+        };
+        /**
+         * BuilderProposal
+         * @description A change @builder proposed, and what became of it.
+         */
+        BuilderProposal: {
+            /** Id */
+            id: number;
+            /** Project */
+            project: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "branding" | "features" | "plugin_config" | "agent";
+            /**
+             * Target
+             * @description layer (features), plugin and agent (plugin_config), agent (agent)
+             */
+            target: {
+                [key: string]: string;
+            };
+            /**
+             * Change
+             * @description set: field -> value; unset: the fields it clears
+             */
+            change: {
+                [key: string]: unknown;
+            };
+            /** Summary */
+            summary: string;
+            /**
+             * Base Version
+             * @description the setting's version it was proposed on, which approving needs still
+             */
+            base_version: number;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "pending" | "applied" | "rejected" | "failed" | "rolled_back";
+            /**
+             * Approver
+             * @description who may decide it
+             * @enum {string}
+             */
+            approver: "hub_admin" | "project_admin";
+            /**
+             * Proposed By
+             * @description the admin who asked @builder, the run's dispatcher
+             */
+            proposed_by: string;
+            /**
+             * Proposed At
+             * Format: date-time
+             */
+            proposed_at: string;
+            /** Decided By */
+            decided_by: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /**
+             * Applied Version
+             * @description the setting's version approving made
+             */
+            applied_version: number | null;
+            /**
+             * Rollback Version
+             * @description the setting's version rolling back made
+             */
+            rollback_version: number | null;
+            /**
+             * Error
+             * @description why the hub could not apply it, for a failed one
+             */
+            error: string | null;
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * Link
+             * @description the hub's message that shows it in its thread
+             */
+            link: string | null;
+        };
+        /** BuilderProposalAnswer */
+        BuilderProposalAnswer: {
+            /**
+             * Answer
+             * @enum {string}
+             */
+            answer: "approve" | "reject";
         };
         /** Builds */
         Builds: {
@@ -6422,11 +6857,10 @@ export interface components {
             steps: (number | string)[];
             /**
              * Runtime
-             * @description any: the claiming worker picks one it has
+             * @description any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422
              * @default any
-             * @enum {string}
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Mode
              * @default headless
@@ -7076,12 +7510,17 @@ export interface components {
             runs: components["schemas"]["RunControl"][];
             /** @description the worker's settings as the hub holds them, which its owner may change (PATCH /v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none */
             settings: components["schemas"]["WorkerSettings"];
+            /**
+             * Plugin Runtimes
+             * @description for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise
+             */
+            plugin_runtimes?: components["schemas"]["PluginRuntime"][];
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
             /**
              * Runtimes
-             * @description the runtimes on the machine: {"claude-code": {"available": true, "version": "2.1.289"}}
+             * @description the runtimes on the machine: {"claude-code": {"available": true, "version": "2.1.289"}}, and those of the plugins its owner accepted that the hub sent it (plugin_runtimes of the answer), as <plugin>/<name>
              */
             runtimes?: {
                 [key: string]: components["schemas"]["RuntimeReport"];
@@ -7109,7 +7548,7 @@ export interface components {
             run_kinds?: string[] | null;
             /**
              * Features
-             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
+             * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run whose agent runs in a container of a plugin's environment. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
         };
@@ -8005,7 +8444,7 @@ export interface components {
              * Notice Kind
              * @description a notice's kind; null for a decision
              */
-            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled") | null;
+            notice_kind: ("push_default_branch" | "merge_default_branch" | "plan_finished" | "run_failed" | "curator_brief" | "curator_paused" | "author_waiting" | "chat_mention" | "chat_added" | "plugin_disabled" | "builder_proposal") | null;
             /** Project */
             project: string | null;
             /** Run Id */
@@ -8313,7 +8752,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -8355,10 +8794,9 @@ export interface components {
             worker: string | null;
             /**
              * Runtime
-             * @description any until a worker claims the run
-             * @enum {string}
+             * @description any until a worker claims the run; a plugin's runtime is <plugin>/<name>
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /** Model */
             model: string | null;
             /**
@@ -8526,6 +8964,23 @@ export interface components {
             repo: string;
             /** Path */
             path: string;
+        };
+        /**
+         * PinnedPack
+         * @description A pack a profile attaches, at the version of its plugin it pins.
+         */
+        PinnedPack: {
+            /**
+             * Pack
+             * @description <plugin>/<name>
+             */
+            pack: string;
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /** Version */
+            version: string;
         };
         /** Plan */
         Plan: {
@@ -8769,11 +9224,10 @@ export interface components {
             worker_id?: number | null;
             /**
              * Runtime
-             * @description any: the claiming worker picks one it has
+             * @description any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422
              * @default any
-             * @enum {string}
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Model
              * @description the model to use, as its runtime names it (opencode: provider/model); null: the runtime's
@@ -9132,6 +9586,42 @@ export interface components {
              * @description whether its plugins may be core plugins, which run in the hub's processes
              */
             core: boolean;
+        };
+        /**
+         * PluginRuntime
+         * @description A runtime a plugin enabled on a project declares (``evo_agents.plugins.runtimes``): the command of an ACP agent,
+         *     at the plugin's version the hub has installed.
+         */
+        PluginRuntime: {
+            /**
+             * Runtime
+             * @description <plugin>/<name>, as runs name it
+             */
+            runtime: string;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Version
+             * @description the plugin's installed version
+             */
+            version: string;
+            /** Title */
+            title: string;
+            /**
+             * Command
+             * @description the program, found on the worker's PATH unless absolute, then its arguments
+             */
+            command: string[];
+            /**
+             * Models
+             * @description the models the agent offers, which the worker reports
+             */
+            models: string[];
+            /**
+             * Secrets
+             * @description the variables the agent needs, from the run's leases or the worker's environment
+             */
+            secrets: string[];
         };
         /** PluginVersion */
         PluginVersion: {
@@ -10196,7 +10686,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
             /** Project */
             project: string;
             /**
@@ -10243,15 +10733,14 @@ export interface components {
             pinned_worker_id: number | null;
             /**
              * Requested Runtime
-             * @enum {string}
+             * @description as the dispatch asked: any, a runtime of the core or a plugin's
              */
-            requested_runtime: "any" | "claude-code" | "opencode" | "codex";
+            requested_runtime: string;
             /**
              * Runtime
-             * @description any until a worker claims the run
-             * @enum {string}
+             * @description any until a worker claims the run; a plugin's runtime is <plugin>/<name>
              */
-            runtime: "any" | "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Model
              * @description the model the dispatch asked for; null: the runtime's own choice
@@ -10414,6 +10903,11 @@ export interface components {
              * @description the version of the profile whose rules apply to the run
              */
             profile_version?: number | null;
+            /**
+             * Environment
+             * @description the environment of a plugin, <plugin>/<name>, its claim picked from the environment axis of its profile, a container its agent runs in; null for a run on the worker's host, and before a claim
+             */
+            environment?: string | null;
             /**
              * Chat Id
              * @description a chat run's group chat; null for any other run
@@ -10757,6 +11251,48 @@ export interface components {
              */
             day: string;
         };
+        /**
+         * RunEnvironment
+         * @description An environment a plugin enabled on a project declares (``evo_agents.plugins.run_environments``): a container
+         *     image pinned by its digest, at the plugin's version the hub has installed.
+         */
+        RunEnvironment: {
+            /**
+             * Environment
+             * @description <plugin>/<name>, as the environment axis of a profile names it
+             */
+            environment: string;
+            /** Plugin */
+            plugin: string;
+            /**
+             * Version
+             * @description the plugin's installed version
+             */
+            version: string;
+            /** Title */
+            title: string;
+            /**
+             * Provider
+             * @default container
+             * @constant
+             */
+            provider: "container";
+            /**
+             * Image
+             * @description [registry/]repository[:tag]@sha256:<digest>, pulled and run by that digest
+             */
+            image: string;
+            /**
+             * Network
+             * @enum {string}
+             */
+            network: "none" | "outbound";
+            /**
+             * Mounts
+             * @description besides the worktree and the run's home
+             */
+            mounts?: components["schemas"]["RunMount"][];
+        };
         /** RunEvent */
         RunEvent: {
             /**
@@ -10954,6 +11490,76 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /**
+         * RunMount
+         * @description A mount of a plugin's environment (``evo_agents.plugins.run_environments.Mount``).
+         */
+        RunMount: {
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "tmpfs" | "volume";
+            /**
+             * Target
+             * @description the absolute path in the container
+             */
+            target: string;
+            /**
+             * Name
+             * @description a volume's name within the plugin; the worker names it evo-<plugin>-<name>
+             */
+            name?: string | null;
+            /**
+             * Read Only
+             * @default false
+             */
+            read_only: boolean;
+            /**
+             * Size Mb
+             * @description a tmpfs's size; null: the engine's default
+             */
+            size_mb?: number | null;
+        };
+        /**
+         * RunPack
+         * @description An agent pack the run's profile attaches (``evo_agents.plugins.agent_packs``), as the hub holds the version of
+         *     its plugin the profile pins: the worker downloads the plugin's bundle, checks it, and builds the pack from its
+         *     ``packs/<name>/`` into the run's directory for the agent's runtime.
+         */
+        RunPack: {
+            /**
+             * Pack
+             * @description <plugin>/<name>
+             */
+            pack: string;
+            /** Plugin */
+            plugin: string;
+            /** Name */
+            name: string;
+            /**
+             * Version
+             * @description the version of the plugin the profile pins
+             */
+            version: string;
+            /**
+             * Sha256
+             * @description what the downloaded bundle must hash to
+             */
+            sha256: string;
+            /** Size */
+            size: number;
+            /**
+             * Url
+             * @description presigned GET of the plugin's bundle; a bearer credential until it expires
+             */
+            url: string;
+            /**
+             * Expires At
+             * Format: date-time
+             */
+            expires_at: string;
+        };
         /** RunPlugin */
         RunPlugin: {
             /** Name */
@@ -10993,7 +11599,7 @@ export interface components {
             instructions: string;
             /**
              * Permissions
-             * @description the seven axes, each {mode: all} or {mode: allowlist, allow: [...]}
+             * @description the eight axes, each {mode: all} or {mode: allowlist, allow: [...]}; an axis a version from before the axis does not name allows all
              */
             permissions: {
                 [key: string]: unknown;
@@ -11072,7 +11678,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task";
             /** Project */
             project: string;
             /**
@@ -11110,9 +11716,9 @@ export interface components {
             session_id?: string | null;
             /**
              * Runtime
-             * @enum {string}
+             * @description a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration
              */
-            runtime: "claude-code" | "opencode" | "codex";
+            runtime: string;
             /**
              * Model
              * @description the model the dispatch asked for; null: the runtime's own choice
@@ -11173,6 +11779,15 @@ export interface components {
             session_per_step: boolean;
             /** @description the agent profile the run went under; null for a run from before schema 0030 */
             profile?: components["schemas"]["RunProfile"] | null;
+            /** @description for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core */
+            plugin_runtime?: components["schemas"]["PluginRuntime"] | null;
+            /** @description the environment of a plugin the claim picked from the run's profile, at the plugin's version installed now, which the worker's container provider runs the agent in; null: the worker's host */
+            environment?: components["schemas"]["RunEnvironment"] | null;
+            /**
+             * Packs
+             * @description the agent packs the run's profile attaches, in its order, each at the version it pins, which the worker builds into the run's directory for its runtime; empty for a profile that attaches none
+             */
+            packs?: components["schemas"]["RunPack"][];
         };
         /** RunState */
         RunState: {
@@ -12108,6 +12723,163 @@ export interface components {
             /** Pending Bytes */
             pending_bytes: number;
         };
+        /**
+         * Task
+         * @description A task a plugin handed one of its agent types, as its latest run has it: ids and states only.
+         */
+        Task: {
+            /**
+             * Task Id
+             * @description the run its dispatch made, which names its branch
+             */
+            task_id: number;
+            /**
+             * Run Id
+             * @description its latest run: a run its worker lost goes on in the next attempt
+             */
+            run_id: number;
+            /** Attempt */
+            attempt: number;
+            /** Project */
+            project: string;
+            /** Agent Type */
+            agent_type: string;
+            /** State */
+            state: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Pulls
+             * @description the draft pull requests the hub opened, {repo, url, number} each
+             */
+            pulls: {
+                [key: string]: unknown;
+            }[];
+            /** Failure Cause */
+            failure_cause: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /** TaskBudget */
+        TaskBudget: {
+            /**
+             * Max Usd
+             * @description what is left of the agent type's cap, the run's cost cap
+             */
+            max_usd: number;
+            /** Max Seconds */
+            max_seconds: number;
+        };
+        /** TaskIn */
+        TaskIn: {
+            /**
+             * Task
+             * @description what the agent is to do, at most 16384 bytes in UTF-8
+             */
+            task: string;
+            /**
+             * Title
+             * @description one line the run's list shows; default: the task's
+             */
+            title?: string | null;
+        };
+        /** TaskPull */
+        TaskPull: {
+            /** Repo */
+            repo: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Url
+             * @description the draft pull request, or the branch; null when the hub knows neither
+             */
+            url: string | null;
+            /**
+             * Number
+             * @description the pull request's number on GitHub
+             */
+            number: number | null;
+            /**
+             * Opened
+             * @description the hub opened it now; false for one open already, or none
+             */
+            opened: boolean;
+            /**
+             * Problem
+             * @description why GitHub opened none, when it refused
+             */
+            problem: string | null;
+        };
+        /** TaskPushed */
+        TaskPushed: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description the run's branch, task/<id>
+             */
+            branch: string;
+            /**
+             * Head
+             * @description the commit the branch has now
+             */
+            head: string;
+        };
+        /** TaskQueued */
+        TaskQueued: {
+            /**
+             * Task Id
+             * @description the run its dispatch made, which names its branch
+             */
+            task_id: number;
+            /**
+             * Run Id
+             * @description its latest run: a run its worker lost goes on in the next attempt
+             */
+            run_id: number;
+            /** Attempt */
+            attempt: number;
+            /** Project */
+            project: string;
+            /** Agent Type */
+            agent_type: string;
+            /** State */
+            state: string;
+            /** Branch */
+            branch: string;
+            /**
+             * Pulls
+             * @description the draft pull requests the hub opened, {repo, url, number} each
+             */
+            pulls: {
+                [key: string]: unknown;
+            }[];
+            /** Failure Cause */
+            failure_cause: string | null;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+            budget: components["schemas"]["TaskBudget"];
+            /**
+             * Spent Usd
+             * @description what its agent type's task runs cost in the last 24 h
+             */
+            spent_usd: number;
+            /**
+             * Daily Usd
+             * @description the agent type's cap, which the project's admins set
+             */
+            daily_usd: number;
+        };
         /** TelegramLink */
         TelegramLink: {
             /**
@@ -12626,11 +13398,16 @@ export interface components {
             slots: number;
             /** Labels */
             labels: string[];
+            /**
+             * Plugins
+             * @description the plugins whose runtimes and environments it takes, as its owner set them
+             */
+            plugins: string[];
             /** Projects */
             projects: string[];
             /**
              * Runtimes
-             * @description the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none
+             * @description the runtimes its last heartbeat reported, keyed claude-code, opencode, codex or <plugin>/<name>, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none
              */
             runtimes: {
                 [key: string]: unknown;
@@ -12758,6 +13535,11 @@ export interface components {
             name: string;
             /** Labels */
             labels: string[];
+            /**
+             * Plugins
+             * @description the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none
+             */
+            plugins?: string[];
         };
         /**
          * WorkerUpdate
@@ -12776,6 +13558,11 @@ export interface components {
              * @description unique among the owner's workers not revoked
              */
             name?: string | null;
+            /**
+             * Plugins
+             * @description the plugins whose runtimes and environments it takes; [] for none
+             */
+            plugins?: string[] | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
@@ -17706,7 +18493,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -19693,8 +20480,8 @@ export interface operations {
                 days?: number;
                 /** @description the runs of this plan */
                 plan_id?: string | null;
-                /** @description the runs of this runtime */
-                runtime?: ("claude-code" | "opencode" | "codex") | null;
+                /** @description the runs of this runtime, of the core or a plugin's */
+                runtime?: string | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;
@@ -22438,6 +23225,256 @@ export interface operations {
             };
         };
     };
+    list_proposals_v1_x_builder__project__proposals_get: {
+        parameters: {
+            query?: {
+                state?: ("pending" | "applied" | "rejected" | "failed" | "rolled_back") | null;
+            };
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_proposal_v1_x_builder__project__proposals__proposal_id__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["BuilderProposalAnswer"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                proposal_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["BuilderProposal"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     show_v1_me_telegram_get: {
         parameters: {
             query?: never;
@@ -24199,6 +25236,508 @@ export interface operations {
             };
             /** @description Unprocessable Entity */
             422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_agent_packs_v1_projects__project__agent_packs_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentPack"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_agent_types_v1_projects__project__agent_types_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentType"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    enable_agent_type_v1_projects__project__agent_types__plugin___name__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the plugin's id */
+                plugin: string;
+                /** @description the agent type, as the manifest names it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentTypeIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentType"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    disable_agent_type_v1_projects__project__agent_types__plugin___name__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the plugin's id */
+                plugin: string;
+                /** @description the agent type, as the manifest names it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentType"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    dispatch_task_v1_plugin_api_projects__project__agent_types__name__tasks_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the agent type, as the manifest names it */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskQueued"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_task_v1_plugin_api_projects__project__tasks__task__get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the id the task's dispatch answered */
+                task: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Task"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    pushed_v1_worker_runs__run_id__task_pulls_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TaskPushed"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TaskPull"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
                 headers: {
                     [name: string]: unknown;
                 };

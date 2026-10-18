@@ -30,6 +30,11 @@ run`` prints is parsed here.
   (``server_env``) and in the session's rules, with ``deny`` for the MCP servers ``GET /mcp`` names that the profile
   leaves out (a resumed session gets them again with ``PATCH /session/:id``), a model of its allowlist, never the
   config's, and the instructions after the headless note in each prompt's ``system``.
+- The agent packs of the run's profile (``context.packs``, ``evo_agents.worker.packs``) give opencode their skills,
+  MCP servers and instructions: OPENCODE_CONFIG_CONTENT of the server gains each pack's ``skills/`` in
+  ``skills.paths`` and each server in ``mcp`` (``local`` for stdio, ``remote`` for http and SSE), and the instructions
+  follow the profile's in each prompt's ``system``. A pack with subagents or hooks fails the run before its agent
+  starts (``pack_refusal``).
 - The run's usage adds up the tokens of each step (``step-finish``) with their cost, and holds
   ``peak_context_tokens``, the largest context of a step: its ``input`` plus ``cache.read`` plus ``cache.write``,
   which opencode counts apart (in the research's samples, a step that read 89,984 tokens from the cache had an input
@@ -47,12 +52,16 @@ import json
 import logging
 import re
 import secrets
+import shutil
 import signal
 import socket
+import tempfile
 from collections.abc import AsyncIterator, Mapping
 from pathlib import Path
 
+from evo_agents.worker import packs
 from evo_agents.worker.adapter import AgentEvent, Detection, Outcome, RunContext, command_output
+from evo_agents.worker.environments import HOST_ENVIRONMENT
 from evo_agents.worker.runtimes import profiles
 from evo_agents.worker.runtimes.common import (
     HEADLESS_NOTE,
@@ -74,7 +83,6 @@ from evo_agents.worker.runtimes.common import (
     tool_call,
     tool_update,
     usage_update,
-    which,
     with_peak,
 )
 
@@ -252,19 +260,22 @@ class Server:
             self._drain.cancel()
 
 
-async def start_server(binary: str, cwd: str, env: Mapping[str, str]) -> Server:
-    """``opencode serve`` on 127.0.0.1 at a free port, with a random password, once it listens."""
+async def start_server(
+    binary: str, cwd: str, env: Mapping[str, str], *, context=None, directory: Path | None = None
+) -> Server:
+    """``opencode serve`` on 127.0.0.1 at a free port, with a random password, once it listens. In a container
+    (``context.environment``, its spec in ``directory``) it listens on every address of the container, and the engine
+    publishes the port on the worker's 127.0.0.1 alone."""
+    environment = context.environment if context is not None else HOST_ENVIRONMENT
     password = secrets.token_urlsafe(32)
     port = free_port()
+    env = {**env, "OPENCODE_SERVER_PASSWORD": password}
+    args = ("serve", "--hostname", environment.listen_host, "--port", str(port))
+    command = environment.command(binary, args, context=context, directory=directory, env=env, publish=port)
     process = await asyncio.create_subprocess_exec(
-        binary,
-        "serve",
-        "--hostname",
-        "127.0.0.1",
-        "--port",
-        str(port),
+        *command,
         cwd=cwd,
-        env={**env, "OPENCODE_SERVER_PASSWORD": password},
+        env=env,
         stdin=asyncio.subprocess.DEVNULL,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.STDOUT,
@@ -286,6 +297,8 @@ async def start_server(binary: str, cwd: str, env: Mapping[str, str]) -> Server:
 
     try:
         url = await asyncio.wait_for(listening(), START_TIMEOUT)
+        if environment.container:  # the address it listens on is the container's; the engine publishes the port here
+            url = f"http://127.0.0.1:{port}"
     except BaseException as exc:
         kill_group(process.pid, signal.SIGKILL)
         with contextlib.suppress(Exception):
@@ -309,6 +322,8 @@ class OpencodeAdapter(QueueAdapter):
     runtime = "opencode"
     binary = "opencode"
     interactive = True
+    pack_kinds = ("skills", "mcp_servers", "instructions")
+    pack_transports = packs.TRANSPORTS
 
     @classmethod
     def detect(cls) -> Detection:
@@ -352,6 +367,7 @@ class OpencodeAdapter(QueueAdapter):
         self.model: tuple[str, str] | None = None
         self.variant = run_setting(context, self.runtime, "effort")
         self.server_url: str | None = None
+        self._dir: Path | None = None  # in a container: where its command's spec is
 
     @property
     def session_id(self) -> str | None:
@@ -361,13 +377,21 @@ class OpencodeAdapter(QueueAdapter):
         return self._server.pid if self._server is not None else None
 
     async def start_server(self) -> Server:
-        """``opencode serve`` for this run; a test hands it a server of its own."""
-        return await start_server(which(self.binary, self.context.env), str(self.context.worktree), self.server_env())
+        """``opencode serve`` for this run, where its environment runs it; a test hands it a server of its own."""
+        environment = self.context.environment
+        program = environment.program(self.binary, self.context.env)
+        directory = None
+        if environment.container:  # the spec of the container's command, removed with the adapter
+            self._dir = directory = Path(tempfile.mkdtemp(prefix="evo-opencode-"))
+        worktree = str(self.context.worktree)
+        return await start_server(program, worktree, self.server_env(), context=self.context, directory=directory)
 
     def server_env(self) -> dict[str, str]:
-        """The environment of the run's server: the agent's, with ``compaction.prune`` on (``compaction_env``) and the
-        permissions of its profile (``profiles.opencode_env``)."""
-        return profiles.opencode_env(compaction_env(self.context.env, self.context.worktree), self.profile)
+        """The environment of the run's server: the agent's, with ``compaction.prune`` on (``compaction_env``), the
+        permissions of its profile (``profiles.opencode_env``) and the skills and MCP servers of its agent packs
+        (``packs.opencode_env``)."""
+        env = compaction_env(self.context.env, self.context.worktree)
+        return packs.opencode_env(profiles.opencode_env(env, self.profile), self.context.packs)
 
     # HTTP
 
@@ -432,7 +456,9 @@ class OpencodeAdapter(QueueAdapter):
         body = {
             "parts": [{"type": "text", "text": text}],
             "model": {"providerID": provider, "modelID": model},
-            "system": profiles.with_instructions(HEADLESS_NOTE, self.profile),
+            "system": packs.with_instructions(
+                profiles.with_instructions(HEADLESS_NOTE, self.profile), self.context.packs
+            ),
         }
         if self.variant:
             body["variant"] = self.variant
@@ -630,3 +656,7 @@ class OpencodeAdapter(QueueAdapter):
             await self._http.close()
         if self._server is not None:
             await self._server.stop()
+
+    def _cleanup(self) -> None:
+        if self._dir is not None:
+            shutil.rmtree(self._dir, ignore_errors=True)

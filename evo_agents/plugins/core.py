@@ -19,17 +19,24 @@ does not load, does not give a manifest, gives one that is not a core plugin's, 
 distribution never stops the process that reads the group. Installing the package is what trusts it: what runs in
 a process is what its operator, or the member who owns the machine, installed there.
 
+A core plugin that contributes agent packs ships them in its package, each in ``packs/<name>/`` beside the module its
+entry point names: ``image_bundle`` packs them with the manifest into a bundle, which the hub hands the workers of the
+runs whose profiles attach them, as it hands those of a published plugin.
+
 Standard library only.
 """
 
 from __future__ import annotations
 
+import importlib.util
+import json
 import logging
 from dataclasses import dataclass
 from importlib.metadata import entry_points
+from pathlib import Path
 
-from evo_agents.plugins import compat
-from evo_agents.plugins.manifest import Manifest, ManifestError, read_manifest
+from evo_agents.plugins import agent_packs, bundle, compat
+from evo_agents.plugins.manifest import MANIFEST_FILE, Manifest, ManifestError, read_manifest
 
 log = logging.getLogger(__name__)
 
@@ -94,3 +101,28 @@ def python_contributions(point: str, plugins: list[CorePlugin] | None = None) ->
                 )
             found[name], owners[name] = ref, plugin.manifest.id
     return found
+
+
+def package_directory(plugin: CorePlugin) -> Path:
+    """The directory of the package (or module) core plugin ``plugin``'s entry point names."""
+    module = plugin.value.partition(":")[0]
+    spec = importlib.util.find_spec(module)
+    if spec is None:
+        raise bundle.BundleError(f"core plugin {plugin.manifest.id}: no module {module}")
+    if spec.submodule_search_locations:
+        return Path(next(iter(spec.submodule_search_locations)))
+    if spec.origin is None:
+        raise bundle.BundleError(f"core plugin {plugin.manifest.id}: module {module} has no file")
+    return Path(spec.origin).parent
+
+
+def image_bundle(plugin: CorePlugin) -> bundle.Bundle:
+    """The bundle of core plugin ``plugin``'s agent packs: its manifest as ``evo-plugin.json`` and each pack its
+    manifest declares, from ``packs/<name>/`` of its package; BundleError naming what is missing or wrong."""
+    root = package_directory(plugin)
+    data = json.dumps(plugin.manifest.data, sort_keys=True, indent=1, ensure_ascii=False).encode()
+    entries = [bundle.Entry(MANIFEST_FILE, False, data)]
+    for item in plugin.manifest.contributions("agent_packs"):
+        top = agent_packs.directory(item["name"])
+        entries.extend(bundle.directory_entries(root / top, top))
+    return bundle.bundle_of(entries, f"core plugin {plugin.manifest.id}")

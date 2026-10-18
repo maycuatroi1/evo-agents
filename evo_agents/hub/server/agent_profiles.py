@@ -8,8 +8,9 @@ editing and deleting a profile, and its avatar, need the admin role on the proje
 A handle is unique on the hub, deleted profiles' included, and may not be the name of a project (409): @<project> is
 that project's default profile, which the registration of the project created and which can never be deleted; its
 permissions stay all and its instructions empty (422), while its name, description, colour and avatar may change. A
-handle never changes. Every edit that changes something, the avatar included, raises the version by one and writes
-the version row; PATCH with ``if_version`` other than the version now is 409, nothing changed. Deleting sets
+handle never changes. A profile attaches agent packs of plugins its project enabled, each pinned at a version of its
+plugin (``agent_packs.pinned``; the default profile attaches none). Every edit that changes something, the avatar and
+the packs included, raises the version by one and writes the version row; PATCH with ``if_version`` other than the version now is 409, nothing changed. Deleting sets
 ``deleted_at``: the profile takes no new run, and reads as before.
 
 The avatar is a PNG, JPEG or WebP image of at most AVATAR_MAX_BYTES, sent as base64 in JSON and checked by its first
@@ -45,6 +46,7 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.blobs import BlobStoreUnavailable, blob_key
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_view
 from evo_agents.hub.server.blobs import blob_store
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select, write_version
@@ -87,7 +89,7 @@ class AgentAxis(BaseModel):
 
 
 class AgentPermissions(BaseModel):
-    """What the runs of a profile may use, on seven axes; an axis left out allows all."""
+    """What the runs of a profile may use, on eight axes; an axis left out allows all."""
 
     model_config = ConfigDict(extra="forbid")
 
@@ -99,7 +101,14 @@ class AgentPermissions(BaseModel):
     worker: AgentAxis = Field(default_factory=AgentAxis, description="worker names, or label:<label>")
     project: AgentAxis = Field(default_factory=AgentAxis, description="the other projects whose runs it may take")
     model: AgentAxis = Field(default_factory=AgentAxis, description="model names, as a runtime names them")
-    runtime: AgentAxis = Field(default_factory=AgentAxis, description="claude-code, opencode, codex")
+    runtime: AgentAxis = Field(
+        default_factory=AgentAxis, description="claude-code, opencode, codex, and plugins' runtimes <plugin>/<name>"
+    )
+    environment: AgentAxis = Field(
+        default_factory=AgentAxis,
+        description="where the agent runs, in order of preference: host, the worker's own machine, and plugins' "
+        "environments <plugin>/<name>, each a container; all runs on the host",
+    )
 
     @model_validator(mode="after")
     def _known_items(self) -> AgentPermissions:
@@ -134,6 +143,9 @@ class AgentCreate(BaseModel):
     instructions: Instructions = Field("", description="added to the system prompt of the profile's runs")
     color: Color | None = Field(None, description="default: one picked by the handle")
     permissions: AgentPermissions = Field(default_factory=AgentPermissions)
+    packs: Pins = Field(
+        default_factory=list, description="the agent packs it attaches, in order; see GET .../agent-packs"
+    )
 
 
 class AgentEdit(BaseModel):
@@ -145,7 +157,8 @@ class AgentEdit(BaseModel):
     description: Description | None = None
     instructions: Instructions | None = None
     color: Color | None = None
-    permissions: AgentPermissions | None = Field(None, description="the seven axes whole; an axis left out allows all")
+    permissions: AgentPermissions | None = Field(None, description="the eight axes whole; an axis left out allows all")
+    packs: Pins | None = Field(None, description="the agent packs it attaches, whole, in order; [] for none")
     if_version: int | None = Field(None, ge=1, description="409 unless the profile is at this version now")
 
 
@@ -181,7 +194,8 @@ class Agent(BaseModel):
     avatar_sha256: str | None
     is_default: bool = Field(description="the project's default profile, @<project>: every permission")
     permissions: AgentPermissions
-    restricted: list[str] = Field(description="the axes that are allowlists, in the order of the seven")
+    restricted: list[str] = Field(description="the axes that are allowlists, in the order of the eight")
+    packs: list[PinnedPack] = Field(description="the agent packs it attaches, in order, each at the version it pins")
     version: int
     created_by: str
     created_at: datetime
@@ -218,6 +232,7 @@ def agent_view(profile: Profile) -> Agent:
         is_default=profile.is_default,
         permissions=AgentPermissions.model_validate(profile.permissions),
         restricted=profiles.restricted_axes(profile.permissions),
+        packs=pinned_view(profile.packs),
         version=profile.version,
         created_by=profile.created_by,
         created_at=profile.created_at,
@@ -345,6 +360,7 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
         access = await project_access(conn, user, project)
         _admin(access, "creating")
         await _refuse_project_name(conn, body.handle)
+        values["packs"] = await pinned(conn, access.project_id, project, body.packs, request.app.state.hub_version)
         statement = (
             pg_insert(ap)
             .values(project_id=access.project_id, created_by=user.user_id, **values)
@@ -363,11 +379,14 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
     return agent_view(created)
 
 
-def _changes(profile: Profile, body: AgentEdit) -> dict:
-    """The columns ``body`` changes, each to its new value; 422 for what a default profile keeps."""
-    wanted = body.model_dump(exclude_unset=True, exclude={"if_version", "permissions"})
+def profile_changes(profile: Profile, body: AgentEdit, packs: list[dict] | None) -> dict:
+    """The columns ``body`` changes, each to its new value, its ``packs`` as ``agent_packs.pinned`` checked them; 422
+    for what a default profile keeps."""
+    wanted = body.model_dump(exclude_unset=True, exclude={"if_version", "permissions", "packs"})
     if body.permissions is not None:
         wanted["permissions"] = body.permissions.stored()
+    if packs is not None:
+        wanted["packs"] = packs
     if profile.is_default:
         if wanted.get("permissions", profiles.all_access()) != profiles.all_access():
             raise HTTPException(
@@ -375,11 +394,12 @@ def _changes(profile: Profile, body: AgentEdit) -> dict:
                 f"@{profile.handle} is the default agent of project {profile.project}: its permissions stay all, so a "
                 "run that names no agent runs as before; create another agent to limit them",
             )
-        if wanted.get("instructions"):
+        if wanted.get("instructions") or wanted.get("packs"):
             raise HTTPException(
                 422,
-                f"@{profile.handle} is the default agent of project {profile.project}: it has no instructions, so a "
-                "run that names no agent runs as before; create another agent to give some",
+                f"@{profile.handle} is the default agent of project {profile.project}: it has no instructions and "
+                "attaches no agent pack, so a run that names no agent runs as before; create another agent to give "
+                "it some",
             )
     current = profile.snapshot()
     return {key: value for key, value in wanted.items() if value is not None and current[key] != value}
@@ -411,7 +431,8 @@ async def edit_agent(
             raise HTTPException(
                 409, f"@{handle} is at version {profile.version}, not {body.if_version}: read it again; nothing changed"
             )
-        changes = _changes(profile, body)
+        packs = await pinned(conn, access.project_id, project, body.packs, request.app.state.hub_version)
+        changes = profile_changes(profile, body, packs)
         if changes:
             version = await new_version(conn, profile, changes, user.user_id)
             fields = ",".join(sorted(changes))

@@ -197,6 +197,16 @@ So the run is leased that person's secrets, on that person's worker, narrowed by
 never those of another member of the chat, or of whoever added the agent to it. That person must hold writer on the
 profile's project when the hub makes the run and on every ask after, as for any run.
 
+A **task run** ([plugins.md](plugins.md), Agent types) is leased as any run too: its repos are every repo of its
+project when the plugin handed the task, each on the branch `task/<id>` of the run the dispatch made (a lost run's
+next attempt keeps it), and its GitHub token has `GITHUB_PERMISSIONS`, as a step run's. Its owner is the agent type's
+`run_as`, the member the project's admin named when enabling the type, never the plugin: the plugin's token opens the
+plugin API alone and leases nothing. So the run is leased `run_as`'s secrets, on a worker of `run_as`, narrowed by the
+type's profile, and `run_as` must hold writer on the project at the dispatch and on every ask after. The worker
+pushes only the run's branch, never a default branch and never forced, and no run merges; the hub opens the draft
+pull request with the workers' App. The variables an ACP runtime of a plugin names (`secrets`, [plugins.md](plugins.md),
+Runtimes) come from these `env` leases, or the worker's own environment, in a task run as in any other.
+
 Each call records its leases in `credential_leases` and adds one audit row `credential.lease` naming the run, the
 secrets by id (`secrets=12,15`), the App's accounts, the repos and, unless it is the project's default, the run's
 profile (`profile=@<handle>:v<version>`), never a value; each lease row records the profile and version too.
@@ -429,6 +439,25 @@ the one-year token that command prints, as it would get it from a paste, and lea
 A token that ends is renewed the same way, by its owner. Whether a given use of an account fits Anthropic's terms is for
 its owner to check against that page; the hub only keeps the sign-in itself out of its code.
 
+## Plugins
+
+A plugin holds two kinds of credential, and neither reaches a worker ([plugins.md](plugins.md)).
+
+- **Its token.** The hub mints a backend's token only when the plugin host is about to start it
+  (`POST /internal/plugin-host/plugins/{name}/token`, over the host's shared secret): `evp_` and 32 random bytes in
+  base64url, of which Postgres keeps only the SHA-256 (`plugin_tokens`, schema 0036). Minting revokes the plugin's
+  older tokens, so a token lives as long as the backend it was made for; removing the plugin or the hub turning it off
+  revokes them at once. It never signs in: only the plugin API under `/v1/plugin-api/` takes it, for what the plugin's
+  installed version asks for and the project granted (`evo_agents/hub/server/plugin_tokens.py`).
+- **The secret fields of its config.** A field its schema marks `"x-secret": true` is sealed with
+  `EVO_HUB_SECRETS_KEY`, bound to the plugin, the layer, the project and the agent profile and the field's name
+  (`plugin_config_aad`), and never shown again: answers name it as set, and the digest of an effective config counts
+  it by a fingerprint of its sealed value. Without the key, setting one is a 503. The hub opens them only for the
+  plugin host's pull of its own plugin's payload, which reaches the backend in `initialize` on its stdin, never in its
+  environment or arguments; a hub without the key leaves the field out and names it in `missing_secrets`. The audit
+  row `plugin.config` names the fields that changed, never a value. A worker gets neither: a run records only the
+  version and digest of each plugin's effective config (`run_plugins`).
+
 ## What a run got
 
 `GET /v1/projects/{project}/runs/{id}/credentials` lists every lease of the run, given back or not, oldest first:
@@ -494,6 +523,13 @@ Credentials card.
   (`EVO_ENV_TICKET`, set on that one command of the pane's script, good for one answer within 2 minutes), so code the
   run does not trust, such as a verify command or a hidden check of a judge run, gets none of its `env` leases, a
   subscription token among them, from the socket.
+- **A container.** A run whose agent runs in a container of a plugin's environment (`docs/workers.md`, Environments
+  of plugins) gets its `env` leases there and none of the daemon's own environment: the container provider passes
+  each variable by name, so the engine's client reads the value and no command line holds it. Its `git` leases stay
+  out of the container, since the run's git configuration names a helper of the worker that the container does not
+  have: the daemon fetches and pushes the run's repos on the host with them, as for any run. The runtime's login in a
+  container is therefore a lease (`CLAUDE_CODE_OAUTH_TOKEN` or `ANTHROPIC_API_KEY` for Claude Code, a provider's key
+  for opencode or Codex); the machine's own login, its keychain and its `~/.claude` are not there.
 - **Umask.** The service starts the daemon, and so its agents, with umask 077.
 - **No lease, machine's own.** An origin in `missing` gets a system event "no leased credential for {origin}:
   {reason}; git uses this machine's own", and git falls back to the machine's credentials, as before 0.5.0. A

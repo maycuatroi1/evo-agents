@@ -10,18 +10,36 @@ to another account; without it the rules of your policy for the project pick (``
 
 ``--agent HANDLE`` on ``dispatch``, ``plan`` and ``author`` names the agent profile the run goes under (``evo-agents
 hub agent list``): the hub refuses a dispatch its allowlists leave out, and without it the run goes under the project's
-default profile, which allows everything. A rerun keeps the profile of the run it reruns. Standard library only, like
-the rest of the client.
+default profile, which allows everything. A rerun keeps the profile of the run it reruns.
+
+``--runtime`` on ``dispatch`` and ``plan`` takes any (the claiming worker picks a runtime of the core it has), a
+runtime of the core, or ``<plugin>/<name>``, a runtime a plugin enabled on the project declares (``docs/plugins.md``,
+section Runtimes); the hub refuses one the project does not register. Standard library only, like the rest of the
+client.
 """
 
 from __future__ import annotations
 
+import argparse
+import re
 import sys
 
 from evo_agents.hub.author import AUTHOR_RUNTIMES, AUTHOR_TIMEOUT_CHOICES, DEFAULT_TIMEOUT_H
-from evo_agents.hub.runs import APPROVALS, MODES, PLAN_TIMEOUT_CHOICES, RUNTIMES, SHOWN_KINDS, SHOWN_STATES
+from evo_agents.hub.runs import (
+    APPROVALS,
+    MODES,
+    PLAN_TIMEOUT_CHOICES,
+    RUNTIME_NAME,
+    RUNTIMES,
+    SHOWN_KINDS,
+    SHOWN_STATES,
+)
 
 REQUESTED_RUNTIMES = ("any", *RUNTIMES)
+RUNTIME_HELP = (
+    f"any (the default: the first runtime of the core the claiming worker has), {', '.join(RUNTIMES)}, or "
+    "<plugin>/<name>, a runtime a plugin enabled on the project declares"
+)
 EXIT_USAGE = 2
 ACCOUNT_HELP = (
     "one of your env secrets bound to the project, by name, as `hub account list` shows it: the run takes it and "
@@ -29,10 +47,26 @@ ACCOUNT_HELP = (
 )
 
 
+KIND_TEXTS = {  # what `run show` says a run of each kind but step and plan is
+    "review": "review run: the Curator reads the project and proposes changes; it pushes nothing",
+    "judge": "judge run: the Curator's Judge reads a change and says whether it passes; it pushes nothing",
+    "author": "author run: a plan written from your request with create-exec-plan; it pushes nothing",
+    "chat": "chat run: one turn of an agent mentioned in a group chat, on the branch of its session",
+    "task": "task run: one turn of a plugin's agent type on a task the plugin handed it, on the branch task/<run>; "
+    "it pushes that branch and the hub opens a draft pull request, never merged",
+    "local": "local run: a Claude Code session on a member's own machine, which the hub only watches",
+}
 AGENT_HELP = (
     "the agent profile the run goes under, by handle, as `hub agent list` shows it; the hub refuses what it does not "
     "allow (default: the project's default agent, which allows everything)"
 )
+
+
+def runtime_name(value: str) -> str:
+    """``value`` as ``--runtime`` takes it: any, a runtime of the core, or a plugin's ``<plugin>/<name>``."""
+    if re.fullmatch(RUNTIME_NAME, value):
+        return value
+    raise argparse.ArgumentTypeError(f"{value!r} is not any, one of {', '.join(RUNTIMES)}, or <plugin>/<name>")
 
 
 def account_option(parser, help_text: str = ACCOUNT_HELP, *, agent: bool = True) -> None:
@@ -75,9 +109,7 @@ def rerun_body(args) -> dict | None:
 
 def dispatch_options(dispatch) -> None:
     """The options of `hub run dispatch` after its plan, steps and --project: where, how and how long each run runs."""
-    dispatch.add_argument(
-        "--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has"
-    )
+    dispatch.add_argument("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
     dispatch.add_argument(
         "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
     )
@@ -125,7 +157,7 @@ def plan_options(plan, with_model) -> None:
     plan.add_argument(
         "--worker", help="pin the run to this worker of yours, by id or name (default: any of yours with every repo)"
     )
-    plan.add_argument("--runtime", choices=REQUESTED_RUNTIMES, help="default: any, the first the claiming worker has")
+    plan.add_argument("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
     with_model(plan)
     plan.add_argument(
         "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
