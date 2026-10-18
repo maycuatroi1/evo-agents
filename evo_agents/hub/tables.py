@@ -1278,4 +1278,4 @@ agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
-hub_settings = tables_settings.settings_table(metadata)  # the hub's own settings: branding and features (0037)
+hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0037, 0043

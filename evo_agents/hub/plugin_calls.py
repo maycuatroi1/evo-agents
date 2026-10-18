@@ -158,13 +158,15 @@ def load(ref: str):
 @dataclass(frozen=True)
 class CoreContext:
     """What a core plugin's Python gets beside the params: the plugin, the hub's engine (for its own tables) and
-    config, and the project the call is for (None for a job, which names its projects in the params)."""
+    config, the project the call is for (None for a job, which names its projects in the params), and for a tool the
+    agent of a run calls, that run (``X-Evo-Run`` on /mcp; None for any other caller)."""
 
     plugin: str
     engine: AsyncEngine | None
     config: object | None = None
     project: str | None = None
     project_id: int | None = None
+    run_id: int | None = None
 
 
 # Plugins in projects

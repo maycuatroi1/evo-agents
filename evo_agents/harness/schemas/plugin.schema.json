@@ -844,6 +844,14 @@
           "pattern": "^[a-z][a-z0-9_-]{0,62}$",
           "description": "The environment of this plugin its runs run in, by name."
         },
+        "mentioned_by": {
+          "type": "string",
+          "enum": [
+            "writer",
+            "admin"
+          ],
+          "description": "Who hands its profile work by mentioning it in a group chat: the writers of the project (writer, the default), or its admins alone (admin); a member the type does not take work from gets a refusal in the thread."
+        },
         "jobs": {
           "type": "array",
           "items": {

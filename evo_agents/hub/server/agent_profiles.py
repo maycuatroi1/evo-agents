@@ -379,7 +379,7 @@ async def create_agent(request: Request, project: ProjectName, body: AgentCreate
     return agent_view(created)
 
 
-def _changes(profile: Profile, body: AgentEdit, packs: list[dict] | None) -> dict:
+def profile_changes(profile: Profile, body: AgentEdit, packs: list[dict] | None) -> dict:
     """The columns ``body`` changes, each to its new value, its ``packs`` as ``agent_packs.pinned`` checked them; 422
     for what a default profile keeps."""
     wanted = body.model_dump(exclude_unset=True, exclude={"if_version", "permissions", "packs"})
@@ -432,7 +432,7 @@ async def edit_agent(
                 409, f"@{handle} is at version {profile.version}, not {body.if_version}: read it again; nothing changed"
             )
         packs = await pinned(conn, access.project_id, project, body.packs, request.app.state.hub_version)
-        changes = _changes(profile, body, packs)
+        changes = profile_changes(profile, body, packs)
         if changes:
             version = await new_version(conn, profile, changes, user.user_id)
             fields = ",".join(sorted(changes))

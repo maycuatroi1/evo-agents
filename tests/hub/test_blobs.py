@@ -172,8 +172,10 @@ def test_an_upload_through_a_presigned_put_then_commit_writes_exactly_one_blob_r
     assert hub.s3.keys("uploads/") == []  # the upload and its sealed copy are gone
     assert pending(hub.db) == 0
     audit, projects = tables.audit, tables.projects
-    filed = select(audit.c.action, audit.c.target, projects.c.name).join_from(
-        audit, projects, projects.c.id == audit.c.project_id, isouter=True
+    filed = (
+        select(audit.c.action, audit.c.target, projects.c.name)
+        .join_from(audit, projects, projects.c.id == audit.c.project_id, isouter=True)
+        .where(live.not_by_the_image())
     )
     assert live.sql(hub.db, filed) == [("blob.commit", "alpha", "alpha")]
 

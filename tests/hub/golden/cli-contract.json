@@ -21439,6 +21439,378 @@
           }
         }
       },
+      "/v1/x/builder/{project}/proposals": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Proposals",
+          "description": "The project's proposals of @builder, the newest first; those in ``state`` alone when given.",
+          "operationId": "list_proposals_v1_x_builder__project__proposals_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "state",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "pending",
+                      "applied",
+                      "rejected",
+                      "failed",
+                      "rolled_back"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "State"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/BuilderProposal"
+                    },
+                    "title": "Response List Proposals V1 X Builder  Project  Proposals Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/x/builder/{project}/proposals/{proposal_id}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Proposal",
+          "operationId": "show_proposal_v1_x_builder__project__proposals__proposal_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BuilderProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/builder/{project}/proposals/{proposal_id}/answer": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Answer Proposal",
+          "description": "Approve or reject a pending proposal: approved, the hub applies it as the setting's next version, or keeps why\nit could not (state failed). A hub admin decides one of the branding or the features, an admin of the project the\nothers.",
+          "operationId": "answer_proposal_v1_x_builder__project__proposals__proposal_id__answer_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BuilderProposalAnswer"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BuilderProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/builder/{project}/proposals/{proposal_id}/rollback": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Roll Back Proposal",
+          "description": "Roll back an applied proposal: the setting's next version is a copy of the one before it, while the setting is\nstill at the version the proposal made.",
+          "operationId": "roll_back_proposal_v1_x_builder__project__proposals__proposal_id__rollback_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "proposal_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Proposal Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/BuilderProposal"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/me/telegram": {
         "get": {
           "tags": [
@@ -31876,6 +32248,204 @@
           ],
           "title": "Build"
         },
+        "BuilderProposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "branding",
+                "features",
+                "plugin_config",
+                "agent"
+              ],
+              "title": "Kind"
+            },
+            "target": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Target",
+              "description": "layer (features), plugin and agent (plugin_config), agent (agent)"
+            },
+            "change": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Change",
+              "description": "set: field -> value; unset: the fields it clears"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "base_version": {
+              "type": "integer",
+              "title": "Base Version",
+              "description": "the setting's version it was proposed on, which approving needs still"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "applied",
+                "rejected",
+                "failed",
+                "rolled_back"
+              ],
+              "title": "State"
+            },
+            "approver": {
+              "type": "string",
+              "enum": [
+                "hub_admin",
+                "project_admin"
+              ],
+              "title": "Approver",
+              "description": "who may decide it"
+            },
+            "proposed_by": {
+              "type": "string",
+              "title": "Proposed By",
+              "description": "the admin who asked @builder, the run's dispatcher"
+            },
+            "proposed_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Proposed At"
+            },
+            "decided_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided By"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "applied_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Applied Version",
+              "description": "the setting's version approving made"
+            },
+            "rollback_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Rollback Version",
+              "description": "the setting's version rolling back made"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the hub could not apply it, for a failed one"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "link": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Link",
+              "description": "the hub's message that shows it in its thread"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "project",
+            "kind",
+            "target",
+            "change",
+            "summary",
+            "base_version",
+            "state",
+            "approver",
+            "proposed_by",
+            "proposed_at",
+            "decided_by",
+            "decided_at",
+            "applied_version",
+            "rollback_version",
+            "error",
+            "run_id",
+            "link"
+          ],
+          "title": "BuilderProposal",
+          "description": "A change @builder proposed, and what became of it."
+        },
+        "BuilderProposalAnswer": {
+          "properties": {
+            "answer": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "reject"
+              ],
+              "title": "Answer"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "answer"
+          ],
+          "title": "BuilderProposalAnswer"
+        },
         "Builds": {
           "properties": {
             "builds": {
@@ -38574,7 +39144,8 @@
                     "author_waiting",
                     "chat_mention",
                     "chat_added",
-                    "plugin_disabled"
+                    "plugin_disabled",
+                    "builder_proposal"
                   ]
                 },
                 {

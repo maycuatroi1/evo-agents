@@ -307,6 +307,18 @@ async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
     return run_id
 
 
+async def _admins_only(conn: AsyncConnection, profile_id: int) -> bool:
+    """Whether the profile ``profile_id`` is that of an agent type a version of its plugin says takes work from the
+    project's admins alone (``mentioned_by: admin``); any version the hub holds counts, so it never opens up."""
+    t, v = tables.project_agent_types, tables.plugin_versions
+    query = select(t.c.name, v.c.manifest).join_from(t, v, v.c.plugin_id == t.c.plugin_id)
+    for row in await conn.execute(query.where(t.c.profile_id == profile_id)):
+        for item in (row.manifest.get("contributes") or {}).get("agent_types") or ():
+            if item.get("name") == row.name and item.get("mentioned_by") == "admin":
+                return True
+    return False
+
+
 async def _writer_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
     profile, g = hand.profile, tables.grants
     if profile.deleted_at is not None:
@@ -317,6 +329,11 @@ async def _writer_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
         return (
             f"@{profile.handle} works for the writers of project {profile.project}, and {hand.dispatcher} holds "
             f"{role or 'no grant'} there"
+        )
+    if not has_role(role, "admin") and await _admins_only(conn, profile.id):
+        return (
+            f"@{profile.handle} takes work from the admins of project {profile.project} alone, and {hand.dispatcher} "
+            f"holds {role} there"
         )
     return None
 
