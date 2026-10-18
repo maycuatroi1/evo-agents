@@ -165,3 +165,19 @@ def test_record_run_writes_in_the_callers_transaction_and_run_ids_lists_it(fake_
     assert corpus.run_ids() == {synced.run_id, "run-2"}
     (row,) = corpus.runs(source="docs", status="ok", limit=1)  # newest first: run-2 sorts after the uuid
     assert row["run_id"] == "run-2" and row["detail"] == {"hub": True} and row["version"] is None
+
+
+def test_record_cursor_keeps_the_newest_run_s_whatever_the_order(fake_project):
+    project, _ = fake_project
+    corpus = project.corpus()
+    older, newer = "0190a000-0000-7000-8000-000000000001", "0190a000-0000-7000-8000-000000000002"
+    with corpus.db:
+        corpus.record_cursor("docs", {"commit": "b" * 40}, newer)
+        corpus.record_cursor("docs", {"commit": "a" * 40}, older)  # merged later, read earlier
+    assert corpus.cursor("docs") == {"commit": "b" * 40}
+    with corpus.db:
+        corpus.record_cursor("docs", {"commit": "c" * 40}, "0190a000-0000-7000-8000-000000000003")
+    assert corpus.cursor("docs") == {"commit": "c" * 40}
+    corpus.record_cursor("docs", {"commit": "d" * 40}, "0190a000-0000-7000-8000-000000000004")
+    corpus.db.rollback()
+    assert corpus.cursor("docs") == {"commit": "c" * 40}  # nothing was committed

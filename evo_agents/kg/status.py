@@ -1,5 +1,9 @@
 """``evo-agents kg status``: per-source freshness, coverage and held deletions, plus the graph snapshot.
 
+For each git source the graph read, it names the commit and how many commits that is behind the remote's default
+branch, counted again from this machine's checkout without fetching (``evo_agents.kg.freshness``); the SessionStart
+note (``brief``) does the same in one line of names and numbers.
+
 Exit code is non-zero when a source has never synced, its last run failed, or deletions are held.
 """
 
@@ -7,6 +11,7 @@ from __future__ import annotations
 
 import datetime as dt
 
+from evo_agents.kg import freshness
 from evo_agents.kg.project import Project
 
 DERIVED_FROM_HINT = (
@@ -86,6 +91,7 @@ def project_status(project: Project) -> dict:
         "graph": None,
         "multiple_definitions": None,
         "warnings": [],
+        "reads": [],
     }
     try:
         from evo_agents.kg.store import StaleSchema, Store
@@ -96,6 +102,7 @@ def project_status(project: Project) -> dict:
             store, status["graph"], status["ok"] = None, {"ready": False, "error": str(exc)}, False
         if store is not None:
             status["graph"] = store.summary()
+            status["reads"] = freshness.count_again(project, freshness.reads(status["graph"].get("coverage")))
             if not status["graph"].get("ready"):
                 status["ok"] = False
             # Coverage gaps the build survived, such as non-Python code without symbols: ``ok`` stays as it is.
@@ -108,30 +115,44 @@ def project_status(project: Project) -> dict:
     return status
 
 
+def render_brief(status: dict) -> str:
+    """The SessionStart note: the snapshot's age and size, the commit each git source read, what failed. Names and
+    counts only."""
+    graph = status.get("graph")
+    stale = [s["id"] for s in status["sources"] if not s["last_run"] or s["last_run"]["status"] != "ok"]
+    held = [s["id"] for s in status["sources"] if s["held_removals"]]
+    head = f"evo-kg: project {status['project']}"
+    if graph and graph.get("ready"):
+        head += (
+            f", snapshot {_human_age(_age_seconds(graph.get('built_at')))} old,"
+            f" {graph['nodes']} nodes, {graph['edges']} edges"
+        )
+    else:
+        head += ", no graph built yet"
+    lines = [head]
+    if graph and graph.get("error"):
+        lines.append(graph["error"])
+    reads = freshness.brief(status.get("reads") or [])
+    if reads:
+        lines.append(reads)
+    if stale:
+        lines.append(f"sources failing or never synced: {', '.join(stale)}")
+    if held:
+        lines.append(f"deletions held for review: {', '.join(held)}")
+    lines += [f"warning: {w}" for w in status.get("warnings", [])]
+    return "\n".join(lines)
+
+
+def read_lines(reads: list[dict]) -> list[str]:
+    """The commit each git source read, under the graph's lines."""
+    return [f"{'read' if i == 0 else '':<8}{r['source']} {freshness.describe(r)}" for i, r in enumerate(reads)]
+
+
 def render_status(status: dict, *, brief: bool = False) -> str:
+    if brief:
+        return render_brief(status)
     lines = []
     graph = status.get("graph")
-    if brief:
-        stale = [s["id"] for s in status["sources"] if not s["last_run"] or s["last_run"]["status"] != "ok"]
-        held = [s["id"] for s in status["sources"] if s["held_removals"]]
-        head = f"evo-kg: project {status['project']}"
-        if graph and graph.get("ready"):
-            head += (
-                f", snapshot {_human_age(_age_seconds(graph.get('built_at')))} old,"
-                f" {graph['nodes']} nodes, {graph['edges']} edges"
-            )
-        else:
-            head += ", no graph built yet"
-        lines.append(head)
-        if graph and graph.get("error"):
-            lines.append(graph["error"])
-        if stale:
-            lines.append(f"sources failing or never synced: {', '.join(stale)}")
-        if held:
-            lines.append(f"deletions held for review: {', '.join(held)}")
-        lines += [f"warning: {w}" for w in status.get("warnings", [])]
-        return "\n".join(lines)
-
     lines.append(f"project {status['project']}  harness {status['harness']}")
     lines.append(f"corpus  {status['home']}")
     lines.append("")
@@ -170,6 +191,7 @@ def render_status(status: dict, *, brief: bool = False) -> str:
                     lines.append(f"          {code_line(src['code'])}")
         else:
             lines.append(f"graph   {graph.get('error') or 'no ready build'}")
+        lines += read_lines(status.get("reads") or [])
         if status.get("warnings"):
             lines.append("")
             lines += [f"warning: {w}" for w in status["warnings"]]

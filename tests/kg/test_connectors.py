@@ -5,11 +5,14 @@ from pathlib import Path
 import pytest
 
 from evo_agents.harness import Harness
+from evo_agents.kg.build import build_project
 from evo_agents.kg.connectors import _files, _git
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.protocol.conformance import run_conformance
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
+from evo_agents.kg.serve import Session
 from evo_agents.kg.sync import sync_project
+from tests.kg.projects import commit, git, make_project, write
 
 GOLDEN = Path(__file__).parent / "golden"
 DATE = "2026-10-01T09:00:00+07:00"
@@ -184,6 +187,64 @@ def test_git_fetch_reads_the_remote_branch(tmp_path, monkeypatch):
     assert msgs[-1]["status"] == "ok"
     state = next(m for m in msgs if m["type"] == "state")
     assert state["cursor"]["commit"] == sh(upstream, "rev-parse", "HEAD").strip()
+
+
+def cursor_of(messages) -> dict:
+    return next(m for m in messages if m["type"] == "state")["cursor"]
+
+
+def test_git_cursor_names_the_commit_read_and_how_far_behind_the_remote_default_branch(tmp_path, monkeypatch):
+    upstream, clone = clone_behind(tmp_path)
+    monkeypatch.setattr(_git, "fetch", lambda *a, **kw: pytest.fail("fetched without fetch: true"))
+    head, tip = sh(clone, "rev-parse", "HEAD").strip(), sh(upstream, "rev-parse", "HEAD").strip()
+    assert cursor_of(run_git(clone)) == {"commit": head, "ref": "HEAD", "base": "origin/main", "behind": 0}
+    sh(clone, "fetch", "-q", "origin")  # origin/main moves one commit on; HEAD stays
+    assert cursor_of(run_git(clone)) == {"commit": head, "ref": "HEAD", "base": "origin/main", "behind": 1}
+    read = cursor_of(run_git(clone, ref="origin/main"))
+    assert read == {"commit": tip, "ref": "origin/main", "base": "origin/main", "behind": 0}
+
+
+def test_git_cursor_without_a_remote_branch_names_only_the_commit(tmp_path):
+    repo = make_repo(tmp_path / "app")  # an origin it never fetched: no origin/HEAD, no origin/main
+    assert cursor_of(run_git(repo)) == {"commit": sh(repo, "rev-parse", "HEAD").strip(), "ref": "HEAD"}
+
+
+def test_kg_node_links_to_the_commit_read_while_items_keep_their_branch_link(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    sync_project(project)
+    assert build_project(project).ok
+    first = git(app, "rev-parse", "HEAD").strip()
+    blob = "https://github.com/acme/demo-app/blob"
+    corpus = project.corpus()
+    assert corpus.cursor("app") == {
+        "commit": first,
+        "ref": "HEAD",
+        "url": f"https://github.com/acme/demo-app/commit/{first}",
+        "blob": {"branch": f"{blob}/main/", "commit": f"{blob}/{first}/"},
+    }
+    item = corpus.get("app:file:app/search.py")
+    assert item.record["uri"] == f"{blob}/main/app/search.py"  # by branch: the hash moves only with the file
+
+    session = Session(project, "wide")
+    for node_id in ("app:file:app/search.py", "app:app/search.py::search"):
+        found = session.call("kg_node", {"id": node_id})
+        evidence = found["structuredContent"]["evidence"]
+        assert evidence and {e["uri"] for e in evidence} == {f"{blob}/{first}/app/search.py"}, node_id
+        assert f" {blob}/{first}/app/search.py" in found["content"][0]["text"]
+    node = session.call("kg_node", {"id": "app:file:app/search.py"})["structuredContent"]["node"]
+    assert node["props"]["uri"] == f"{blob}/{first}/app/search.py"
+    found = session.call("kg_search", {"query": "app/search.py"})["structuredContent"]["results"]
+    assert {n["props"].get("uri") for n in found if n["id"] == "app:file:app/search.py"} == {item.record["uri"]}
+
+    write(app / "docs/guide.md", "# Guide\n\nRewritten.\n")
+    commit(app, "guide only")
+    sync_project(project)
+    assert build_project(project).ok
+    second = git(app, "rev-parse", "HEAD").strip()
+    assert project.corpus().get("app:file:app/search.py").hash == item.hash  # a new commit alone changes no item
+    found = Session(project, "wide").call("kg_node", {"id": "app:file:app/search.py"})
+    assert found["structuredContent"]["node"]["props"]["uri"] == f"{blob}/{second}/app/search.py"
 
 
 def test_git_without_fetch_reads_the_ref_as_the_clone_has_it(tmp_path, monkeypatch):

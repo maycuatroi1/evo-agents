@@ -1059,7 +1059,10 @@ fails for a reason that may pass (no answer, 408, 429, 502, 503, 504) is pushed 
 10 and 30 seconds apart; the hub answers what it has already and only the rest is sent. The hub merges the runs of every
 machine the way a local corpus does (`evo_agents/kg/corpus.py`). A source whose `ref:`, `repo:` or `path:` changes
 starts a new epoch on each machine at that machine's first run after the change, so for the files several machines read,
-the runs of the machine that switched last win from then on. `evo-agents hub kg build --project demo --wait` queues a
+the runs of the machine that switched last win from then on. A git source's newest run names the commit it read and how
+many commits that was behind the remote's default branch on the machine that synced it; a build keeps that, and
+`kg_status`, `kg_node`'s links and the project's knowledge graph page (`GET /v1/kg/{project}/graph`, `sources`, for the
+sources the member can see) show it. `evo-agents hub kg build --project demo --wait` queues a
 build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a build succeeded, `evo-agents kg
 serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule.
 
