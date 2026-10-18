@@ -41,6 +41,7 @@ EXIT_USAGE = 2
 # group chats, which a chat run's agent runs and a step, plan or author run's too
 AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose", "put")
 AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention")
+AGENT_COMMANDS += ("triage rerun", "triage plan")
 _FIRST_WORDS = "|".join(dict.fromkeys(name.split()[0] for name in AGENT_COMMANDS))
 HUB_COMMAND = re.compile(rf"(?<![\w./-])evo-agents\s+(hub|worker\s+({_FIRST_WORDS}))\b")
 FENCE = re.compile(r"^\s*(`{3,}|~{3,})")

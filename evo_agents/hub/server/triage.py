@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from sqlalchemy import exists, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, features, runs, tables
+from evo_agents.hub import chats, features, runs, tables, triage_rules
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_members import label_now, put_agent, put_person
@@ -218,19 +218,35 @@ def _head(found: RunStep, inferred: bool) -> list[str]:
     return lines
 
 
-async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
-    """Open the thread of failed run ``found`` (the caller holds its row locked, and a savepoint to undo this); the
-    thread it already has, or None when the run is not due one."""
-    existing = await thread_of(conn, found.run_id)
-    if existing is not None or not await _due(conn, found.project_id):
-        return existing
-    owner = await _person(conn, found.dispatcher_id)
-    chat, profile = await _chat(conn, found, owner)
-    inferred = await _inferred(conn, found.run_id)
-    lines = _head(found, inferred)
-    lines += await _candidates(conn, found, await _role(conn, owner.user_id, found.project_id))
-    body = runs.clip("\n".join(lines), chats.MAX_MESSAGE_BYTES - 200) + f"\n\n@{profile.handle}"
-    message_id, _ = await insert_message(conn, chat, body, thread_root_id=None)
+async def chain_of(conn: AsyncConnection, run_id: int) -> tuple[int, list[str]]:
+    """(how many automatic reruns led to run ``run_id``, the cause of each): the runs it reruns, by ``parent_run_id``,
+    for as long as the triage of that run reran it (``run_triage.auto_reruns``). A rerun by hand starts a chain."""
+    r, t = tables.runs, tables.run_triage
+    causes: list[str] = []
+    current = run_id
+    while len(causes) <= triage_rules.RERUN_CAP:
+        parent = (await conn.execute(select(r.c.parent_run_id).where(r.c.id == current))).scalar_one_or_none()
+        if parent is None:
+            break
+        row = (await conn.execute(select(t.c.cause, t.c.auto_reruns).where(t.c.run_id == parent))).one_or_none()
+        if row is None or row.auto_reruns < 1:
+            break
+        causes.append(row.cause or "unknown")
+        current = parent
+    return len(causes), causes
+
+
+async def _ask_agent(
+    conn: AsyncConnection,
+    found: RunStep,
+    chat,
+    profile,
+    owner: Principal,
+    message_id: int,
+    body: str,
+) -> int | None:
+    """Hand the first message of the thread to ``profile`` for the owner (hop 1); the chat run it made, if any. A
+    refusal (the budget, a worker) is said in the thread."""
     kept, _, _ = await resolve_mentions(conn, chat, owner, [profile.handle])
     r = tables.runs
     via = (
@@ -242,7 +258,31 @@ async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
     refusals = [mention["refusal"] for mention in kept if mention["refusal"]]
     if refusals:
         await hub_reply(conn, chat.chat_id, message_id, "\n".join(refusals))
-    agent_run = next((mention.get("run_id") for mention in kept if mention.get("run_id")), None)
+    return next((mention.get("run_id") for mention in kept if mention.get("run_id")), None)
+
+
+async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
+    """Open the thread of failed run ``found`` (the caller holds its row locked, and a savepoint to undo this); the
+    thread it already has, or None when the run is not due one. A run that ends a chain of automatic reruns that is
+    full (``triage_rules.RERUN_CAP``) gets the thread and the facts, and no agent: the owner decides."""
+    existing = await thread_of(conn, found.run_id)
+    if existing is not None or not await _due(conn, found.project_id):
+        return existing
+    owner = await _person(conn, found.dispatcher_id)
+    chat, profile = await _chat(conn, found, owner)
+    inferred = await _inferred(conn, found.run_id)
+    depth, _ = await chain_of(conn, found.run_id)
+    full = depth >= triage_rules.RERUN_CAP
+    lines = _head(found, inferred)
+    lines += await _candidates(conn, found, await _role(conn, owner.user_id, found.project_id))
+    if full:
+        lines.append(
+            f"The hub ran this step again {depth} times by itself already, the most: it asks no agent, and the "
+            "owner decides."
+        )
+    body = runs.clip("\n".join(lines), chats.MAX_MESSAGE_BYTES - 200) + ("" if full else f"\n\n@{profile.handle}")
+    message_id, _ = await insert_message(conn, chat, body, thread_root_id=None)
+    agent_run = None if full else await _ask_agent(conn, found, chat, profile, owner, message_id, body)
     await conn.execute(
         insert(tables.run_triage).values(
             run_id=found.run_id,
@@ -251,6 +291,7 @@ async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
             cause=found.failure_cause,
             cause_inferred=inferred,
             agent_run_id=agent_run,
+            chain_depth=depth,
         )
     )
     log.info("triage thread opened", extra={"run_id": found.run_id, "chat_id": chat.chat_id, "agent_run_id": agent_run})
