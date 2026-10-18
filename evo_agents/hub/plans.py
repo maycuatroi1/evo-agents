@@ -19,8 +19,11 @@ import math
 from evo_agents.kg.protocol import canonical_json
 
 SECTIONS = ("steps", "repos", "tech_debt", "open_questions")  # what evo harness step, repo, debt, question set
-UPDATABLE = ("status", "done_at", "fixed_at", "answered_at", "merged_at", "note", "evidence")
-STEP_STATUSES = ("done", "in_progress", "pending", "blocked")
+UPDATABLE = ("status", "done_at", "descoped_at", "fixed_at", "answered_at", "merged_at", "note", "evidence")
+STEP_STATUSES = ("done", "in_progress", "pending", "blocked", "descoped")
+CLOSED_STEP_STATUSES = ("done", "descoped")  # a descoped step was dropped on purpose; it no longer holds a plan open
+PLAN_ABANDON_STATUSES = ("abandoned", "superseded")
+ABANDON_KEYS = ("abandoned_at", "abandoned_reason", "superseded_by")
 AREAS = ("active", "completed")
 MAX_PLAN_BYTES = 1024 * 1024  # canonical JSON of one plan; the largest plan of the three harnesses is 0.12 MiB
 MAX_VALUE_CHARS = 64 * 1024  # one value set by an update
@@ -147,13 +150,13 @@ def update_summary(body: dict, section: str, index: int, old: dict, updates: dic
 
 
 def undone_steps(body: dict) -> list[str]:
-    """The steps that are not done, by ``step_key``: complete refuses a plan that has any."""
+    """The steps that are neither done nor descoped, by ``step_key``: complete refuses a plan that has any."""
     steps = body.get("steps")
     steps = steps if isinstance(steps, list) else []
     return [
         step_key(step, index)
         for index, step in enumerate(steps)
-        if not (isinstance(step, dict) and step.get("status") == "done")
+        if not (isinstance(step, dict) and step.get("status") in CLOSED_STEP_STATUSES)
     ]
 
 
@@ -197,3 +200,26 @@ def summarize(old: dict | None, new: dict) -> str:
     shown = ", ".join(paths[:SUMMARY_PATHS])
     more = f" and {len(paths) - SUMMARY_PATHS} more" if len(paths) > SUMMARY_PATHS else ""
     return f"changed {shown}{more}"
+
+
+def abandoned_body(body: dict, reason: str, at: str, superseded_by: str | None = None) -> dict:
+    """The plan marked abandoned (or superseded, with ``superseded_by``), with the date and reason; the status of
+    each step is left as it is."""
+    if not reason.strip():
+        raise PlanProblem("a reason is required to abandon a plan")
+    result = {key: value for key, value in body.items() if key not in ABANDON_KEYS}
+    result["status"] = "superseded" if superseded_by else "abandoned"
+    result["abandoned_at"] = at
+    result["abandoned_reason"] = reason
+    if superseded_by:
+        result["superseded_by"] = superseded_by
+    return result
+
+
+def reopened_body(body: dict) -> dict:
+    """The plan without its abandon keys and with status active; PlanProblem when it was not abandoned."""
+    if body.get("status") not in PLAN_ABANDON_STATUSES:
+        raise PlanProblem(f"plan {body.get('id')} is not abandoned or superseded, so there is nothing to reopen")
+    result = {key: value for key, value in body.items() if key not in ABANDON_KEYS}
+    result["status"] = "active"
+    return result

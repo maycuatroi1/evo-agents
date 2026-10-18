@@ -851,6 +851,13 @@ def test_judge_the_mcp_tools_of_a_judge_run_are_the_code_graphs_alone(world):
         refused = tool(name, arguments)
         assert refused.get("isError") and "is not for a judge run" in refused["content"][0]["text"], name
     assert not tool("hub_projects").get("isError")
+    listing = {"jsonrpc": "2.0", "id": 8, "method": "tools/list"}
+    listed = world.client.post("/mcp", json=listing, headers={**token, **MCP_HEADERS, "X-Evo-Run": str(spec["id"])})
+    assert listed.status_code == 200, listed.text
+    from evo_agents.hub.mcp_tools import JUDGE_TOOLS, TOOLS
+
+    names = [t["name"] for t in listed.json()["result"]["tools"]]  # what it may call, in the hub's order
+    assert names == [t["name"] for t in TOOLS if t["name"] in JUDGE_TOOLS] and "hub_projects" in names
 
 
 # Signs of score hacking
