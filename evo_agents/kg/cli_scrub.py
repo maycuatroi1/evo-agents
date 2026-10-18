@@ -21,7 +21,7 @@ from evo_agents.kg.scrub import KEPT, LIVE, OLD, ScrubBusy, holding_sources, pro
 SHOWN = 20  # blobs listed per project in text; --json lists them all
 
 
-def _targets(args) -> list[tuple[str, Path]]:
+def project_targets(args) -> list[tuple[str, Path]]:
     """(name, directory) of the projects to read: --all, a project's directory under the kg home, or the project
     --project or the cwd resolves to. Raises ProjectError."""
     home = kg_home()
@@ -38,7 +38,7 @@ def _kinds(secrets: dict[str, int]) -> str:
     return ", ".join(f"{kind} {count}" for kind, count in secrets.items())
 
 
-def _size(size: int) -> str:
+def size_text(size: int) -> str:
     for unit, scale in (("GiB", 1024**3), ("MiB", 1024**2), ("KiB", 1024)):
         if size >= scale:
             return f"{size / scale:.1f} {unit}"
@@ -87,7 +87,7 @@ def _plan_line(total: dict, projects: int) -> str:
     kept = total["to_delete"] - total[OLD]
     rewrite = f", after rewriting {total['rewrite']} run log(s) in use" if total["rewrite"] else ""
     return (
-        f"{total[OLD]} old blob(s)" + (f" and {kept} kept blob(s)" if kept else "") + f" ({_size(total['bytes'])}), "
+        f"{total[OLD]} old blob(s)" + (f" and {kept} kept blob(s)" if kept else "") + f" ({size_text(total['bytes'])}), "
         f"{total['logs']} run log(s) of old runs and {total['memo']} memo row(s) in {projects} project(s){rewrite}"
     )
 
@@ -142,7 +142,7 @@ def _purge_all(args, scans: list) -> int:
                 else ""
             )
             print(
-                f"{scan.project}: deleted {deleted['blobs']} blob(s) ({_size(deleted['bytes'])}), {deleted['logs']} "
+                f"{scan.project}: deleted {deleted['blobs']} blob(s) ({size_text(deleted['bytes'])}), {deleted['logs']} "
                 f"run log(s) and {deleted['memo']} memo row(s){rewritten}; memo and graph compacted"
             )
             for warning in scan.warnings[shown:]:
@@ -160,7 +160,7 @@ def cmd_scrub(args) -> int:
         print("error: --purge deletes for good; pass --yes too when no terminal can confirm it", file=sys.stderr)
         return 2
     try:
-        targets = _targets(args)
+        targets = project_targets(args)
     except ProjectError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2

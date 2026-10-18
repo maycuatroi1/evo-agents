@@ -1,11 +1,15 @@
+import datetime as dt
 import sqlite3
 from pathlib import Path
 
 import pytest
 
+from evo_agents.kg import retention
 from evo_agents.kg import search as text_search
 from evo_agents.kg import store as store_module
-from evo_agents.kg.build import build_project
+from evo_agents.kg.build import build_project, memo_path, verify_build
+from evo_agents.kg.ids import utc_text
+from evo_agents.kg.memo import UNUSED
 from evo_agents.kg.pipeline.stages import leading_comment
 from evo_agents.kg.project import load_project_at
 from evo_agents.kg.serve import Session
@@ -409,3 +413,110 @@ def test_leading_comments_are_the_docstrings_of_other_languages():
     assert leading_comment(lines, 9) == "Builds the graph."
     assert leading_comment(lines, 11) is None
     assert leading_comment(lines, 3) == "Routes of the app."
+
+
+# Retention of the history and of the memo (evo_agents.kg.retention)
+
+KEEP_LOGS = {"logs": "1d"}
+
+
+def notes_build(project, version: int, **kw):
+    app = project.harness.root.parent / "demo-app"
+    write(app / "docs/notes.md", f"# Notes\n\nVersion {version} of the notes, about app/search.py.\n")
+    commit(app, f"notes {version}")
+    return sync_build(project, **kw)
+
+
+def test_history_retention_counts_then_deletes_what_no_kept_build_reads(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    reports = [notes_build(project, version) for version in range(4)]
+    ids, latest = [r.build_id for r in reports], reports[-1]
+    store = Store.for_project(project)
+    tomorrow = utc_text(dt.datetime.now(dt.UTC) + dt.timedelta(days=1))
+    assert store.history_floor(tomorrow) == ids[-2]  # the latest two stay, however old
+    assert store.history_floor("") == ids[0]  # every build finished within the period
+    closed = {
+        table: store.db.execute(f"SELECT count(*) FROM {table} WHERE tx_to <= ?", (ids[-2],)).fetchone()[0]
+        for table in store_module.HISTORY_TABLES
+    }
+    assert store.history(ids[-2]) == {**closed, "builds": 2} and closed["nodes"] > 0
+    kept_counts = store.counts(ids[-2])
+
+    young = retention.plan(project.name, project.root, {**KEEP_LOGS, "history": "1d"})
+    assert young.history_floor == ids[0] and not any(young.history.values())
+    found = retention.plan(project.name, project.root, {**KEEP_LOGS, "history": "0", "memo": "1d"})
+    assert found.history_floor == ids[-2] and found.history == store.history(ids[-2])
+    assert found.counts()["history"] == sum(closed.values()) and found.counts()["builds"] == 2
+    assert [b for (b,) in store.db.execute("SELECT build_id FROM builds ORDER BY 1")] == ids  # counting deletes nothing
+
+    deleted = retention.apply(found)
+    assert deleted["history"] == sum(closed.values()) and deleted["builds"] == 2 and deleted["logs"] == 0
+    store = Store.for_project(project)
+    assert [b for (b,) in store.db.execute("SELECT build_id FROM builds ORDER BY 1")] == ids[-2:]
+    assert store.counts(ids[-2]) == kept_counts  # the build before the latest still reads whole
+    assert store.latest_ready() == latest.build_id
+    assert verify_build(project, latest.content_hash, cold=True)["match"]
+    assert build_project(project, force=True).content_hash == latest.content_hash  # the next build diffs as before
+
+
+def memo_stages(path, cut: str) -> list[str]:
+    db = sqlite3.connect(path)
+    try:
+        return sorted(row[0] for row in db.execute(f"SELECT stage FROM memo WHERE key IN ({UNUSED})", {"cut": cut}))
+    finally:
+        db.close()
+
+
+def test_memo_retention_deletes_the_rows_no_build_uses_and_keeps_the_latest_build_s(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    notes_build(project, 0)
+    app = tmp_path / "demo-app"
+    write(
+        app / "app/search.py",
+        "def rank_results(items):\n    return sorted(items, reverse=True)\n\n\n"
+        "def search(query):\n    return rank_results([query, query])\n",
+    )
+    report = notes_build(project, 1)
+    path = memo_path(project)
+
+    young = retention.plan(project.name, project.root, {**KEEP_LOGS, "memo": "1d"})
+    assert young.memo == 0 and young.memo_cut is not None and young.memo_rows > 0
+    found = retention.plan(project.name, project.root, {**KEEP_LOGS, "memo": "0"})
+    assert 0 < found.memo < found.memo_rows
+    unused = memo_stages(path, found.memo_cut)
+    assert len(unused) == found.memo and {"map", "link", "link:reads"} <= set(unused)  # the old texts' rows
+
+    deleted = retention.apply(found)
+    assert deleted["memo"] == found.memo
+    assert retention.plan(project.name, project.root, {**KEEP_LOGS, "memo": "0"}).memo == 0
+    db = sqlite3.connect(path)
+    assert db.execute("SELECT count(*) FROM memo").fetchone()[0] == found.memo_rows - found.memo
+    assert db.execute("SELECT count(*) FROM memo_used WHERE key NOT IN (SELECT key FROM memo)").fetchone()[0] == 0
+    db.close()
+    warm = build_project(project, force=True)  # every row the latest build used is still there
+    assert warm.content_hash == report.content_hash
+    assert all(stage["misses"] == 0 for stage in warm.memo.values()), warm.memo
+    assert verify_build(project, report.content_hash, cold=True)["match"]
+
+
+def test_memo_rows_from_before_uses_were_recorded_go_once_a_build_recorded_its_own(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    notes_build(project, 0)
+    report = notes_build(project, 1)
+    path = memo_path(project)
+    db = sqlite3.connect(path)
+    with db:
+        db.execute("DELETE FROM memo_used")
+        db.execute("DELETE FROM memo_meta")
+    db.close()
+    legacy = retention.plan(project.name, project.root, {**KEEP_LOGS, "memo": "0"})
+    assert legacy.memo == 0 and legacy.memo_cut is None and legacy.memo_rows > 0  # nothing known: nothing goes
+
+    assert build_project(project, force=True).content_hash == report.content_hash  # records the rows it uses
+    found = retention.plan(project.name, project.root, {**KEEP_LOGS, "memo": "14d"})
+    assert found.memo > 0  # the rows of version 0, unused by the build that recorded, whatever the period
+    assert retention.apply(found)["memo"] == found.memo
+    warm = build_project(project, force=True)
+    assert warm.content_hash == report.content_hash
+    assert all(stage["misses"] == 0 for stage in warm.memo.values()), warm.memo
+    assert verify_build(project, report.content_hash, cold=True)["match"]
