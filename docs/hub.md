@@ -1514,6 +1514,7 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it |
 | `EVO_HUB_PUBLIC_URL` | api | the URL browsers use, such as `https://hub.example.org` |
 | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, `EVO_HUB_S3_ACCESS_KEY_ID`, `EVO_HUB_S3_SECRET_ACCESS_KEY` | api, worker | the blob store, all four or none; for R2 the endpoint is `https://<account id>.r2.cloudflarestorage.com` |
+| `EVO_HUB_S3_INTERNAL_ENDPOINT` | api, worker | optional: where the hub itself calls the same store, such as `http://seaweedfs:8333` on the platform's network when `EVO_HUB_S3_ENDPOINT` is a public hostname behind a proxy that caps a request's body (Cloudflare takes 100 MB); presigned URLs keep `EVO_HUB_S3_ENDPOINT`; set without the four, the hub does not start |
 | `EVO_HUB_SENTRY_DSN` | api, worker | optional error reporting |
 | `EVO_HUB_LOG_LEVEL` | api, worker | `DEBUG`, `INFO` (default), `WARNING` or `ERROR` |
 | `EVO_HUB_BLOB_CONCURRENCY` | api | uploads one process checks and copies in the blob store at once, every commit together; default `32`, at most `256` |
