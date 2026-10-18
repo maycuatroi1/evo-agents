@@ -559,12 +559,76 @@ def test_core_plugin_migration_puts_its_prefixed_table_in_the_hub_chain_and_the_
     assert (shown["state"], shown["installed_version"], shown["installed_by"]) == ("installed", "1.0.0", None)
     (version,) = shown["versions"]
     assert (version["tier"], version["signature_kind"], version["published_by"]) == ("core", "image", None)
-    # ghost owns a table no migration made: the hub does not record it; Telegram, with nothing per project, neither
+    # ghost owns a table no migration made: the hub does not record it
     names = [plugin["name"] for plugin in notes.client.get("/v1/plugins", headers=notes.admin).json()]
     assert names == ["notes"]
     for action in ("install", "upgrade", "remove"):
         refused = notes.client.post(f"/v1/plugins/notes/{action}", json={}, headers=notes.admin)
         assert refused.status_code == 409 and "core plugin of the hub's image" in refused.json()["message"]
+
+
+HUB_WIDE = [
+    EntryPoint("phantom", "tests.hub.core_notes:HUB_WIDE_MISSING_TABLE", ENTRY_POINT_GROUP),
+    EntryPoint("telegram", "evo_agents.core_plugins.telegram:MANIFEST", ENTRY_POINT_GROUP),
+]
+
+
+@pytest.fixture
+def hub_wide(installed, monkeypatch):
+    """Beside notes and ghost: Telegram, the core plugin evo-ak ships, with nothing per project, and phantom, as
+    Telegram but owning a table no migration creates."""
+    points = [*core.entry_points(group=ENTRY_POINT_GROUP), *HUB_WIDE]
+    monkeypatch.setattr(core, "entry_points", lambda *, group: list(points) if group == ENTRY_POINT_GROUP else [])
+    plugin_calls.core_registry.cache_clear()
+
+
+def test_core_plugin_migration_made_tables_records_hub_wide_telegram_in_the_store_and_in_no_project(
+    hub_wide, notes, hub_db
+):
+    client = notes.client
+    listed = {plugin["name"]: plugin for plugin in client.get("/v1/plugins", headers=notes.admin).json()}
+    # per project (ghost) or hub-wide (phantom), a plugin that owns a table no migration made is not recorded
+    assert sorted(listed) == ["notes", "telegram"]
+    telegram = listed["telegram"]
+    shown = (telegram["tier"], telegram["state"], telegram["installed_version"], telegram["installed_by"])
+    assert shown == ("core", "installed", "1.0.0", None)
+    (version,) = client.get("/v1/plugins/telegram", headers=notes.admin).json()["versions"]
+    signed = (version["signature_kind"], version["published_by"], version["signed_by"])
+    assert signed == ("image", None, "image:evo_agents.core_plugins.telegram:MANIFEST")
+    for action in ("install", "upgrade", "remove"):
+        refused = client.post(f"/v1/plugins/telegram/{action}", json={}, headers=notes.admin)
+        assert refused.status_code == 409 and "core plugin of the hub's image" in refused.json()["message"]
+    # Telegram ran before the store listed it, and nobody did anything: only notes, which projects enable, is audited
+    trail = tables.audit
+    installs = live.sql(hub_db, select(trail.c.target).where(trail.c.action == "plugin.install"))
+    assert installs == [("plugin:notes@1.0.0 via=image",)]
+    # the store turns off none of the image's plugins, which the image loads only on a release they run on
+    from evo_agents.hub.server.plugin_store import disable_incompatible
+
+    async def on_an_older_release(app):
+        return await disable_incompatible(app.state.engine, frozenset({live.ADMIN}), "0.1.0")
+
+    assert on_hub(client, on_an_older_release) == []
+    assert client.get("/v1/plugins/telegram", headers=notes.admin).json()["state"] == "installed"
+
+    # No project's plugin: left out of the list, and nothing to read, enable, disable or configure in a project.
+    names = [plugin["name"] for plugin in client.get(f"/v1/projects/{PROJECT}/plugins", headers=notes.owner).json()]
+    assert names == ["notes"]
+    base = f"/v1/projects/{PROJECT}/plugins/telegram"
+    asked = [
+        ("GET", base, None),
+        ("POST", f"{base}/enable", {"permissions": []}),
+        ("POST", f"{base}/disable", None),
+        ("GET", f"{base}/config", None),
+        ("POST", f"{base}/config", {"values": {}}),
+    ]
+    for method, path, body in asked:
+        answered = client.request(method, path, json=body, headers=notes.owner)
+        assert answered.status_code == 404, (method, path, answered.text)
+        assert "plugin telegram runs hub-wide" in answered.json()["message"]
+    assert live.sql(hub_db, select(func.count()).select_from(tables.project_plugins)) == [(0,)]
+    # its routes stay where they were, checking their callers themselves
+    assert client.get("/v1/me/telegram", headers=notes.owner).status_code == 200
 
 
 def test_core_plugin_migration_rule_tables_carry_the_plugin_prefix_and_come_from_the_hub_chain(hub_db):

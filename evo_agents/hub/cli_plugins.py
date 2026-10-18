@@ -140,7 +140,8 @@ def _show(plugin: dict) -> None:
     installed = plugin["installed_version"]
     print(f"Plugin {plugin['name']} of publisher {plugin['publisher']}: {plugin['state']}")
     if installed:
-        print(f"  installed {installed} by {plugin['installed_by']} at {when(plugin['installed_at'])} UTC")
+        by = plugin["installed_by"] or "the hub's image"  # nobody installs a core plugin of the image
+        print(f"  installed {installed} by {by} at {when(plugin['installed_at'])} UTC")
     if plugin["disabled_reason"]:
         print(f"  turned off at {when(plugin['disabled_at'])} UTC: {plugin['disabled_reason']}")
     if plugin["upgrade_to"]:

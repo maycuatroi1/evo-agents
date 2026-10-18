@@ -178,7 +178,7 @@ def test_plugin_points_each_have_a_version_and_the_schema_names_the_kinds_of_eve
 
 
 def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_only_in_core():
-    from evo_agents.plugins.manifest import table_prefix
+    from evo_agents.plugins.manifest import is_per_project, table_prefix
 
     core = manifest(id="srs-docs", tier="core", permissions=None, config=None, contributes={})
     owned = read_manifest({**core, "contributes": {"tables": [{"name": "srs_docs_items"}]}})
@@ -196,6 +196,9 @@ def test_plugin_points_core_tables_carry_the_prefix_and_routes_name_a_prefix_onl
     kept = read_manifest({**core, "contributes": {"routes": [{"name": "me", "python": "m:r", "prefix": ""}]}})
     assert not kept.per_project()
     assert read_manifest({**core, "contributes": {"routes": [{"name": "docs", "python": "m:r"}]}}).per_project()
+    # the same rule on a manifest as the hub's store keeps it, without reading it again
+    for data in (owned.data, kept.data, {**core, "permissions": ["runs:read"]}, manifest()):
+        assert is_per_project(data) == read_manifest(data).per_project()
 
 
 def test_plugin_pages_isolated_name_an_html_entry_under_pages_and_core_ones_are_native():

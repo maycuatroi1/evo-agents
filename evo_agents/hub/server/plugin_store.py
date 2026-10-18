@@ -19,14 +19,18 @@ the publishers and the release the hub has now: bytes in the store that are not 
 (altered), and so is a publisher the operator no longer trusts. Without a version, install takes the newest version
 that runs on this release and upgrade the newest above the installed one. Removing leaves every version in the store.
 
-A core plugin that comes with the hub's image and that projects enable (``register_core_plugins``, as the api starts)
-is recorded as a version of signature kind ``image``, published and installed by nobody, which the store neither
-installs, upgrades nor removes (409): the image does. It is recorded only when the hub's schema has every table it owns.
+A core plugin that comes with the hub's image (``register_core_plugins``, as the api starts) is recorded as a version
+of signature kind ``image``, published and installed by nobody, which the store neither installs, upgrades nor removes
+(409): the image does. It is recorded only when the hub's schema has every table it owns. One that projects enable
+(``Manifest.per_project``) is then enabled per project as any other, and its install is audited; one that runs hub-wide
+(Telegram) is listed here and nowhere in a project (``evo_agents.hub.server.plugin_grants``), with no audit row: it ran
+before the store listed it, and nobody did anything.
 
 ``disable_incompatible`` runs as the api starts: an installed plugin whose version no longer runs on this release
 (the hub was upgraded past its ``engines``) is turned off with the reason, an audit row and a notice
 ``plugin_disabled`` to every hub admin who has signed in, and the hub serves on. Installing it again, or upgrading it
-to a version that runs, turns it back on.
+to a version that runs, turns it back on. A core plugin of the image is not among them: the image loads it only on a
+release it runs on, and records it as it starts.
 """
 
 from __future__ import annotations
@@ -56,7 +60,7 @@ from evo_agents.hub.server.plugin_tokens import revoke_tokens
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins import compat, signing
 from evo_agents.plugins.bundle import MAX_BUNDLE, BundleError, read_bundle
-from evo_agents.plugins.manifest import PLUGIN_ID, TIERS, Manifest
+from evo_agents.plugins.manifest import PLUGIN_ID, TIERS, Manifest, is_per_project
 from evo_agents.plugins.signing import MAX_SIGNATURE, SIGNATURE_KINDS, SignatureError, SignatureUnavailable
 
 log = logging.getLogger(__name__)
@@ -498,7 +502,7 @@ def _installed_query():
     return (
         select(p.c.id, p.c.name, p.c.installed_version, v.c.manifest)
         .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
-        .where(p.c.disabled_reason.is_(None))
+        .where(p.c.disabled_reason.is_(None), v.c.signature_kind != IMAGE)  # the image's run on its release
         .order_by(p.c.name)
         .with_for_update(of=p)
     )
@@ -596,25 +600,27 @@ async def _record_image_plugin(conn: AsyncConnection, plugin) -> bool:
         await conn.execute(
             update(plugins).where(plugins.c.id == row.id).values({**on, "disabled_reason": None, "disabled_at": None})
         )
-        target = f"plugin:{manifest.id}@{manifest.version} via={IMAGE}"
-        await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_INSTALL, target=target)
+        if manifest.per_project():  # one that runs hub-wide ran before the store listed it: nobody did anything
+            target = f"plugin:{manifest.id}@{manifest.version} via={IMAGE}"
+            await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_INSTALL, target=target)
     return True
 
 
 async def register_core_plugins(engine: AsyncEngine, found) -> list[str]:
-    """Record in the store each core plugin of the image (``found``, of ``evo_agents.plugins.core``) that projects
-    enable (``Manifest.per_project``), installed at its version: projects then enable it, grant it what it asks for
-    and configure it as any other. A plugin of the image that left it is no longer installed; its rows, its projects'
-    grants and configs, and the data in its tables stay. The names recorded."""
+    """Record in the store each core plugin of the image (``found``, of ``evo_agents.plugins.core``), installed at its
+    version. One that projects enable (``Manifest.per_project``) they then enable, grant what it asks for and configure
+    as any other; one that runs hub-wide (Telegram) is listed in the store only, and no project enables it. A plugin of
+    the image that left it is no longer installed; its rows, its projects' grants and configs, and the data in its
+    tables stay. The names recorded."""
     recorded, kept = [], set()
     async with engine.begin() as conn:
         for plugin in found:
-            if plugin.manifest.per_project() and await _record_image_plugin(conn, plugin):
+            if await _record_image_plugin(conn, plugin):
                 recorded.append(plugin.manifest.id)
                 kept.add(plugin.manifest.id)
         p, v = tables.plugins, tables.plugin_versions
         left = (
-            select(p.c.id, p.c.name, p.c.installed_version)
+            select(p.c.id, p.c.name, p.c.installed_version, v.c.manifest)
             .join_from(p, v, (v.c.plugin_id == p.c.id) & (v.c.version == p.c.installed_version))
             .where(v.c.signature_kind == IMAGE, p.c.name.not_in(kept or [""]))
             .with_for_update(of=p)
@@ -624,8 +630,9 @@ async def register_core_plugins(engine: AsyncEngine, found) -> list[str]:
             await conn.execute(
                 update(p).where(p.c.id == row.id).values({**cleared, "disabled_reason": None, "disabled_at": None})
             )
-            target = f"plugin:{row.name}@{row.installed_version} via={IMAGE}"
-            await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_REMOVE, target=target)
+            if is_per_project(row.manifest):
+                target = f"plugin:{row.name}@{row.installed_version} via={IMAGE}"
+                await audit.record(conn, actor_id=None, token_id=None, action=audit.PLUGIN_REMOVE, target=target)
             log.warning("core plugin left the image: no longer installed, its data kept", extra={"plugin": row.name})
     if recorded:
         log.info("core plugins of the image recorded", extra={"plugins": recorded})

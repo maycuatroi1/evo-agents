@@ -266,11 +266,13 @@ that enabled the plugin while the plugin is installed and turned on, and the hub
 
 A core plugin is a Python package installed beside evo-agents that names its manifest in the entry point group
 `evo_agents.plugins`. Installing it is what trusts it, and its code runs in the hub's processes. The hub reads the
-group once per process; the routers are included when the app is made. A core plugin that projects enable (it asks for
-a permission, takes a config, or contributes an MCP tool, a job, an event or a route under `/v1/x/<id>`) is recorded in
-the hub's store as it starts, as a version of signature kind `image`, published and installed by nobody, which the
-store neither installs, upgrades nor removes (409): the image does. Projects then enable it, grant it what it asks for
-and configure it like any other.
+group once per process; the routers are included when the app is made. Each core plugin of the image is recorded in
+the hub's store as the api starts, as a version of signature kind `image`, published and installed by nobody, which the
+store neither installs, upgrades nor removes (409): the image does. One that projects enable (it asks for a permission,
+takes a config, or contributes an MCP tool, a job, an event, a page or a route under `/v1/x/<id>`) they then enable,
+grant what it asks for and configure like any other, and its install is audited. One that does none of that runs
+hub-wide: the store lists it, installed, with no audit row (it ran before the store listed it), and no project's list
+does; reading, enabling or configuring it in a project is a 404.
 
 **A core plugin owns tables through the hub's migrations.** It lists them under `tables`, each named with its prefix:
 its id with `_` for `-`, then `_` (`telegram_links` for telegram, `srs_docs_items` for srs-docs). Their revisions are
@@ -283,7 +285,8 @@ them, the hub's image among them. No package of evo_agents imports them (import-
 core-plugins-by-entry-point): the hub reaches them through their manifests. The first is **telegram**, the hub's
 Telegram channel (`docs/notifications.md`), which left the core as it was: its channel of kind `telegram`, its routes at
 the paths they had (the empty `prefix`: its routers carry their own under `/v1`), its table `telegram_links` from
-migration 0015. Nothing of it is per project, so no project enables it and the store does not list it.
+migration 0015. Nothing of it is per project, so it runs hub-wide: `evo-agents hub plugin list` and Administration,
+Plugins show it as a core plugin installed with the image, and no project enables it.
 
 ## Pages
 

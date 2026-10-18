@@ -14,6 +14,10 @@ rows and gets nothing. ``granted`` of the API says the same (``plugin_calls.effe
 bridge go by what the hub checks: an upgrade that asks for less leaves the rest of the row in the table, not in the
 grant.
 
+A core plugin of the hub's image that runs hub-wide (``evo_agents.plugins.manifest.is_per_project``: Telegram) is
+installed in the store and is no project's plugin: a project's list leaves it out, and reading, enabling, disabling or
+configuring it in a project is a 404 that says so.
+
 Each change is audited in the project: plugin.project-enable then plugin.grant when a plugin is enabled, plugin.grant
 alone when a grant changes, plugin.project-disable; the target is ``<project>/plugin:<name>@<version>``, a grant's
 followed by `` permissions=<names>``.
@@ -42,7 +46,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.plugin_pages import PluginPage, pages_of
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
-from evo_agents.plugins.manifest import PERMISSION_TEXT, PERMISSIONS, TIERS
+from evo_agents.plugins.manifest import PERMISSION_TEXT, PERMISSIONS, TIERS, is_per_project
 
 log = logging.getLogger(__name__)
 
@@ -168,7 +172,8 @@ def view(row, project: str, secret: str | None) -> ProjectPlugin:
 
 
 async def list_project_plugins(conn: AsyncConnection, access: ProjectAccess, secret: str | None) -> list[ProjectPlugin]:
-    return [view(row, access.name, secret) for row in await conn.execute(_query(access.project_id))]
+    rows = await conn.execute(_query(access.project_id))
+    return [view(row, access.name, secret) for row in rows if is_per_project(row.manifest)]
 
 
 def not_installed(name: str) -> HTTPException:
@@ -177,14 +182,25 @@ def not_installed(name: str) -> HTTPException:
     )
 
 
+def hub_wide(name: str) -> HTTPException:
+    return HTTPException(
+        404,
+        f"plugin {name} runs hub-wide, as a core plugin of the hub's image: no project enables, grants or configures "
+        "it",
+    )
+
+
 async def installed_row(conn: AsyncConnection, access: ProjectAccess, name: str, *, lock: bool = False):
-    """The row of the installed plugin ``name`` from ``_query``; 404 when none is installed."""
+    """The row of the installed plugin ``name`` from ``_query``; 404 when none is installed, or when it runs
+    hub-wide."""
     query = _query(access.project_id).where(tables.plugins.c.name == name)
     if lock:  # enabling waits for an install, upgrade or removal under way, and they for it
         query = query.with_for_update(of=tables.plugins)
     row = (await conn.execute(query)).first()
     if row is None:
         raise not_installed(name)
+    if not is_per_project(row.manifest):
+        raise hub_wide(name)
     return row
 
 
