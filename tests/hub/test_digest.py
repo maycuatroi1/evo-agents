@@ -17,7 +17,7 @@ import pytest
 
 from evo_agents.cli import main
 from evo_agents.hub import client as hub_client
-from evo_agents.hub import digest, hooks
+from evo_agents.hub import digest, hooks, spool
 from evo_agents.hub.digest import CODEX_META, DigestState, build, fingerprint, program
 from tests.hub import pg
 
@@ -178,6 +178,75 @@ def test_the_digest_holds_the_peak_context_the_compactions_and_the_result_chars_
     assert (found["peak_context_tokens"], found["compactions"]) == (None, 0), "no usage: no peak, never 0"
 
 
+# What the spool hook (``evo_agents.hub.spool``) leaves in the transcript: its note in the place of a result it cut.
+
+SPOOL = Path("/Users/alice/.evo/tool-output") / SESSION
+
+
+def output_note(size: int, call: str) -> str:
+    """A long output as the hook leaves it: its head, the note that names its size and its spool file, its tail."""
+    long = spool.Long("x" * size, size, lambda note, head, tail: None)
+    return f"first lines\n\n{spool.note(long, SPOOL / f'{call}.txt', spool.HEAD, spool.DAYS)}\n\nlast lines"
+
+
+def read_note(lines: int, call: str) -> tuple[str, int]:
+    """A long Read as the hook leaves it: its first lines and the note, and the characters of the whole read."""
+    text = "\n".join(f"line {n} of the file" for n in range(1, lines + 1))
+    long = spool.Long(text, len(text), lambda note, head, tail: None, lines=lines)
+    shown = spool.head_lines(text.split("\n"), spool.HEAD)
+    return "\n".join([*shown, spool.note(long, SPOOL / f"{call}.txt", spool.HEAD, spool.DAYS)]), len(text)
+
+
+def test_the_digest_counts_the_results_the_spool_hook_cut_their_size_and_the_reads_of_spool_files(tmp_path):
+    read_text, read_size = read_note(800, "toolu_2")
+    mcp_text = output_note(31_000, "toolu_5")
+    mcp_result = {"type": "tool_result", "tool_use_id": "toolu_5", "content": [{"type": "text", "text": mcp_text}]}
+    quoted = "[evo-hub: this output has 12,000 characters and only its start and end are shown here; see the docs]"
+    lines = [
+        said("Look at the logs.", 1),
+        answered("msg_1", 2, tool_use("toolu_1", "Bash", command="cat app.log")),
+        result("toolu_1", 3, output_note(42_442, "toolu_1")),
+        result("toolu_1", 3, output_note(42_442, "toolu_1")),  # the same result twice: once
+        answered("msg_2", 4, tool_use("toolu_2", "Read", file_path="/work/app/big.py")),
+        result("toolu_2", 5, read_text),
+        answered("msg_3", 6, tool_use("toolu_3", "Read", file_path=str(SPOOL / "toolu_1.txt"), offset=1, limit=80)),
+        result("toolu_3", 7, "x" * 300),
+        answered("msg_4", 8, tool_use("toolu_4", "Bash", command=f"grep -n ERROR ~/.evo/tool-output/{SESSION}/*.txt")),
+        result("toolu_4", 9, "3:ERROR"),
+        answered("msg_5", 10, tool_use("toolu_5", "mcp__evo-hub__plan_show", plan_id="demo")),
+        {"type": "user", "message": {"role": "user", "content": [mcp_result]}, "timestamp": at(11)},
+        # Not cut by the hook: a note without its spool file, a failed result, and a subagent's lines.
+        answered("msg_6", 12, tool_use("toolu_6", "Bash", command="cat docs/spool.md")),
+        result("toolu_6", 13, quoted),
+        answered("msg_7", 14, tool_use("toolu_7", "Bash", command="false")),
+        result("toolu_7", 15, output_note(20_000, "toolu_7"), error=True),
+        answered("msg_8", 16, tool_use("toolu_8", "Read", file_path=str(SPOOL / "toolu_9.txt")))
+        | {"isSidechain": True},
+        result("toolu_9", 17, output_note(99_999, "toolu_9")) | {"isSidechain": True},
+    ]
+    found = build(write_transcript(tmp_path / "s.jsonl", lines), "/work/app")
+    assert found["spool_results"] == 3, "the Bash output, the Read and the MCP result, each once"
+    assert found["spool_original_chars"] == 42_442 + read_size + 31_000
+    assert found["spool_reads"] == 2, "the Read and the grep of a spool file in the main thread"
+    assert "x" * 300 not in json.dumps(found), "no text of a spool file goes in the digest"
+
+    plain = build(write_transcript(tmp_path / "plain.jsonl", session_lines()), "/work/app")
+    assert (plain["spool_results"], plain["spool_original_chars"], plain["spool_reads"]) == (0, 0, 0)
+
+
+def test_the_digest_reads_the_notes_and_the_directory_of_the_spool_hook():
+    assert digest.SPOOL_DIRECTORY == f".evo/{spool.DIRECTORY}"
+    assert digest.spooled_chars(output_note(1_234_567, "c")) == 1_234_567
+    text, size = read_note(2000, "c")
+    assert digest.spooled_chars(text) == size
+    windows = output_note(15_000, "c").replace("/", "\\")
+    assert digest.spooled_chars(windows) == 15_000
+    assert digest.spooled_chars("15,000 characters") is None
+    assert digest.names_spool({"file_path": "C:\\Users\\bob\\.evo\\tool-output\\s\\c.txt"})
+    assert digest.names_spool("sed -n 1,40p ~/.evo/tool-output/s/c.txt")
+    assert not digest.names_spool({"file_path": "/work/app/tool-output.txt"})
+
+
 def test_the_digest_cuts_long_text_and_bounds_its_lists(tmp_path):
     lines = session_lines(turn="x" * 5000, command="echo " + "y" * 5000)
     lines += [said(f"turn {n}", 20) for n in range(60)]
@@ -298,6 +367,22 @@ def test_a_codex_digest_takes_the_peak_the_usage_and_the_compactions_from_the_to
         "cache_creation_input_tokens": 0,
         "cache_read_input_tokens": 30000,
     }
+
+
+def test_a_codex_digest_has_no_spooled_result_and_counts_the_shell_runs_that_read_a_spool_file(tmp_path):
+    reread = item(
+        8,
+        type="CommandExecution",
+        id="call_5",
+        command=["/bin/zsh", "-lc", "sed -n 1,40p ~/.evo/tool-output/s/c.txt"],
+        exit_code=0,
+        status="completed",
+        aggregated_output="x" * 300,
+    )
+    found = build(write_transcript(tmp_path / "rollout.jsonl", [*codex_rollout(), reread]), "/work/proj")
+    assert (found["spool_results"], found["spool_original_chars"], found["spool_reads"]) == (0, 0, 1)
+    plain = build(write_transcript(tmp_path / "plain.jsonl", codex_rollout()), "/work/proj")
+    assert plain["spool_reads"] == 0
 
 
 def test_a_codex_rollout_under_six_messages_and_a_zero_peak_make_no_digest(tmp_path):

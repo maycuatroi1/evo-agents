@@ -11610,6 +11610,21 @@ export interface components {
              * @description per tool, the characters of its results the model read, the most first; null when a client that did not count them pushed the digest
              */
             tool_result_chars?: components["schemas"]["ToolChars"][] | null;
+            /**
+             * Spool Results
+             * @description results the spool hook cut, each written whole to a file on the machine; null when a client that did not count them pushed the digest
+             */
+            spool_results?: number | null;
+            /**
+             * Spool Original Chars
+             * @description the characters those results had before the cut; null when a client that did not count them pushed the digest
+             */
+            spool_original_chars?: number | null;
+            /**
+             * Spool Reads
+             * @description calls that named the spool directory, the agent reading a spool file again; null when a client that did not count them pushed the digest
+             */
+            spool_reads?: number | null;
         };
         /**
          * SettingsLayer

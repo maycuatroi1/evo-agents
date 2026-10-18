@@ -19,7 +19,8 @@ the CLI prints is parsed here.
   interrupts the turn once the agent used the budget's ``max_seconds``, and the outcome names the cap ``time``.
 - The run's usage is the thread's total of the last ``thread/tokenUsage/updated``, in snake_case, with
   ``peak_context_tokens``, the largest ``last.inputTokens`` (the input of one request of the model, the cached part
-  in it), and ``context_window``, the model's (``modelContextWindow``).
+  in it), ``context_window``, the model's (``modelContextWindow``), and the first request's cache tokens, the
+  ``cachedInputTokens`` and ``cacheWriteInputTokens`` of the first ``last`` (``common.FIRST_REQUEST``).
 - The thread's model is the run's ``model``, else ``EVO_WORKER_CODEX_MODEL``, else codex's own choice. For the
   heartbeat, ``models`` reads the owner's codex home (``$CODEX_HOME``, ``~/.codex`` by default): the ``model`` of
   ``config.toml`` and of each of its profiles, then the models codex offers in its picker, from the cache it keeps
@@ -67,6 +68,7 @@ from evo_agents.worker.runtimes.common import (
     QueueAdapter,
     cut,
     detect_runtime,
+    first_request,
     larger,
     message_chunk,
     new_session_argv,
@@ -344,6 +346,7 @@ class CodexAdapter(QueueAdapter):
         self._error: str | None = None
         self._usage: dict | None = None
         self._peak: int | None = None  # the largest context of one request of the model: ``last.inputTokens``
+        self._first: dict | None = None  # the cache tokens of the first ``last`` (FIRST_REQUEST)
         self._window: int | None = None  # the model's context window, as the app-server reports it
         self._summary: str | None = None
         self._dir: Path | None = None
@@ -444,16 +447,19 @@ class CodexAdapter(QueueAdapter):
 
     def _tokens(self, usage: dict) -> None:
         """A ``thread/tokenUsage/updated``: the thread's total so far, and the context of its last request
-        (``last.inputTokens``, the cached part counted in it) for the peak."""
+        (``last.inputTokens``, the cached part counted in it) for the peak; the cache tokens of the first request that
+        read any context for FIRST_REQUEST."""
         total, last = usage.get("total"), usage.get("last")
         if isinstance(total, dict):
             self._usage = snake(total)
         if isinstance(last, dict):
             self._peak = larger(self._peak, token_sum(last.get("inputTokens")))
+            if self._first is None and token_sum(last.get("inputTokens")):
+                self._first = first_request(last.get("cachedInputTokens"), last.get("cacheWriteInputTokens"))
         self._window = token_sum(usage.get("modelContextWindow")) or self._window
 
     def _outcome(self) -> Outcome:
-        usage, summary = with_peak(self._usage, self._peak, context_window=self._window), self._summary
+        usage, summary = with_peak(self._usage, self._peak, self._first, context_window=self._window), self._summary
         if self.interrupted:
             return Outcome(False, "interrupted", usage, summary)
         if self._error:
