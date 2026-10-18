@@ -228,7 +228,7 @@
           "$ref": "#/$defs/runtimes"
         },
         "environments": {
-          "$ref": "#/$defs/contributions"
+          "$ref": "#/$defs/environments"
         },
         "kg_connectors": {
           "$ref": "#/$defs/contributions"
@@ -647,6 +647,98 @@
       "type": "array",
       "items": {
         "$ref": "#/$defs/runtime"
+      }
+    },
+    "environment": {
+      "description": "A run environment: a container image, pinned by its digest, that a worker whose owner accepted the plugin runs the agent of a run in, through the container provider of the core (Docker or Podman), with the run's worktree mounted at its own path and only the run's own variables passed in. The hub registers it as <id>/<name> in the projects that enabled the plugin, and the environment axis of an agent profile names it; a run of a profile that allows it runs there (docs/plugins.md, Environments). The plugin does not ship the image's agents: the image has the programs of the runtimes it runs (claude, opencode, codex or an ACP agent).",
+      "type": "object",
+      "required": [
+        "name",
+        "image",
+        "network"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "title": {
+          "type": "string",
+          "maxLength": 200
+        },
+        "description": {
+          "type": "string",
+          "maxLength": 1000
+        },
+        "api": {
+          "description": "The version of the extension point's contract the contribution is written against; 1 when left out. A release that does not serve it does not run the plugin.",
+          "type": "integer",
+          "minimum": 1
+        },
+        "image": {
+          "description": "The image, pinned by the digest of its manifest or index: [registry/]repository[:tag]@sha256:<64 hex>, such as ghcr.io/acme/agent-box@sha256:0123.... The worker pulls it by that digest before the agent starts and runs nothing else; a tag alone is refused.",
+          "type": "string",
+          "maxLength": 512,
+          "pattern": "^[a-z0-9]+(?:[._-][a-z0-9]+)*(?::[0-9]{1,5})?(?:/[a-z0-9]+(?:(?:[._]|__|-+)[a-z0-9]+)*)*(?::[A-Za-z0-9_][A-Za-z0-9_.-]{0,127})?@sha256:[0-9a-f]{64}$"
+        },
+        "network": {
+          "description": "What the container reaches: none, nothing but its own loopback (an agent that serves the worker over a port, as opencode does, cannot run there); outbound, the engine's default network, out to the internet and the model's API, with nothing published but the port an agent serves the worker on, bound to the worker's 127.0.0.1.",
+          "enum": [
+            "none",
+            "outbound"
+          ]
+        },
+        "mounts": {
+          "description": "What the container gets besides the run's worktree, the git directories of its checkouts and a home of the run, which the worker always mounts: at most 8, each target once. A plugin never mounts a path of the worker's own.",
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/environment_mount"
+          }
+        }
+      }
+    },
+    "environment_mount": {
+      "description": "A mount of a run environment: tmpfs, an empty file system in memory for the container's life; volume, a named volume of the engine that outlives the run, such as a cache, named evo-<plugin>-<name> on the worker.",
+      "type": "object",
+      "required": [
+        "type",
+        "target"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "type": {
+          "enum": [
+            "tmpfs",
+            "volume"
+          ]
+        },
+        "target": {
+          "description": "The absolute path in the container, normalized, without a comma or a colon; never /, /proc, /sys, /dev or a path under them.",
+          "type": "string",
+          "pattern": "^/[^\\u0000-\\u001f\\u007f,:]{0,254}$"
+        },
+        "name": {
+          "description": "A volume's name within the plugin, which a volume names and a tmpfs does not.",
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_-]{0,62}$"
+        },
+        "read_only": {
+          "description": "Mounted read-only; false when left out.",
+          "type": "boolean"
+        },
+        "size_mb": {
+          "description": "A tmpfs's size in MiB, 1 to 65536; the engine's default when left out.",
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 65536
+        }
+      }
+    },
+    "environments": {
+      "type": "array",
+      "items": {
+        "$ref": "#/$defs/environment"
       }
     }
   }
