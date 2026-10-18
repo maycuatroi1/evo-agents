@@ -466,12 +466,12 @@ def test_0026_takes_up_to_sixteen_slots_and_going_back_refuses_a_live_worker_ove
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0026") :]
 
 
-def _author_run(ids):
-    """The INSERT of a queued author run of the seeded user in demo, on no plan, returning its id."""
+def _author_run(ids, **extra):
+    """The INSERT of a queued author run of the seeded user in demo, on no plan, with ``extra``, returning its id."""
     runs = hub_tables.runs
     row = {"project_id": ids["project"], "dispatched_by": ids["user"], "kind": "author", "request": "A wait helper."}
     row |= {"requested_runtime": "claude-code", "runtime": "claude-code", "mode": "headless", "approval": "auto"}
-    row |= {"timeout_s": 3600, "state": "queued", "repos": [{"repo": "harness", "branch": "main"}]}
+    row |= {"timeout_s": 3600, "state": "queued", "repos": [{"repo": "harness", "branch": "main"}]} | extra
     return insert(runs).values(row).returning(runs.c.id)
 
 
@@ -818,6 +818,39 @@ def test_0038_keeps_plugin_deliveries_and_image_plugins_and_going_back_drops_the
     assert "plugin_deliveries" not in tables(hub_db)
     assert query(hub_db, select(t.plugins.c.name)) == [("sandbox",)]  # the image's plugin went with its versions
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0038") :]
+
+
+def test_0039_takes_runs_of_plugins_runtimes_and_the_plugins_of_a_worker_and_going_back_deletes_those_runs(hub_db):
+    move_to(hub_db, "0038")
+    t = hub_tables
+    plugin = {"requested_runtime": "sandbox/fake", "runtime": "sandbox/fake"}
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        core = one(conn, _author_run(ids))
+        token = one(conn, _token(ids, kind="worker", token_hash="7" * 64, host="mac").returning(t.tokens.c.id))
+        with pytest.raises(errors.CheckViolation):  # the core's runtimes alone before 0039
+            conn.execute(_author_run(ids, **plugin))
+    move_to(hub_db, "0039")
+    with live.connect(hub_db) as conn:
+        first = one(conn, _author_run(ids, **plugin))
+        retry = one(conn, _author_run(ids, **plugin, attempt=2, parent_run_id=first))
+        worker = one(conn, _worker_row(ids, token, "mac", 1))
+        assert query(hub_db, select(t.workers.c.plugins).where(t.workers.c.id == worker)) == [([],)]
+        conn.execute(update(t.workers).values(plugins=["sandbox", "srs-docs"]).where(t.workers.c.id == worker))
+        for bad in (
+            _author_run(ids, requested_runtime="Sandbox/fake", runtime="Sandbox/fake"),
+            _author_run(ids, requested_runtime="sandbox/fake/x", runtime="sandbox/fake/x"),
+            update(t.workers).values(plugins=["Sandbox"]).where(t.workers.c.id == worker),
+            update(t.workers).values(plugins=['sandbox","x']).where(t.workers.c.id == worker),
+            update(t.workers).values(plugins=[f"p{n}" for n in range(17)]).where(t.workers.c.id == worker),
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(bad)
+    assert retry > first
+    move_to(hub_db, "0038", down=True)
+    assert query(hub_db, select(t.runs.c.id)) == [(core,)], "the runs of the plugin's runtime went, retries first"
+    assert "plugins" not in columns(hub_db, "workers")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0039") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

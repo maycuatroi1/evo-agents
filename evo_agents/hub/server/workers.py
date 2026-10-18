@@ -34,8 +34,9 @@ dispatch pinned to it with a token gets 403 (``runs``). Only its owner sets it, 
 gets 403 whoever holds it, so a token that leaked cannot open the worker again, a hub admin who does not own the
 worker gets 403, and anyone else 404. Setting the value it has changes nothing and is not audited.
 
-PATCH /v1/workers/{id} changes the worker's slots (1 to ``runs.MAX_SLOTS``), labels (as a pairing takes them) or
-name (unique among the owner's workers that are not revoked, 409 otherwise), each field optional but at least one
+PATCH /v1/workers/{id} changes the worker's slots (1 to ``runs.MAX_SLOTS``), labels (as a pairing takes them), name
+(unique among the owner's workers that are not revoked, 409 otherwise) or plugins (the ids of at most
+``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes it takes, ``docs/plugins.md``), each field optional but at least one
 given. Only its owner changes them, from a web session with its CSRF header or with their machine token: a hub admin
 who does not own the worker gets 403, anyone else 404, and a revoked worker 409. Giving the values it has changes
 nothing and is not audited. The daemon learns the new settings from the answer to its next heartbeat (``settings``),
@@ -84,6 +85,7 @@ from evo_agents.hub.server.security import (
     keyed_digest,
     same,
 )
+from evo_agents.plugins.manifest import PLUGIN_ID
 
 log = logging.getLogger(__name__)
 
@@ -274,10 +276,11 @@ class Worker(BaseModel):
     agent_version: str
     slots: int
     labels: list[str]
+    plugins: list[str] = Field(description="the plugins whose runtimes it takes, as its owner set them")
     projects: list[str]
     runtimes: dict = Field(
-        description="the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each "
-        "{available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
+        description="the runtimes its last heartbeat reported, keyed claude-code, opencode, codex or <plugin>/<name>, "
+        "each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
     )
     checkouts: dict = Field(
         description="the checkouts its last heartbeat reported, keyed <project>/<repo>, each {path, branch}"
@@ -314,11 +317,14 @@ class WorkerUpdate(BaseModel):
     slots: int | None = Field(None, ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
     labels: list[Annotated[str, Field(pattern=LABEL)]] | None = Field(None, max_length=MAX_LABELS)
     name: str | None = Field(None, pattern=WORKER_NAME, description="unique among the owner's workers not revoked")
+    plugins: list[Annotated[str, Field(pattern=PLUGIN_ID)]] | None = Field(
+        None, max_length=runs.MAX_WORKER_PLUGINS, description="the plugins whose runtimes it takes; [] for none"
+    )
 
     @model_validator(mode="after")
     def _some_field(self) -> WorkerUpdate:
-        if self.slots is None and self.labels is None and self.name is None:
-            raise ValueError("name at least one of slots, labels and name to change")
+        if self.slots is None and self.labels is None and self.name is None and self.plugins is None:
+            raise ValueError("name at least one of slots, labels, name and plugins to change")
         return self
 
 
@@ -358,6 +364,7 @@ def _listed(*where):
             w.c.agent_version,
             w.c.slots,
             w.c.labels,
+            w.c.plugins,
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
             w.c.runtimes,
             w.c.checkouts,
@@ -888,10 +895,12 @@ def _shown(value) -> str:
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
-    """Change the worker's slots, labels or name: its owner only, from a web session or with their machine token."""
+    """Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine
+    token."""
     wanted = body.model_dump(exclude_none=True)
-    if "labels" in wanted:
-        wanted["labels"] = _unique(wanted["labels"])
+    for field in ("labels", "plugins"):
+        if field in wanted:
+            wanted[field] = _unique(wanted[field])
     async with request.app.state.engine.begin() as conn:
         owner_id, owner, name, _, _, revoked_at = await _owned(conn, user, worker_id, lock=True)
         if owner_id != user.user_id:
@@ -899,8 +908,10 @@ async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdat
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         w = tables.workers
-        row = (await conn.execute(select(w.c.slots, w.c.labels, w.c.name).where(w.c.id == worker_id))).one()
-        now = {"slots": row.slots, "labels": list(row.labels), "name": row.name}
+        row = (
+            await conn.execute(select(w.c.slots, w.c.labels, w.c.name, w.c.plugins).where(w.c.id == worker_id))
+        ).one()
+        now = {"slots": row.slots, "labels": list(row.labels), "name": row.name, "plugins": list(row.plugins)}
         changed = {field: value for field, value in wanted.items() if value != now[field]}
         if changed:  # the values it has already: nothing changes, nothing is audited
             if "name" in changed and await _name_taken(conn, owner_id, changed["name"], besides=worker_id):

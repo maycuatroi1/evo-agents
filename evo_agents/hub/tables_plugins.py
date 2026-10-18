@@ -26,6 +26,8 @@ it was revoked: starting the backend again revokes the plugin's older tokens. pl
 said of each backend it runs: the version, its state, the isolation it has, its process id, how many times it was
 started again, since when it runs, the last failure, when it is tried again, and when the host said so.
 
+workers.plugins (0039) lists the plugins whose runtimes a worker takes, as its owner set them.
+
 plugin_deliveries (0038) is the outbox of the extension points (``evo_agents.hub.plugin_events``): one event or
 notification for one plugin in one project, its kind, the contribution it goes to, its payload, its state, tries, when
 it is due, the last error, when it was made and delivered. 0038 also records the core plugins of the hub's image in
@@ -62,7 +64,7 @@ def _stamp(name: str) -> Column:
 
 def plugin_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Table, Table, Table]:
     """(plugins, plugin_versions, project_plugins, plugin_configs, run_plugins), added to ``metadata``; the column of
-    a run's own layer added to ``runs``."""
+    a run's own layer added to ``runs``, and the plugins a worker takes the runtimes of to ``workers``."""
     plugins = Table(
         "plugins",
         metadata,
@@ -163,6 +165,8 @@ def _project_tables(metadata: MetaData, runs: Table) -> tuple[Table, Table, Tabl
         ),
     )
     runs.append_column(Column("plugin_config", JSONB))
+    # the plugins whose runtimes a worker takes, as its owner set them (0039)
+    metadata.tables["workers"].append_column(Column("plugins", ARRAY(Text), nullable=False, server_default="{}"))
     run_plugins = Table(
         "run_plugins",
         metadata,

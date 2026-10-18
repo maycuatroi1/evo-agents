@@ -144,7 +144,8 @@ def test_the_commands_of_plan_runs_decisions_and_notifications():
     } <= set(printed)
     flags = {o["flags"][0]: o for o in printed["hub run plan"]["options"]}
     assert flags["--timeout-h"]["choices"] == [2, 4, 8, 24]
-    assert flags["--runtime"]["choices"] == ["any", "claude-code", "opencode", "codex"]
+    # any, a runtime of the core, or a plugin's <plugin>/<name>: an open set, so no choices (hub-agent-plugins a6)
+    assert flags["--runtime"]["value"] == "string" and "choices" not in flags["--runtime"]
     assert {"--worker", "--model", "--mode", "--project", "--json"} <= set(flags)
     assert printed["hub run plan"]["json"]["schema"] == printed["hub run dispatch"]["json"]["schema"] == "Run"
     assert "--model" in {o["flags"][0] for o in printed["hub run dispatch"]["options"]}

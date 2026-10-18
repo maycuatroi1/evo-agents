@@ -4895,13 +4895,7 @@
           ],
           "value": "string",
           "required": false,
-          "repeatable": false,
-          "choices": [
-            "any",
-            "claude-code",
-            "opencode",
-            "codex"
-          ]
+          "repeatable": false
         },
         {
           "flags": [
@@ -5496,13 +5490,7 @@
           ],
           "value": "string",
           "required": false,
-          "repeatable": false,
-          "choices": [
-            "any",
-            "claude-code",
-            "opencode",
-            "codex"
-          ]
+          "repeatable": false
         },
         {
           "flags": [
@@ -13313,7 +13301,7 @@
             "workers"
           ],
           "summary": "Update Worker",
-          "description": "Change the worker's slots, labels or name: its owner only, from a web session or with their machine token.",
+          "description": "Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine\ntoken.",
           "operationId": "update_worker_v1_workers__worker_id__patch",
           "parameters": [
             {
@@ -17113,21 +17101,17 @@
               "schema": {
                 "anyOf": [
                   {
-                    "enum": [
-                      "claude-code",
-                      "opencode",
-                      "codex"
-                    ],
-                    "type": "string"
+                    "type": "string",
+                    "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$"
                   },
                   {
                     "type": "null"
                   }
                 ],
-                "description": "the runs of this runtime",
+                "description": "the runs of this runtime, of the core or a plugin's",
                 "title": "Runtime"
               },
-              "description": "the runs of this runtime"
+              "description": "the runs of this runtime, of the core or a plugin's"
             },
             {
               "name": "X-Evo-Sink",
@@ -33919,14 +33903,10 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
+              "maxLength": 127,
+              "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$",
               "title": "Runtime",
-              "description": "any: the claiming worker picks one it has",
+              "description": "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422",
               "default": "any"
             },
             "mode": {
@@ -35389,6 +35369,14 @@
             "settings": {
               "$ref": "#/components/schemas/WorkerSettings",
               "description": "the worker's settings as the hub holds them, which its owner may change (PATCH /v1/workers/{id}): a daemon whose config says otherwise takes these; a hub before schema 0026 sends none"
+            },
+            "plugin_runtimes": {
+              "items": {
+                "$ref": "#/components/schemas/PluginRuntime"
+              },
+              "type": "array",
+              "title": "Plugin Runtimes",
+              "description": "for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise"
             }
           },
           "type": "object",
@@ -35402,19 +35390,17 @@
         "HeartbeatRequest": {
           "properties": {
             "runtimes": {
-              "additionalProperties": {
-                "$ref": "#/components/schemas/RuntimeReport"
+              "patternProperties": {
+                "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$": {
+                  "$ref": "#/components/schemas/RuntimeReport"
+                }
               },
               "propertyNames": {
-                "enum": [
-                  "claude-code",
-                  "opencode",
-                  "codex"
-                ]
+                "maxLength": 127
               },
               "type": "object",
               "title": "Runtimes",
-              "description": "the runtimes on the machine: {\"claude-code\": {\"available\": true, \"version\": \"2.1.289\"}}"
+              "description": "the runtimes on the machine: {\"claude-code\": {\"available\": true, \"version\": \"2.1.289\"}}, and those of the plugins its owner accepted that the hub sent it (plugin_runtimes of the answer), as <plugin>/<name>"
             },
             "checkouts": {
               "patternProperties": {
@@ -35490,7 +35476,7 @@
                 }
               ],
               "title": "Features",
-              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
+              "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
             }
           },
           "type": "object",
@@ -38312,14 +38298,8 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
               "title": "Runtime",
-              "description": "any until a worker claims the run"
+              "description": "any until a worker claims the run; a plugin's runtime is <plugin>/<name>"
             },
             "model": {
               "anyOf": [
@@ -39213,14 +39193,10 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
+              "maxLength": 127,
+              "pattern": "^(any|claude-code|opencode|codex|[a-z][a-z0-9-]{0,62}/[a-z][a-z0-9_-]{0,62})$",
               "title": "Runtime",
-              "description": "any: the claiming worker picks one it has",
+              "description": "any: the claiming worker picks a runtime of the core it has; else claude-code, opencode, codex, or <plugin>/<name>, the runtime a plugin enabled on the project declares; a runtime the project does not register is 422",
               "default": "any"
             },
             "model": {
@@ -40032,6 +40008,64 @@
             "core"
           ],
           "title": "PluginPublisher"
+        },
+        "PluginRuntime": {
+          "properties": {
+            "runtime": {
+              "type": "string",
+              "title": "Runtime",
+              "description": "<plugin>/<name>, as runs name it"
+            },
+            "plugin": {
+              "type": "string",
+              "title": "Plugin"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version",
+              "description": "the plugin's installed version"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "command": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Command",
+              "description": "the program, found on the worker's PATH unless absolute, then its arguments"
+            },
+            "models": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Models",
+              "description": "the models the agent offers, which the worker reports"
+            },
+            "secrets": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Secrets",
+              "description": "the variables the agent needs, from the run's leases or the worker's environment"
+            }
+          },
+          "type": "object",
+          "required": [
+            "runtime",
+            "plugin",
+            "version",
+            "title",
+            "command",
+            "models",
+            "secrets"
+          ],
+          "title": "PluginRuntime",
+          "description": "A runtime a plugin enabled on a project declares (``evo_agents.plugins.runtimes``): the command of an ACP agent,\nat the plugin's version the hub has installed."
         },
         "PluginVersion": {
           "properties": {
@@ -42640,24 +42674,13 @@
             },
             "requested_runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
-              "title": "Requested Runtime"
+              "title": "Requested Runtime",
+              "description": "as the dispatch asked: any, a runtime of the core or a plugin's"
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "any",
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
               "title": "Runtime",
-              "description": "any until a worker claims the run"
+              "description": "any until a worker claims the run; a plugin's runtime is <plugin>/<name>"
             },
             "model": {
               "anyOf": [
@@ -44491,12 +44514,8 @@
             },
             "runtime": {
               "type": "string",
-              "enum": [
-                "claude-code",
-                "opencode",
-                "codex"
-              ],
-              "title": "Runtime"
+              "title": "Runtime",
+              "description": "a runtime of the core, or <plugin>/<name>, run with plugin_runtime's declaration"
             },
             "model": {
               "anyOf": [
@@ -44649,6 +44668,17 @@
                 }
               ],
               "description": "the agent profile the run went under; null for a run from before schema 0030"
+            },
+            "plugin_runtime": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/PluginRuntime"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a run of a plugin's runtime, its declaration at the plugin's version installed now, which the worker runs through its adapter of ACP; null for a runtime of the core"
             }
           },
           "type": "object",
@@ -47946,6 +47976,14 @@
               "type": "array",
               "title": "Labels"
             },
+            "plugins": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Plugins",
+              "description": "the plugins whose runtimes it takes, as its owner set them"
+            },
             "projects": {
               "items": {
                 "type": "string"
@@ -47957,7 +47995,7 @@
               "additionalProperties": true,
               "type": "object",
               "title": "Runtimes",
-              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode or codex, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
+              "description": "the runtimes its last heartbeat reported, keyed claude-code, opencode, codex or <plugin>/<name>, each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
             },
             "checkouts": {
               "additionalProperties": true,
@@ -48057,6 +48095,7 @@
             "agent_version",
             "slots",
             "labels",
+            "plugins",
             "projects",
             "runtimes",
             "checkouts",
@@ -48228,6 +48267,14 @@
               },
               "type": "array",
               "title": "Labels"
+            },
+            "plugins": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Plugins",
+              "description": "the plugins whose runtimes the worker takes; a hub before 0039 sends none"
             }
           },
           "type": "object",
@@ -48282,6 +48329,23 @@
               ],
               "title": "Name",
               "description": "unique among the owner's workers not revoked"
+            },
+            "plugins": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "pattern": "^[a-z][a-z0-9-]{0,62}$"
+                  },
+                  "type": "array",
+                  "maxItems": 16
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plugins",
+              "description": "the plugins whose runtimes it takes; [] for none"
             }
           },
           "type": "object",

@@ -16,7 +16,8 @@ allowlist never grows by itself when a secret, a skill or a worker is added. Wha
 - ``worker``: worker names, or ``label:<label>`` for every worker carrying that label, compared ignoring case;
 - ``project``: project names, the other projects whose runs the profile may take (its own always);
 - ``model``: model names, as a runtime names them;
-- ``runtime``: ``claude-code``, ``opencode``, ``codex``.
+- ``runtime``: ``claude-code``, ``opencode``, ``codex``, and the runtimes of plugins, ``<plugin>/<name>``
+  (``evo_agents.plugins.runtimes``).
 
 The hub enforces credential, skill, worker, project, model and runtime when it dispatches, hands out and leases a
 run; the worker's adapter enforces tool, skill and model in the agent session, from the profile the claim carries
@@ -33,6 +34,7 @@ import hashlib
 import re
 
 from evo_agents.hub.runs import MAX_MODEL_CHARS, RUNTIMES
+from evo_agents.plugins.runtimes import is_plugin_runtime
 
 AXES = ("credential", "tool", "skill", "worker", "project", "model", "runtime")
 MODES = ("all", "allowlist")
@@ -110,7 +112,9 @@ def item_problem(axis: str, item: str) -> str | None:
         fits = len(item) <= MAX_MODEL_CHARS and _LINE.fullmatch(item)
         return None if fits else f"{item!r} is not a model's name (one line, at most {MAX_MODEL_CHARS} characters)"
     if axis == "runtime":
-        return None if item in RUNTIMES else f"runtime {item!r} is none of {', '.join(RUNTIMES)}"
+        if item in RUNTIMES or is_plugin_runtime(item):
+            return None
+        return f"runtime {item!r} is none of {', '.join(RUNTIMES)}, nor a plugin's <plugin>/<name>"
     return f"{axis!r} is no axis: {', '.join(AXES)}"
 
 
