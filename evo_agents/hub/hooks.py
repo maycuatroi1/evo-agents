@@ -203,10 +203,11 @@ class HookState:
             text = json.dumps({"version": STATE_VERSION, "down": down}, indent=2, sort_keys=True) + "\n"
             write_atomic(self.path, text.encode(), FILE_MODE)
 
-    def down_since(self, url: str, now: float) -> float | None:
-        """When ``url`` last did not answer, if that is less than COOLDOWN seconds ago."""
+    def down_since(self, url: str, now: float, cooldown: float | None = None) -> float | None:
+        """When ``url`` last did not answer, if that is less than ``cooldown`` (default COOLDOWN) seconds ago."""
         at = self._read().get(url)
-        return at if at is not None and 0 <= now - at < COOLDOWN else None
+        limit = COOLDOWN if cooldown is None else cooldown
+        return at if at is not None and 0 <= now - at < limit else None
 
     def mark_down(self, url: str, now: float) -> None:
         down = self._read()

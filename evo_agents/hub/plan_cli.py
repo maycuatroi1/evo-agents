@@ -358,9 +358,9 @@ def cmd_handoff(args) -> int:
 
 
 def _by(revision: dict) -> str:
-    """Who wrote a revision: the member, and the author run that wrote it as them."""
+    """Who wrote a revision: the member, and the run that wrote it as them (an author run, or a local session's)."""
     run_id = revision.get("run_id")
-    return revision["actor"] + (f" (author run #{run_id})" if run_id else "")
+    return revision["actor"] + (f" (run #{run_id})" if run_id else "")
 
 
 @_client_command
