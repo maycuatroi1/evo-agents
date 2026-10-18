@@ -633,12 +633,20 @@ def _title(payload: dict) -> str | None:
     return _cut(line, TITLE_CHARS) if line else None
 
 
+def _answer_text(answer) -> str | None:
+    """One answer of the dialog as text: the labels a multiSelect question was given (a list) joined by "; ", as a
+    label may hold commas, and one picked alone stays that label, so it is still reported as its option."""
+    if isinstance(answer, list):
+        answer = "; ".join(" ".join(a.split()) for a in answer if isinstance(a, str) and a.strip())
+    return _cut(answer, ANSWER_CHARS) if isinstance(answer, str) and answer.strip() else None
+
+
 def _keep_answers(rec: dict, payload: dict) -> None:
     """Keep the answers the AskUserQuestion dialog of ``payload`` was given until the hub has them."""
     response = payload.get("tool_response")
     given = response.get("answers") if isinstance(response, dict) else None
     given = given if isinstance(given, dict) else {}
-    kept = {q: _cut(a, ANSWER_CHARS) for q, a in given.items() if isinstance(q, str) and isinstance(a, str)}
+    kept = {q: text for q, a in given.items() if isinstance(q, str) and (text := _answer_text(a)) is not None}
     answers = rec.setdefault("answers", {})
     answers[str(payload.get("tool_use_id") or "last")] = kept
     for stale in list(answers)[:-MAX_ASKS]:
@@ -649,6 +657,21 @@ def _refused_lately(rec: dict, now: float) -> bool:
     """Whether the hub refused the session of ``rec`` less than REFUSAL_COOLDOWN seconds before ``now``."""
     refused = rec.get("refused_at")
     return isinstance(refused, int | float) and 0 <= now - refused < REFUSAL_COOLDOWN
+
+
+def _hook_events(hook: str, payload: dict, rec: dict) -> list[tuple[str, dict]]:
+    """What the hook of ``payload`` adds to the log of ``rec``: the agent's words since the last hook (PostToolUse and
+    Stop) and the tool that ran (PostToolUse). At the person's message, the transcript's end is where its turn starts."""
+    events = []
+    transcript = _absolute(payload.get("transcript_path"))
+    if hook in ("tool", "stop") and transcript:
+        events += [("agent_message_chunk", {"text": _cut(t, TEXT_CHARS)}) for t in agent_words(rec, Path(transcript))]
+    if hook == "tool":
+        events += tool_events(payload)
+    if hook == "user-prompt" and rec.get("offset") is None and transcript:
+        with contextlib.suppress(OSError):
+            rec["offset"] = os.stat(transcript).st_size  # what is in the transcript now is not this turn's
+    return events
 
 
 def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = None) -> list[str]:
@@ -672,19 +695,8 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         if not got:
             return []
         rec = store.load() or store.fresh(cwd)
-        events = []
-        transcript = _absolute(payload.get("transcript_path"))
-        if hook in ("tool", "stop") and transcript:
-            events += [
-                ("agent_message_chunk", {"text": _cut(t, TEXT_CHARS)}) for t in agent_words(rec, Path(transcript))
-            ]
-        if hook == "tool":
-            events += tool_events(payload)
         title = _title(payload) if hook == "user-prompt" else None
-        if hook == "user-prompt" and rec.get("offset") is None and transcript:
-            with contextlib.suppress(OSError):
-                rec["offset"] = os.stat(transcript).st_size  # what is in the transcript now is not this turn's
-        _append(rec, events, hub.token)
+        _append(rec, _hook_events(hook, payload, rec), hub.token)
         if asking:
             _keep_answers(rec, payload)
         rec["touched"] = now
