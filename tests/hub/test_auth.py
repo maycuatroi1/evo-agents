@@ -68,7 +68,8 @@ HUB_TABLES |= pg.SETTINGS_TABLES  # migration 0037
 HUB_TABLES |= pg.PLUGIN_POINT_TABLES  # migration 0038
 HUB_TABLES |= pg.AGENT_TYPE_TABLES  # migration 0042
 HUB_TABLES |= pg.BUILDER_TABLES  # migration 0043
-HUB_TABLES |= pg.SRS_TABLES  # migration 0044
+HUB_TABLES |= pg.TRIAGE_TABLES  # migration 0044
+HUB_TABLES |= pg.SRS_TABLES  # migration 0046
 
 
 @pytest.fixture

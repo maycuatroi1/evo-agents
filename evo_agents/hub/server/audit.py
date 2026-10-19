@@ -54,6 +54,9 @@ RUN_DISPATCH_AUTHOR = "run.dispatch_author"  # a member queued an author run: "<
 RUN_STEP_REPORT = "run.step_report"  # a plan run's worker wrote a step, as the dispatcher: "... run:<id> status=<s>"
 RUN_CANCEL = "run.cancel"  # the owner cancelled a run, or asked its worker to stop it
 RUN_APPROVE = "run.approve"  # the owner approved a run in review, and the step is done
+RUN_TRIAGE_RERUN = "run.triage_rerun"  # the agent of a triage thread ran a failed run again for its owner
+RUN_TRIAGE_INVITE = "run.triage_invite"  # ... or invited the agent of another project the error names into the thread
+RUN_TRIAGE_PLAN_EDIT = "run.triage_plan_edit"  # ... or edited verify or what of a pending step, as the owner
 RUN_RERUN = "run.rerun"  # the owner queued the step again after a run that ended
 RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the target names the message, not its text
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal

@@ -27,10 +27,16 @@ GIT_TIMEOUT = 30.0
 
 
 def _git(checkout: Path, *args: str) -> str | None:
-    """The output of a read-only git command, or None when it fails (a commit the checkout lacks, an ambiguous hash)."""
+    """The output of a read-only git command, or None when it fails (a commit the checkout lacks, an ambiguous hash).
+    Read as UTF-8, which git writes paths in, whatever the locale (cp1252 on Windows)."""
     try:
         result = subprocess.run(
-            ["git", "-C", str(checkout), *args], capture_output=True, text=True, timeout=GIT_TIMEOUT
+            ["git", "-C", str(checkout), *args],
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            timeout=GIT_TIMEOUT,
         )
     except (OSError, subprocess.TimeoutExpired):
         return None

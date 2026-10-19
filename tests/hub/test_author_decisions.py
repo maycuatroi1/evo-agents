@@ -19,7 +19,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import func, select
+from sqlalchemy import func, select, update
 
 from evo_agents.core_plugins.telegram import server as server_telegram
 from evo_agents.hub import tables
@@ -89,6 +89,7 @@ def hub(client, github, hub_db) -> dict:
     owner's."""
     headers = members(client, github)
     unrestricted(hub_db)
+    sql(hub_db, update(tables.projects).values(triage_enabled=False))  # a failed run here opens no triage thread
     headers["owner_web"] = web(client, hub_db, OWNER)
     return headers
 

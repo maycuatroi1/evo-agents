@@ -1,7 +1,7 @@
 """The tables of the core plugin srs: BA documents with versions, coded items, reviews and comments.
 
-Revision ID: 0044
-Revises: 0043
+Revision ID: 0046
+Revises: 0045
 Create Date: 2026-10-19
 
 The names below are copies of ``evo_agents.hub.tables_srs`` as of this revision, never imports, so a later change to
@@ -22,8 +22,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0044"
-down_revision = "0043"
+revision = "0046"
+down_revision = "0045"
 branch_labels = None
 depends_on = None
 

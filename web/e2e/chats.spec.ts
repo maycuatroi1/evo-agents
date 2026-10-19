@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { createAgentByApi } from "./support/agents";
 import {
   agentAnswers,
+  agentAsks,
   chatPageOf,
   chatPath,
   chatsOf,
@@ -271,4 +272,36 @@ test("members: add an agent and a person, take the agent out, change the budget 
   await page.waitForURL("**/chats");
   await expect(toast(page, "You left Just me")).toBeVisible();
   await expect(main(page).locator(`[data-testid="chat-row"][data-chat-id="${chat.id}"]`)).toHaveCount(0);
+});
+
+test("a chat run's decision shows under the agent's message in its thread and is answered with one click", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("triager");
+  await createAgentByApi(me, project, { handle, name: "Triage agent", color: "#16a34a" });
+  const live = await chatWorker(me, project, uniqueName("mini"));
+  const chat = await createChatByApi(me, { title: "Triage", agents: [handle] });
+  const root = await sendByApi(me, chat.id, `@${handle} the wait test failed twice`);
+  const runId = (await runsOf(me, project)).find((item) => item.chat_id === chat.id)?.id;
+  expect(runId).toBeDefined();
+  await claimChatRun(live, runId as number);
+  const question = "The wait test fails twice in three. Retry or skip it?";
+  const decision = await agentAsks(live, runId as number, "I can retry it or skip it.", question);
+
+  // The hub's link to the thread (?message=ROOT) shows the root; its replies, with the card, open from the root's summary.
+  await open(page, chatPath(chat.id, root.id));
+  await page.getByTestId("thread-summary").click();
+  const thread = page.getByTestId("chat-thread");
+  const card = thread.getByTestId("chat-decision");
+  await expect(card).toHaveCount(1);
+  await expect(card).toHaveAttribute("data-decision-id", String(decision));
+  await expect(card).toHaveAttribute("data-state", "open");
+  await expect(card.getByRole("radio", { name: /Retry the flaky test/ })).toBeChecked();
+  // It follows the agent's message in the thread: the card is inside that message's row.
+  await expect(thread.getByTestId("chat-message").filter({ hasText: "I can retry it or skip it." }).getByTestId("chat-decision")).toHaveCount(1);
+
+  // The agent's pick is checked: one click answers.
+  await card.getByTestId("decision-send").click();
+  await expect(card).toHaveAttribute("data-state", "answered");
+  await expect(card.getByTestId("decision-answer-option")).toHaveAttribute("data-key", "retry");
 });

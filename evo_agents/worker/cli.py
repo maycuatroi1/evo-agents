@@ -20,6 +20,7 @@
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
 - ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
+- ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -60,6 +61,7 @@ from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker.agent_input import evidence_items, read_text
 from evo_agents.worker.chat_cli import register_chat
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
+from evo_agents.worker.triage_cli import register_triage
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -813,7 +815,7 @@ def _option(text: str) -> dict:
 
 @_worker_command
 def cmd_ask(args) -> int:
-    agent = _agent_run("ask", ("plan", "author"))
+    agent = _agent_run("ask", runs.RESUME_KINDS)
     options = [_option(text) for text in args.option]
     keys = [option["key"] for option in options]
     fewest, most = runs.DECISION_OPTIONS
@@ -1170,7 +1172,7 @@ def register(sub) -> None:
     ask = wsub.add_parser(
         "ask", help="inside a plan run or an author run: ask the run's owner a decision; prints its id"
     )
-    ask.add_argument("--category", required=True, choices=runs.DECISION_CATEGORIES, help="what kind of decision")
+    ask.add_argument("--category", required=True, choices=runs.ASKED_DECISION_CATEGORIES, help="what kind of decision")
     ask.add_argument("--question", required=True, help="the question, in a sentence or two")
     ask.add_argument("--context-file", help="a markdown file of context for the owner, at most 16 KiB (- for stdin)")
     ask.add_argument(
@@ -1253,3 +1255,4 @@ def register(sub) -> None:
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
     register_chat(wsub)  # the commands of a run's agent in group chats (chat_cli)
+    register_triage(wsub)  # what the agent of a triage thread does for a failed run (triage_cli)

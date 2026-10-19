@@ -233,3 +233,26 @@ def test_a_rerun_says_why_when_its_account_cannot_go_and_refuses_both_choices(cl
     assert all_runs(hub_db) == before
     # asking the rules, it goes
     rerun_claimed(client, hub["owner"], worker, first, {"account_by_rule": True})
+
+
+def test_rerun_candidates_list_the_accounts_and_drop_a_worker_with_none_ready(client, hub, hub_db):
+    three(client, hub["owner"])
+    worker = worker_of(client, hub["owner"], "mac-mini")
+    run_id = dispatched(client, hub["owner"], "evo-agents", worker, account="claude-a")
+    ended(client, worker, run_id)
+    path = f"/v1/projects/{PROJECT}/runs/{run_id}/rerun-candidates"
+    assert change(client, hub["owner"], "claude-b", paused=True).status_code == 200
+    answer = client.get(path, headers=hub["owner"]).json()
+    states = {a["name"]: (a["state"], a["workers"], a["used_by_run"]) for a in answer["accounts"]}
+    assert states == {
+        "claude-a": ("ready", ["any"], True),
+        "claude-b": ("paused", ["any"], False),
+        "claude-c": ("ready", ["any"], False),
+    }
+    (candidate,) = (w for w in answer["workers"] if w["worker"] == "mac-mini")
+    assert candidate["fit"] and candidate["accounts"] == ["claude-a", "claude-c"]
+    for name in ("claude-a", "claude-c"):
+        assert change(client, hub["owner"], name, paused=True).status_code == 200
+    answer = client.get(path, headers=hub["owner"]).json()
+    (candidate,) = (w for w in answer["workers"] if w["worker"] == "mac-mini")
+    assert not candidate["fit"] and "has no account of yours that is ready for this project" in candidate["reasons"]
