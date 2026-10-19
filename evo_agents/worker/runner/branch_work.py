@@ -78,22 +78,15 @@ class BranchWork:
 
     async def prepare(self, held: list[dict]) -> None:
         """The run's directory with a writable worktree of each repo of ``held`` on the run's branch: the earlier
-        run's, adopted, else new ones."""
+        run's, adopted, else new ones, made several at a time (``RunDirectory.make_each``)."""
         run, directory = self.run, self.directory
         if directory.path is None:
             directory.claim(self.kind.again)
         directory.enter()
-        taken = {workspace.worktree.name for workspace in directory.workspaces.values()}
-        for entry in held:
-            name = entry["repo"]
-            if name in directory.workspaces:
-                continue
-            folder = gitops.folder_name(name, taken)
-            taken.add(folder)
-            directory.workspaces[name] = await self.make_worktree(
-                name, run.daemon.checkout_for(run.project, name), folder
-            )
-            directory.save()
+        await directory.make_each(
+            [entry["repo"] for entry in held],
+            lambda name, folder: self.make_worktree(name, run.daemon.checkout_for(run.project, name), folder),
+        )
         (directory.path / runs.RESULT_DIR).mkdir(mode=0o700, exist_ok=True)
         directory.save()
 
@@ -106,7 +99,7 @@ class BranchWork:
         async with run.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
-            await origin.fetch(run, checkout)
+            await origin.fetch(run, checkout, repo=name)
             remote_head = await gitops.remote_default_branch(checkout)
             hub_default = default_branch_of(run.daemon.config, run.project, name)
             protected = tuple(sorted(origin.protected_branches(remote_head, hub_default)))
@@ -125,7 +118,9 @@ class BranchWork:
                 await gitops.add_worktree(checkout, path, local_branch, base, reset=True)
             except gitops.GitError as exc:
                 raise RunFailed(f"cannot make the worktree {path}: {exc}") from None
-        run.note(f"Worktree {path} of {name} on {local_branch} at {base[:12]} ({start}).", worktree=str(path))
+        run.note(
+            f"Worktree {path} of {name} on {local_branch} at {base[:12]} ({start}).", worktree=str(path), repo=name
+        )
         return gitops.Workspace(
             repo=name,
             branch=branch,
