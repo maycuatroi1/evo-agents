@@ -1,9 +1,10 @@
-import { type Agent, type Axis, LABEL_PREFIX } from "@/lib/agents";
+import { type Axis, LABEL_PREFIX } from "@/lib/agents";
 
 /**
  * What the Agents pages check and draw, beside lib/agents.ts (which the dispatch forms load with every plans and runs
  * page, so it keeps to what they need): the API's words and limits for a profile's fields and allowlists, the shape
- * each axis takes, the hub's palette, and an avatar's initial and the colour it is written in.
+ * each axis takes, and the hub's palette. An avatar's initial, its ink and what an image upload takes are in
+ * lib/avatars.ts, which the faces of every page load without these rules.
  */
 /** `profiles.TOOLS`: the runtime-neutral words of the tool axis; `mcp:<server>` names the tools of one MCP server. */
 export const TOOLS = ["read", "edit", "bash", "web", "agent"] as const;
@@ -23,12 +24,9 @@ export const MAX_ALLOW = 200;
 export const MAX_MODEL_CHARS = 200;
 /** `profiles.MAX_PACKS`: the agent packs one profile attaches. */
 export const MAX_PACKS = 16;
-export const COLOR = /^#[0-9a-f]{6}$/;
+export { COLOR } from "@/lib/avatars";
 /** `profiles.PALETTE`: the colours the hub picks from by handle when a profile is created without one. */
 export const PALETTE = ["#2563eb", "#7c3aed", "#db2777", "#dc2626", "#d97706", "#16a34a", "#0891b2", "#4f46e5"] as const;
-/** `agent_profiles.AVATAR_MAX_BYTES` and `AVATAR_TYPES`: what PUT .../avatar takes. */
-export const AVATAR_MAX_BYTES = 512 * 1024;
-export const AVATAR_TYPES = ["image/png", "image/jpeg", "image/webp"] as const;
 
 const SECRET = /^[a-z0-9][a-z0-9._-]{0,63}$/;
 const SKILL = /^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$/;
@@ -65,32 +63,3 @@ export function validItem(axis: Axis, item: string): boolean {
       return item === HOST_ENVIRONMENT || PLUGIN_ENVIRONMENT.test(item);
   }
 }
-
-/** The letter an avatar without an image shows: the name's first letter or digit, else the handle's. */
-export function agentInitial(agent: Pick<Agent, "name" | "handle">): string {
-  const letter = [...agent.name.trim()].find((char) => /[\p{L}\p{N}]/u.test(char)) ?? agent.handle.charAt(0);
-  return letter.toLocaleUpperCase();
-}
-
-function channel(value: number): number {
-  const c = value / 255;
-  return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-}
-
-function luminance(hex: string): number {
-  const n = Number.parseInt(hex.slice(1), 16);
-  return 0.2126 * channel((n >> 16) & 255) + 0.7152 * channel((n >> 8) & 255) + 0.0722 * channel(n & 255);
-}
-
-const WHITE = "#ffffff";
-const INK = "#0e1116"; // the kit's fg in light
-
-/** The colour of an initial on `color`: white or ink, whichever stands out more (WCAG contrast). */
-export function inkOn(color: string): string {
-  if (!COLOR.test(color)) return WHITE;
-  const ground = luminance(color);
-  const onWhite = 1.05 / (ground + 0.05);
-  const onInk = (ground + 0.05) / (luminance(INK) + 0.05);
-  return onWhite >= onInk ? WHITE : INK;
-}
-

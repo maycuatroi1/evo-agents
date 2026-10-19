@@ -1,6 +1,7 @@
 import type { Locator, Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
+import { createAgentByApi } from "./support/agents";
 import { expect, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken, uniqueName } from "./support/hub";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -29,8 +30,9 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * The hub on a phone (steps 14 and 15 of hub-ui-kit): a 375 x 812 screen with a phone's user agent and touch, so the
  * server renders the phone layout itself. Lists are rows that open the object's page, filters live in a sheet behind
  * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its head, its decision and
- * its trace's latest rows before its details and opens the full trace on a screen of its own, and a decision from the
- * Inbox is a screen of its own with its answer in a bar at the foot.
+ * its trace's latest rows before its details and opens the full trace on a screen of its own, a decision from the
+ * Inbox is a screen of its own with its answer in a bar at the foot, and the Chats list's row of agents scrolls sideways
+ * on its own.
  */
 const PHONE = { width: 375, height: 812 };
 const IPHONE_UA =
@@ -464,4 +466,34 @@ test("a decision is answered on a screen of its own, its bar in reach while the 
   await expect(page).toHaveURL(/\/inbox$/);
   await expect(page.getByTestId("decision-sheet")).toHaveCount(0);
   await expect(main(page).locator(`[data-decision-link="${decision}"]`)).toBeFocused();
+});
+
+test("the chats list's row of agents scrolls sideways on its own while the page does not, and an agent opens its chat as a page", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  for (const name of ["Code reviewer", "Docs writer", "Release captain", "Flaky test hunter", "Triage desk", "Night shift"]) {
+    await createAgentByApi(me, project, { handle: uniqueName(name.split(" ")[0].toLowerCase()), name });
+  }
+
+  await open(page, "/chats");
+  const row = main(page).getByTestId("agent-strip-agents");
+  const agents = row.getByTestId("agent-strip-agent");
+  await expect(agents).toHaveCount(7);
+  const widths = await row.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(widths.scroll, "the row holds more than the screen").toBeGreaterThan(widths.client);
+  await row.evaluate((element) => element.scrollBy({ left: 240 }));
+  await expect.poll(() => row.evaluate((element) => element.scrollLeft)).toBeGreaterThan(0);
+  const layout = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: window.innerWidth, x: window.scrollX }));
+  expect(layout.scroll, "the page never scrolls sideways").toBeLessThanOrEqual(layout.width);
+  expect(layout.x).toBe(0);
+  await touchSized(agents.first(), "an agent of the row");
+
+  // The last agent, out of view at first: tapped, its chat is the page, its composer focused, a way back before its face.
+  await agents.last().tap();
+  await page.waitForURL(/\/chats\/[0-9]+$/);
+  await expect(main(page).getByTestId("chats-list")).toBeHidden();
+  await expect(main(page).getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
+  await expect(main(page).getByTestId("chat-composer-text")).toBeFocused();
+  await expect(main(page).getByTestId("chat-back")).toBeVisible();
+  await expectNoSeriousViolations(page, "a direct chat at 375 px");
 });

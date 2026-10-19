@@ -6,7 +6,7 @@ import { chatKeys } from "@/lib/chat-keys";
 import type { Chat, ChatCreate, ChatEvents, ChatPage, GroupMessage } from "@/lib/chats";
 import type { ApiSource } from "@/lib/queries";
 
-export { chatKeys, chatQuery, chatsQuery, LIST_IDLE_MS, LIST_LIVE_MS } from "@/lib/chat-keys";
+export { chatComposeHref, chatKeys, chatQuery, chatsQuery, COMPOSE_PARAM, LIST_IDLE_MS, LIST_LIVE_MS, openDirectChat } from "@/lib/chat-keys";
 
 /**
  * The reads and writes of group chats (GET, POST /v1/chats and below). Only a chat's members read it and write to it;
@@ -60,6 +60,18 @@ export function chatStreamPath(id: number, after: number): string {
 export async function createChat(api: ApiClient, body: ChatCreate): Promise<Chat> {
   const headers = await csrfHeaders(api);
   return call(api.POST("/v1/chats", { body, headers }));
+}
+
+/** Set a group chat's image to one given as base64 (PNG, JPEG or WebP, at most 512 KiB). */
+export async function setChatImage(api: ApiClient, id: number, data: string): Promise<Chat> {
+  const headers = await csrfHeaders(api);
+  return call(api.PUT("/v1/chats/{chat_id}/image", { params: { path: { chat_id: id } }, body: { data }, headers }));
+}
+
+/** Take a group chat's image off: its face is its members' again. */
+export async function removeChatImage(api: ApiClient, id: number): Promise<Chat> {
+  const headers = await csrfHeaders(api);
+  return call(api.DELETE("/v1/chats/{chat_id}/image", { params: { path: { chat_id: id } }, headers }));
 }
 
 /** Send a message, in the thread of `replyTo` when given. */

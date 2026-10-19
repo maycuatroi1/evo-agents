@@ -3,7 +3,7 @@
 import { useMutation } from "@tanstack/react-query";
 import { ArrowUp, Bot, TriangleAlert } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
-import { type FormEvent, type KeyboardEvent, useId, useLayoutEffect, useRef, useState } from "react";
+import { type FormEvent, type KeyboardEvent, useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 
 import { InlineError, type WriteFailure } from "@/components/feedback/notice";
 import { shortcutText } from "@/components/shell/shortcuts";
@@ -46,6 +46,8 @@ type Props = {
   /** What a message sent here does, under the box when it hands no work. */
   hint: string;
   testId: string;
+  /** The text area takes the focus each time this turns non-null: the chat was opened to write in it. */
+  focusKey?: string | null;
 };
 
 /**
@@ -55,7 +57,7 @@ type Props = {
  * `@` opens the suggestions of whom it can name (`MentionMenu`). A blank message or one over 16 KiB of UTF-8 is
  * refused here with the reason; a refusal of the hub shows here too, with its words.
  */
-export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hint, testId }: Props) {
+export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hint, testId, focusKey = null }: Props) {
   const t = useTranslations("chats.composer");
   const format = useFormatter();
   const ids = useId();
@@ -79,6 +81,10 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
       onSent(message);
     },
   });
+
+  useEffect(() => {
+    if (focusKey !== null) area.current?.focus();
+  }, [focusKey]);
 
   useLayoutEffect(() => {
     if (caretAfter.current === null || !area.current) return;

@@ -2,12 +2,16 @@ import { test as base } from "@playwright/test";
 
 import type { Locale } from "../../src/i18n/locales";
 
+import { PIXEL_PNG } from "./agents";
 import { signIn } from "./auth";
 import { DEPLOYED_BASE_URL } from "./env";
 import { type Account, HubAdmin, newAccount, type Role, uniqueName } from "./hub";
 import { setUiLocale } from "./locale";
 
 type Grant = { role: Role; maxLevel: string };
+
+/** Where GitHub serves its users' avatars, the one image origin the web's CSP allows besides its own. */
+export const GITHUB_AVATARS = "https://avatars.githubusercontent.com";
 
 export type Member = Account & { projects: string[] };
 
@@ -32,6 +36,11 @@ export const test = base.extend<Options & Fixtures, WorkerFixtures>({
   uiLocale: [null, { option: true }],
   context: async ({ context, uiLocale }, use) => {
     if (uiLocale) await setUiLocale(context, uiLocale);
+    // The people of a chat show their GitHub avatars, which the hub names by GitHub id: the local stack's ids are made
+    // up, so a pixel answers for GitHub and no spec reaches the internet. A spec routes it again to see one fail.
+    if (DEPLOYED_BASE_URL === null) {
+      await context.route(`${GITHUB_AVATARS}/**`, (route) => route.fulfill({ status: 200, contentType: "image/png", body: PIXEL_PNG }));
+    }
     await use(context);
   },
   admin: [

@@ -25,6 +25,10 @@ export type ChatEvents = Schemas["ChatEvents"];
 /** How far an agent's run that took a message is (`chat_progress` of the API): its step, worker and repo. */
 export type ChatProgress = Schemas["ChatProgress"];
 export type ChatCreate = Schemas["ChatCreate"];
+/** A change of a group chat's image (an image_changed event): its URL now, null once taken off, and who changed it. */
+export type ChatImageChange = Schemas["ChatImageChange"];
+/** The latest message of a chat's main line, as its row in the list shows it. */
+export type ChatLastMessage = Schemas["ChatLastMessage"];
 
 /** The API's limits (`chats.MAX_*`, `chat_runs.*`). */
 export const MAX_TITLE_CHARS = 120;
@@ -96,7 +100,7 @@ export function insertMention(text: string, at: MentionQuery, name: string): { t
 export type MentionTarget =
   | { kind: "agent"; name: string; label: string; agent: ChatAgent }
   | { kind: "project"; name: string; label: string; agent: ChatAgent }
-  | { kind: "person"; name: string; label: string };
+  | { kind: "person"; name: string; label: string; avatarUrl: string | null };
 
 /** The members a mention reaches: the agents that take work (not deleted), then the people other than `me`. */
 export function mentionTargets(chat: Pick<Chat, "agents" | "people">, me: string | null): MentionTarget[] {
@@ -112,7 +116,7 @@ export function mentionTargets(chat: Pick<Chat, "agents" | "people">, me: string
   const people = chat.people
     .filter((person) => person.login.toLowerCase() !== me?.toLowerCase())
     .sort((a, b) => a.login.localeCompare(b.login))
-    .map((person): MentionTarget => ({ kind: "person", name: person.login, label: person.login }));
+    .map((person): MentionTarget => ({ kind: "person", name: person.login, label: person.login, avatarUrl: person.avatar_url }));
   return [...named, ...projects, ...people];
 }
 
@@ -173,16 +177,102 @@ export function unreadTotal(chats: readonly Pick<ChatSummary, "unread">[]): numb
   return chats.reduce((sum, chat) => sum + chat.unread, 0);
 }
 
-/** The chats whose title or members hold `query`, ignoring case; every chat for an empty query. */
-export function filterChats<T extends Pick<ChatSummary, "title" | "people" | "agents">>(chats: readonly T[], query: string): T[] {
+/** The chats whose name, title or members hold `query`, ignoring case; every chat for an empty query. */
+export function filterChats<T extends Pick<ChatSummary, "title" | "people" | "agents"> & Partial<Pick<ChatSummary, "direct_agent">>>(
+  chats: readonly T[],
+  query: string,
+): T[] {
   const wanted = query.trim().toLowerCase().replace(/^@/, "");
   if (!wanted) return [...chats];
   return chats.filter(
     (chat) =>
       chat.title.toLowerCase().includes(wanted) ||
+      !!chat.direct_agent?.name.toLowerCase().includes(wanted) ||
       chat.people.some((login) => login.toLowerCase().includes(wanted)) ||
       chat.agents.some((handle) => handle.includes(wanted)),
   );
+}
+
+/** What a chat is called in the list and its head: a direct chat by its agent's name (as it reads now), a group by its title. */
+export function chatName(chat: Pick<ChatSummary, "title"> & { direct_agent?: Pick<ChatAuthor, "name"> | null }): string {
+  return chat.direct_agent?.name ?? chat.title;
+}
+
+/**
+ * A chat's face (web/DESIGN.md, Chats): a direct chat's agent; a group's uploaded image, with the faces drawn while it
+ * loads or when it fails; else two of its other members side by side as Messenger draws a group, or the one other
+ * member; `none` for a group of the visitor alone.
+ */
+export type ChatFace =
+  | { kind: "agent"; agent: ChatAuthor }
+  | { kind: "image"; url: string; faces: ChatAuthor[] }
+  | { kind: "members"; faces: ChatAuthor[] }
+  | { kind: "none" };
+
+/** The members a group without an image is drawn with: two at most. */
+export const FACES_SHOWN = 2;
+
+function groupFace(imageUrl: string | null, faces: readonly ChatAuthor[]): ChatFace {
+  const shown = faces.slice(0, FACES_SHOWN);
+  if (imageUrl) return { kind: "image", url: imageUrl, faces: shown };
+  return shown.length ? { kind: "members", faces: shown } : { kind: "none" };
+}
+
+/** The face of a chat in the list, from what the hub sends for it (`direct_agent`, `image_url`, `faces`). */
+export function summaryFace(chat: Pick<ChatSummary, "kind" | "image_url" | "direct_agent" | "faces">): ChatFace {
+  if (chat.kind === "direct" && chat.direct_agent) return { kind: "agent", agent: chat.direct_agent };
+  return groupFace(chat.image_url, chat.faces);
+}
+
+/** A chat's agent as an author: what a face and a name are drawn from. */
+export function agentAuthor(agent: ChatAgent): ChatAuthor {
+  const { handle, project, name, color, icon_url, deleted } = agent;
+  return { kind: "agent", handle, project, name, color, icon_url, deleted };
+}
+
+/** A chat's person as an author, with their GitHub avatar. */
+export function personAuthor(person: Pick<ChatPerson, "login" | "avatar_url">): ChatAuthor {
+  return { kind: "person", login: person.login, name: person.login, deleted: false, avatar_url: person.avatar_url };
+}
+
+/**
+ * The face of a chat in its head, from the chat itself: the same as its row's (`summaryFace`), with its members other
+ * than `me` in the order they were added, as the hub picks a row's faces.
+ */
+export function chatFace(chat: Pick<Chat, "kind" | "image_url" | "agents" | "people">, me: string | null): ChatFace {
+  if (chat.kind === "direct" && chat.agents[0]) return { kind: "agent", agent: agentAuthor(chat.agents[0]) };
+  const others = [
+    ...chat.agents.map((agent) => ({ at: agent.added_at, author: agentAuthor(agent) })),
+    ...chat.people
+      .filter((person) => person.login.toLowerCase() !== me?.toLowerCase())
+      .map((person) => ({ at: person.added_at, author: personAuthor(person) })),
+  ].sort((a, b) => Date.parse(a.at) - Date.parse(b.at));
+  return groupFace(chat.image_url, others.map((other) => other.author));
+}
+
+/** Whether `author` is the visitor. */
+export function isMine(author: Pick<ChatAuthor, "kind" | "login">, me: string | null): boolean {
+  return author.kind === "person" && !!me && author.login?.toLowerCase() === me.toLowerCase();
+}
+
+/** How a row says when its last message came: the time today, the weekday this week, the date this year, else with the year. */
+export type ListTime = "time" | "weekday" | "date" | "year";
+
+function dayOf(date: Date, timeZone: string): { key: string; utc: number; year: string } {
+  const parts = new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(date);
+  const part = (type: string) => parts.find((item) => item.type === type)?.value ?? "";
+  const key = `${part("year")}-${part("month")}-${part("day")}`;
+  return { key, utc: Date.parse(`${key}T00:00:00Z`), year: part("year") };
+}
+
+/** `ListTime` of `when` against `now`, by the calendar days of `timeZone` (the one the page formats dates in). */
+export function listTime(when: Date, now: Date, timeZone: string): ListTime {
+  const day = dayOf(when, timeZone);
+  const today = dayOf(now, timeZone);
+  if (day.key === today.key) return "time";
+  const days = Math.round((today.utc - day.utc) / 86_400_000);
+  if (days > 0 && days < 7) return "weekday";
+  return day.year === today.year ? "date" : "year";
 }
 
 /** The logins of the people of the visitor's chats, other than `me` and those in `except`: whom to suggest adding. */

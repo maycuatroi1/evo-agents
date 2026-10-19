@@ -3,6 +3,7 @@ import type { Page } from "@playwright/test";
 import { agentOf, agentPath, agentsPath, createAgentByApi, PIXEL_PNG } from "./support/agents";
 import { signOut } from "./support/auth";
 import { authorWorker, ensureAuthorSkill } from "./support/author";
+import { chatsOf } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { apiOf } from "./support/memories";
@@ -16,8 +17,9 @@ import { heartbeat, registerWorker } from "./support/workers";
 /**
  * The Agents pages against the real API (docs/hub.md, Agent profiles): an admin creates an agent from the hub's own
  * lists (their secret, the project's skill, a worker's label, the models it lists) with an avatar, edits it into a new
- * version and deletes it, which then reads as before; a writer only reads; and Dispatch, Run plan and New plan queue
- * their runs under the agent picked, which its page then lists. Pages render in English.
+ * version and deletes it, which then reads as before; a writer only reads; Chat on the list and on an agent's page opens
+ * the visitor's direct chat with it; and Dispatch, Run plan and New plan queue their runs under the agent picked, which
+ * its page then lists. Pages render in English.
  */
 test.skip(isDeployed, "creates agents through the local stack");
 
@@ -241,4 +243,43 @@ test("Dispatch, Run plan and New plan queue their runs under the agent picked, a
   for (const run of runs) expect(run).toMatchObject({ profile: handle, profile_version: 1, requested_runtime: "claude-code" });
   await open(page, agentPath(project, handle));
   await expect(main(page).getByTestId("agent-runs-table").locator("tbody tr")).toHaveCount(3);
+});
+
+test("Chat on the agents list and on an agent's page opens the visitor's one direct chat with it, for one who writes to the project", async ({ page, member }) => {
+  const me = await member([
+    { role: "admin", maxLevel: "internal" },
+    { role: "reader", maxLevel: "internal" },
+  ]);
+  const [project, readOnly] = me.projects;
+  const handle = uniqueName("helper");
+  await createAgentByApi(me, project, { handle, name: "Helper", color: "#d97706" });
+
+  // The list: Chat in the row's actions, named by the agent; it opens the chat with its composer focused.
+  await open(page, agentsPath(project));
+  const row = main(page).getByTestId("agents-table").locator("tbody tr").filter({ has: page.locator(`[data-agent-link="${handle}"]`) });
+  await row.hover();
+  const chat = row.getByTestId("agent-chat");
+  await expect(chat).toHaveAccessibleName("Chat with Helper");
+  await chat.click();
+  await page.waitForURL(/\/chats\/[0-9]+$/);
+  const chatId = Number(new URL(page.url()).pathname.split("/").at(-1));
+  await expect(main(page).getByTestId("chat-composer-text")).toBeFocused();
+  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Helper");
+  await expect(main(page).getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
+
+  // The agent's page: Chat beside its head opens the same chat, and the hub keeps one.
+  await open(page, agentPath(project, handle));
+  await main(page).getByTestId("agent-detail").getByTestId("agent-chat").click();
+  await page.waitForURL(`**/chats/${chatId}`);
+  await expect(main(page).getByTestId("chat-composer-text")).toBeFocused();
+  const direct = (await chatsOf(me)).filter((item) => item.kind === "direct");
+  expect(direct.map((item) => [item.id, item.direct_agent?.handle])).toEqual([[chatId, handle]]);
+
+  // A project the member only reads: its agents read as before, without Chat.
+  await open(page, agentsPath(readOnly));
+  await expect(main(page).getByTestId("agents-table").locator("tbody tr")).toHaveCount(1);
+  await expect(main(page).getByTestId("agent-chat")).toHaveCount(0);
+  await open(page, agentPath(readOnly, readOnly));
+  await expect(main(page).getByTestId("agent-detail")).toBeVisible();
+  await expect(main(page).getByTestId("agent-chat")).toHaveCount(0);
 });

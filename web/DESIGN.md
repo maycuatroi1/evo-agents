@@ -245,8 +245,9 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | The usage limits of an account | `Gauge` |
 | Knowledge graph | `Network` |
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
-| Chats, a group chat; New chat | `MessagesSquare`; `Plus` |
+| Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
 | A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
+| A group chat's image: change it (on its face), upload, remove; a direct chat's Details; its note that it keeps its two members | `Camera`; `ImageUp`, `Trash2`; `Info`; `Lock` |
 | A chat run's run; the draft pull request an agent's message links; leave a chat | `Activity`; `GitPullRequestDraft`; `LogOut` |
 | An agent's axes: credentials, tools, skills, workers, projects, models, runtimes, environments | `KeyRound`, `Wrench`, `Sparkles`, `Server`, `FolderKanban`, `BrainCircuit`, `SquareTerminal`, `Container` |
 | An agent pack of a plugin, which an agent attaches | `Package` |
@@ -759,7 +760,11 @@ Shared pieces built on them:
   project's own `@<project>`, and `@handle, description` under it; Limits, the axes it narrows as tags with each axis's
   icon (three, then `+N` whose tooltip names the rest; "Every permission" when none); the version; when it last
   changed. Deleted agents are one facet away (`?show=deleted`), since runs keep the agent they went under. An admin of
-  the project gets New agent in the head; everyone else a note that only an admin changes agents. An agent's page puts
+  the project gets New agent in the head; everyone else a note that only an admin changes agents. A member who writes
+  to the project gets Chat (`chat-button.tsx`, `outline`, `MessagesSquare`) in each active agent's row actions, an icon
+  button named "Chat with <name>" (at the row's end on phones), and in an agent's head beside Edit: it opens their direct
+  chat with the agent as the Chats list's row of agents does (`hooks/use-direct-chat.ts`, which both share), with the
+  composer focused; a reader of the project, and a deleted agent, get none. An agent's page puts
   the avatar before the h1 and `@handle` (copyable), Default, Deleted and `vN` beside it; About (the description and
   the instructions in mono on `surface-sunken`) and Permissions (each axis with its icon, what it governs, then "Every
   ..." or the allowlist as chips; an empty allowlist says Nothing allowed in `attention`) and Agent packs (each pack
@@ -790,24 +795,53 @@ Shared pieces built on them:
   (`app/(app)/chats/layout.tsx`, `chats-shell.tsx`), so the list keeps its place from chat to chat: from 1024 px one
   window tall, the list in a column of 19 rem (21 from 2xl) and the chat beside it, each scrolling on its own; below,
   the list is the page at `/chats` and a chat the page at `/chats/{id}`, as tall as the window, with a back link before
-  its title. The list (`chat-list.tsx`) is a card: Chats (the h1 while no chat is open, an h2 beside one) with the
-  unread total as an `attention` badge and New chat (primary while no chat is open, `outline` beside one); a filter
-  past six chats; then a row per chat, the latest active first, its title (semibold while unread), the agents as
-  `@handle` and the people, when its last message came, and the messages of others not read yet as an `attention`
-  count (its name says the count in words); the chat shown is `surface-selected` with `aria-current="page"`. The list is
-  read every 10 seconds while shown; the sidebar's Chats item counts the same unread total, every 30. No chat is the
-  EmptyState with New chat; from 1024 px the pane beside the list says to open one. New chat
+  its face. The list (`chat-list.tsx`) is a card: Chats (the h1 while no chat is open, an h2 beside one) with the
+  unread total as an `attention` badge and New chat (primary while no chat is open, `outline` beside one). Under it the
+  row of agents (`agent-strip.tsx`): the agents the visitor may chat with one to one (not deleted, of the projects they
+  write to, the project the shell shows first, each project's default agent first), each a 72 px button with its 40 px
+  avatar and its name under it (two lines at most), and a tooltip with its name, `@handle` and project. Pressing one, or Enter
+  on it, opens the visitor's direct chat with that agent (the one there is, or one the hub makes:
+  `PUT /v1/chats/direct/{handle}`) at `/chats/{id}?compose=1`, which focuses the composer and drops the parameter; the
+  agent of the direct chat shown has a `brand` ring and `aria-current`, the one opening a spinner over its face. The
+  row is a `toolbar` and one Tab stop (the arrows, Home and End move along it) that scrolls sideways on its own, so the
+  page never does at 375 px; while the agents load it shows five rounds, with none it says where they come from, and a
+  project whose agents could not be read is named in `danger` with Try again. There is no online status on it (status
+  shows only when something is wrong). A filter past six chats; then a row per chat (`chat-row.tsx`), the latest
+  active first: its face (`chat-avatar.tsx`, 40 px: a direct chat's agent; a group's uploaded image, its members drawn
+  while it loads and when it fails; else two of its other members as Messenger draws a group, one up on the right and
+  one down on the left cut out by the card's colour; else the one other member; else the people icon on a neutral
+  round), its name (a direct chat's agent's name as it reads now, a group's title), when its last message came (the
+  time today, the weekday within the week, the date this year, else with the year, by the days of the page's time zone;
+  the date until the page hydrates, the full time as its tooltip), and that message as "Author: text" (You for the
+  visitor, one line without markdown; in italics "a message your grants don't clear", or No messages yet). Unread, the
+  name and the line are semibold and the messages of others not read yet an `attention` count. The link's name is the
+  chat's name with that count in words, its description the last message; the chat shown is `surface-selected` with
+  `aria-current="page"`. The list is read every 10 seconds while shown; the sidebar's Chats item counts the same unread
+  total, every 30. No chat is the EmptyState with New chat; from 1024 px the pane beside the list says to open one.
+  A person's face anywhere in Chats (`PersonAvatar` in `author.tsx`) is their GitHub avatar from
+  `https://avatars.githubusercontent.com` (the one image origin the CSP allows besides the web's own; the hub names it
+  by GitHub id and proxies nothing), or while it loads, and when there is none or it fails, their initials on a
+  neutral round. New chat
   (`new-chat-dialog.tsx`, loaded when first pressed) takes a title (one line, 120 characters), the agents of the
   projects the visitor writes to as checkboxes by project with each one's face (at most 10, a filter past eight) and
   people by login, those of the visitor's other chats suggested (a login typed and not added yet goes along); the
   hub's refusal stays in the dialog with its words, and the chat opens once made. A chat (`chat-view.tsx`) is a card:
-  its head (`chat-header.tsx`: the title as the h1, the visibility its agents' projects give it, its agents' faces, who
-  is in it, and Members), its messages, and the composer. Messages (`message-list.tsx`) sit in a `role="log"` region
+  its head, its messages, and the composer. A group chat's head (`chat-header.tsx`) puts its face first, 40 px, as a
+  button with a `Camera` badge (`chat-image-control.tsx`) whose menu says what an image takes (PNG, JPEG or WebP, at
+  most 512 KiB) and offers Upload image, or Change image and Remove image once there is one; Remove asks first
+  (`ConfirmAction`, loaded when first chosen). A file of another type or over the size is refused before it is sent,
+  and that, or the hub's refusal, shows under the head as an inline error until the next try; a change is a toast, and
+  the chat's image_changed event shows it to the other members at once. Then the title as the h1, the visibility its
+  agents' projects give it, its agents' faces, who else is in it (Only you so far, alone), and Members. A direct chat's
+  head is its agent's: its avatar, its name as the h1 with a Direct tag (`Bot`) and Deleted when it is, its `@handle`
+  linking to the agent's page and its project under it, and Details, which opens the members sheet as its Details: its
+  agent and its person with nobody to add, take out or leave (a `Lock` note says to start a group chat for that), and
+  the budget. Its composer says that every message goes to the agent, no @ needed. Messages (`message-list.tsx`) sit in a `role="log"` region
   (polite) that scrolls on its own and Tab reaches, under a line for each day; it opens at the newest message, follows
   new ones while the visitor reads at the end and offers Jump to the latest when they scrolled up; Show earlier
   messages reads the page before. The chat shows the messages that are no reply; replies live in their thread. A
-  message (`message-item.tsx`) is its author's face (an agent's avatar or initial on its colour, a person's initials
-  on a neutral round, the hub's mark with an Automatic tag for what the hub says by rule), the name (an agent's with
+  message (`message-item.tsx`) is its author's face (an agent's avatar or initial on its colour, a person's GitHub
+  avatar or initials, the hub's mark with an Automatic tag for what the hub says by rule), the name (an agent's with
   `@handle`), the time, the text through SafeMarkdown (`components/data/markdown.tsx`: Markdown, never HTML), then
   square chips for where it leads (`message-links.tsx`: an agent's message's run, each mention's run as `@handle: run
   #N`, a mention the hub refused in `attention` with the hub's reason, each GitHub pull request the message links, in
