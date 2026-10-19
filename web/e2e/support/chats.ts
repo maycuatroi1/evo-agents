@@ -45,23 +45,47 @@ export async function chatHeartbeat(live: LiveWorker, runs: number[] = []): Prom
 }
 
 /** A worker of `account` serving `project` whose daemon takes chat runs: where a mention of theirs goes. */
-export async function chatWorker(account: Account, project: string, name: string): Promise<LiveWorker> {
-  const live = await liveWorker(account, project, name, 1, { report: { repos: [HARNESS_CHECKOUT, REPO], models: MODELS } });
+export async function chatWorker(account: Account, project: string, name: string, slots = 1): Promise<LiveWorker> {
+  const live = await liveWorker(account, project, name, slots, { report: { repos: [HARNESS_CHECKOUT, REPO], models: MODELS } });
   await chatHeartbeat(live);
   return live;
 }
 
-/** The daemon claims the chat run waiting for it: the hub puts the agent's eyes on the message. */
-export async function claimChatRun(live: LiveWorker, runId: number): Promise<void> {
+/** The daemon claims the chat run waiting for it, and its setup starts: the hub puts the agent's eyes on the message. */
+export async function claimOnly(live: LiveWorker, runId: number): Promise<void> {
   const answer = (await workerPost(live, "/v1/worker/claim", { wait_s: 0 })) as { run: { id: number; kind: string } | null };
   if (answer.run?.id !== runId) throw new Error(`the worker claimed ${answer.run?.id ?? "nothing"}, not chat run #${runId}`);
   await chatHeartbeat(live, [runId]);
+}
+
+/**
+ * A note of the daemon that starts a step of the run's setup (`chat_runs.SETUP_FIELD` of the API: checking, opening a
+ * repo, starting): the thread shows that step under the message. `seq` is the daemon's number of the event, from 1.
+ */
+export async function setupNote(live: LiveWorker, runId: number, seq: number, setup: string, repo?: string): Promise<void> {
+  const body = { text: `${setup} ${repo ?? ""}`.trim(), setup, ...(repo ? { repo } : {}) };
+  await workerPost(live, `/v1/worker/runs/${runId}/events`, { events: [{ seq, at: new Date().toISOString(), kind: "system", body }] });
+}
+
+/** The agent started: the run is running. */
+export async function agentStarts(live: LiveWorker, runId: number): Promise<void> {
   await workerPost(live, `/v1/worker/runs/${runId}/state`, { state: "running", session_id: "0199a3c1-0000-7000-8000-00000000c4a7" });
+}
+
+/** The daemon claims the chat run waiting for it and starts its agent: the hub puts the agent's eyes on the message. */
+export async function claimChatRun(live: LiveWorker, runId: number): Promise<void> {
+  await claimOnly(live, runId);
+  await agentStarts(live, runId);
+}
+
+/** The agent's last message of a turn, its reply in the thread, while the run goes on to its next turn. */
+export async function agentSays(live: LiveWorker, runId: number, text: string): Promise<void> {
+  await workerPost(live, `/v1/worker/runs/${runId}/chat`, { text });
 }
 
 /** The end of the agent's turn: its last message, the reply in the thread, then the run done (the check mark). */
 export async function agentAnswers(live: LiveWorker, runId: number, text: string): Promise<void> {
-  await workerPost(live, `/v1/worker/runs/${runId}/chat`, { text });
+  await agentSays(live, runId, text);
   await workerPost(live, `/v1/worker/runs/${runId}/state`, { state: "verifying" });
   await workerPost(live, `/v1/worker/runs/${runId}/state`, { state: "done" });
 }
@@ -123,4 +147,34 @@ export async function chatsOf(account: Account) {
 
 export function chatPath(id: number, message?: number): string {
   return message ? `/chats/${id}?message=${message}` : `/chats/${id}`;
+}
+
+/** The agent takes every message of the run's inbox, as the daemon hands them over: none wakes the session again. */
+export async function takeInbox(live: LiveWorker, runId: number): Promise<void> {
+  const { messages } = (await workerPost(live, `/v1/worker/runs/${runId}/inbox`, {})) as { messages: { id: number }[] };
+  const last = messages.at(-1);
+  if (last) await workerPost(live, `/v1/worker/runs/${runId}/inbox`, { ack: last.id });
+}
+
+/**
+ * A session of @`handle` for `account` in a new chat, "Release talk" (docs/hub.md, Group chats): the mention of the
+ * first of `asks`, then each other one as a reply in its thread, which goes on in the session as a new run once the
+ * one before ended done. Every turn is claimed by `live` and takes its inbox; every one but the last answers and ends
+ * done, the last runs on. The chat, and the runs' ids oldest first.
+ */
+export async function chatSession(account: Account, handle: string, live: LiveWorker, asks: string[]): Promise<{ chat: Chat; runs: number[] }> {
+  const chat = await createChatByApi(account, { title: "Release talk", agents: [handle] });
+  const runs: number[] = [];
+  let root: number | null = null;
+  for (const [index, ask] of asks.entries()) {
+    const sent = await sendByApi(account, chat.id, `@${handle} ${ask}`, root);
+    root ??= sent.id;
+    const runId = sent.mentions[0]?.run_id;
+    if (!runId) throw new Error(`the mention made no run: ${JSON.stringify(sent.mentions)}`);
+    await claimChatRun(live, runId);
+    await takeInbox(live, runId);
+    if (index < asks.length - 1) await agentAnswers(live, runId, `Done: ${ask}`);
+    runs.push(runId);
+  }
+  return { chat, runs };
 }

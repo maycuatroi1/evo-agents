@@ -16,7 +16,9 @@ the mention keeps why, and the hub answers in the message's thread, naming it. A
 chat run for the sender (``chat_runs.hand_mentions``, at most ``chat_runs.MAX_RUNS_PER_MESSAGE`` agents a message),
 and the mention keeps the run it made or woke, or why it made none, which the hub's answer names too. In a chat of one
 person, a message in a thread without a mention goes to the one agent whose session the sender has in that thread
-(the mention ``via`` thread). A message that mentions no agent makes no run and asks no model anything.
+(the mention ``via`` thread). A message that mentions no agent makes no run and asks no model anything. A message
+these routes answer carries how far each run it handed work to is while that run is on its way (``chat_progress``):
+waiting for its worker, a step of its setup, working, as the reader may read the run.
 
 PATCH /v1/chats/{id} changes the chat's budget: what its agents' runs may cost in 24 hours (``chat_runs``); only its
 creator does (403), audited as chat.budget.
@@ -60,6 +62,7 @@ from evo_agents.hub.server.chat_members import (
     refuse_uncleared,
 )
 from evo_agents.hub.server.chat_notices import notice_mention
+from evo_agents.hub.server.chat_progress import by_message, chat_progress
 from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply, thread_session
 from evo_agents.hub.server.chat_store import (
     add_member,
@@ -235,7 +238,8 @@ async def list_messages(
         rows = (await conn.execute(_page(chat_id, before, thread, limit))).all()
         page = list(reversed(rows[:limit]))
         reader = await label_reader(conn, user.user_id, [row.label for row in page])
-        messages = await messages_view(conn, page, reader)
+        progress = by_message(await chat_progress(conn, user, chat_id)) if page else None
+        messages = await messages_view(conn, page, reader, progress)
         view = await chat_view(conn, chat)
     return ChatPage(chat=view, messages=messages, more=len(rows) > limit)
 
@@ -354,8 +358,10 @@ async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, bod
     return message_id
 
 
-async def _message_view(conn: AsyncConnection, chat: ChatAccess, row) -> GroupMessage:
-    (view,) = await messages_view(conn, [row], await label_reader(conn, chat.user_id, [row.label]))
+async def _message_view(conn: AsyncConnection, chat: ChatAccess, row, user: Principal) -> GroupMessage:
+    """Message ``row`` as ``user`` reads it, with the progress of the runs it handed work to (``chat_progress``)."""
+    progress = by_message(await chat_progress(conn, user, chat.chat_id))
+    (view,) = await messages_view(conn, [row], await label_reader(conn, chat.user_id, [row.label]), progress)
     return view
 
 
@@ -365,7 +371,7 @@ async def send_message(request: Request, chat_id: ChatId, body: ChatMessageIn, u
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id)
         message_id = await _deliver(conn, chat, user, body)
-        view = await _message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0])
+        view = await _message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0], user)
     log.info("chat message sent", extra={"chat_id": chat_id, "message_id": message_id, "mentions": len(view.mentions)})
     return view
 
@@ -404,7 +410,7 @@ async def react(
                 f"message {message_id} carries {len(kinds)} different emoji, the most one holds: add to one of them",
             )
         await put_reaction(conn, chat_id, message_id, body.emoji, person_author(user.login), user_id=user.user_id)
-        return await _message_view(conn, chat, row)
+        return await _message_view(conn, chat, row, user)
 
 
 @router.delete("/{chat_id}/messages/{message_id}/reactions", response_model=GroupMessage, responses=REFUSALS)
@@ -420,7 +426,7 @@ async def unreact(
         chat = await chat_access(conn, user, chat_id)
         row = await _visible_message(conn, chat, message_id)
         await take_reaction(conn, chat_id, message_id, emoji, person_author(user.login), user_id=user.user_id)
-        return await _message_view(conn, chat, row)
+        return await _message_view(conn, chat, row, user)
 
 
 # Reading

@@ -4,7 +4,8 @@ their authors, mentions, reactions and replies, and the events its stream sends,
 
 An agent shows with its name, colour and avatar as its profile has them now, deleted or not: a soft-deleted profile
 takes no new work and keeps its name and avatar on what it wrote, flagged ``deleted``. A message's reactions are
-counted by emoji, in the order each emoji was first put, with who put it and whether the reader did.
+counted by emoji, in the order each emoji was first put, with who put it and whether the reader did. A message read
+by a person carries the progress of the agents' runs it handed work to (``ChatProgress``, read by ``chat_progress``).
 """
 
 from __future__ import annotations
@@ -17,7 +18,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, tables
+from evo_agents.hub import chat_runs, chats, tables
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.agent_profiles import icon_url
 from evo_agents.hub.server.chat_access import ChatAccess, LabelReader
@@ -81,6 +82,24 @@ class ChatReaction(BaseModel):
     agents: list[str] = Field(description="the handles of the agents that put it")
 
 
+class ChatProgress(BaseModel):
+    """How far the run of an agent that took a message is, said by rule from the run's state and its worker's notes
+    (``chat_progress``): shown while the run is on its way and its session has not answered after the message."""
+
+    message_id: int = Field(description="the message the run took: it started the run, or waits in its inbox")
+    run_id: int
+    handle: str = Field(description="the agent's, @ left out")
+    step: Literal[chat_runs.PROGRESS_STEPS] = Field(
+        description=(
+            "waiting: for its worker; claimed: by its worker; checking: access to the run's repos; opening: a repo; "
+            "starting: the agent; working: the agent; inbox: the message waits for the agent's next turn"
+        )
+    )
+    worker: str | None = Field(description="the worker the run waits for or runs on")
+    repo: str | None = Field(None, description="the repo it opens, at step opening")
+    since: datetime = Field(description="when the step began")
+
+
 class GroupMessage(BaseModel):
     id: int
     chat_id: int
@@ -94,6 +113,13 @@ class GroupMessage(BaseModel):
     reactions: list[ChatReaction]
     label: list[dict] = Field(description="the labels of the projects of the chat's agents when it was sent")
     created_at: datetime
+    progress: list[ChatProgress] = Field(
+        default_factory=list,
+        description=(
+            "the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; "
+            "a stream asked for progress keeps it current. Empty in what the worker's routes answer"
+        ),
+    )
 
 
 class Chat(BaseModel):
@@ -155,6 +181,15 @@ class ChatEvents(BaseModel):
     events: list[ChatEvent]
     last_seq: int
     more: bool
+    progress: list[ChatProgress] | None = Field(
+        None, description="with progress=true: the progress of every message of the chat whose run is on its way now"
+    )
+
+
+class ChatProgressNow(BaseModel):
+    """What a stream asked for progress sends as its ``progress`` event: at once, then each time it changes."""
+
+    progress: list[ChatProgress] = Field(description="of every message of the chat whose run is on its way now")
 
 
 # Authors and members
@@ -316,8 +351,11 @@ def _author(row, profiles: dict[int, Profile]) -> ChatAuthor:
     return HUB_AUTHOR
 
 
-async def messages_view(conn: AsyncConnection, rows, reader: LabelReader) -> list[GroupMessage]:
-    """The messages of ``rows`` (``message_select``) that ``reader`` clears the label of, in the order given."""
+async def messages_view(
+    conn: AsyncConnection, rows, reader: LabelReader, progress: dict[int, list[ChatProgress]] | None = None
+) -> list[GroupMessage]:
+    """The messages of ``rows`` (``message_select``) that ``reader`` clears the label of, in the order given, each
+    with its ``progress`` by message id (``chat_progress.by_message``), none when not given."""
     shown = [row for row in rows if reader.sees(row.label)]
     ids = [row.id for row in shown]
     if not ids:
@@ -340,6 +378,7 @@ async def messages_view(conn: AsyncConnection, rows, reader: LabelReader) -> lis
             reactions=reactions.get(row.id, []),
             label=row.label,
             created_at=row.created_at,
+            progress=(progress or {}).get(row.id, []),
         )
         for row in shown
     ]

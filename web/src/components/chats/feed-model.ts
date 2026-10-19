@@ -1,4 +1,4 @@
-import type { ChatAuthor, ChatEvent, ChatPage, ChatReaction, GroupMessage } from "@/lib/chats";
+import type { ChatAuthor, ChatEvent, ChatPage, ChatProgress, ChatReaction, GroupMessage } from "@/lib/chats";
 
 /**
  * A chat's messages as the page holds them: what the first page, older pages and threads read, kept current by the
@@ -114,6 +114,28 @@ export function withReactions(feed: Feed, message: GroupMessage): Feed {
   if (!held) return feed;
   const entries = new Map(feed.entries).set(message.id, { ...held, message: { ...held.message, reactions: message.reactions } });
   return { ...feed, entries };
+}
+
+const sameStep = (a: ChatProgress, b: ChatProgress) =>
+  a.run_id === b.run_id && a.step === b.step && a.worker === b.worker && (a.repo ?? null) === (b.repo ?? null) && a.since === b.since;
+
+/**
+ * `feed` with the progress the chat's stream (or a read of its events) sent: that of every message of the chat whose
+ * agent's run is on its way, so a message held that it leaves out has none now. A message read or brought after it
+ * carries its own. Only the messages whose progress changed are replaced.
+ */
+export function withProgress(feed: Feed, progress: readonly ChatProgress[]): Feed {
+  const byMessage = new Map<number, ChatProgress[]>();
+  for (const item of progress) byMessage.set(item.message_id, [...(byMessage.get(item.message_id) ?? []), item]);
+  let entries: Map<number, FeedEntry> | null = null;
+  for (const [id, entry] of feed.entries) {
+    const held = entry.message.progress ?? [];
+    const next = byMessage.get(id) ?? [];
+    if (held.length === next.length && held.every((item, at) => sameStep(item, next[at]))) continue;
+    entries ??= new Map(feed.entries);
+    entries.set(id, { ...entry, message: { ...entry.message, progress: next } });
+  }
+  return entries ? { ...feed, entries } : feed;
 }
 
 /** What applying events changed beyond the messages: whether a member was added or removed. */
