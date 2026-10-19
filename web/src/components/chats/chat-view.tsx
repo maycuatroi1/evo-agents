@@ -25,8 +25,10 @@ import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
 import type { Feed } from "./feed-model";
 import { useChatFailure, useMe } from "./hooks";
+import { preview, type Quote } from "./line-model";
 import { type MessageSlot } from "./message-item";
 import { MessageList } from "./message-list";
+import { useAuthorLabel } from "./message-parts";
 import { ThreadPanel } from "./thread-panel";
 import { useChatFeed } from "./use-chat-feed";
 
@@ -47,8 +49,9 @@ const useNothingUnder: UseUnder = () => undefined;
 /**
  * A chat's page (web/DESIGN.md, Chats): its head, its messages, live, and the composer; a thread beside it from 2xl
  * (beside the sidebar and the list, a third column needs that much) or in a sheet below; its members in a sheet. `?thread=ID` opens a thread, and `?message=ID` (where a notice links)
- * shows that message marked, in its thread when it is a reply. `?compose=1` (where an agent's avatar and its Chat
- * button lead) focuses the composer, then leaves the address.
+ * shows that message marked, in its thread when it is a reply of a group chat or older than the page read.
+ * `?compose=1` (where an agent's avatar and its Chat button lead) focuses the composer, then leaves the address. In a
+ * direct chat Reply answers a message from the chat's own composer, in its thread, so the agent's session goes on.
  */
 export function ChatView({ chatId, initialError, useUnder = useNothingUnder }: { chatId: number; initialError: ApiErrorInfo | null; useUnder?: UseUnder }) {
   const state = useHubQuery(chatPageQuery(browserApi, chatId), initialError);
@@ -104,7 +107,8 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   const [members, setMembers] = useState(false);
   const opener = useRef<HTMLElement | null>(null);
 
-  // A link to one message: a reply opens its thread; a message older than the page's opens as a thread of its own.
+  // A link to one message: a reply of a group chat opens its thread (a direct chat's sits in the line); a message older
+  // than the page's opens in its thread, or as a thread of its own.
   const { locate } = live;
   const linked = useRef(highlight);
   useEffect(() => {
@@ -114,7 +118,8 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
     const oldest = page.messages[0]?.seq ?? null;
     void locate(id).then((message) => {
       if (!message) return setHighlight(null);
-      const root = message.thread_root_id ?? (oldest !== null && message.seq < oldest ? message.id : null);
+      const older = oldest !== null && message.seq < oldest;
+      const root = page.chat.kind === "direct" ? (older ? (message.thread_root_id ?? message.id) : null) : (message.thread_root_id ?? (older ? message.id : null));
       if (root !== null) setThread(root);
     });
   }, [locate, page]);
@@ -131,6 +136,24 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
     opener.current?.focus();
   };
 
+  // A direct chat's Reply: the composer answers that message, in its thread, and takes the focus each time.
+  const authorLabel = useAuthorLabel();
+  const [replying, setReplying] = useState<GroupMessage | null>(null);
+  const [replyFocus, setReplyFocus] = useState(0);
+  const replyTo = (message: GroupMessage) => {
+    setReplying(message);
+    setReplyFocus((count) => count + 1);
+  };
+  // A quote shows the message it names where it sits in the line, marked; one older than the page, in its thread.
+  const showQuote = (quote: Quote) => {
+    const target = quote.message;
+    const element = target ? document.getElementById(`message-${target.id}`) : null;
+    if (!target || !element) return openThread(quote.root);
+    setHighlight(target.id);
+    element.scrollIntoView({ block: "center" });
+    element.focus({ preventScroll: true });
+  };
+
   const [reacting, setReacting] = useState<number | null>(null);
   const react = useMutation({
     mutationFn: ({ message, emoji, on }: { message: GroupMessage; emoji: string; on: boolean }) => toggleReaction(browserApi(), chatId, message.id, emoji, on),
@@ -143,6 +166,8 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
 
   const ended = live.ended !== null;
   const under = useUnder(live.feed, ended);
+  const direct = chat.kind === "direct";
+  const agentName = chat.agents[0]?.name ?? chat.title;
   const panel =
     thread !== null ? (
       <ThreadPanel
@@ -175,6 +200,8 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
           loadOlder={live.loadOlder}
           onReact={onReact}
           onThread={openThread}
+          onReply={replyTo}
+          onQuote={showQuote}
           reacting={reacting}
           under={under}
         />
@@ -194,13 +221,17 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
             <ChatComposer
               chat={chat}
               me={me}
-              replyTo={null}
-              onSent={live.sent}
+              replyTo={replying?.id ?? null}
+              onSent={(message) => {
+                live.sent(message);
+                setReplying(null);
+              }}
               label={t("composerLabel", { title: chat.title })}
-              placeholder={chat.kind === "direct" ? t("directPlaceholder", { name: chat.agents[0]?.name ?? chat.title }) : t("placeholder")}
-              hint={chat.kind === "direct" ? t("directHint", { name: chat.agents[0]?.name ?? chat.title }) : t("hint")}
+              placeholder={direct ? t("directPlaceholder", { name: agentName }) : t("placeholder")}
+              hint={direct ? t(replying ? "directReplyHint" : "directHint", { name: agentName }) : t("hint")}
               testId="chat-composer"
-              focusKey={compose}
+              focusKey={replying ? `reply-${replyFocus}` : compose}
+              replying={replying ? { name: authorLabel(replying.author, me), text: preview(replying.body), onCancel: () => setReplying(null) } : null}
             />
           </div>
         )}

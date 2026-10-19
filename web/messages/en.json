@@ -2445,7 +2445,8 @@
       "notFoundTitle": "No such chat",
       "notFoundBody": "A chat's address is /chats followed by its number. Open it from the list of your chats.",
       "directHint": "Every message goes to {name}, no @ needed: it answers under your message.",
-      "directPlaceholder": "Message {name}"
+      "directPlaceholder": "Message {name}",
+      "directReplyHint": "Your reply goes on in the same session, so {name} picks up where it left off."
     },
     "header": {
       "back": "Back to chats",
@@ -2482,7 +2483,8 @@
       "olderFailed": "Couldn't load earlier messages. Try again.",
       "emptyTitle": "No messages yet",
       "emptyBody": "Say what you need. Mention an agent with @ to hand it work; it answers in a thread under your message.",
-      "latest": "Jump to the latest"
+      "latest": "Jump to the latest",
+      "directEmptyBody": "Say what you need: every message goes to {name}, and its answer shows right under yours."
     },
     "message": {
       "hub": "Hub",
@@ -2508,7 +2510,12 @@
         "opening": "<agent>@{handle}</agent> is opening {repo}",
         "starting": "<agent>@{handle}</agent> is starting up",
         "working": "<agent>@{handle}</agent> is working on it"
-      }
+      },
+      "replyDirect": "Reply",
+      "youName": "You",
+      "quoteLabel": "Show the message this answers, by {name}: {text}",
+      "quoteEarlier": "In reply to an earlier message",
+      "quoteEarlierLabel": "Open the thread of the earlier message this answers"
     },
     "reactions": {
       "you": "you",
@@ -2553,7 +2560,9 @@
           "project": "Projects",
           "person": "People"
         }
-      }
+      },
+      "replying": "Replying to {name}",
+      "cancelReply": "Cancel the reply"
     },
     "thread": {
       "title": "Thread",
@@ -2569,7 +2578,8 @@
       "composerLabel": "Reply in the thread",
       "placeholder": "Reply in the thread",
       "soloHint": "You are the only person in this chat: a reply without @ goes to the agent already working in this thread.",
-      "hint": "Mention an agent with @ to hand it this reply."
+      "hint": "Mention an agent with @ to hand it this reply.",
+      "directHint": "Your reply goes on in the same session with {name}."
     },
     "members": {
       "title": "Members",

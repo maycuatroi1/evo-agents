@@ -2,6 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { createAgentByApi } from "./support/agents";
+import { agentAnswers, chatPath, chatWorker, claimChatRun, openDirectByApi, sendByApi } from "./support/chats";
 import { expect, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken, uniqueName } from "./support/hub";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -31,8 +32,8 @@ import { heartbeat, registerWorker, RUNTIMES } from "./support/workers";
  * server renders the phone layout itself. Lists are rows that open the object's page, filters live in a sheet behind
  * "Filters (n)", every control is at least 44 px with 16 px text in fields, a run's page puts its head, its decision and
  * its trace's latest rows before its details and opens the full trace on a screen of its own, a decision from the
- * Inbox is a screen of its own with its answer in a bar at the foot, and the Chats list's row of agents scrolls sideways
- * on its own.
+ * Inbox is a screen of its own with its answer in a bar at the foot, the Chats list's row of agents scrolls sideways
+ * on its own, and a direct chat's bubbles fit the screen with React and Reply under each.
  */
 const PHONE = { width: 375, height: 812 };
 const IPHONE_UA =
@@ -496,4 +497,45 @@ test("the chats list's row of agents scrolls sideways on its own while the page 
   await expect(main(page).getByTestId("chat-composer-text")).toBeFocused();
   await expect(main(page).getByTestId("chat-back")).toBeVisible();
   await expectNoSeriousViolations(page, "a direct chat at 375 px");
+});
+
+test("a direct chat at 375 px: the member's bubbles on the right, the agent's under them on the left, nothing sideways, Reply a touch target", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const live = await chatWorker(me, project, uniqueName("phone-chat"));
+  const chat = await openDirectByApi(me, project);
+  const asked = await sendByApi(me, chat.id, "Why did https://github.com/example-org/api/actions/runs/123456789012345/job/987654321098765 fail?");
+  const runId = asked.mentions[0]?.run_id;
+  if (!runId) throw new Error(`the message made no run: ${JSON.stringify(asked.mentions)}`);
+  await claimChatRun(live, runId);
+  await agentAnswers(live, runId, `The clock ran out:\n\n\`\`\`ts\nawait clock.tickAsync(500); // ${"waits on the clock ".repeat(8)}\n\`\`\``);
+
+  await open(page, chatPath(chat.id));
+  const log = main(page).getByTestId("chat-log");
+  const mine = log.locator('[data-testid="chat-message"][data-mine="true"]');
+  const theirs = log.locator('[data-testid="chat-message"][data-author="agent"]');
+  await expect(theirs).toHaveCount(1);
+  const area = await box(log);
+  const ours = await box(mine.getByTestId("message-bubble"));
+  const answer = await box(theirs.getByTestId("message-bubble"));
+  expect(area.x + area.width - (ours.x + ours.width), "the member's bubble ends at the right").toBeLessThan(24);
+  expect(ours.width, "the member's bubble leaves the left of the screen free").toBeLessThan(area.width * 0.9);
+  expect(answer.x, "the agent's bubble starts at the left, after its face").toBeLessThan(ours.x);
+  expect(answer.y, "the answer sits under the message").toBeGreaterThan(ours.y);
+  expect(answer.x + answer.width, "the agent's bubble fits the screen").toBeLessThanOrEqual(area.x + area.width);
+  const widths = await log.evaluate((element) => ({ scroll: element.scrollWidth, client: element.clientWidth }));
+  expect(widths.scroll, "the messages never scroll sideways").toBeLessThanOrEqual(widths.client);
+  const layout = await page.evaluate(() => ({ scroll: document.documentElement.scrollWidth, width: window.innerWidth }));
+  expect(layout.scroll, "the page never scrolls sideways").toBeLessThanOrEqual(layout.width);
+
+  // React and Reply sit under each message on a phone, each a touch target; Reply puts the answer above the box.
+  const reply = theirs.getByTestId("message-reply");
+  await expect(reply).toBeVisible();
+  await touchSized(reply, "Reply under the agent's answer");
+  await touchSized(theirs.getByTestId("reaction-add"), "React under the agent's answer");
+  await reply.tap();
+  await expect(main(page).getByTestId("chat-composer-replying")).toContainText("The clock ran out:");
+  await touchSized(main(page).getByTestId("chat-composer-reply-cancel"), "Cancel the reply");
+  expect(await fieldText(main(page).getByTestId("chat-composer-text"))).toBe("16px");
+  await expectNoSeriousViolations(page, "a direct chat with answers at 375 px");
 });

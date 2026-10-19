@@ -2445,7 +2445,8 @@
       "notFoundTitle": "Không có chat này",
       "notFoundBody": "Địa chỉ của một chat là /chats rồi tới số của chat. Hãy mở chat từ danh sách chat của bạn.",
       "directHint": "Mọi tin đều tới {name}, không cần @: agent trả lời ngay dưới tin của bạn.",
-      "directPlaceholder": "Nhắn cho {name}"
+      "directPlaceholder": "Nhắn cho {name}",
+      "directReplyHint": "Câu trả lời của bạn đi tiếp cùng session, nên {name} làm tiếp từ chỗ đã dừng."
     },
     "header": {
       "back": "Về danh sách chat",
@@ -2482,7 +2483,8 @@
       "olderFailed": "Không tải được tin cũ hơn. Hãy thử lại.",
       "emptyTitle": "Chưa có tin nào",
       "emptyBody": "Hãy nói điều bạn cần. Gõ @ tên agent để giao việc; agent trả lời trong thread dưới tin của bạn.",
-      "latest": "Tới tin mới nhất"
+      "latest": "Tới tin mới nhất",
+      "directEmptyBody": "Hãy nói điều bạn cần: mọi tin đều tới {name}, và câu trả lời hiện ngay dưới tin của bạn."
     },
     "message": {
       "hub": "Hub",
@@ -2508,7 +2510,12 @@
         "opening": "<agent>@{handle}</agent> đang mở {repo}",
         "starting": "<agent>@{handle}</agent> đang khởi động",
         "working": "<agent>@{handle}</agent> đang làm"
-      }
+      },
+      "replyDirect": "Trả lời",
+      "youName": "Bạn",
+      "quoteLabel": "Xem tin mà tin này trả lời, của {name}: {text}",
+      "quoteEarlier": "Trả lời một tin trước đó",
+      "quoteEarlierLabel": "Mở thread của tin trước đó mà tin này trả lời"
     },
     "reactions": {
       "you": "bạn",
@@ -2553,7 +2560,9 @@
           "project": "Dự án",
           "person": "Người"
         }
-      }
+      },
+      "replying": "Đang trả lời {name}",
+      "cancelReply": "Huỷ trả lời"
     },
     "thread": {
       "title": "Thread",
@@ -2569,7 +2578,8 @@
       "composerLabel": "Trả lời trong thread",
       "placeholder": "Trả lời trong thread",
       "soloHint": "Chat này chỉ có mình bạn: tin trả lời không có @ sẽ tới agent đang làm trong thread này.",
-      "hint": "Gõ @ tên agent để giao cho agent tin trả lời này."
+      "hint": "Gõ @ tên agent để giao cho agent tin trả lời này.",
+      "directHint": "Câu trả lời của bạn đi tiếp cùng session với {name}."
     },
     "members": {
       "title": "Thành viên",

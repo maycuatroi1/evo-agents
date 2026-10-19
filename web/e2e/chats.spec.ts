@@ -34,8 +34,9 @@ import { toast } from "./support/toast";
  * taken off, and another member's arriving live; a thread opened from a link to a reply, answered in place, and the
  * hub's answer to a mention it refuses; the members sheet adding and taking out an agent and a person, the budget,
  * and leaving; the row of agents opening a direct chat, each chat's face and last message in the list, and a group's
- * image changed from its head. The specs are the worker: they claim the chat run and post the agent's reply as the
- * daemon does, so no model is asked anything. Pages render in English.
+ * image changed from its head; a direct chat drawn as a chat app, the member's messages on the right and the agent's
+ * answers in the line under them, Reply going on in the session. The specs are the worker: they claim the chat run
+ * and post the agent's reply as the daemon does, so no model is asked anything. Pages render in English.
  */
 test.skip(isDeployed, "makes chats through the local stack");
 
@@ -528,4 +529,80 @@ test("each chat's row shows its face, name and last message; a member changes a 
   await putChatImageByApi(mai, release.id, PIXEL_PNG);
   await expect(face.getByTestId("chat-avatar")).toHaveAttribute("data-face", "image");
   await expect(face.getByTestId("chat-image")).toBeVisible();
+});
+
+test("a direct chat reads as a chat app: the member's messages on the right, the agent's answers under them, and Reply goes on in the session", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
+  const live = await chatWorker(me, project, uniqueName("mini"), 2);
+  const chat = await openDirectByApi(me, handle);
+  await open(page, chatPath(chat.id));
+  await expect(main(page).getByTestId("chat-empty")).toContainText("every message goes to Code reviewer, and its answer shows right under yours");
+
+  // A message without @: the member's own, on the right with no face; the agent took it as a new task.
+  const box = main(page).getByTestId("chat-composer-text");
+  await box.fill("Is the wait test flaky?");
+  await box.press("Control+Enter");
+  const asked = messageOf(page, "Is the wait test flaky?");
+  await expect(asked).toHaveAttribute("data-mine", "true");
+  await expect(asked.getByTestId("person-avatar")).toHaveCount(0);
+  const runId = Number(await asked.getByTestId("mention-run-link").getAttribute("data-run-id"));
+  await claimChatRun(live, runId);
+  await agentAnswers(live, runId, "Not flaky: it waits on the clock.");
+
+  // The answer arrives live in the chat's own line, right under the message: the agent's face and name, no thread.
+  const answer = messageOf(page, "Not flaky: it waits on the clock.");
+  await expect(answer).toHaveAttribute("data-author", "agent");
+  await expect(answer).toHaveAttribute("data-mine", "false");
+  await expect(answer.getByTestId("agent-avatar")).toBeVisible();
+  await expect(answer).toContainText("Code reviewer");
+  await expect(answer.getByTestId("message-quote")).toHaveCount(0);
+  await expect(main(page).getByTestId("thread-summary")).toHaveCount(0);
+  const line = main(page).getByTestId("chat-log").getByTestId("chat-message");
+  const askedId = Number(await asked.getAttribute("data-message-id"));
+  const answerId = Number(await answer.getAttribute("data-message-id"));
+  expect(await line.evaluateAll((items) => items.map((item) => Number(item.getAttribute("data-message-id"))))).toEqual([askedId, answerId]);
+  const log = (await main(page).getByTestId("chat-log").boundingBox())!;
+  const mine = (await asked.getByTestId("message-bubble").boundingBox())!;
+  const theirs = (await answer.getByTestId("message-bubble").boundingBox())!;
+  expect(log.x + log.width - (mine.x + mine.width), "the member's bubble ends at the right").toBeLessThan(32);
+  expect(theirs.x - log.x, "the agent's bubble starts after its face, at the left").toBeLessThan(80);
+  expect(theirs.y).toBeGreaterThan(mine.y);
+
+  // Reply on the answer: the composer says what it answers and takes the focus; the reply goes on in the session.
+  await answer.hover();
+  await answer.getByTestId("message-reply").click();
+  const replying = main(page).getByTestId("chat-composer-replying");
+  await expect(replying).toContainText("Replying to Code reviewer");
+  await expect(replying).toContainText("Not flaky: it waits on the clock.");
+  await expect(box).toBeFocused();
+  await expect(main(page).getByTestId("chat-composer-hint")).toHaveText("Your reply goes on in the same session, so Code reviewer picks up where it left off.");
+  await box.press("Escape");
+  await expect(replying).toHaveCount(0);
+  await answer.hover();
+  await answer.getByTestId("message-reply").click();
+  await box.fill("And the retries?");
+  await box.press("Control+Enter");
+  await expect(replying).toHaveCount(0);
+  const followUp = messageOf(page, "And the retries?");
+  await expect(followUp).toHaveAttribute("data-mine", "true");
+  const thread = (await chatPageOf(me, chat.id, askedId)).messages;
+  expect(thread.map((item) => item.body)).toEqual(["Is the wait test flaky?", "Not flaky: it waits on the clock.", "And the retries?"]);
+  expect(thread[2].mentions.map((mention) => [mention.handle, mention.via])).toEqual([[handle, "thread"]]);
+  const followRun = thread[2].mentions[0].run_id as number;
+
+  // A new task while that turn waits; the turn's answer then comes after it, so it quotes the reply it answers.
+  await box.fill("Check the docs too?");
+  await box.press("Control+Enter");
+  await expect(messageOf(page, "Check the docs too?")).toBeVisible();
+  await claimChatRun(live, followRun);
+  await agentAnswers(live, followRun, "Retries are bounded too.");
+  const late = messageOf(page, "Retries are bounded too.");
+  const quote = late.getByTestId("message-quote");
+  await expect(quote).toHaveAccessibleName("Show the message this answers, by You: And the retries?");
+  await quote.click();
+  await expect(followUp).toHaveAttribute("data-highlighted", "true");
+  await expect(followUp).toBeFocused();
 });

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 import { ChatComposer } from "./composer";
 import { type Feed, replyCount, threadMessages } from "./feed-model";
+import { runsOn } from "./line-model";
 import { type MessageActions, MessageItem } from "./message-item";
 import { useFollow } from "./use-follow";
 
@@ -114,16 +115,26 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
               <Skeleton className="h-10 w-3/4" />
             </div>
           ) : (
-            <ol className="flex flex-col gap-1">
+            <ol className="flex flex-col">
               {first ? (
                 <ThreadItem message={first} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} under={under} />
               ) : null}
-              <li className="flex items-center gap-3 px-3 py-1 text-xs text-fg-subtle" data-testid="chat-thread-divider">
+              <li className="flex items-center gap-3 px-3 pt-4 pb-1 text-xs text-fg-subtle" data-testid="chat-thread-divider">
                 <span>{t("replies", { count })}</span>
                 <span aria-hidden="true" className="h-px flex-1 bg-border" />
               </li>
-              {replies.map((message) => (
-                <ThreadItem key={message.id} message={message} chat={chat} me={me} highlight={highlight} onReact={onReact} reacting={reacting} under={under} />
+              {replies.map((message, index) => (
+                <ThreadItem
+                  key={message.id}
+                  message={message}
+                  runOn={runsOn(replies[index - 1], message, true)}
+                  chat={chat}
+                  me={me}
+                  highlight={highlight}
+                  onReact={onReact}
+                  reacting={reacting}
+                  under={under}
+                />
               ))}
               {state === "ready" && !replies.length ? (
                 <li className="px-3 py-2 text-sm text-muted-foreground" data-testid="chat-thread-empty">
@@ -149,7 +160,7 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
             onSent={onSent}
             label={t("composerLabel")}
             placeholder={t("placeholder")}
-            hint={solo ? t("soloHint") : t("hint")}
+            hint={chat.kind === "direct" ? t("directHint", { name: chat.agents[0]?.name ?? chat.title }) : solo ? t("soloHint") : t("hint")}
             testId="thread-composer"
           />
         </div>
@@ -160,16 +171,18 @@ export function ThreadPanel({ chat, me, feed, root, highlight, loadThread, onSen
 
 function ThreadItem({
   message,
+  runOn = false,
   chat,
   me,
   highlight,
   onReact,
   reacting,
   under,
-}: Pick<Props, "chat" | "me" | "highlight" | "onReact" | "reacting" | "under"> & { message: GroupMessage }) {
+}: Pick<Props, "chat" | "me" | "highlight" | "onReact" | "reacting" | "under"> & { message: GroupMessage; runOn?: boolean }) {
   return (
     <MessageItem
       message={message}
+      runOn={runOn}
       chat={chat}
       me={me}
       highlighted={highlight === message.id}
