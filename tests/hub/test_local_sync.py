@@ -403,6 +403,52 @@ def test_a_desktop_session_is_the_account_desktop_names_in_the_profile_whose_bin
     assert local_account.read_account(SESSION, env, own_home) == local_account.Account("x@example.com", None)
 
 
+def test_a_binary_left_by_the_session_desktop_was_started_from_names_no_profile(own_home):
+    folders = _claude_profiles(own_home, SESSION)
+    personal = str(folders["Personal"] / "claude-code" / "2.1.299" / "claude")  # Desktop does not set it then
+    env = {
+        local_account.EMAIL_VARIABLE: "third@example.com",
+        local_account.ACCOUNT_VARIABLE: "acct-Third",
+        local_account.BINARY_VARIABLE: personal,
+    }
+    assert local_account.read_account(SESSION, env, own_home) == local_account.Account("third@example.com", "Third")
+    for name in ("Company", "Third"):  # one account in two profiles: the binary picks among those two only
+        (folders[name] / "claude-code-sessions" / "acct-Shared").mkdir()
+    env[local_account.ACCOUNT_VARIABLE] = "acct-Shared"
+    assert local_account.read_account(SESSION, env, own_home).profile is None
+    env[local_account.BINARY_VARIABLE] = str(folders["Company"] / "claude-code" / "2.1.299" / "claude")
+    assert local_account.read_account(SESSION, env, own_home).profile == "Company"
+
+    env[local_account.ACCOUNT_VARIABLE] = "acct-New"  # a profile with no records yet
+    assert local_account.read_account(SESSION, env, own_home).profile is None
+    fresh = own_home / "Fresh"
+    (fresh / "claude-code" / "2.1.299").mkdir(parents=True)
+    env |= {
+        local_account.FOLDERS_VARIABLE: f"Fresh={fresh}{os.pathsep}Personal={folders['Personal']}",
+        local_account.BINARY_VARIABLE: str(fresh / "claude-code" / "2.1.299" / "claude"),
+    }
+    assert local_account.read_account(SESSION, env, own_home).profile == "Fresh"
+
+
+def test_a_desktop_session_filed_under_another_account_moves_at_its_next_prompt(own_home, fake, monkeypatch, capsys):
+    _claude_profiles(own_home, SESSION)
+    monkeypatch.setenv(local_account.EMAIL_VARIABLE, "third@example.com")
+    monkeypatch.setenv(local_account.ACCOUNT_VARIABLE, "acct-Third")
+    fire("user-prompt", payload(own_home, prompt="go"), monkeypatch, capsys)
+    rec = session_file(own_home)
+    assert rec["account"] == {"email": "third@example.com", "profile": "Third"}
+
+    rec["account"] = {"email": "third@example.com", "profile": "Personal"}  # what an earlier evo-ak read
+    (own_home / ".evo" / "hub" / "local" / f"{SESSION}.json").write_text(json.dumps(rec), encoding="utf-8")
+    fire("stop", payload(own_home), monkeypatch, capsys)
+    fire("user-prompt", payload(own_home, prompt="next"), monkeypatch, capsys)
+    first, again = fake.of("PUT", f"/local-runs/{SESSION}")
+    assert again["claude_profile"] == "Third" and again["title"] == first["title"] == "go"
+    assert fake.state == "running" and session_file(own_home)["account"]["profile"] == "Third"
+    fire("user-prompt", payload(own_home, prompt="once more"), monkeypatch, capsys)
+    assert len(fake.of("PUT", f"/local-runs/{SESSION}")) == 2  # the same account registers nothing more
+
+
 def test_without_desktop_variables_the_record_names_the_profile_when_only_one_folder_has_it(own_home):
     folders = _claude_profiles(own_home, SESSION)
     for name in ("Company", "Third"):
