@@ -24,6 +24,10 @@ answers or a message in the thread, as an author run does, and a run the hub par
 the run that resumes it. A run that asked none ends with its turn: the next turn of the session is another run. The
 worktrees stay on their branch for it, until the cleanup of old runs.
 
+The daemon's notes of the steps of the run's setup name the step each starts (``chat_runs.SETUP_FIELD``: claimed,
+checking, opening with the repo, starting, and working once a repo the agent asked for is open), which the thread
+shows under the message the run took (``evo_agents.hub.server.chat_progress``).
+
 A daemon of ``runs.LAZY_CHAT_REPOS`` gets the first run of a session with the project's harness alone (or no repo),
 and its agent opens each other repo it needs with ``evo-agents worker repo open REPO`` (``chat_runs.OPEN_COMMAND``),
 which asks the daemon on the run's socket (``credentials.ask_open``). The daemon does the rest, never the agent
@@ -98,7 +102,8 @@ class ChatRun:
         goes_on = f", going on in the session of run #{resume_of}" if resume_of else ""
         run.note(
             f"Run #{run.id} claimed by worker {run.daemon.config.name}: a chat run of project {run.project} on "
-            f"{self.branch}, {run.runtime}, timeout {run.timeout_s // 60} min of agent time{goes_on}."
+            f"{self.branch}, {run.runtime}, timeout {run.timeout_s // 60} min of agent time{goes_on}.",
+            setup="claimed",
         )
         cls = run.agent.runtime_class()
         if run.mode == "interactive":
@@ -109,11 +114,14 @@ class ChatRun:
             self.conversation.adopt()
         held = self.work.held_repos(repos)
         names = [entry["repo"] for entry in held]
+        checked = f"{len(names)} repo(s): {', '.join(names)}" if names else "the run has no repo"
+        run.note(f"Checking access of the run: {checked}.", setup="checking")
         await access.take_credentials(run, names)  # the leases are the run's own, a run going on in a session too
         run.check()
         await access.check(run, names, path=access.run_path(run), fetched=self.work.adopted(names))
         run.check()
-        await self.work.prepare(held)
+        await self.work.prepare(held)  # its notes of each repo's fetch say it opens that repo (BranchWork.setup)
+        run.note(f"The run's worktrees are ready: starting {run.runtime}.", setup="starting")
         self.opens = True
         try:
             prompt, session_id = await self.conversation.first_turn(self.prompt())
@@ -171,15 +179,18 @@ class ChatRun:
             workspace = self.directory.workspaces.get(name)
             if workspace is not None:
                 return {"repo": name, "path": str(workspace.worktree), "opened": False}
+            run.note(f"The agent asks to open {name}.", repo=name, setup="opening")
             refusal = await self._open(name)
             if refusal is not None:
-                run.note(f"The agent asked to open {name}, which the run did not: {refusal}.", repo=name)
+                note = f"The agent asked to open {name}, which the run did not: {refusal}."
+                run.note(note, repo=name, setup="working")
                 return {"error": refusal}
             workspace = self.directory.workspaces[name]
             run.note(
                 f"The agent opened {name}: its worktree is {workspace.worktree}, on {workspace.local_branch}.",
                 repo=name,
                 worktree=str(workspace.worktree),
+                setup="working",
             )
             return {"repo": name, "path": str(workspace.worktree), "opened": True}
 

@@ -164,6 +164,33 @@ def test_a_turn_of_a_chat_session_is_titled_by_its_message_and_its_branch_names_
     assert chat_runs.woken_text("skip it, from the run's page") == "skip it, from the run's page"
 
 
+def test_the_step_a_chat_run_shows_under_its_message_follows_its_state_and_its_workers_notes():
+    """Criterion a7 of the plan chat-runs-start-fast, by rule: queued waits for its worker; leased shows the step the
+    latest note that names one starts (claimed before any); once the agent started, opening while it opens a repo it
+    asked for, else working. A message of the inbox waits for the agent's next turn once the agent started."""
+    from evo_agents.hub import chat_runs
+
+    checking = {"setup": "checking"}
+    opening = {"setup": "opening", "repo": "evo-agents"}
+    plain = {"text": "Worktree made.", "repo": "evo-agents"}  # names no step: the step stays
+    step = chat_runs.progress_step
+    assert step("queued", [checking]) == ("waiting", None, None)
+    assert step("leased", []) == ("claimed", None, None)
+    assert step("leased", [checking]) == ("checking", None, checking)
+    assert step("leased", [checking, opening, plain]) == ("opening", "evo-agents", opening)
+    assert step("leased", [opening, {"setup": "starting", "repo": "x"}])[:2] == ("starting", None)
+    assert step("leased", [{"setup": "sleeping"}]) == ("claimed", None, None)  # a step it does not know
+    assert step("running", []) == ("working", None, None)
+    assert step("running", [opening]) == ("opening", "evo-agents", opening)
+    assert step("running", [opening, {"setup": "working"}]) == ("working", None, None)
+    assert step("verifying", [checking]) == ("working", None, None)
+    assert chat_runs.taken_step("working", "running", waits=True) == "inbox"
+    assert chat_runs.taken_step("working", "running", waits=False) == "working"
+    assert chat_runs.taken_step("checking", "leased", waits=True) == "checking"
+    assert chat_runs.inbox_message(chat_runs.inbox_text("owner", 9, "also:\nthe retries")) == 9
+    assert chat_runs.inbox_message("Answer to decision #3: retry") is None
+
+
 @pytest.mark.parametrize(
     ("texts", "named"),
     [

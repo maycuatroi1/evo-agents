@@ -419,6 +419,12 @@ def opened_repos(hub) -> list[tuple[int, str]]:
     return [(c["run_id"], c["repo"]) for c in hub.chat_calls if c["route"] == "chat/repos"]
 
 
+def setup_steps(hub, run_id: int) -> list[tuple]:
+    """The steps of the setup of run ``run_id`` its notes name, with the repo of each, in order."""
+    notes = [event["body"] for event in hub.runs[run_id]["events"] if event["kind"] == "system"]
+    return [(note[chat_runs.SETUP_FIELD], note.get("repo")) for note in notes if chat_runs.SETUP_FIELD in note]
+
+
 def test_a_chat_runs_agent_opens_the_repo_it_needs_and_the_session_goes_on_with_it_alone(machine, tmp_path):  # noqa: F811
     three = Machine(tmp_path / "three", ("alpha", "beta", "gamma"))  # gamma: a checkout the project does not list
     three.scenarios(
@@ -483,6 +489,21 @@ def test_a_chat_runs_agent_opens_the_repo_it_needs_and_the_session_goes_on_with_
     assert any(text.startswith("The agent asked to open delta, which the run did not: worker mac") for text in texts)
     refused = f"The agent asked to open gamma, which the run did not: project {PROJECT} has no repo gamma"
     assert any(text.startswith(refused) for text in texts), texts
+    # each step of the run's setup, and each repo the agent asked for, is a note that names it (chat_runs.SETUP_FIELD)
+    assert setup_steps(hub, first) == [
+        ("claimed", None),
+        ("checking", None),
+        ("starting", None),
+        *[("opening", "beta"), ("opening", "beta"), ("working", "beta")],  # asked, fetched, opened
+        *[("opening", "delta"), ("working", "delta"), ("opening", "gamma"), ("working", "gamma")],  # refused
+    ]
+    assert setup_steps(hub, later) == [
+        ("claimed", None),
+        ("checking", None),
+        ("opening", "beta"),  # the fetch of the worktree it goes on in
+        ("starting", None),
+        *[("opening", "alpha"), ("opening", "alpha"), ("working", "alpha")],
+    ]
     # only beta was pushed, on the session's branch, and linked in the thread
     head = three.origin_rev("beta", f"refs/heads/{branch}")
     assert head is not None and three.origin("beta", "log", "--format=%s", "-1", branch).startswith(f"run #{first}: ")

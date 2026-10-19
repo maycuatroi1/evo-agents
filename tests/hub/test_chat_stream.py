@@ -26,11 +26,12 @@ from evo_agents.hub.server import chat_events, listen
 from evo_agents.hub.server.app import create_app
 from tests.hub.contract_keys import assert_json_keys
 from tests.hub.live import sql
+from tests.hub.test_chat_runs import chat_worker
 from tests.hub.test_chats import ADMIN_GRANT, OPEN_SINKS
 from tests.hub.test_plans import registration
 from tests.hub.test_run_cli import as_json, cli, ok, write_credentials
 from tests.hub.test_run_stream import members, serving, wait_for
-from tests.hub.test_runs import OTHER, OWNER, PROJECT, READER
+from tests.hub.test_runs import OTHER, OWNER, PROJECT, READER, claim, moved
 
 THUMBS = "\U0001f44d"
 
@@ -181,6 +182,62 @@ def test_a_chat_stream_resumed_with_last_event_id_misses_and_repeats_nothing(hub
         True,
         7,
     )
+
+
+def test_a_stream_asked_for_progress_sends_each_step_of_a_chat_run_within_two_seconds(hub, monkeypatch):
+    """Criterion a7 of the plan chat-runs-start-fast: asked for progress, a stream sends a ``progress`` event (no id)
+    at once, then each time the progress under a message changed: the mention's run waiting for its worker, claimed,
+    each step its worker notes, working; the agent's reply empties it. A stream not asked sends the chat's events as
+    before, and the steps number no event of the chat."""
+    monkeypatch.setattr(chat_events, "STREAM_POLL_SECONDS", 60.0)  # only the notifications can wake it in time
+    worker = chat_worker(hub.client, hub.headers["owner"], "studio")
+    chat = created(hub)  # events 1 to 3
+    stream = ChatStream(hub, chat["id"], after=3, progress="true")
+    plain = ChatStream(hub, chat["id"], after=3)
+
+    def step(event: dict) -> list[tuple]:
+        assert event["event"] == "progress" and "id" not in event, event
+        return [(item["run_id"], item["step"], item["worker"], item["repo"]) for item in event["data"]["progress"]]
+
+    try:
+        assert step(stream.next()) == []
+        sent_at = time.monotonic()
+        mention = sent(hub, "owner", chat["id"], "@reviewer is the wait test flaky?")
+        run_id = mention["mentions"][0]["run_id"]
+        message = stream.next()["data"]
+        assert (message["seq"], message["kind"]) == (4, "message")
+        assert [item["step"] for item in message["message"]["progress"]] == ["waiting"]
+        assert step(stream.next()) == [(run_id, "waiting", "studio", None)]
+        assert time.monotonic() - sent_at < 2
+        sent_at = time.monotonic()
+        assert claim(hub.client, worker)["id"] == run_id
+        assert stream.next()["data"]["kind"] == "reaction_added"  # the agent's eyes, as before
+        assert step(stream.next()) == [(run_id, "claimed", "studio", None)]
+        assert time.monotonic() - sent_at < 2
+        notes = [
+            ({"text": "Checking access of the run: 1 repo(s): evo-agents.", "setup": "checking"}, "checking", None),
+            ({"text": "Fetching origin.", "repo": "evo-agents", "setup": "opening"}, "opening", "evo-agents"),
+        ]
+        for seq, (body, now, repo) in enumerate(notes, start=1):
+            sent_at = time.monotonic()
+            event = {"seq": seq, "at": "2026-10-19T08:00:00Z", "kind": "system", "body": body}
+            posted = hub.client.post(
+                f"/v1/worker/runs/{run_id}/events", json={"events": [event]}, headers=worker["headers"]
+            )
+            assert posted.status_code == 200, posted.text
+            assert step(stream.next()) == [(run_id, now, "studio", repo)]
+            assert time.monotonic() - sent_at < 2
+        moved(hub.client, worker, run_id, "running", session_id="sess-1")
+        assert step(stream.next()) == [(run_id, "working", "studio", None)]
+        said = hub.client.post(f"/v1/worker/runs/{run_id}/chat", json={"text": "Not flaky."}, headers=worker["headers"])
+        assert said.status_code == 201, said.text
+        assert stream.next()["data"]["message"]["body"] == "Not flaky."
+        assert step(stream.next()) == []
+        # the stream not asked for it sent the chat's events alone, numbered as before
+        assert kinds([plain.next() for _ in range(3)]) == [(4, "message"), (5, "reaction_added"), (6, "message")]
+    finally:
+        stream.close()
+        plain.close()
 
 
 def test_a_chat_stream_ends_when_its_reader_leaves_the_chat(hub, monkeypatch):

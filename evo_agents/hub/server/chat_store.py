@@ -4,7 +4,8 @@ the reactions on them, the events its stream sends and the notices it sends, eac
 Every change writes one event of the chat (chat_events), numbered by the chat (``chats.event_seq``, counted under its
 row lock, so a reader never sees a number before the ones below it), and notifies CHANNEL with the chat's id once the
 transaction commits, which wakes the chat's streams (``chat_events.ChatStreams``) on the api process's one LISTEN. A
-message is numbered by the event that brought it.
+message is numbered by the event that brought it. What changes the progress of a chat run under its messages
+(``chat_progress``) wakes them with no event (``wake``).
 
 ``status_reaction`` is how a run of an agent marks the message that started it as the run moves (``chats.
 STATUS_REACTIONS``): by rule, with no model. A run calls it in the transaction that moves it, so this module imports
@@ -41,8 +42,24 @@ async def write_event(conn: AsyncConnection, chat_id: int, kind: str, body: dict
     if seq is None:
         seq = await next_seq(conn, chat_id)
     await conn.execute(insert(tables.chat_events).values(chat_id=chat_id, seq=seq, kind=kind, body=body))
-    await conn.execute(select(func.pg_notify(CHANNEL, str(chat_id))))
+    await wake(conn, chat_id)
     return seq
+
+
+async def wake(conn: AsyncConnection, chat_id: int) -> None:
+    """Wake the streams of chat ``chat_id`` once the caller's transaction commits: one that writes no event, such as
+    a move of a chat run, changes what they show (``chat_progress``). Postgres folds a channel's equal notifications of
+    one transaction into one."""
+    await conn.execute(select(func.pg_notify(CHANNEL, str(chat_id))))
+
+
+async def wake_run_chat(conn: AsyncConnection, run_id: int) -> None:
+    """``wake`` the chat of run ``run_id`` when it is a chat run; nothing for a run of another kind."""
+    r = tables.runs
+    query = select(r.c.chat_id).where(r.c.id == run_id, r.c.kind == "chat", r.c.chat_id.is_not(None))
+    chat_id = (await conn.execute(query)).scalar_one_or_none()
+    if chat_id is not None:
+        await wake(conn, chat_id)
 
 
 # Members

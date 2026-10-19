@@ -4040,7 +4040,8 @@ export interface paths {
         };
         /**
          * List Events
-         * @description The chat's events after ``after``, oldest first; ``more`` when there are later ones.
+         * @description The chat's events after ``after``, oldest first; ``more`` when there are later ones. With ``progress``, the
+         *     progress of the agents' runs on their way under the messages they took, as the reader may read them.
          */
         get: operations["list_events_v1_chats__chat_id__events_get"];
         put?: never;
@@ -4061,7 +4062,9 @@ export interface paths {
         /**
          * Stream
          * @description The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no
-         *     longer read the chat. A ``: ping`` comment keeps an idle stream open.
+         *     longer read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too
+         *     (``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages
+         *     changed.
          */
         get: operations["stream_v1_chats__chat_id__stream_get"];
         put?: never;
@@ -6581,6 +6584,11 @@ export interface components {
             last_seq: number;
             /** More */
             more: boolean;
+            /**
+             * Progress
+             * @description with progress=true: the progress of every message of the chat whose run is on its way now
+             */
+            progress?: components["schemas"]["ChatProgress"][] | null;
         };
         /** ChatMemberChange */
         ChatMemberChange: {
@@ -6714,6 +6722,47 @@ export interface components {
              * @description its event in the run's log
              */
             seq: number;
+        };
+        /**
+         * ChatProgress
+         * @description How far the run of an agent that took a message is, said by rule from the run's state and its worker's notes
+         *     (``chat_progress``): shown while the run is on its way and its session has not answered after the message.
+         */
+        ChatProgress: {
+            /**
+             * Message Id
+             * @description the message the run took: it started the run, or waits in its inbox
+             */
+            message_id: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Handle
+             * @description the agent's, @ left out
+             */
+            handle: string;
+            /**
+             * Step
+             * @description waiting: for its worker; claimed: by its worker; checking: access to the run's repos; opening: a repo; starting: the agent; working: the agent; inbox: the message waits for the agent's next turn
+             * @enum {string}
+             */
+            step: "waiting" | "claimed" | "checking" | "opening" | "starting" | "working" | "inbox";
+            /**
+             * Worker
+             * @description the worker the run waits for or runs on
+             */
+            worker: string | null;
+            /**
+             * Repo
+             * @description the repo it opens, at step opening
+             */
+            repo?: string | null;
+            /**
+             * Since
+             * Format: date-time
+             * @description when the step began
+             */
+            since: string;
         };
         /** ChatPull */
         ChatPull: {
@@ -8050,6 +8099,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Progress
+             * @description the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer
+             */
+            progress?: components["schemas"]["ChatProgress"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -31095,6 +31149,8 @@ export interface operations {
                 /** @description the seq the events start after */
                 after?: number;
                 limit?: number;
+                /** @description also the progress of the agents' runs on their way under the messages they took (ChatProgress) */
+                progress?: boolean;
             };
             header?: never;
             path: {
@@ -31165,6 +31221,8 @@ export interface operations {
             query?: {
                 /** @description where a first connection starts */
                 after?: number;
+                /** @description also the progress of the agents' runs on their way under the messages they took (ChatProgress) */
+                progress?: boolean;
             };
             header?: {
                 /** @description sent by a reconnecting client */

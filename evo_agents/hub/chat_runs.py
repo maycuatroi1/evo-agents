@@ -20,6 +20,11 @@ A run that failed because the remote declined the push at its end (``GO_ON_AFTER
 done (``goes_on``): its commits wait on the session's branch in the worktree, for the next run to push. After any other
 failure, the next message opens a new session.
 
+Under a message a run took, the thread says by rule how far that run is (``progress_step``, no model asked anything):
+waiting for its worker, then the step of its setup the worker's latest note names (SETUP_FIELD: claimed, checking
+access, opening a repo, starting the agent), then working, or opening a repo its agent asked for; a message left in
+the inbox of a run whose agent started waits for the agent's next turn (``taken_step``).
+
 The run's prompt is the hub's (``build_chat_prompt``): the rules, the chat and its members, the run's repos, a bounded
 snapshot of the chat (``snapshot``: the first message of the thread, at most THREAD_MESSAGES of the thread and
 BEFORE_MESSAGES of the chat before it, SNAPSHOT_BYTES in all, the oldest left out first) and the message that mentioned
@@ -73,13 +78,20 @@ BRANCH = re.compile(r"^chat/[1-9][0-9]{0,18}$")
 DRAFT_TITLE = "[Draft]"  # what the title of a chat run's pull request starts with on a repo that takes no draft
 CUT_MARK = "[{left} older message(s) of the chat are left out of this prompt]"
 INBOX_TEXT = "{author} wrote in the thread (message #{id}):\n{body}"
-INBOX_HEAD = re.compile(r"[^\n]* wrote in the thread \(message #[0-9]+\):\n")  # the first line of INBOX_TEXT
+INBOX_HEAD = re.compile(r"[^\n]* wrote in the thread \(message #([0-9]+)\):\n")  # the first line of INBOX_TEXT
 # The first run's id of a chat branch (BRANCH) as SQL's substring(branch, pattern) takes it, within a bigint.
 SESSION_PATTERN = r"^chat/([1-9][0-9]{0,17})$"
 REPOS_BYTES = 3 * 1024
 # The failure causes (runs.FAILURE_CAUSES) of a chat run whose session the next message goes on in, as after one that
 # ended done: the remote declined the push at its end, and the commits are still on the session's branch.
 GO_ON_AFTER = ("push_declined",)
+# What the thread says of a run under the message it took (``progress_step``). A note of the run's worker that names
+# SETUP_FIELD starts a step of its setup: claimed, checking access, opening a repo (its ``repo``, also one the agent
+# asked for), starting the agent, working again once that repo is open.
+SETUP_FIELD = "setup"
+SETUP_STEPS = ("claimed", "checking", "opening", "starting", "working")
+PROGRESS_STEPS = ("waiting", *SETUP_STEPS, "inbox")  # waiting: for its worker; inbox: for the agent's next turn
+PREPARING_STATES = ("queued", "leased")  # its agent has not started yet
 
 OPEN_COMMAND = "evo-agents worker repo open"  # the agent of a chat run opens a repo of its project, LAZY_CHAT_REPOS
 _NAME_CHARS = "A-Za-z0-9_-"  # what a repo's name runs into when it is part of a longer name, as in evo-agents-harness
@@ -128,6 +140,39 @@ def woken_text(message: str) -> str:
     """What a message of a run's inbox says: the body of one from the thread (``inbox_text``), any other whole."""
     head = INBOX_HEAD.match(message)
     return message[head.end() :] if head else message
+
+
+def inbox_message(message: str) -> int | None:
+    """The id of the chat message a message of a run's inbox is (``inbox_text``); None for any other, such as an
+    answer to a decision."""
+    head = INBOX_HEAD.match(message)
+    return int(head.group(1)) if head else None
+
+
+def progress_step(state: str, notes: list[dict]) -> tuple[str, str | None, dict | None]:
+    """(the step, the repo it opens, the note that started it) of a chat run in ``state`` whose worker's notes since
+    the run's last move are ``notes``, oldest first: waiting for its worker while queued; while leased, the step the
+    latest note that names one starts (SETUP_FIELD), claimed before any; once its agent started, opening while that
+    note opens a repo the agent asked for, working otherwise. Repo and note are None when no note set the step."""
+    if state == "queued":
+        return "waiting", None, None
+    last = next((note for note in reversed(notes) if note.get(SETUP_FIELD) in SETUP_STEPS), None)
+    step = last.get(SETUP_FIELD) if last is not None else None
+    repo = last.get("repo") if last is not None and step == "opening" else None
+    repo = repo if isinstance(repo, str) and repo else None
+    if state in PREPARING_STATES and step is not None:
+        return step, repo, last
+    if state in PREPARING_STATES:
+        return "claimed", None, None
+    if step == "opening":
+        return "opening", repo, last
+    return "working", None, None
+
+
+def taken_step(step: str, state: str, *, waits: bool) -> str:
+    """The step a message shows of the run whose inbox took it (``progress_step``'s ``step`` of that run in ``state``):
+    inbox while it ``waits`` there undelivered for the agent's next turn once the agent started, else the run's own."""
+    return "inbox" if waits and state not in PREPARING_STATES else step
 
 
 def goes_on(state: str, failure_cause: str | None) -> bool:

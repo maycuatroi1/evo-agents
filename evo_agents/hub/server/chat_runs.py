@@ -16,8 +16,9 @@ from the run before; the first run's stays the session's. The profile of an agen
 ``run_as`` (``chat_route``) takes the worker of that member instead, who must hold writer on the project, and its run's
 row is dispatched by them; the person stays the origin the hub's chat code acts for (``ChatRun.dispatcher_id``).
 
-A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) put the agent's reaction on the message that
-started it by rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
+A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) wake the chat's streams, whose progress of the
+run under its messages changed (``chat_progress``), and put the agent's reaction on the message that started it by
+rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
 done with messages of its inbox untaken goes on in its session at once, with them. Its prompt is built when it is
 claimed (``chat_prompt``); on a daemon of ``runs.LAZY_CHAT_REPOS`` it lists every repo of the project, those open and
 those the message or the thread names first (``rules.ranked_repos``). The agent's reply at the end of each turn, and
@@ -40,7 +41,7 @@ from evo_agents.hub.author import harness_repo
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
-from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction
+from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
@@ -670,14 +671,16 @@ async def _untaken(conn: AsyncConnection, run_id: int) -> list:
 
 
 async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str | None = None) -> int | None:
-    """What chat run ``run_id`` moving to ``new`` does in its chat: the agent's reaction on the message that started it,
-    the hub's reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run
-    that goes on in its session with them (its id), titled by the first of them."""
+    """What chat run ``run_id`` moving to ``new`` does in its chat: the chat's streams woken, since the run's progress
+    under its messages changed (``chat_progress``); the agent's reaction on the message that started it, the hub's
+    reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run that goes on
+    in its session with them (its id), titled by the first of them."""
     if old == "parked" and new == "done":  # it waited for an answer and a new run goes on in its session (go_on_parked)
         return None
     found = await chat_run(conn, run_id)
     if found is None:
         return None
+    await wake(conn, found.chat_id)
     await status_reaction(conn, message_id=found.message_id, profile_id=found.profile_id, state=new)
     if new == "failed":
         profile = await _run_profile(conn, run_id)

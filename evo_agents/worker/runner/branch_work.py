@@ -51,6 +51,8 @@ class BranchWork:
         self.branch = branch
         self.kind = kind
         self.left_out: list[str] = []  # repos of the run this worker has no checkout of
+        # the step of the setup a fetch's note starts: the thread of a chat run shows the repo it opens
+        self.setup = "opening" if kind.name == CHAT.name else None
 
     def held_repos(self, repos: list[dict]) -> list[dict]:
         """The repos of the run this worker has a checkout of; the others are noted, and left out."""
@@ -106,7 +108,7 @@ class BranchWork:
         leases: the check that git reads it, which the preflight left to it; RunFailed with cause credentials or
         checkout when git cannot (``origin.fetch``). The worktree stays as the run before left it."""
         async with self.run.daemon.repo_lock(workspace.checkout):
-            await origin.fetch(self.run, workspace.checkout, repo=workspace.repo)
+            await origin.fetch(self.run, workspace.checkout, repo=workspace.repo, setup=self.setup)
 
     async def make_worktree(self, name: str, checkout: Path, folder: str) -> gitops.Workspace:
         """A worktree of ``name`` at ``<directory>/<folder>`` on the run's branch: from origin's branch when the
@@ -117,7 +119,7 @@ class BranchWork:
         async with run.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from and push to")
-            await origin.fetch(run, checkout, repo=name)
+            await origin.fetch(run, checkout, repo=name, setup=self.setup)
             remote_head = await gitops.remote_default_branch(checkout)
             hub_default = default_branch_of(run.daemon.config, run.project, name)
             protected = tuple(sorted(origin.protected_branches(remote_head, hub_default)))
