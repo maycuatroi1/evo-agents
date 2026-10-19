@@ -16,9 +16,9 @@ one of them shares its host and repo words.
 
 A query is read three ways, each filling what the one before left: every word as a whole word (AND), every word as a
 prefix (AND), then any word (OR), each ranked by BM25 times a light prior by kind (PRIOR). Words that only ask
-(``where``, ``does``, ``the``, ``của``...) are left out of a query that has other words, and so is a word the index
-cannot tell from an English one of them once it folds its accents ("Phương án" reads as "phuong an": "án" would match
-every English "an"). ``kg_search`` then follows each step, section or document it found to what it mentions
+(``where``, ``does``, ``the``, ``của``...) are left out of a query that has other words. The any-word query also
+leaves out a word the index cannot tell from one of them once it folds accents: "án" of "Phương án" would match every
+English "an". ``kg_search`` then follows each step, section or document it found to what it mentions
 (``with_mentions``).
 """
 
@@ -61,7 +61,6 @@ _STOP_VI = (
     "cũng mà nên gì đâu sao thế"
 )
 STOP_WORDS = frozenset(f"{_STOP_EN} {_STOP_VI}".translate(_FOLD).split())
-ENGLISH_STOP_WORDS = frozenset(_STOP_EN.split())
 
 
 def fold(text: str) -> str:
@@ -75,10 +74,9 @@ def bare(word: str) -> str:
     return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
 
 
-def is_stop_word(word: str) -> bool:
-    """Whether ``word`` only asks: a stop word as written, or one whose letters the index cannot tell from an
-    English stop word's once it folds their accents ("án" is "an" there, so it matches every English "an")."""
-    return word.lower() in STOP_WORDS or bare(word) in ENGLISH_STOP_WORDS
+# The stop words as the index holds them, accents folded: a query word that reads as one there ("án" is "an",
+# "cua" is "của") matches every one of them, so the any-word query leaves it out; the all-words ones keep it.
+BARE_STOP_WORDS = frozenset(bare(word) for word in STOP_WORDS)
 
 
 def camel_parts(word: str) -> list[str]:
@@ -116,7 +114,7 @@ def query_words(query: str) -> list[str]:
     """The words of a query in order, once each, as written (case kept for camelCase), without the words that only
     ask when it has others, at most MAX_TERMS."""
     words = list(dict.fromkeys(_WORD.findall(fold(query))))
-    meaning = [w for w in words if not is_stop_word(w)]
+    meaning = [w for w in words if w.lower() not in STOP_WORDS]
     return (meaning or words)[:MAX_TERMS]
 
 
@@ -135,12 +133,13 @@ def _word_match(word: str, prefix: bool) -> str:
 
 def fts_queries(words: list[str]) -> Iterator[str]:
     """The FTS5 queries of ``words``, strictest first: all words whole, all words as prefixes, then any word or
-    camelCase part of two letters or more."""
+    camelCase part of two letters or more that the index does not read as a stop word (BARE_STOP_WORDS)."""
     if not words:
         return
     yield " AND ".join(_word_match(w, False) for w in words)
     yield " AND ".join(_word_match(w, True) for w in words)
-    loose = dict.fromkeys(t for w in words for t in [w.lower(), *camel_parts(w)] if len(t) >= 2 or t.isdigit())
+    terms = (t for w in words for t in [w.lower(), *camel_parts(w)] if len(t) >= 2 or t.isdigit())
+    loose = dict.fromkeys(t for t in terms if bare(t) not in BARE_STOP_WORDS)
     if len(loose) > 1 or (loose and len(words) > 1):
         yield " OR ".join(_quote(t) for t in loose)
 
