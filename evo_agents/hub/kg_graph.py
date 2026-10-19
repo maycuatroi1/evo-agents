@@ -13,9 +13,16 @@ which build that is, and the commit each git source of it read, with how far beh
 machine that read it counted (the hub has no checkout to count again). Files are opened read-only and immutable: nothing writes them again, so SQLite takes no lock.
 
 ``HubSession`` is ``evo_agents.kg.serve.Session`` over such a file, with the hub's read rule as its clearance: the
-meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``). The tools, their schemas, CAP_CHARS
-and kg_more are the local server's; the handles kg_more continues live in this process for HANDLE_TTL, per user and
-project.
+meet of the caller's grant and the sink's clearance (``ProjectRules.ceiling``), whose audience is the caller's, as the
+hub computed it for this call (``evo_agents.hub.server.kg_audience``). The tools, their schemas, CAP_CHARS and kg_more
+are the local server's; the handles kg_more continues live in this process for HANDLE_TTL, per user and project, and
+continue only for a caller whose audience still holds what the result revealed.
+
+kg_status names the build's totals and the coverage of each source when the caller's audience holds every audience of
+the build. Otherwise it counts what that audience holds (``Store.seen``); of a source with items that have an audience
+it says only how many of them the caller sees; and it leaves out what the build says of all items at once: the samples,
+issues and errors of its coverage, its size and its audiences. The web's graph pages count the same way
+(``evo_agents.hub.kg_web``).
 
 The api runs one process: the in-use counts and the fetch locks are per process.
 """
@@ -26,15 +33,15 @@ import os
 import threading
 import time
 import uuid
-from collections import Counter, deque
-from dataclasses import dataclass
+from collections import Counter
+from dataclasses import dataclass, replace
 from datetime import datetime
 from pathlib import Path
 
 from evo_agents.hub.blobs import BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.kg import freshness
 from evo_agents.kg import store as kg_store
-from evo_agents.kg.policy import Label, Policy
+from evo_agents.kg.policy import Label, Policy, audience_below
 from evo_agents.kg.serve import HANDLE_TTL, TOOLS, Session, ToolError
 from evo_agents.kg.store import StaleSchema, Store
 
@@ -216,6 +223,7 @@ class HubSession(Session):
             )
         else:
             self.clearance = (ceiling.level, ceiling.location)
+            self.audience = ceiling.audience
 
     def _graph(self) -> tuple[Store, int]:
         b = self.graph_store.latest_ready()
@@ -223,9 +231,40 @@ class HubSession(Session):
             raise ToolError(f"build {self.graph.build_id} of project {self.project.name} holds no ready graph")
         return self.graph_store, b
 
+    def whole(self, b: int) -> bool:
+        """Whether the session's audience holds every audience of build ``b``."""
+        return audience_below(self.graph_store.top_audience(b), self.audience)
+
+    def within(self, summary: dict) -> dict:
+        """The build's ``summary`` (``Store.summary``) as the session's audience may read it (see the module)."""
+        b = summary.get("build_id")
+        if not summary.get("ready") or self.whole(b):
+            return summary
+        self.graph_store.reader = self.audience
+        seen = self.graph_store.seen(b)
+        coverage = summary.get("coverage") or {}
+        sources = [
+            {"id": s["id"], "items": seen["items"].get(s["id"], 0)} if s["id"] in seen["audience"] else s
+            for s in coverage.get("sources", [])
+        ]
+        stats = {k: v for k, v in (summary.get("stats") or {}).items() if k not in ("size", "top_audience")}
+        kept = {k: summary[k] for k in ("ready", "build_id", "built_at", "content_hash")}
+        counts = {k: seen[k] for k in ("nodes", "edges", "units")}
+        coverage = {"sources": sources, "warnings": coverage.get("warnings", [])}
+        return {**kept, **counts, "coverage": coverage, "stats": stats}
+
+    def counted(self, graph: BuiltGraph) -> BuiltGraph:
+        """``graph`` with the nodes and edges the session's audience holds, when it does not hold every audience."""
+        b = self.graph_store.latest_ready()
+        if b is None or self.whole(b):
+            return graph
+        self.graph_store.reader = self.audience
+        seen = self.graph_store.seen(b)
+        return replace(graph, nodes=seen["nodes"], edges=seen["edges"])
+
     def tool_kg_status(self) -> tuple[str, dict]:
         clr = (self.policy.level_name(self.clearance[0]), self.policy.location_name(self.clearance[1]))
-        summary = self.graph_store.summary()
+        summary = self.within(self.graph_store.summary())
         coverage = summary.get("coverage") or {}
         hub_build = {
             "build_id": self.graph.build_id,
@@ -246,6 +285,9 @@ class HubSession(Session):
                 "graph cached here"
             )
         for src in coverage.get("sources", []):
+            if "mentions" not in src:  # items with an audience (``within``)
+                lines.append(f"  {src['id']:<22} {src['items']:>6} items you can read")
+                continue
             read = f", read {freshness.describe(src['read'])}" if isinstance(src.get("read"), dict) else ""
             lines.append(
                 f"  {src['id']:<22} {src['items']:>6} items, mentions {src['resolved']}/{src['mentions']}"
@@ -273,14 +315,14 @@ class Handles:
         self.ttl = ttl
         self.limit = limit
         self._lock = threading.Lock()
-        self._owned: dict[tuple, dict[str, tuple[float, deque]]] = {}
+        self._owned: dict[tuple, dict[str, tuple]] = {}  # owner: handle: as ``Session.handles`` keeps it
 
     def call(self, session: Session, owner: tuple, name: str, arguments: dict) -> dict:
         handle = arguments.get("handle") if name == "kg_more" else None
         with self._lock:
             mine = self._owned.get(owner, {})
             now = time.monotonic()
-            for key in [key for key, (made, _) in mine.items() if now - made > self.ttl]:
+            for key in [key for key, (made, *_) in mine.items() if now - made > self.ttl]:
                 del mine[key]
             if isinstance(handle, str) and handle in mine:
                 session.handles[handle] = mine[handle]

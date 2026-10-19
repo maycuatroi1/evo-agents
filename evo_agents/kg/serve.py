@@ -7,9 +7,9 @@ elements fill no limit, count or page. When the highest label of the build (``St
 its audiences (``Store.top_audience``) are within the session's, V_o is the whole build and no label is compared.
 Results carry ids, labels, status and evidence; free
 text from sources (integrity U) is never returned by these tools. Each result stays under about 9,000 tokens; the
-rest waits behind a handle for ``kg_more``. The structured result of a call that reveals elements names the project
-and the join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
-adds to the session label (sessions.py).
+rest waits behind a handle for ``kg_more``, for a reader whose audience still holds what the result revealed. The
+structured result of a call that reveals elements names the project and the join of their labels, and so does the
+``_meta`` of its text block (READ_META), which the PostToolUse hook adds to the session label (sessions.py).
 
 The text is written to be read: a node is named by its readable id (``refs.readable``: ``repo:path``,
 ``repo:path::Symbol``, ``repo:path#section``) and its name only when the id does not already end with it;
@@ -91,7 +91,7 @@ class Session:
         self.project = project
         self.sink = sink
         self.error = error
-        self.handles: dict[str, tuple[float, deque]] = {}
+        self.handles: dict[str, tuple] = {}  # handle: (made, chunks left, audience its result revealed)
         self.policy = project.policy if project else None
         self.clearance = None
         self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
@@ -187,7 +187,7 @@ class Session:
         handle = uuid.uuid4().hex[:12]
         size = max(CAP_CHARS - 100, 1)  # room for kg_more's own note, or each chunk would be cut again
         chunks = deque(rest[i : i + size] for i in range(0, len(rest), size))
-        self.handles[handle] = (time.monotonic(), chunks)
+        self.handles[handle] = (time.monotonic(), chunks, self.read.audience if self.read else frozenset())
         note = f"\n[truncated: {len(rest)} more characters; call kg_more with handle {handle}]"
         return {
             "content": [{"type": "text", "text": head + note, **read}],
@@ -895,11 +895,14 @@ class Session:
 
     def tool_kg_more(self, handle: str) -> tuple[str, dict]:
         now = time.monotonic()
-        for h in [h for h, (t, _) in self.handles.items() if now - t > HANDLE_TTL]:
+        for h in [h for h, (t, *_) in self.handles.items() if now - t > HANDLE_TTL]:
             del self.handles[h]
         if handle not in self.handles:
             raise ToolError(f"unknown or expired handle {handle!r}")
-        _, chunks = self.handles[handle]
+        _, chunks, audience = self.handles[handle]
+        if not audience_below(audience, self.audience):  # the reader left a chat the result named since
+            del self.handles[handle]
+            raise ToolError(f"handle {handle!r} continues a result you may no longer read: call its tool again")
         text = chunks.popleft()
         if chunks:
             text += f"\n[more: call kg_more with handle {handle} again]"

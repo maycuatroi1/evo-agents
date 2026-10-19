@@ -27,7 +27,8 @@ Audience (``evo_agents.kg.policy``): a unit, node or edge with one keeps it in `
 NULL otherwise. ``reader`` is the audience of whoever reads the store, none until set: every read of units, nodes and
 edges, their counts and the full-text search leave out the rows whose audience is not within it, so a hidden element
 never fills a limit, a count or a page. The full-text rows of nodes with an audience sit in ``node_fts_aud``, apart from
-``node_fts``: they never weigh in the ranking of what a reader without that audience finds.
+``node_fts``: they never weigh in the ranking of what a reader without that audience finds. ``counts`` and ``summary``
+stay the build's totals; ``seen`` counts what the reader's audience holds.
 """
 
 from __future__ import annotations
@@ -562,6 +563,20 @@ class Store:
             " GROUP BY kind, label_lvl, label_loc, label_int",
             {"b": b},
         ).fetchall()
+
+    def seen(self, b: int) -> dict:
+        """What build b holds within ``reader``'s audience, whatever their level: its live nodes, edges and units;
+        ``items``, per source, its items with a unit so seen; and ``audience``, the sources with a unit that has an
+        audience, the reader's or not."""
+        out = {
+            table: self.db.execute(f"SELECT count(*) FROM {table} WHERE {LIVE} AND {SEEN}", {"b": b}).fetchone()[0]
+            for table in ("nodes", "edges", "units")
+        }
+        sql = f"SELECT source, count(DISTINCT item_id) FROM units WHERE {LIVE} AND {SEEN} GROUP BY source"
+        out["items"] = dict(self.db.execute(sql, {"b": b}).fetchall())
+        sql = f"SELECT DISTINCT source FROM units WHERE {LIVE} AND label_aud IS NOT NULL"
+        out["audience"] = {row[0] for row in self.db.execute(sql, {"b": b})}
+        return out
 
     def summary(self) -> dict:
         b = self.latest_ready()

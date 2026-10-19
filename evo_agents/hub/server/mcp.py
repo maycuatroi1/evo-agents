@@ -30,7 +30,8 @@ Every refusal is the API's JSON error with the request id. Only then does the SD
 The 23 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
-kg_more continues any cut result of the same user and session project, with or without a graph. The others call the
+kg_more continues any cut result of the same user and session project whose audience the caller still holds
+(``kg_audience``), with or without a graph. The others call the
 hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
 review run reads (the night's figures, session digests, the events of a run, decisions) in this process, so they read
 and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write rule,
@@ -96,6 +97,7 @@ from evo_agents.hub.server import (
     digests,
     hub_settings,
     kg,
+    kg_audience,
     local_runs,
     memories,
     plans,
@@ -514,8 +516,11 @@ class HubMcp(MCPServer):
             return _error(f"the hub failed to answer; quote request id {request_id} when reporting it")
 
     async def _kg(self, caller: Caller, name: str, arguments: dict) -> dict:
-        if name == "kg_more":  # the handles live in this process: no graph is read
-            return self.hub.state.kg_handles.call(Session(None, caller.sink), caller.owner, name, arguments)
+        if name == "kg_more":  # the handles live in this process: no graph is read, only the caller's audience
+            session = Session(None, caller.sink)
+            async with self.hub.state.engine.begin() as conn:
+                session.audience = await kg_audience.reader_audience(conn, caller.user)
+            return self.hub.state.kg_handles.call(session, caller.owner, name, arguments)
         if caller.project is None:
             return _error(NO_PROJECT)
         return await kg.tool_result(self.hub.state, caller.user, caller.project, name, arguments, caller.sink)
