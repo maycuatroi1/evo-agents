@@ -11,6 +11,9 @@ from pathlib import Path
 
 import pytest
 
+# srs.template imports code_key from evo_agents.hub.tables_srs, whose tables need SQLAlchemy.
+pytest.importorskip("sqlalchemy", reason="the core plugin srs needs the hub-server extra, evo-ak[hub-server]")
+
 from evo_agents.core_plugins.srs import checks, markdown
 from evo_agents.core_plugins.srs.diff import diff
 from evo_agents.core_plugins.srs.template import TemplateError, code_key, template_of
