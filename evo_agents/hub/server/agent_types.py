@@ -43,7 +43,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
-from evo_agents.hub.server.workers import WORKER_NAME
+from evo_agents.hub.server.worker_models import WORKER_NAME
 from evo_agents.plugins.manifest import PLUGIN_ID
 from evo_agents.plugins.runtimes import CONTRIBUTION
 

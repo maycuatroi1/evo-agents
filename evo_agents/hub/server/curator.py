@@ -90,7 +90,7 @@ from evo_agents.hub.server.runs.models import ModelName
 from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, plan_run_repos, unfit
 from evo_agents.hub.server.runs.service.views import lock_plan, plan_activity
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
-from evo_agents.hub.server.workers import WORKER_NAME
+from evo_agents.hub.server.worker_models import WORKER_NAME
 
 log = logging.getLogger(__name__)
 

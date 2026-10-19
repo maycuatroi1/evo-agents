@@ -1058,6 +1058,38 @@ def test_0047_keeps_tasks_one_active_sprint_and_links_of_one_kind_and_going_back
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0047") :]
 
 
+def test_0048_holds_every_worker_unlocked_checks_the_commit_and_the_report_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0047")
+    workers = hub_tables.workers
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="4" * 64, host="mac").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "mac", 1))
+    move_to(hub_db, "0048")
+    added = {"version_locked", "agent_commit", "self_update", "self_update_since"}
+    assert added <= columns(hub_db, "workers")
+    shown = select(workers.c.version_locked, workers.c.agent_commit, workers.c.self_update, workers.c.self_update_since)
+    assert query(hub_db, shown.where(workers.c.id == worker)) == [(False, None, None, None)]
+    report = {"state": "waiting", "nightly_commit": "f" * 40}
+    with live.connect(hub_db) as conn:
+        for bad in ({"agent_commit": "ca3e9af"}, {"agent_commit": "F" * 40}, {"self_update": ["waiting"]}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(workers).values(**bad).where(workers.c.id == worker))
+        good = {
+            "version_locked": True,
+            "agent_commit": "a" * 64,
+            "self_update": report,
+            "self_update_since": func.now(),
+        }
+        conn.execute(update(workers).values(**good).where(workers.c.id == worker))
+    assert query(hub_db, shown.where(workers.c.id == worker))[0][:3] == (True, "a" * 64, report)
+    move_to(hub_db, "0047", down=True)
+    assert not added & columns(hub_db, "workers")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0048") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

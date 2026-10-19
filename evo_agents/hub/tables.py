@@ -1,6 +1,7 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
-``tables_settings`` and ``tables_triage`` hold them by area; ``tables.srs`` and ``tables.tasks`` are core plugins'.
+``tables_settings``, ``tables_triage`` and ``tables_workers`` hold them by area; ``tables.srs`` and ``tables.tasks`` are
+core plugins'.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -35,7 +36,14 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
-from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles, tables_settings, tables_triage
+from evo_agents.hub import (
+    tables_accounts,
+    tables_plugins,
+    tables_profiles,
+    tables_settings,
+    tables_triage,
+    tables_workers,
+)
 from evo_agents.hub.tables_chats import chat_tables
 
 metadata = MetaData()
@@ -492,83 +500,7 @@ Index(
 
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
-workers = Table(
-    "workers",
-    metadata,
-    _id(),
-    Column("owner_id", BigInteger, nullable=False),
-    Column("token_id", BigInteger, nullable=False),
-    Column("name", Text, nullable=False),
-    Column("hostname", Text, nullable=False),
-    Column("os", Text, nullable=False),
-    Column("arch", Text, nullable=False),
-    Column("agent_version", Text, nullable=False),
-    Column("slots", SmallInteger, nullable=False, server_default="1"),
-    Column("labels", ARRAY(Text), nullable=False, server_default="{}"),
-    Column("runtimes", JSONB, nullable=False, server_default="{}"),
-    Column("checkouts", JSONB, nullable=False, server_default="{}"),
-    Column("free_slots", SmallInteger),
-    Column("allow_web_terminal", Boolean, nullable=False, server_default=false()),
-    _stamp("created_at"),
-    _when("last_heartbeat_at"),
-    _when("drained_at"),
-    _when("revoked_at"),
-    Column("dispatch_from", Text, nullable=False, server_default="any"),
-    Column("run_kinds", ARRAY(Text)),
-    Column("features", ARRAY(Text)),  # what its daemon says it does besides its kinds of run (0025)
-    _when("steady_since"),  # the first heartbeat of the worker's current run of them, none late (0023)
-    ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
-    ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
-    PrimaryKeyConstraint("id", name="workers_pkey"),
-    UniqueConstraint("token_id", name="workers_token_id_key"),
-)
-Index(
-    "workers_name_key",
-    workers.c.owner_id,
-    func.lower(workers.c.name),
-    unique=True,
-    postgresql_where=workers.c.revoked_at.is_(None),
-)
-
-worker_projects = Table(
-    "worker_projects",
-    metadata,
-    Column("worker_id", BigInteger, nullable=False),
-    Column("project_id", BigInteger, nullable=False),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="worker_projects_project_id_fkey"),
-    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="worker_projects_worker_id_fkey"),
-    PrimaryKeyConstraint("worker_id", "project_id", name="worker_projects_pkey"),
-)
-
-worker_pairings = Table(
-    "worker_pairings",
-    metadata,
-    _id(),
-    Column("code_selector", Text, nullable=False),
-    Column("code_hash", Text, nullable=False),
-    Column("owner_id", BigInteger, nullable=False),
-    Column("name", Text, nullable=False),
-    Column("projects", ARRAY(BigInteger), nullable=False),
-    Column("slots", SmallInteger, nullable=False, server_default="1"),
-    Column("labels", ARRAY(Text), nullable=False, server_default="{}"),
-    Column("allow_web_terminal", Boolean, nullable=False, server_default=false()),
-    Column("attempts", SmallInteger, nullable=False, server_default="0"),
-    _stamp("created_at"),
-    Column("expires_at", DateTime(timezone=True), nullable=False),
-    _when("used_at"),
-    Column("worker_id", BigInteger),
-    ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="CASCADE", name="worker_pairings_owner_id_fkey"),
-    ForeignKeyConstraint(["worker_id"], ["workers.id"], ondelete="CASCADE", name="worker_pairings_worker_id_fkey"),
-    PrimaryKeyConstraint("id", name="worker_pairings_pkey"),
-    UniqueConstraint("worker_id", name="worker_pairings_worker_id_key"),
-)
-Index(
-    "worker_pairings_selector_key",
-    worker_pairings.c.code_selector,
-    unique=True,
-    postgresql_where=worker_pairings.c.used_at.is_(None),
-)
-Index("worker_pairings_owner_idx", worker_pairings.c.owner_id, postgresql_where=worker_pairings.c.used_at.is_(None))
+workers, worker_projects, worker_pairings = tables_workers.worker_tables(metadata)  # 0009 to 0048
 
 runs = Table(
     "runs",
