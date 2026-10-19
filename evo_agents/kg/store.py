@@ -34,6 +34,7 @@ stay the build's totals; ``seen`` counts what the reader's audience holds.
 from __future__ import annotations
 
 import json
+import math
 import os
 import sqlite3
 from collections import defaultdict
@@ -731,23 +732,56 @@ class Store:
     def _ranked(self, fts_query: str, limit: int, kinds: list[str]) -> list[str]:
         """Node ids matching an FTS5 query, best first: the best ``RERANK_POOL`` by BM25, scored again with the prior
         by kind (``evo_agents.kg.search``); [] for a query FTS5 cannot read. The rows of ``node_fts_aud`` are read only
-        for a reader with an audience, and only those within it."""
+        for a reader with an audience, and only those within it, each with the score ``node_fts`` would give it
+        (``_as_public``)."""
         of_kind = f" AND kind IN ({', '.join('?' for _ in kinds)})" if kinds else ""
         weights = ", ".join(str(w) for w in text_search.WEIGHTS)
         rows = []
         for table in FTS_TABLES if self.reader else FTS_TABLES[:1]:
             seen = " AND aud_seen(aud)" if table == "node_fts_aud" else ""
             try:
-                rows += self.db.execute(
-                    f"SELECT node_id, kind, bm25({table}, {weights}) AS score FROM {table} WHERE {table} MATCH ?"
+                found = self.db.execute(
+                    f"SELECT node_id, kind, bm25({table}, {weights}) AS score, rowid FROM {table} WHERE {table} MATCH ?"
                     f"{of_kind}{seen} ORDER BY score, node_id LIMIT ?",
                     (fts_query, *kinds, max(limit, text_search.RERANK_POOL)),
                 ).fetchall()
             except sqlite3.OperationalError:
                 return []
+            rows += self._as_public(fts_query, found) if table == "node_fts_aud" else found
         prior = text_search.PRIOR
         rows.sort(key=lambda r: (r[2] * prior.get(r[1], 1.0), r[0]))  # bm25 is negative: lower is better
         return [r[0] for r in rows[:limit]]
+
+    def _as_public(self, fts_query: str, rows: list[tuple]) -> list[tuple]:
+        """``rows`` of ``node_fts_aud`` (node id, kind, BM25, rowid) with the BM25 ``node_fts`` would give them. BM25
+        adds up, over the phrases of the query, the phrase's IDF times a part that only the row's own counts and
+        length make. ``node_fts_aud`` holds few rows (a project's chat messages), so the IDF it gives a word is a
+        fraction of what ``node_fts`` gives it, and a message would rank below any symbol or section that matches no
+        better. Each phrase's part is read back from the BM25 of the phrase alone and weighed with the phrase's IDF
+        in ``node_fts``, so no row of an audience the reader lacks weighs in it through the IDF either."""
+        if not rows:
+            return rows
+        weights = ", ".join(str(w) for w in text_search.WEIGHTS)
+        marks = ", ".join("?" for _ in rows)
+        held = dict(self.db.execute("SELECT aud, count(*) FROM node_fts_rows GROUP BY aud").fetchall())
+        totals = {table: held.get(aud, 0) for aud, table in enumerate(FTS_TABLES)}  # its rows, as _update_fts keeps
+        scores = dict.fromkeys((r[3] for r in rows), 0.0)
+        for phrase in text_search.phrases(fts_query):
+            weight = self._idf("node_fts", phrase, totals) / self._idf("node_fts_aud", phrase, totals)
+            for rowid, part in self.db.execute(
+                f"SELECT rowid, bm25(node_fts_aud, {weights}) FROM node_fts_aud WHERE node_fts_aud MATCH ?"
+                f" AND rowid IN ({marks})",
+                (phrase, *scores),
+            ):
+                scores[rowid] += part * weight
+        return [(r[0], r[1], scores[r[3]], r[3]) for r in rows]
+
+    def _idf(self, table: str, phrase: str, totals: dict[str, int]) -> float:
+        """The IDF FTS5's bm25 gives ``phrase`` in ``table``: ln((N - n + 0.5) / (n + 0.5)) for its N rows, n of which
+        hold the phrase, or 1e-6 when that is not above 0."""
+        held = self.db.execute(f"SELECT count(*) FROM {table} WHERE {table} MATCH ?", (phrase,)).fetchone()[0]
+        idf = math.log((totals[table] - held + 0.5) / (held + 0.5))
+        return idf if idf > 0 else 1e-6
 
     def derivations(self, elem_id: str, b: int) -> list[dict]:
         rows = self.db.execute(

@@ -234,11 +234,17 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - Then the full-text index (`node_fts`, SQLite FTS5, `unicode61 remove_diacritics 2`), read three ways, each filling
   what the one before left: every word whole (AND), every word as a prefix (AND), then any word (OR). Words that only
   ask (`where`, `does`, `the`, `của`, ...) are dropped from a query that has others, so a question whose words no
-  single node holds still gets ranked results.
+  single node holds still gets ranked results; so is a word the index cannot tell from an English one of them once it
+  folds its accents (`án` is `an` there), so `Phương án` and `phuong an` find the same nodes.
 - Each way ranks by BM25 over the node's name (weight 6), path (2) and body (1), times a light prior by kind: a plan,
-  a step, a commit, a pull request, a directory, a chat or a chat message counts half, a section or a requirement 0.7,
-  a chat thread 0.3 (every thread is named after its chat), so at the same text score code and documents come first.
-  The best 300 by BM25 alone are scored again with the prior.
+  a step, a commit, a pull request, a directory or a chat counts half, a section or a requirement 0.7, a chat thread
+  0.9 (every thread is named after its chat), a chat message as much as code, so at the same text score code and
+  documents come before the work on them. The best 300 by BM25 alone are scored again with the prior.
+- The rows of `node_fts_aud` (nodes with an audience, such as chat messages) are few, so the IDF FTS5 gives a word
+  there is a fraction of the one `node_fts` gives it, and a message would rank below any symbol or section that
+  matches no better. Each of them is scored as `node_fts` would score it instead: per phrase of the query, the BM25 of
+  the phrase alone, over its IDF in `node_fts_aud`, times its IDF in `node_fts` (`Store._as_public`), so the rows of an
+  audience the reader lacks weigh in no score through the IDF either.
 - `kinds` is part of the query, so a search for sections gets as many sections as it asks for.
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
