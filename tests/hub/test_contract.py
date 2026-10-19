@@ -183,12 +183,21 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker finding",
         "worker notify",
         "worker plan",
+        "worker playbook add",
+        "worker playbook harmful",
+        "worker playbook helpful",
+        "worker playbook retire",
         "worker propose",
         "worker put",
         "worker step",
         "worker triage invite",
         "worker triage plan",
         "worker triage rerun",
+    ]
+    added = printed["worker playbook add"]
+    assert [o["flags"] for o in added["options"]] == [["--text"], ["--evidence"], ["--lens"]]
+    assert [(p["name"], p.get("choices")) for p in printed["worker playbook retire"]["positionals"]] == [
+        ("entry", None)
     ]
     put = printed["worker put"]
     assert [p["name"] for p in put["positionals"]] == ["file"]

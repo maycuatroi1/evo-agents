@@ -991,7 +991,9 @@ triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)
 srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
 history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0056
+history_lines, history_indexed = tables_sessions.search_tables(metadata)  # the words of the history (0057)
 curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_replays = tables_curator.tables(
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0053), and runs_active_replay_key
+curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0057
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)

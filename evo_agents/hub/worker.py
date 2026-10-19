@@ -47,6 +47,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.analyze_facets``, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
   or digest came, and of each run that ended, made once and again when its content or the facet's version changed
   (``evo_agents.hub.facet_job``).
+- ``hub.index_history``, every 5 minutes, one pass at a time: the words of each part of a transcript and of each run
+  that ended, for search, once (``evo_agents.hub.history_index``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 - ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
@@ -336,6 +338,15 @@ async def analyze_facets(context: JobContext, timestamp: int | None = None) -> d
 
     found = hub(context)
     return await analyze(found.engine, found.blobs, scratch=found.data_dir / "facets")
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.INDEX_HISTORY, pass_context=True, lock=jobs.INDEX_HISTORY, queueing_lock=jobs.INDEX_HISTORY)
+async def index_history(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.history_index import index_history as index
+
+    found = hub(context)
+    return await index(found.engine, found.blobs, scratch=found.data_dir / "history")
 
 
 @queue.periodic(cron="43 3 * * *")

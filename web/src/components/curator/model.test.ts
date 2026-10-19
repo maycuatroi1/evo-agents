@@ -147,6 +147,14 @@ describe("evidence", () => {
       field: "errors",
       index: 0,
     });
+    expect(evidenceView({ kind: "transcript", session_id: "s-1", file: "main", line: 40, resolved: "transcript" }, "demo", repos)).toEqual({
+      kind: "transcript",
+      session: "s-1",
+      file: "main",
+      line: 40,
+    });
+    expect(evidenceView({ kind: "transcript", session_id: "s-1", line: 2 }, "demo", repos)).toMatchObject({ file: "main" });
+    expect(evidenceView({ kind: "transcript", session_id: "s-1" }, "demo", repos).kind).toBe("other");
     expect(evidenceView({ kind: "code", repo: "api", path: "a.py", line: 3 }, "demo", repos)).toMatchObject({
       kind: "code",
       url: "https://github.com/org/api/blob/main/a.py#L3",

@@ -76,6 +76,7 @@ HUB_TABLES |= pg.FACET_TABLES  # migration 0051
 HUB_TABLES |= pg.KG_HEALTH_TABLES  # migration 0052
 HUB_TABLES |= pg.REPLAY_TABLES  # migration 0053
 HUB_TABLES |= pg.HISTORY_TABLES  # migration 0056
+HUB_TABLES |= pg.SEARCH_TABLES  # migration 0057
 
 
 @pytest.fixture

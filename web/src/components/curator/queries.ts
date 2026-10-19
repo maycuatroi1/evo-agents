@@ -34,6 +34,7 @@ export type Finding = Schemas["Finding"];
 export type Ledger = Schemas["Ledger"];
 export type LedgerLine = Schemas["LedgerLine"];
 export type DigestRecord = Schemas["DigestRecord"];
+export type TranscriptLines = Schemas["TranscriptLines"];
 export type CuratorState = NonNullable<CuratorStatus["state"]>;
 export type Runtime = Schemas["Role"]["runtime"];
 /** The lenses the API names: `review.LENSES`, in the order the nights take them. */
@@ -64,6 +65,8 @@ export const curatorKeys = {
   ledger: (project: string, id: number) => ["projects", project, "curator", "proposals", "ledger", id] as const,
   finding: (project: string, id: number) => ["projects", project, "curator", "findings", id] as const,
   digest: (project: string, session: string) => ["projects", project, "digests", session] as const,
+  lines: (project: string, session: string, file: string, line: number) =>
+    ["projects", project, "transcripts", session, file, line] as const,
 };
 
 export const CURATOR_SEGMENT = "curator";
@@ -208,6 +211,20 @@ export const digestQuery = (api: ApiSource, project: string, session: string) =>
           signal,
         }),
       ),
+  });
+
+/** The lines of a transcript around the one a piece of evidence names, read when asked for. */
+export const transcriptLinesQuery = (api: ApiSource, project: string, session: string, file: string, line: number) =>
+  queryOptions({
+    queryKey: curatorKeys.lines(project, session, file, line),
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/projects/{project}/transcripts/{session_id}/lines", {
+          params: { path: { project, session_id: session }, query: { line, file, before: 3, after: 3 } },
+          signal,
+        }),
+      ),
+    staleTime: Infinity, // the lines a part holds never change
   });
 
 // Writes, each with the session's X-Evo-CSRF header.

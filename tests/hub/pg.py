@@ -119,6 +119,8 @@ KG_HEALTH_TABLES = frozenset({"kg_source_files", "kg_health"})
 REPLAY_TABLES = frozenset({"replay_tasks", "curator_replays"})
 # migration 0056: the history runs, and the groups of the facets of the model
 HISTORY_TABLES = frozenset({"history_runs", "facet_clusters"})
+# migration 0057: the words of the history for search, and the playbook of the Curator with its deltas
+SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook", "curator_playbook_deltas"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

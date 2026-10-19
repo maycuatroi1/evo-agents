@@ -7,6 +7,9 @@ check of each repo's ruleset, and curator_ledger (0018) what happened to each pr
 (``evo_agents.hub.server.changes``, ``evo_agents.hub.server.ledger``). replay_tasks (0053) holds each project's suite
 of replay tasks, made from its own history and only ever added to, and curator_replays (0053) each replay of one task
 for one change, with what its two arms found (``evo_agents.hub.replay``, ``evo_agents.hub.server.replays``).
+curator_playbook (0057) holds the entries of each project's playbook of the Curator, and curator_playbook_deltas (0057)
+every delta that added one, counted it helpful or harmful, or retired it, never changed or deleted
+(``evo_agents.hub.playbook``, ``evo_agents.hub.server.playbook``).
 """
 
 from __future__ import annotations
@@ -240,3 +243,58 @@ def tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -> tuple[Ta
     )
     changes = _changes(metadata)
     return changes, _repo_checks(metadata), _ledger(metadata), _replay_tasks(metadata), _replays(metadata)
+
+
+def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
+    """curator_playbook and curator_playbook_deltas (0057), added to ``metadata``."""
+    entries = Table(
+        "curator_playbook",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("lens", Text),
+        Column("text", Text, nullable=False),
+        Column("evidence", JSONB, nullable=False, server_default="[]"),
+        Column("helpful", Integer, nullable=False, server_default="0"),
+        Column("harmful", Integer, nullable=False, server_default="0"),
+        Column("label", JSONB, nullable=False),
+        Column("created_run_id", BigInteger),
+        Column("updated_run_id", BigInteger),
+        _when("retired_at"),
+        Column("retired_note", Text),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_playbook_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["created_run_id"], ["runs.id"], ondelete="SET NULL", name="curator_playbook_created_run_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["updated_run_id"], ["runs.id"], ondelete="SET NULL", name="curator_playbook_updated_run_id_fkey"
+        ),
+        PrimaryKeyConstraint("id", name="curator_playbook_pkey"),
+        Index("curator_playbook_project_idx", "project_id", "id"),
+    )
+    deltas = Table(
+        "curator_playbook_deltas",
+        metadata,
+        _id(),
+        Column("project_id", BigInteger, nullable=False),
+        Column("entry_id", BigInteger, nullable=False),
+        Column("run_id", BigInteger),
+        Column("op", Text, nullable=False),
+        Column("evidence", JSONB, nullable=False, server_default="[]"),
+        Column("note", Text),
+        _stamp("created_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_playbook_deltas_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["entry_id"], ["curator_playbook.id"], ondelete="CASCADE", name="curator_playbook_deltas_entry_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="curator_playbook_deltas_run_id_fkey"),
+        PrimaryKeyConstraint("id", name="curator_playbook_deltas_pkey"),
+        Index("curator_playbook_deltas_entry_idx", "entry_id", "id"),
+    )
+    return entries, deltas

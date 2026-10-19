@@ -8,9 +8,11 @@ it, who must still hold writer on the project; each is stored with the project's
 ``review.LENSES``, a severity, a title, a markdown body, and 1 to MAX_EVIDENCE pieces of evidence. The hub resolves
 each piece before it stores anything (422 naming the first it cannot find): a session of the project, and the entry of
 the list that ``field`` and ``index`` name, in the session's facet when the hub made one (``evo_agents.hub.facet_job``),
-else in its digest; an event of a run of the project, of a plan the owner may read, a review run or a local run of the
-owner, whose ``seq`` the run has reached; a file of a repo of the project, ``graph`` or ``unmatched`` (kept: the graph
-may lag) when the project has a knowledge graph (``graph_view``). Each piece is kept with how the hub found it.
+else in its digest; a line of a transcript of the project the hub holds and the owner may read (``transcript``); an
+event of a run of the project, of a plan the owner may read, a review run or a local run of the owner, whose ``seq`` the
+run has reached; a file of a repo of the project, ``graph`` or ``unmatched`` (kept: the graph may lag) when the project
+has a knowledge graph (``graph_view``). Each piece is kept with how the hub found it. A finding like a closed one of
+earlier nights whose evidence that one cited already is refused (409, ``earlier.closed_like``).
 
 A proposal names a lens, a kind of change (``tiers.CHANGE_KINDS``), a title, a markdown summary, the paths it would
 edit (``{repo, path}``, each a repo of the project), the findings it rests on (of the project) and evidence of its own,
@@ -65,7 +67,7 @@ from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
-from evo_agents.hub.server import audit, change_tiers, facet_figures
+from evo_agents.hub.server import audit, change_tiers, earlier, facet_figures, history_search
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -105,19 +107,23 @@ class EvidenceIn(BaseModel):
     """One piece of evidence, as ``review.parse_evidence`` reads it from the command line."""
 
     kind: Literal[review.EVIDENCE_KINDS]
-    session_id: str | None = Field(None, pattern=review.SESSION_ID, description="session: the digest's session")
+    session_id: str | None = Field(None, pattern=review.SESSION_ID, description="session, transcript: the session")
+    file: str | None = Field(None, pattern=review.TRANSCRIPT_FILE, max_length=512, description="transcript: its file")
     field: Literal[review.DIGEST_FIELDS] | None = Field(None, description="session: the list of the digest")
     index: int | None = Field(None, ge=0, le=10_000, description="session: the entry of that list, from 0")
     run_id: int | None = Field(None, ge=1, le=MAX_ID, description="run: the run")
     seq: int | None = Field(None, ge=1, le=2**31 - 1, description="run: the seq of its event")
     repo: RepoName | None = Field(None, description="code: a repo of the project")
     path: str | None = Field(None, min_length=1, max_length=tiers.MAX_PATH_CHARS, description="code: within the repo")
-    line: int | None = Field(None, ge=1, le=review.MAX_LINE, description="code: the line")
+    line: int | None = Field(None, ge=1, le=review.MAX_LINE, description="code, transcript: the line")
     commit: str | None = Field(None, pattern=OBJECT_NAME, description="code: the commit the worktree was at")
 
     @model_validator(mode="after")
     def _complete(self):
-        needed = {"session": ("session_id",), "run": ("run_id", "seq"), "code": ("repo", "path")}[self.kind]
+        needed = {"session": ("session_id",), "transcript": ("session_id", "line"), "run": ("run_id", "seq")}
+        needed = {**needed, "code": ("repo", "path")}[self.kind]
+        if self.kind == "transcript":
+            self.file = self.file or review.MAIN_FILE
         missing = [name for name in needed if getattr(self, name) is None]
         if missing:
             raise ValueError(f"{self.kind} evidence needs {', '.join(missing)}")
@@ -298,7 +304,7 @@ class _ReviewRun:
     owner: Principal
 
 
-async def _held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -> _ReviewRun:
+async def held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -> _ReviewRun:
     """The review run ``run_id`` the worker of ``user`` holds, its row locked; 404 for any other run."""
     worker_id = (await worker_of(conn, user))[0]
     r, p, u = tables.runs, tables.projects, tables.users
@@ -320,7 +326,7 @@ async def _held_review_run(conn: AsyncConnection, user: Principal, run_id: int) 
     return _ReviewRun(run_id, row.project_id, row.name, owner)
 
 
-async def _writer(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
+async def writer_of(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
     access = await project_access(conn, run.owner, run.project)
     if not has_role(access.role, "writer"):
         raise HTTPException(
@@ -374,6 +380,11 @@ async def resolve(
         stored = item.stored()
         if item.kind == "session":
             found.append({**stored, "resolved": await _session_evidence(conn, run, item, where)})
+        elif item.kind == "transcript":
+            why = await history_search.line_missing(conn, access, item.session_id, item.file, item.line)
+            if why is not None:
+                raise _refused(where, why)
+            found.append({**stored, "resolved": "transcript"})
         elif item.kind == "run":
             query = select(r.c.event_seq, r.c.kind, r.c.plan_id, r.c.dispatched_by).where(
                 r.c.id == item.run_id, r.c.project_id == run.project_id
@@ -422,8 +433,8 @@ async def record_finding(request: Request, run_id: RunId, body: FindingIn, user:
     """Record a finding of the review run this worker holds, with evidence the hub finds."""
     f = tables.findings
     async with request.app.state.engine.begin() as conn:
-        run = await _held_review_run(conn, user, run_id)
-        access = await _writer(conn, run)
+        run = await held_review_run(conn, user, run_id)
+        access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(f.c.run_id == run_id))).scalar_one()
         if recorded >= review.MAX_FINDINGS:
@@ -431,6 +442,9 @@ async def record_finding(request: Request, run_id: RunId, body: FindingIn, user:
                 409, f"run {run_id} recorded {review.MAX_FINDINGS} findings already, the most a run may"
             )
         evidence = await resolve(conn, request, run, access, body.evidence)
+        closed = await earlier.closed_like(conn, access, body.lens, body.title, evidence)
+        if closed is not None:
+            raise HTTPException(409, earlier.REPEATED.format(id=closed.id, lens=closed.lens, status=closed.status))
         values = {
             "project_id": run.project_id,
             "run_id": run_id,
@@ -584,8 +598,8 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
     _check_draft(body.plan)
     p = tables.proposals
     async with request.app.state.engine.begin() as conn:
-        run = await _held_review_run(conn, user, run_id)
-        access = await _writer(conn, run)
+        run = await held_review_run(conn, user, run_id)
+        access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(p.c.run_id == run_id))).scalar_one()
         if recorded >= review.MAX_PROPOSALS:

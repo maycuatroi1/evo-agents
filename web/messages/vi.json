@@ -4746,6 +4746,13 @@
       "digestGone": "Digest không còn (hub giữ digest 90 ngày) hoặc vượt quá quyền của bạn.",
       "digestFailed": "Không đọc được digest.",
       "entryMissing": "Digest không còn mục này.",
+      "transcriptLine": "Dòng {line} của {file}",
+      "showLines": "Xem các dòng",
+      "hideLines": "Ẩn các dòng",
+      "loadingLines": "Đang đọc các dòng của transcript",
+      "linesGone": "Transcript không còn (admin hoặc hạn giữ đã xoá) hoặc vượt quá quyền của bạn.",
+      "linesFailed": "Không đọc được transcript.",
+      "noLines": "Các dòng này không có chữ.",
       "opensElsewhere": "(mở trang mã nguồn ở thẻ mới)",
       "resolved": {
         "digest": "Tìm thấy trong digest của phiên",
@@ -4753,7 +4760,8 @@
         "run_event": "Tìm thấy trong log của run",
         "repo": "Một file trong repo của dự án",
         "graph": "Một file trong knowledge graph của dự án",
-        "unmatched": "Một file trong repo của dự án mà knowledge graph chưa có"
+        "unmatched": "Một file trong repo của dự án mà knowledge graph chưa có",
+        "transcript": "Một dòng của transcript hub đang giữ"
       }
     },
     "draft": {

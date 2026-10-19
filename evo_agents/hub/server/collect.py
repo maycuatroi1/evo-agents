@@ -456,10 +456,23 @@ async def queue_review(conn: AsyncConnection, due, gate: Gate) -> int | None:
     return run_id
 
 
+async def _remembered(conn: AsyncConnection, owner_id: int, project_id: int, lenses: list[str]) -> tuple[dict, list]:
+    """What earlier nights found through ``lenses`` and the playbook's lines, as the run's owner reads them."""
+    from evo_agents.hub.server import earlier, history, playbook  # they read the proposals and runs of these routes
+
+    access = await history.owner_access(conn, owner_id, project_id)
+    if access is None:
+        return {}, []
+    return await earlier.for_prompt(conn, access, lenses), await playbook.for_prompt(conn, access, lenses)
+
+
 async def review_prompt(conn: AsyncConnection, view) -> str:
-    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the charter's goals."""
+    """The prompt of review run ``view`` (a ``runs.Run``): the night's figures and lenses, the charter's goals, what
+    earlier nights found through the lenses and the playbook of the Curator."""
     r, c = tables.runs, tables.charters
-    row = (await conn.execute(select(r.c.project_id, r.c.schedule_night).where(r.c.id == view.id))).one()
+    row = (
+        await conn.execute(select(r.c.project_id, r.c.schedule_night, r.c.dispatched_by).where(r.c.id == view.id))
+    ).one()
     figures = (await conn.execute(_night_row(row.project_id, row.schedule_night))).one_or_none()
     charter = (
         await conn.execute(
@@ -471,7 +484,11 @@ async def review_prompt(conn: AsyncConnection, view) -> str:
         row.schedule_night, int((charter.get("review") or {}).get("lenses") or review.LENSES_PER_NIGHT)
     )
     repos = [repo.model_dump() for repo in view.repos or []]
-    return review.build_review_prompt(view.project, row.schedule_night, lenses, repos, held, charter.get("goals"))
+    earlier, playbook = await _remembered(conn, row.dispatched_by, row.project_id, list(lenses))
+    goals = charter.get("goals")
+    return review.build_review_prompt(
+        view.project, row.schedule_night, lenses, repos, held, goals, earlier=earlier, playbook=playbook
+    )
 
 
 # The job

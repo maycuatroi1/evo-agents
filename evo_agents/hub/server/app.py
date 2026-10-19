@@ -278,9 +278,12 @@ def create_app(config: HubConfig) -> FastAPI:
 
     from evo_agents.hub.server import (
         changes,
+        earlier,
         history,
+        history_search,
         kg_health,
         ledger,
+        playbook,
         proposal_plans,
         protection,
         replays,
@@ -300,6 +303,10 @@ def create_app(config: HubConfig) -> FastAPI:
         replays.worker_router,
         history.router,
         history.worker_router,
+        history_search.router,
+        earlier.router,
+        playbook.router,
+        playbook.worker_router,
     ):
         app.include_router(routes)
 

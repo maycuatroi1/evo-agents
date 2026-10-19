@@ -40,6 +40,7 @@ FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each c
 PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
 PRUNE_TRANSCRIPTS = "hub.prune_transcripts"  # daily: the content of transcripts past EVO_HUB_TRANSCRIPT_DAYS
 ANALYZE_FACETS = "hub.analyze_facets"  # every 5 minutes: the facet of each new transcript, digest and ended run
+INDEX_HISTORY = "hub.index_history"  # every 5 minutes: the words of each new part of a transcript and ended run
 CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window
 CURATOR_BRIEF = "curator.brief"  # every minute: the morning brief of each charter, at its brief_at
 CURATOR_CHANGES = "curator.changes"  # every minute: the Curator's pull requests opened, judged, merged or left open

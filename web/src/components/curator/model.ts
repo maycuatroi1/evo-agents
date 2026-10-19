@@ -17,6 +17,7 @@ import {
   type ProposalState,
   type Runtime,
 } from "./queries";
+import { codeUrl, type EvidenceView, type RepoInfo } from "./evidence-model";
 
 /**
  * The Curator pages' pure parts: the hub's limits and vocabularies as the web needs them, where a project's night
@@ -209,16 +210,9 @@ export function answerBody(action: ProposalAction, note: string, days: string) {
   };
 }
 
-// Evidence
+// Evidence: where each piece leads; the forge's addresses and a digest's entry are in evidence-model.ts
 
-/** A repo of the project as GET /v1/projects/{p} lists it. */
-export type RepoInfo = { name: string; origin?: string | null; default_branch?: string | null };
-
-export type EvidenceView =
-  | { kind: "run"; runId: number; seq: number; href: Route }
-  | { kind: "session"; session: string; field: string | null; index: number | null }
-  | { kind: "code"; repo: string; path: string; line: number | null; commit: string | null; url: string | null }
-  | { kind: "other"; text: string };
+export { codeUrl, digestEntry, type EvidenceView, type RepoInfo, webBase } from "./evidence-model";
 
 function str(value: unknown): string | null {
   return typeof value === "string" && value !== "" ? value : null;
@@ -228,32 +222,10 @@ function int(value: unknown): number | null {
   return typeof value === "number" && Number.isInteger(value) ? value : null;
 }
 
-/** A repo's https web page from its origin (https, http or git's scp form), else null; `branchUrl` (forge.ts) uses it. */
-export function webBase(origin: string | null | undefined): string | null {
-  const scp = /^[\w.-]+@([\w.-]+):(.+?)(?:\.git)?\/?$/.exec(origin ?? "");
-  if (scp) return `https://${scp[1]}/${scp[2]}`;
-  try {
-    const url = new URL(origin ?? "");
-    if (url.protocol !== "https:" && url.protocol !== "http:") return null;
-    return `https://${url.host}${url.pathname.replace(/\.git\/?$/, "").replace(/\/+$/, "")}`;
-  } catch {
-    return null;
-  }
-}
-
 /**
- * The web address of a file of a repo at `ref`, on the line given: GitHub's blob URL, or GitLab's for a host whose
- * name says gitlab. Null for an origin the web cannot read as https or as git's scp form (`git@host:group/repo.git`).
+ * Where a piece of evidence leads, as the hub resolved it: a run's event, a session's digest, a line of a session's
+ * transcript, a line of code.
  */
-export function codeUrl(origin: string | null | undefined, ref: string | null, path: string, line: number | null): string | null {
-  const base = webBase(origin);
-  if (!base || !ref) return null;
-  const encoded = path.split("/").map(encodeURIComponent).join("/");
-  const blob = /gitlab/i.test(new URL(base).host) ? "-/blob" : "blob";
-  return `${base}/${blob}/${encodeURIComponent(ref)}/${encoded}${line !== null ? `#L${line}` : ""}`;
-}
-
-/** Where a piece of evidence leads, as the hub resolved it: a run's event, a session's digest, a line of code. */
 export function evidenceView(raw: Record<string, unknown>, project: string, repos: readonly RepoInfo[]): EvidenceView {
   const kind = raw.kind;
   if (kind === "run") {
@@ -264,6 +236,11 @@ export function evidenceView(raw: Record<string, unknown>, project: string, repo
   if (kind === "session") {
     const session = str(raw.session_id);
     if (session !== null) return { kind: "session", session, field: str(raw.field), index: int(raw.index) };
+  }
+  if (kind === "transcript") {
+    const session = str(raw.session_id);
+    const line = int(raw.line);
+    if (session !== null && line !== null) return { kind: "transcript", session, file: str(raw.file) ?? "main", line };
   }
   if (kind === "code") {
     const repo = str(raw.repo);
@@ -276,16 +253,6 @@ export function evidenceView(raw: Record<string, unknown>, project: string, repo
     }
   }
   return { kind: "other", text: JSON.stringify(raw) };
-}
-
-/** The entry of a digest that a piece of evidence names, as text: a line the person typed, a command, an error. */
-export function digestEntry(digest: Record<string, unknown>, field: string | null, index: number | null): string | null {
-  if (field === null || index === null) return null;
-  const list = digest[field];
-  if (!Array.isArray(list) || index < 0 || index >= list.length) return null;
-  const entry: unknown = list[index];
-  if (typeof entry === "string") return entry;
-  return JSON.stringify(entry, null, 2);
 }
 
 // The charter as a form

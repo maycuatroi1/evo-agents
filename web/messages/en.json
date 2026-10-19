@@ -4746,6 +4746,13 @@
       "digestGone": "The digest is gone (the hub keeps digests 90 days) or beyond your grant.",
       "digestFailed": "Couldn't read the digest.",
       "entryMissing": "The digest no longer has this entry.",
+      "transcriptLine": "Line {line} of {file}",
+      "showLines": "Show the lines",
+      "hideLines": "Hide the lines",
+      "loadingLines": "Loading the transcript's lines",
+      "linesGone": "The transcript is gone (an admin or the retention deleted it) or beyond your grant.",
+      "linesFailed": "Couldn't read the transcript.",
+      "noLines": "These lines hold no text.",
       "opensElsewhere": "(opens the forge in a new tab)",
       "resolved": {
         "digest": "Found in the session's digest",
@@ -4753,7 +4760,8 @@
         "run_event": "Found in the run's log",
         "repo": "A file of the project's repo",
         "graph": "A file of the project's knowledge graph",
-        "unmatched": "A file of the project's repo the knowledge graph does not hold yet"
+        "unmatched": "A file of the project's repo the knowledge graph does not hold yet",
+        "transcript": "A line of a transcript the hub holds"
       }
     },
     "draft": {

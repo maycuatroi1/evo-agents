@@ -12,6 +12,10 @@ transcript is read through its user and assistant lines, a Codex rollout through
 ``Cutter`` keeps an excerpt within EXCERPT_CHARS while the lines go by, holding no more than it may show: the whole
 transcript while it fits; else its first HEAD entries, each anchor with WINDOW entries before it and after it, the
 earliest anchors first, and its last TAIL entries, with ``[... n lines left out ...]`` where entries were left out.
+
+The same readers give the entries of each line with a longer text (``chars``: its start and its end, where a failed
+command says why), for the words the hub indexes for search and the lines a reader asks for around one
+(``evo_agents.hub.history_index``, ``evo_agents.hub.server.history_search``).
 """
 
 from __future__ import annotations
@@ -48,13 +52,20 @@ class Entry:
         return f"{self.where} {self.role}: {self.text}"
 
 
-def _cut(text, limit: int) -> str:
+def _cut(text, limit: int, ends: bool = False) -> str:
+    """``text`` on one line within ``limit``: its start, and with ``ends`` its start and its end."""
     line = " ".join(str(text or "").split())
-    return line if len(line) <= limit else line[: limit - 3].rstrip() + "..."
+    if len(line) <= limit:
+        return line
+    if ends:
+        tail = limit // 4
+        return line[: limit - tail - 5].rstrip() + " ... " + line[-tail:].lstrip()
+    return line[: limit - 3].rstrip() + "..."
 
 
-def entry(where: str, role: str, text, *, anchor: bool = False) -> Entry | None:
-    text = _cut(text, ANCHOR_CHARS if anchor else ENTRY_CHARS)
+def entry(where: str, role: str, text, *, anchor: bool = False, chars: int | None = None) -> Entry | None:
+    """An entry, its text within ENTRY_CHARS (ANCHOR_CHARS for an anchor), or its start and end within ``chars``."""
+    text = _cut(text, chars, ends=True) if chars else _cut(text, ANCHOR_CHARS if anchor else ENTRY_CHARS)
     return Entry(where, role, text, anchor) if text else None
 
 
@@ -159,18 +170,21 @@ def _rendered(chosen: dict[int, Entry]) -> str:
 
 
 class ClaudeEntries:
-    """The entries of the lines of a Claude Code session's own transcript file."""
+    """The entries of the lines of a Claude Code session's transcript file, each text within ``chars`` when given."""
 
-    def __init__(self):
+    def __init__(self, chars: int | None = None, *, sidechain: bool = False):
         self.tools: dict[str, str] = {}  # the id of a call: its tool
+        self.chars = chars
+        self.sidechain = sidechain  # read the lines of a subagent too (its file is a sidechain throughout)
 
     def read(self, number: int, line) -> list[Entry | None]:
-        if not isinstance(line, dict) or line.get("isMeta") or line.get("isSidechain"):
+        if not isinstance(line, dict) or line.get("isMeta") or (line.get("isSidechain") and not self.sidechain):
             return []
         kind, where = line.get("type"), f"L{number}"
         if kind == "system" and line.get("subtype") == "api_error":
             error = line.get("error") if isinstance(line.get("error"), dict) else {}
-            return [entry(where, "api error", error.get("formatted") or error.get("message"), anchor=True)]
+            text = error.get("formatted") or error.get("message")
+            return [entry(where, "api error", text, anchor=True, chars=self.chars)]
         if kind == "system" and line.get("subtype") == digest.COMPACT_BOUNDARY:
             return [entry(where, "system", "the context was compacted")]
         message = line.get("message") if isinstance(line.get("message"), dict) else {}
@@ -189,23 +203,23 @@ class ClaudeEntries:
             if item.get("type") == "text":
                 text = str(item.get("text") or "").strip()
                 if text and not text.startswith("<"):
-                    found.append(entry(where, "user", text, anchor=review.is_correction(text)))
+                    found.append(entry(where, "user", text, anchor=review.is_correction(text), chars=self.chars))
             elif item.get("type") == "tool_result":
                 tool = self.tools.get(str(item.get("tool_use_id")), "tool")
                 failed = bool(item.get("is_error"))
                 role = f"{tool} failed" if failed else f"{tool} result"
-                found.append(entry(where, role, _texts(item.get("content")), anchor=failed))
+                found.append(entry(where, role, _texts(item.get("content")), anchor=failed, chars=self.chars))
         return found
 
     def _assistant(self, items: list[dict], where: str) -> list[Entry | None]:
         found = []
         for item in items:
             if item.get("type") == "text":
-                found.append(entry(where, "agent", item.get("text")))
+                found.append(entry(where, "agent", item.get("text"), chars=self.chars))
             elif item.get("type") in ("tool_use", "server_tool_use"):
                 tool = str(item.get("name") or "tool")
                 self.tools[str(item.get("id"))] = tool
-                found.append(entry(where, f"call {tool}", _brief(item.get("input")) or "-"))
+                found.append(entry(where, f"call {tool}", _brief(item.get("input")) or "-", chars=self.chars))
         return found
 
 
@@ -219,8 +233,8 @@ def _codex_failed(item: dict) -> bool:
     return str(item.get("status") or "") in ("failed", "declined", "error")
 
 
-def codex_entries(number: int, line) -> list[Entry | None]:
-    """The entries of one line of a Codex rollout."""
+def codex_entries(number: int, line, chars: int | None = None) -> list[Entry | None]:
+    """The entries of one line of a Codex rollout, each text within ``chars`` when given."""
     if not isinstance(line, dict) or line.get("type") != "event_msg" or not isinstance(line.get("payload"), dict):
         return []
     payload = line["payload"]
@@ -230,27 +244,28 @@ def codex_entries(number: int, line) -> list[Entry | None]:
     kind, where = item.get("type"), f"L{number}"
     if kind == "UserMessage":
         text = _texts(item.get("content")).strip()
-        return [entry(where, "user", text, anchor=review.is_correction(text))]
+        return [entry(where, "user", text, anchor=review.is_correction(text), chars=chars)]
     if kind == "AgentMessage":
-        return [entry(where, "agent", _texts(item.get("content")))]
+        return [entry(where, "agent", _texts(item.get("content")), chars=chars)]
     failed = _codex_failed(item)
     if kind == "CommandExecution":
         output = str(item.get("aggregated_output") or "")
         return [
-            entry(where, "call shell", digest.codex_command(item)),
-            entry(where, "shell failed" if failed else "shell result", output, anchor=failed),
+            entry(where, "call shell", digest.codex_command(item), chars=chars),
+            entry(where, "shell failed" if failed else "shell result", output, anchor=failed, chars=chars),
         ]
     if kind == "McpToolCall":
         result = item.get("result")
         text = _texts(result.get("content")) if isinstance(result, dict) else _texts(result)
         tool = f"{item.get('server')}/{item.get('tool')}"
         return [
-            entry(where, f"call {tool}", _brief(item.get("arguments")) or "-"),
-            entry(where, f"{tool} failed" if failed else f"{tool} result", text, anchor=failed),
+            entry(where, f"call {tool}", _brief(item.get("arguments")) or "-", chars=chars),
+            entry(where, f"{tool} failed" if failed else f"{tool} result", text, anchor=failed, chars=chars),
         ]
     if kind == "FileChange":
         paths = ", ".join(path for path in item.get("changes") or {} if isinstance(path, str))
-        return [entry(where, "call apply_patch failed" if failed else "call apply_patch", paths or "-", anchor=failed)]
+        role = "call apply_patch failed" if failed else "call apply_patch"
+        return [entry(where, role, paths or "-", anchor=failed, chars=chars)]
     return []
 
 
@@ -280,17 +295,22 @@ def _event_text(body: dict) -> str:
 
 class RunEntries:
     """The entries of a run's events, in seq order (each ``{seq, at, kind, body}``), into a Cutter (``add``, as
-    ``facet_readers.RunFacet`` takes them)."""
+    ``facet_readers.RunFacet`` takes them), or into ``cutter``, anything with ``add``, each text within ``chars``
+    when given."""
 
-    def __init__(self, limit: int = EXCERPT_CHARS):
-        self.cutter = Cutter(limit)
+    def __init__(self, limit: int = EXCERPT_CHARS, *, chars: int | None = None, cutter=None):
+        self.cutter = Cutter(limit) if cutter is None else cutter
+        self.chars = chars
         self.chunks: list[str] = []
         self.chunk_at = ""
         self.ended: set[str] = set()
 
+    def _entry(self, where: str, role: str, text, *, anchor: bool = False) -> Entry | None:
+        return entry(where, role, text, anchor=anchor, chars=self.chars)
+
     def _flush(self) -> None:
         if self.chunks:
-            self.cutter.add(entry(self.chunk_at, "agent", "".join(self.chunks)))
+            self.cutter.add(self._entry(self.chunk_at, "agent", "".join(self.chunks)))
             self.chunks = []
 
     def add(self, event) -> None:
@@ -307,19 +327,19 @@ class RunEntries:
         self._flush()
         if kind == "user_message":
             text = str(body.get("text") or "")
-            self.cutter.add(entry(where, "user", text, anchor=review.is_correction(text)))
+            self.cutter.add(self._entry(where, "user", text, anchor=review.is_correction(text)))
         elif kind == "tool_call" and body.get("toolCallId"):
             title = body.get("title") or body.get("kind") or "tool"
-            self.cutter.add(entry(where, f"call {_cut(title, 80)}", _brief(body.get("rawInput")) or "-"))
+            self.cutter.add(self._entry(where, f"call {_cut(title, 80)}", _brief(body.get("rawInput")) or "-"))
         elif kind == "tool_call_update" and body.get("status") in ("completed", "failed"):
             call = str(body.get("toolCallId") or "")
             if call and call not in self.ended:
                 self.ended.add(call)
                 failed = body.get("status") == "failed"
                 role = "tool failed" if failed else "tool result"
-                self.cutter.add(entry(where, role, _event_text(body), anchor=failed))
+                self.cutter.add(self._entry(where, role, _event_text(body), anchor=failed))
         elif kind == "system" and isinstance(body.get("text"), str):
-            self.cutter.add(entry(where, "worker", body["text"], anchor=bool(body.get("cause"))))
+            self.cutter.add(self._entry(where, "worker", body["text"], anchor=bool(body.get("cause"))))
 
     def close(self) -> Cutter:
         self._flush()

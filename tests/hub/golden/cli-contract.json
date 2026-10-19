@@ -1498,6 +1498,85 @@
         "schema": "Charter"
       }
     },
+    "hub curator earlier": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals",
+            "kg_health"
+          ]
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "open",
+            "proposed",
+            "rejected",
+            "merged",
+            "kept",
+            "reverted"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "findings",
+          "rejected"
+        ],
+        "schema": "EarlierView"
+      }
+    },
     "hub curator figures": {
       "positionals": [],
       "options": [
@@ -1664,6 +1743,317 @@
         "schema": "FacetClusterList"
       }
     },
+    "hub curator history lines": {
+      "positionals": [
+        {
+          "name": "session",
+          "metavar": "SESSION",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "line",
+          "metavar": "LINE",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--file"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "default": "main"
+        },
+        {
+          "flags": [
+            "--before"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 0,
+          "maximum": 100,
+          "default": 10
+        },
+        {
+          "flags": [
+            "--after"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 0,
+          "maximum": 100,
+          "default": 10
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "session_id",
+          "file",
+          "runtime",
+          "login",
+          "lines",
+          "asked",
+          "first",
+          "last",
+          "entries",
+          "evidence"
+        ],
+        "schema": "TranscriptLines"
+      }
+    },
+    "hub curator history search": {
+      "positionals": [
+        {
+          "name": "query",
+          "metavar": "QUERY",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--source"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true,
+          "choices": [
+            "transcript",
+            "run",
+            "chat"
+          ]
+        },
+        {
+          "flags": [
+            "--since"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--until"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "claude-code",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 50,
+          "default": 20
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "query",
+          "sources",
+          "hits",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "HistorySearch"
+      }
+    },
+    "hub curator history sessions": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "session",
+            "run"
+          ]
+        },
+        {
+          "flags": [
+            "--since"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--until"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "claude-code",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--outcome"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--cluster"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 100,
+          "default": 20
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "items",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "HistorySessions"
+      }
+    },
     "hub curator history status": {
       "positionals": [],
       "options": [
@@ -1733,6 +2123,67 @@
           "last_brief"
         ],
         "schema": "CuratorStatus"
+      }
+    },
+    "hub curator playbook": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals",
+            "kg_health"
+          ]
+        },
+        {
+          "flags": [
+            "--retired"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "entries",
+          "live",
+          "retired"
+        ],
+        "schema": "PlaybookView"
       }
     },
     "hub curator proposal accept": {
@@ -8477,6 +8928,132 @@
         ],
         "schema": "Plan"
       }
+    },
+    "worker playbook add": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--text"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--lens"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "tool_errors",
+            "environment",
+            "corrections",
+            "failed_runs",
+            "tech_debt",
+            "code_health",
+            "docs_drift",
+            "skills_memory",
+            "cost",
+            "security",
+            "product_goals",
+            "kg_health"
+          ]
+        }
+      ],
+      "json": null
+    },
+    "worker playbook harmful": {
+      "positionals": [
+        {
+          "name": "entry",
+          "metavar": "ID",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker playbook helpful": {
+      "positionals": [
+        {
+          "name": "entry",
+          "metavar": "ID",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--evidence"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "worker playbook retire": {
+      "positionals": [
+        {
+          "name": "entry",
+          "metavar": "ID",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--note"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "json": null
     },
     "worker propose": {
       "positionals": [],
@@ -25995,6 +26572,1025 @@
                   }
                 }
               }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/history/sessions": {
+        "get": {
+          "tags": [
+            "history"
+          ],
+          "summary": "History Sessions",
+          "description": "The sessions and runs of the project's whole history, the latest first, with the numbers of their facets.",
+          "operationId": "history_sessions_v1_projects__project__curator_history_sessions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "kind",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "session",
+                      "run"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Kind"
+              }
+            },
+            {
+              "name": "since",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a UTC day, YYYY-MM-DD",
+                "title": "Since"
+              },
+              "description": "a UTC day, YYYY-MM-DD"
+            },
+            {
+              "name": "until",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a UTC day, YYYY-MM-DD",
+                "title": "Until"
+              },
+              "description": "a UTC day, YYYY-MM-DD"
+            },
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "of this member",
+                "title": "Login"
+              },
+              "description": "of this member"
+            },
+            {
+              "name": "runtime",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "claude-code",
+                      "codex"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime"
+              }
+            },
+            {
+              "name": "outcome",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z_]{1,20}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an outcome, or a run's state",
+                "title": "Outcome"
+              },
+              "description": "an outcome, or a run's state"
+            },
+            {
+              "name": "cluster",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[a-z]+/(?:FM-[1-3]\\.[1-6]|none)$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a cluster's key",
+                "title": "Cluster"
+              },
+              "description": "a cluster's key"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "default": 20,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 5000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HistorySessions"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/history/search": {
+        "get": {
+          "tags": [
+            "history"
+          ],
+          "summary": "History Search",
+          "description": "The words of the query in the project's transcripts, run logs and group chats, best first.",
+          "operationId": "history_search_v1_projects__project__curator_history_search_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "q",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 500,
+                "description": "words, \"a phrase\", or -excluded",
+                "title": "Q"
+              },
+              "description": "words, \"a phrase\", or -excluded"
+            },
+            {
+              "name": "source",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "enum": [
+                    "transcript",
+                    "run",
+                    "chat"
+                  ],
+                  "type": "string"
+                },
+                "description": "these sources alone; repeat it",
+                "default": [],
+                "title": "Source"
+              },
+              "description": "these sources alone; repeat it"
+            },
+            {
+              "name": "since",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a UTC day, YYYY-MM-DD",
+                "title": "Since"
+              },
+              "description": "a UTC day, YYYY-MM-DD"
+            },
+            {
+              "name": "until",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a UTC day, YYYY-MM-DD",
+                "title": "Until"
+              },
+              "description": "a UTC day, YYYY-MM-DD"
+            },
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "of this member",
+                "title": "Login"
+              },
+              "description": "of this member"
+            },
+            {
+              "name": "runtime",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "claude-code",
+                      "codex"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 50,
+                "minimum": 1,
+                "default": 20,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 1000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HistorySearch"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/transcripts/{session_id}/lines": {
+        "get": {
+          "tags": [
+            "history"
+          ],
+          "summary": "Show Lines",
+          "description": "The lines of a transcript around ``line``, each as its entries.",
+          "operationId": "show_lines_v1_projects__project__transcripts__session_id__lines_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "session_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "description": "the id Claude Code gives the session, as its transcript names it",
+                "title": "Session Id"
+              },
+              "description": "the id Claude Code gives the session, as its transcript names it"
+            },
+            {
+              "name": "line",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 10000000,
+                "minimum": 1,
+                "description": "the line to read around",
+                "title": "Line"
+              },
+              "description": "the line to read around"
+            },
+            {
+              "name": "file",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "maxLength": 512,
+                "pattern": "^(main|subagents(/[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}){1,5})$",
+                "default": "main",
+                "title": "File"
+              }
+            },
+            {
+              "name": "before",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 0,
+                "default": 10,
+                "title": "Before"
+              }
+            },
+            {
+              "name": "after",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 0,
+                "default": 10,
+                "title": "After"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TranscriptLines"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/earlier": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Earlier",
+          "description": "What earlier review nights found, newest first, with what became of it, and the proposals rejected lately.",
+          "operationId": "show_earlier_v1_projects__project__curator_earlier_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "lens",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "tool_errors",
+                      "environment",
+                      "corrections",
+                      "failed_runs",
+                      "tech_debt",
+                      "code_health",
+                      "docs_drift",
+                      "skills_memory",
+                      "cost",
+                      "security",
+                      "product_goals",
+                      "kg_health"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Lens"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "open",
+                      "proposed",
+                      "rejected",
+                      "merged",
+                      "kept",
+                      "reverted"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Status"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 100,
+                "minimum": 1,
+                "default": 20,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/EarlierView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/playbook": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Playbook",
+          "description": "The project's playbook of the Curator, the most helpful first.",
+          "operationId": "show_playbook_v1_projects__project__curator_playbook_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "lens",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "tool_errors",
+                      "environment",
+                      "corrections",
+                      "failed_runs",
+                      "tech_debt",
+                      "code_health",
+                      "docs_drift",
+                      "skills_memory",
+                      "cost",
+                      "security",
+                      "product_goals",
+                      "kg_health"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "its entries and those of no lens",
+                "title": "Lens"
+              },
+              "description": "its entries and those of no lens"
+            },
+            {
+              "name": "retired",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "the retired entries too, after the live ones",
+                "default": false,
+                "title": "Retired"
+              },
+              "description": "the retired entries too, after the live ones"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlaybookView"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/playbook": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Record Delta",
+          "description": "One delta of the playbook from the agent of the review run this worker holds.",
+          "operationId": "record_delta_v1_worker_runs__run_id__playbook_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PlaybookDelta"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PlaybookEntry"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
             }
           }
         }
@@ -44054,6 +45650,202 @@
           ],
           "title": "DispatchFrom"
         },
+        "EarlierFinding": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "night": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Night",
+              "description": "the night of the review run that found it"
+            },
+            "lens": {
+              "type": "string",
+              "title": "Lens"
+            },
+            "severity": {
+              "type": "string",
+              "title": "Severity"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "proposed",
+                "rejected",
+                "merged",
+                "kept",
+                "reverted"
+              ],
+              "title": "Status"
+            },
+            "closed": {
+              "type": "boolean",
+              "title": "Closed",
+              "description": "kept, merged or rejected: not recorded again without new evidence"
+            },
+            "proposals": {
+              "items": {
+                "$ref": "#/components/schemas/EarlierProposal"
+              },
+              "type": "array",
+              "title": "Proposals"
+            },
+            "evidence": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Evidence",
+              "description": "its evidence, as the command line writes it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "run_id",
+            "night",
+            "lens",
+            "severity",
+            "title",
+            "status",
+            "closed",
+            "proposals",
+            "evidence"
+          ],
+          "title": "EarlierFinding"
+        },
+        "EarlierProposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "tier": {
+              "type": "integer",
+              "title": "Tier"
+            },
+            "state": {
+              "type": "string",
+              "title": "State",
+              "description": "the proposal's state"
+            },
+            "change_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Change State",
+              "description": "the state of the change accepting it made, if any"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "the ledger's outcome of its merged change: keep, revert or unclear"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "open",
+                "proposed",
+                "rejected",
+                "merged",
+                "kept",
+                "reverted"
+              ],
+              "title": "Status",
+              "description": "what it says of the findings it names"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "the owner's note with the answer"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "tier",
+            "state",
+            "change_state",
+            "outcome",
+            "status",
+            "note"
+          ],
+          "title": "EarlierProposal"
+        },
+        "EarlierView": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "findings": {
+              "items": {
+                "$ref": "#/components/schemas/EarlierFinding"
+              },
+              "type": "array",
+              "title": "Findings",
+              "description": "newest first"
+            },
+            "rejected": {
+              "items": {
+                "$ref": "#/components/schemas/RejectedProposal"
+              },
+              "type": "array",
+              "title": "Rejected",
+              "description": "rejected in the last 30 days, newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "findings",
+            "rejected"
+          ],
+          "title": "EarlierView"
+        },
         "EffectiveConfig": {
           "properties": {
             "plugin": {
@@ -44344,6 +46136,7 @@
               "type": "string",
               "enum": [
                 "session",
+                "transcript",
                 "run",
                 "code"
               ],
@@ -44360,7 +46153,21 @@
                 }
               ],
               "title": "Session Id",
-              "description": "session: the digest's session"
+              "description": "session, transcript: the session"
+            },
+            "file": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 512,
+                  "pattern": "^(main|subagents(/[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}){1,5})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File",
+              "description": "transcript: its file"
             },
             "field": {
               "anyOf": [
@@ -44464,7 +46271,7 @@
                 }
               ],
               "title": "Line",
-              "description": "code: the line"
+              "description": "code, transcript: the line"
             },
             "commit": {
               "anyOf": [
@@ -45972,6 +47779,178 @@
           ],
           "title": "HistoryGroup"
         },
+        "HistoryHit": {
+          "properties": {
+            "source": {
+              "type": "string",
+              "enum": [
+                "transcript",
+                "run",
+                "chat"
+              ],
+              "title": "Source"
+            },
+            "at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At"
+            },
+            "role": {
+              "type": "string",
+              "title": "Role",
+              "description": "who: user, agent, call TOOL, TOOL result or failed, an error; for a chat, the author"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "the words around the match, the matched ones between « and »"
+            },
+            "rank": {
+              "type": "number",
+              "title": "Rank"
+            },
+            "evidence": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Evidence",
+              "description": "how a finding cites it; null for a chat message"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            },
+            "file": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "File"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line",
+              "description": "the line of the transcript, or the seq of the run's event"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "run_kind": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Kind"
+            },
+            "chat_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat Id"
+            },
+            "chat": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Chat",
+              "description": "the chat's title"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the member whose session or run it is, or the chat message's author"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "at",
+            "role",
+            "text",
+            "rank",
+            "evidence",
+            "session_id",
+            "file",
+            "line",
+            "run_id",
+            "run_kind",
+            "chat_id",
+            "chat",
+            "login",
+            "runtime"
+          ],
+          "title": "HistoryHit"
+        },
         "HistoryItem": {
           "properties": {
             "item": {
@@ -46193,6 +48172,293 @@
             "finished_at"
           ],
           "title": "HistoryRunView"
+        },
+        "HistorySearch": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "query": {
+              "type": "string",
+              "title": "Query"
+            },
+            "sources": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Sources"
+            },
+            "hits": {
+              "items": {
+                "$ref": "#/components/schemas/HistoryHit"
+              },
+              "type": "array",
+              "title": "Hits",
+              "description": "best first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "hits found, at most SCAN_HITS of each source"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "query",
+            "sources",
+            "hits",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "HistorySearch"
+        },
+        "HistorySessionItem": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "session",
+                "run"
+              ],
+              "title": "Kind"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id",
+              "description": "a session's id; for a run, the session its agent ran in, if known"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "run_kind": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Kind",
+              "description": "the kind of a run"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State",
+              "description": "the state of a run"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            },
+            "login": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Login",
+              "description": "the member whose session or run it is"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime"
+            },
+            "at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "At",
+              "description": "when it ended, or its last message"
+            },
+            "source": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Source",
+              "description": "what its facet was made from: transcript, digest, run_log or events"
+            },
+            "numbers": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Numbers",
+              "description": "the numbers of its facet: messages, tool errors, corrections, tokens, cost"
+            },
+            "summary": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Summary",
+              "description": "what the cheap model wrote of it"
+            },
+            "outcome": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Outcome",
+              "description": "the outcome the model wrote"
+            },
+            "failure_modes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Failure Modes"
+            },
+            "cluster": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cluster",
+              "description": "the key of the cluster it counts in"
+            },
+            "evidence": {
+              "type": "string",
+              "title": "Evidence",
+              "description": "how a finding cites it"
+            },
+            "transcript": {
+              "type": "boolean",
+              "title": "Transcript",
+              "description": "the hub holds its transcript: transcript_lines reads it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "session_id",
+            "run_id",
+            "run_kind",
+            "state",
+            "plan_id",
+            "login",
+            "runtime",
+            "at",
+            "source",
+            "numbers",
+            "summary",
+            "outcome",
+            "failure_modes",
+            "cluster",
+            "evidence",
+            "transcript"
+          ],
+          "title": "HistorySessionItem"
+        },
+        "HistorySessions": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/HistorySessionItem"
+              },
+              "type": "array",
+              "title": "Items",
+              "description": "the latest first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "those that match, of the facets examined"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "items",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "HistorySessions"
         },
         "HistorySettings": {
           "properties": {
@@ -51045,6 +53311,244 @@
           ],
           "title": "PlanSummary"
         },
+        "PlaybookDelta": {
+          "properties": {
+            "op": {
+              "type": "string",
+              "enum": [
+                "add",
+                "helpful",
+                "harmful",
+                "retire"
+              ],
+              "title": "Op"
+            },
+            "entry_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 9.223372036854776e+18,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entry Id",
+              "description": "helpful, harmful, retire: the entry"
+            },
+            "lens": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "tool_errors",
+                    "environment",
+                    "corrections",
+                    "failed_runs",
+                    "tech_debt",
+                    "code_health",
+                    "docs_drift",
+                    "skills_memory",
+                    "cost",
+                    "security",
+                    "product_goals",
+                    "kg_health"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lens",
+              "description": "add: the lens it is for; none: every lens"
+            },
+            "text": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Text",
+              "description": "add: the lesson"
+            },
+            "evidence": {
+              "items": {
+                "$ref": "#/components/schemas/EvidenceIn"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Evidence"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 1000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note",
+              "description": "retire: why"
+            }
+          },
+          "type": "object",
+          "required": [
+            "op"
+          ],
+          "title": "PlaybookDelta",
+          "description": "One delta of the playbook (``evo_agents.hub.playbook.OPS``)."
+        },
+        "PlaybookEntry": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "pb-<id>, as the prompt and the command line write it"
+            },
+            "lens": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Lens"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            },
+            "evidence": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Evidence"
+            },
+            "helpful": {
+              "type": "integer",
+              "title": "Helpful"
+            },
+            "harmful": {
+              "type": "integer",
+              "title": "Harmful"
+            },
+            "created_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Created Run Id"
+            },
+            "updated_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Updated Run Id"
+            },
+            "retired": {
+              "type": "boolean",
+              "title": "Retired"
+            },
+            "retired_note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Retired Note"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "ref",
+            "lens",
+            "text",
+            "evidence",
+            "helpful",
+            "harmful",
+            "created_run_id",
+            "updated_run_id",
+            "retired",
+            "retired_note",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "PlaybookEntry"
+        },
+        "PlaybookView": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "entries": {
+              "items": {
+                "$ref": "#/components/schemas/PlaybookEntry"
+              },
+              "type": "array",
+              "title": "Entries",
+              "description": "the most helpful less harmful first"
+            },
+            "live": {
+              "type": "integer",
+              "title": "Live",
+              "description": "live entries the caller may read"
+            },
+            "retired": {
+              "type": "integer",
+              "title": "Retired",
+              "description": "retired entries the caller may read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "entries",
+            "live",
+            "retired"
+          ],
+          "title": "PlaybookView"
+        },
         "Plugin": {
           "properties": {
             "name": {
@@ -53616,6 +56120,59 @@
             "harness"
           ],
           "title": "Registration"
+        },
+        "RejectedProposal": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "lens": {
+              "type": "string",
+              "title": "Lens"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "note": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Note"
+            },
+            "answered_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Answered At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "lens",
+            "kind",
+            "title",
+            "note",
+            "answered_at"
+          ],
+          "title": "RejectedProposal"
         },
         "Relation": {
           "properties": {
@@ -64099,6 +66656,101 @@
             "part_list"
           ],
           "title": "TranscriptFile"
+        },
+        "TranscriptLine": {
+          "properties": {
+            "line": {
+              "type": "integer",
+              "title": "Line"
+            },
+            "role": {
+              "type": "string",
+              "title": "Role"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text"
+            }
+          },
+          "type": "object",
+          "required": [
+            "line",
+            "role",
+            "text"
+          ],
+          "title": "TranscriptLine"
+        },
+        "TranscriptLines": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "file": {
+              "type": "string",
+              "title": "File"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines",
+              "description": "lines of the file the hub holds"
+            },
+            "asked": {
+              "type": "integer",
+              "title": "Asked",
+              "description": "the line asked for"
+            },
+            "first": {
+              "type": "integer",
+              "title": "First",
+              "description": "the first line read"
+            },
+            "last": {
+              "type": "integer",
+              "title": "Last",
+              "description": "the last line read"
+            },
+            "entries": {
+              "items": {
+                "$ref": "#/components/schemas/TranscriptLine"
+              },
+              "type": "array",
+              "title": "Entries",
+              "description": "each entry of the lines read, in order"
+            },
+            "evidence": {
+              "type": "string",
+              "title": "Evidence",
+              "description": "how a finding cites the line asked for"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "session_id",
+            "file",
+            "runtime",
+            "login",
+            "lines",
+            "asked",
+            "first",
+            "last",
+            "entries",
+            "evidence"
+          ],
+          "title": "TranscriptLines"
         },
         "TranscriptList": {
           "properties": {

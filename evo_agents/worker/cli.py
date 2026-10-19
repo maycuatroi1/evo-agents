@@ -21,6 +21,7 @@
   They refuse to run outside a review run of this worker.
 - ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
 - ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
+- ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -58,11 +59,10 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.worker import chat_cli, playbook_cli, triage_cli
 from evo_agents.worker.agent_input import evidence_items, read_text
-from evo_agents.worker.chat_cli import register_chat
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
 from evo_agents.worker.run_kinds import kind_refusal, kinds_of
-from evo_agents.worker.triage_cli import register_triage
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -1177,7 +1177,7 @@ def register(sub) -> None:
         action="append",
         required=True,
         metavar="SPEC",
-        help="session:ID[:FIELD:INDEX], run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
+        help="session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
     )
     finding.add_argument("--severity", choices=SEVERITIES, default="medium", help="low, medium (default) or high")
     finding.add_argument("--body-file", help="markdown that explains it, at most 16 KiB (- for stdin)")
@@ -1222,5 +1222,5 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    register_chat(wsub)  # the commands of a run's agent in group chats (chat_cli)
-    register_triage(wsub)  # what the agent of a triage thread does for a failed run (triage_cli)
+    for extra in (chat_cli.register_chat, triage_cli.register_triage, playbook_cli.register_playbook):
+        extra(wsub)  # a run's agent in group chats, a triage thread's for a failed run, a review run's on the playbook

@@ -49,6 +49,7 @@ class FakeHub:
         self.step_reports: list[dict] = []
         self.findings: list[dict] = []  # what the agent of a review run recorded, with the run's id
         self.proposals: list[dict] = []
+        self.playbook: list[dict] = []  # the deltas of the playbook the agent of a review run wrote
         self.plan_puts: list[dict] = []  # what the agent of an author run put, with the run's id and the status
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
         # what the agent of a run did in group chats and what the daemon of a chat run or a task run told of its
@@ -132,6 +133,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/notices", self._notice),
                 post("/v1/worker/runs/{id}/findings", self._finding),
                 post("/v1/worker/runs/{id}/proposals", self._proposal),
+                post("/v1/worker/runs/{id}/playbook", self._playbook),
                 get("/v1/worker/runs/{id}/judge", self._judge),
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
                 post("/v1/worker/runs/{id}/replay", self._replay),
@@ -934,6 +936,15 @@ class FakeHub:
         return web.json_response(
             {**answer, "tier_reasons": ["kind fix (a bug fix that comes with its test) is tier 1"]}, status=201
         )
+
+    async def _playbook(self, request: web.Request) -> web.Response:
+        run_id, _ = self._held_review_run(request)
+        body = await request.json()
+        self.playbook.append({"run_id": run_id, **body})
+        entry = body.get("entry_id") or len([d for d in self.playbook if d["op"] == "add"])
+        helpful = sum(1 for d in self.playbook if d.get("entry_id") == entry and d["op"] == "helpful")
+        answer = {"id": entry, "ref": f"pb-{entry}", "text": body.get("text") or "Pull first.", "helpful": helpful}
+        return web.json_response({**answer, "harmful": 0, "retired": body["op"] == "retire"}, status=201)
 
     def _judge_key(self, request: web.Request, run_id: int, route: str) -> None:
         if request.headers.get(JUDGE_KEY_HEADER) != self.judge_keys.get(run_id):

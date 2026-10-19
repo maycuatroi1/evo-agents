@@ -10,8 +10,9 @@ answers, else at the next pass of hub.prune_kg_artifacts (hourly).
 
 ``prune_transcripts`` drops the transcripts that got no part for ``days`` days (EVO_HUB_TRANSCRIPT_DAYS, 365 by
 default), and the blobs of kind transcript a project has held for longer than STALE_AFTER that no part of it names: the
-upload of a part the hub then did not record (another member's transcript, one deleted meanwhile). Nothing computed
-from transcripts elsewhere is touched.
+upload of a part the hub then did not record (another member's transcript, one deleted meanwhile). The words indexed
+for search go with the content (``evo_agents.hub.history_index.drop_transcripts``); nothing else computed from
+transcripts is touched.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from datetime import timedelta
 from sqlalchemy import delete, func, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import blob_gc, tables
+from evo_agents.hub import blob_gc, history_index, tables
 from evo_agents.hub import transcripts as local
 from evo_agents.hub.blobs import STALE_AFTER, BlobStore, BlobStoreUnavailable
 
@@ -67,6 +68,7 @@ async def drop(conn: AsyncConnection, where) -> Dropped:
         )
     ).all()
     await conn.execute(delete(p).where(p.c.transcript_id.in_(ids)))
+    await history_index.drop_transcripts(conn, ids)
     await conn.execute(
         update(t)
         .values(deleted_at=func.now(), updated_at=func.now(), parts=0, size=0, raw_size=0, sha256=None)

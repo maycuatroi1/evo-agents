@@ -197,6 +197,69 @@ def test_a_review_run_records_a_finding_and_a_proposal_and_pushes_nothing(machin
     with_daemon(machine, body, plan=plan_body())
 
 
+def test_a_review_runs_agent_changes_the_playbook_by_deltas(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "review": [
+                {
+                    "cli": [
+                        "playbook",
+                        "add",
+                        "--lens",
+                        "environment",
+                        "--text",
+                        "Pull before   a push.",
+                        "--evidence",
+                        "transcript:0199b1c2-7d3e-7a10-9c41-00000000a001:13",
+                    ]
+                },
+                {"cli": ["playbook", "helpful", "pb-1", "--evidence", "run:41:7", "--note", "it held"]},
+                {"cli": ["playbook", "retire", "1", "--note", "the hook does it now"]},
+                {"cli": ["playbook", "add", "--text", "no evidence"]},
+                {"cli": ["playbook", "harmful", "pb-x"]},
+                {"result": {"summary": "One lesson, counted and retired."}},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_review_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        commands = [entry for entry in machine.commands() if entry["run"] == run_id]
+        assert commands[0]["exit"] == 0, commands[0]
+        assert "Playbook entry pb-1 added: helpful 0, harmful 0: Pull before a push." in commands[0]["stdout"]
+        assert "Playbook entry pb-1 counted helpful: helpful 1" in commands[1]["stdout"]
+        assert "Playbook entry pb-1 retired" in commands[2]["stdout"]
+        assert commands[3]["exit"] == 2 and "--evidence" in commands[3]["stderr"]  # argparse: it is required
+        assert commands[4]["exit"] == 1 and "an entry of the playbook is pb-N or N, not 'pb-x'" in commands[4]["stderr"]
+        assert hub.playbook == [
+            {
+                "run_id": run_id,
+                "op": "add",
+                "text": "Pull before a push.",
+                "evidence": [
+                    {
+                        "kind": "transcript",
+                        "session_id": "0199b1c2-7d3e-7a10-9c41-00000000a001",
+                        "file": "main",
+                        "line": 13,
+                    }
+                ],
+                "lens": "environment",
+            },
+            {
+                "run_id": run_id,
+                "op": "helpful",
+                "entry_id": 1,
+                "evidence": [{"kind": "run", "run_id": 41, "seq": 7}],
+                "note": "it held",
+            },
+            {"run_id": run_id, "op": "retire", "entry_id": 1, "note": "the hook does it now"},
+        ]
+
+    with_daemon(machine, body)
+
+
 def test_finding_and_propose_refuse_outside_a_review_run(machine):  # noqa: F811
     def agent_cli(*args: str, run: int | None = None) -> tuple[int, str]:
         env = {key: value for key, value in os.environ.items() if not key.startswith("EVO_")}
@@ -214,22 +277,25 @@ def test_finding_and_propose_refuse_outside_a_review_run(machine):  # noqa: F811
 
     code, err = agent_cli("finding", "--lens", "cost", "--title", "x", "--evidence", "run:1:1")
     assert code == 1 and "works only inside a review run of this worker: EVO_RUN_ID is not set" in err
+    code, err = agent_cli("playbook", "retire", "pb-1", "--note", "x")
+    assert code == 1 and "works only inside a review run of this worker: EVO_RUN_ID is not set" in err
 
     machine.scenarios(
         {
             f"plan:{plan_body()['id']}": [
                 {"cli": ["finding", "--lens", "cost", "--title", "x", "--evidence", "run:1:1"]},
                 {"cli": ["propose", "--lens", "cost", "--kind", "fix", "--title", "x", "--plan-file", "x.yaml"]},
+                {"cli": ["playbook", "helpful", "pb-1"]},
             ]
         }
     )
 
     async def body(hub, daemon):
         run_id = hub.queue_plan_run(plan_body()["id"], run_repos(plan_body()))
-        await wait_for(lambda: len([c for c in machine.commands() if c["run"] == run_id]) == 2, "the commands")
+        await wait_for(lambda: len([c for c in machine.commands() if c["run"] == run_id]) == 3, "the commands")
         for entry in [c for c in machine.commands() if c["run"] == run_id]:
             assert entry["exit"] == 1 and "only the agent of a review run uses" in entry["stderr"], entry
-        assert hub.findings == [] and hub.proposals == []
+        assert hub.findings == [] and hub.proposals == [] and hub.playbook == []
         await hub.wait_state(run_id, "done", "failed", timeout=WAIT)
 
     with_daemon(machine, body, plan=plan_body())

@@ -12,7 +12,9 @@ each the blob of kind transcript that holds its lines (``evo_agents.hub.server.t
 holds the deterministic facet of each session and of each run that ended (``evo_agents.hub.facet_job``), and since 0056
 the facet a cheap model wrote of it (``llm``, ``evo_agents.hub.history``). history_runs (0056) holds one row per
 history run of the night shift, and facet_clusters (0056) the groups of a project's facets
-(``evo_agents.hub.server.history``).
+(``evo_agents.hub.server.history``). history_lines (0057) holds the words of the transcripts and run logs, one row per
+entry of a line, for search, and history_indexed (0057) how far each transcript and run is in it
+(``evo_agents.hub.history_index``).
 """
 
 from __future__ import annotations
@@ -33,7 +35,7 @@ from sqlalchemy import (
     column,
     func,
 )
-from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 
 def _stamp(name: str) -> Column:
@@ -235,3 +237,61 @@ def history_tables(metadata: MetaData, runs: Table, active) -> tuple[Table, Tabl
         UniqueConstraint("project_id", "key", name="facet_clusters_project_id_key_key"),
     )
     return history_runs, clusters
+
+
+def search_tables(metadata: MetaData) -> tuple[Table, Table]:
+    """(history_lines, history_indexed) of 0057, added to ``metadata``."""
+    lines = Table(
+        "history_lines",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("source", Text, nullable=False),
+        Column("transcript_id", BigInteger),
+        Column("run_id", BigInteger),
+        Column("session_id", Text),
+        Column("file", Text),
+        Column("line", BigInteger, nullable=False),
+        Column("at", DateTime(timezone=True)),
+        Column("role", Text, nullable=False),
+        Column("text", Text, nullable=False),
+        Column("search", TSVECTOR, nullable=False),  # to_tsvector('simple', text), written with the row
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="history_lines_project_id_fkey"),
+        ForeignKeyConstraint(
+            ["transcript_id"], ["session_transcripts.id"], ondelete="CASCADE", name="history_lines_transcript_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="history_lines_run_id_fkey"),
+        PrimaryKeyConstraint("id", name="history_lines_pkey"),
+        Index("history_lines_search_idx", "search", postgresql_using="gin"),
+        Index("history_lines_project_idx", "project_id", "source", "at"),
+        Index("history_lines_transcript_idx", "transcript_id", "line"),
+        Index("history_lines_run_idx", "run_id", "line"),
+    )
+    indexed = Table(
+        "history_indexed",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("transcript_id", BigInteger),
+        Column("run_id", BigInteger),
+        _count("parts", Integer),
+        Column("fingerprint", Text),
+        _count("lines"),
+        Column("indexed_at", DateTime(timezone=True)),
+        _count("attempts", Integer),
+        Column("error", Text),
+        Column("retry_at", DateTime(timezone=True)),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="history_indexed_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["transcript_id"], ["session_transcripts.id"], ondelete="CASCADE", name="history_indexed_transcript_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="history_indexed_run_id_fkey"),
+        PrimaryKeyConstraint("id", name="history_indexed_pkey"),
+        UniqueConstraint("transcript_id", name="history_indexed_transcript_id_key"),
+        UniqueConstraint("run_id", name="history_indexed_run_id_key"),
+    )
+    return lines, indexed

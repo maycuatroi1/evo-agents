@@ -24,11 +24,13 @@ figures`` prints the figures of the latest night, or of ``--night`` (GET .../cur
 
 ``curator changes`` lists what the accepted proposals of tier 0 to 2 became: the Curator's plan, its branch, its pull
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes); ``curator replay tasks|show``
-(``evo_agents.hub.replay_cli``) the replays that measure them, and ``curator history status|clusters``
-(``evo_agents.hub.history_cli``) the night's history run and the clusters of its facets. ``curator protection`` lists the
-project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check REPO`` checks one now
-with the Curator's App, which only an admin of the project may (POST .../curator/protection/{repo}/check): a Builder
-runs on a repo of GitHub only once its default branch keeps the Curator's App off.
+(``evo_agents.hub.replay_cli``) the replays that measure them, ``curator history status|clusters|sessions|search|lines``
+(``evo_agents.hub.history_cli``) the night's history run, the clusters of its facets and the whole history, and
+``curator playbook`` and ``curator earlier`` (``evo_agents.hub.playbook_cli``) what the review runs remember. ``curator
+protection`` lists the project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check
+REPO`` checks one now with the Curator's App, which only an admin of the project may (POST
+.../curator/protection/{repo}/check): a Builder runs on a repo of GitHub only once its default branch keeps the
+Curator's App off.
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library and PyYAML only, like the client.
@@ -50,6 +52,7 @@ from evo_agents.hub.curator import CHARTER_META, money
 from evo_agents.hub.history import budget_usd as history_budget
 from evo_agents.hub.history_cli import register_history
 from evo_agents.hub.plan_cli import _project
+from evo_agents.hub.playbook_cli import register_playbook
 from evo_agents.hub.replay import DEFAULT_TASKS
 from evo_agents.hub.replay_cli import register_replay
 from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, evidence_text
@@ -747,5 +750,5 @@ def register_curator(hsub) -> None:
     json_option(changes, returns_object("project", "changes", schema="ChangeList"))
     changes.set_defaults(func=cmd_changes)
 
-    for register in (_register_protection, register_replay, register_history):
+    for register in (_register_protection, register_replay, register_history, register_playbook):
         register(csub, with_project)

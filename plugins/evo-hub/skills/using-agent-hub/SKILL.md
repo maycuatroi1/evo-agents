@@ -86,4 +86,10 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
 | `run_events` | the trace of a run of the project, event by event (data, too) |
 | `decision_list` | the decisions the agents of the project's plan runs asked, with the answers |
 | `curator_replay` | a Curator change's replays, arm a (default branch) against arm b (the change), or the replay suite |
+| `history_sessions` | the sessions and runs of the project's whole history, with the numbers of their facets, by time, member, runtime, outcome or cluster |
+| `history_search` | words in the project's transcripts, run logs and group chats, best first, each with the evidence that names it (data) |
+| `transcript_lines` | the lines of a session's transcript around one line (data) |
+| `history_clusters` | the clusters of the facets of the project's sessions, or the sessions of one |
+| `curator_findings` | what earlier review nights found and what became of it, and the proposals rejected lately |
+| `curator_playbook` | the Curator's playbook of the project, the most helpful entries first |
 | `kg_*` | the project's knowledge graph, as in the evo-kg plugin; listed only in a session without evo-kg |

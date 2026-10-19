@@ -28,20 +28,20 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 24 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+The 30 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project, with or without a graph. The others call the
 hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
-review run reads (the night's figures, session digests, the events of a run, decisions, replays) in this process, so
-they read and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the
+review run reads (the night's figures, session digests, the events of a run, decisions, replays, and the project's
+whole history, ``history_mcp``) in this process, so they read and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the
 write rule, revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text
 goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a
 tool's answer is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its
 structuredContent comes only when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend
 hub`` does. A refusal of the hub becomes a tool error carrying its message, an unexpected failure one carrying the
 request id only; so does a tool of a feature a hub admin turned off for the project (``hub_settings.require_tool``:
-kg_*, curator_figures, curator_replay). The log has one line per tool call with its name, project, outcome and
+kg_*, the Curator's). The log has one line per tool call with its name, project, outcome and
 duration, never its arguments or its result.
 """
 
@@ -53,6 +53,7 @@ import re
 import time
 from dataclasses import dataclass, replace
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from urllib.parse import urlsplit
 
 import psycopg
@@ -96,6 +97,7 @@ from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server import (
     decisions,
     digests,
+    history_mcp,
     hub_settings,
     kg,
     local_runs,
@@ -439,7 +441,8 @@ class HubMcp(MCPServer):
             "digest_show": self._digest_show,
             "run_events": self._run_events,
             "decision_list": self._decision_list,
-            "curator_replay": self._curator_replay,
+            "curator_replay": partial(self._delegated, replays.mcp_answer),
+            **{name: partial(self._delegated, partial(history_mcp.answer, name)) for name in history_mcp.NAMES},
         }
 
     async def list_tools(self) -> list[McpTool]:
@@ -877,10 +880,11 @@ class HubMcp(MCPServer):
         data = {**found.model_dump(mode="json"), "summary": f"figures of the night of {found.night}"}
         return text, data
 
-    async def _curator_replay(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+    async def _delegated(self, answer, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        """A tool another module answers: ``answer(request, project, user, arguments, sink=...)``."""
         project = self._project(caller, arguments)
         await self._readable(caller, project)
-        return await replays.mcp_answer(caller.request, project, caller.user, arguments, sink=caller.sink)
+        return await answer(caller.request, project, caller.user, arguments, sink=caller.sink)
 
     async def _digest_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)

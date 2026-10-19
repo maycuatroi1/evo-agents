@@ -176,16 +176,26 @@ def _run_ids(texts: Iterable[str]) -> set[int]:
     return found
 
 
+def _cited(texts: set[str], listed) -> bool:
+    """Whether the evidence ``listed`` (a figure entry's) is among ``texts``: the same text, or a session whose line
+    of its transcript ``texts`` names (``transcript:ID:...`` cites ``session:ID`` and its entries)."""
+    found = {str(text) for text in _list(listed) if text is not None}
+    if texts & found:
+        return True
+    sessions = {text.split(":")[1] for text in texts if text.startswith("transcript:") and text.count(":") >= 2}
+    return bool(sessions) and any(text.split(":")[1] in sessions for text in found if text.startswith("session:"))
+
+
 def evidence_metrics(figures: Mapping, texts: Iterable[str]) -> list[str]:
     """The metric keys of the entries of ``figures`` that the evidence ``texts`` (as ``review.evidence_text`` writes
-    them) point at, in the figures' order."""
+    them) point at, in the figures' order; a line of a transcript points at what its session's evidence does."""
     texts = set(texts)
     run_ids = _run_ids(texts)
     keys: list[str] = []
     for item in _list(figures.get("environment")):
         if not isinstance(item, Mapping) or not isinstance(item.get("cause"), str):
             continue
-        cited = texts & {str(text) for text in _list(item.get("evidence"))}
+        cited = _cited(texts, item.get("evidence"))
         if cited or run_ids & {run for run in _list(item.get("runs")) if isinstance(run, int)}:
             keys.append(f"environment:{item['cause']}")
     for item in _list(figures.get("failed_runs")):
@@ -194,9 +204,10 @@ def evidence_metrics(figures: Mapping, texts: Iterable[str]) -> list[str]:
                 keys.append(f"failed_runs:{item['cause']}")
     for item in _list(figures.get("repeated_commands")):
         if isinstance(item, Mapping) and isinstance(item.get("command"), str):
-            if texts & {str(text) for text in _list(item.get("evidence"))}:
+            if _cited(texts, item.get("evidence")):
                 keys.append(f"repeated:{item['command']}")
-    if any(isinstance(item, Mapping) and item.get("evidence") in texts for item in _list(figures.get("corrections"))):
+    corrections = _list(figures.get("corrections"))
+    if any(isinstance(item, Mapping) and _cited(texts, [item.get("evidence")]) for item in corrections):
         keys.append("corrections")
     return keys
 
