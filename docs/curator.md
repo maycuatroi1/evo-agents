@@ -28,7 +28,9 @@ and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.
 
 1. **The window opens.** At the charter's `window.start`, in its time zone, the job `curator.collect` counts the
    night's figures of the project once, without any model: tool failures, failures that come from the environment,
-   failed runs by cause, commands run again and again, corrections the person made, open items and stuck steps.
+   failed runs by cause, commands run again and again, corrections the person made, open items and stuck steps, and a
+   weekly series over the whole history. The sessions come from their facets, which the job `hub.analyze_facets`
+   makes from each transcript, digest and run that ended (`docs/hub.md`, "Session facets").
 2. **The Reviewer.** The night shift queues the night's review run on the worker on duty. Its agent reads the
    figures, the session digests, the traces of runs and the project's code, and writes findings and proposals, each
    with evidence the hub can find. It pushes nothing and opens no pull request.
@@ -231,13 +233,15 @@ would let run unattended.
 it reads is data and never instructions. It looks through `review.lenses` of eleven lenses a night, taken in turn
 (`tool_errors`, `environment`, `corrections`, `failed_runs`, `tech_debt`, `code_health`, `docs_drift`,
 `skills_memory`, `cost`, `security`, `product_goals`). Each finding and proposal cites evidence the hub checks before
-it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session digest), `run:ID:SEQ` (an event of a run) or
-`code:REPO:PATH[:LINE]` (a line of a repo of the project). A proposal carries a draft plan in outcome steps, each with
-`verify` and `acceptance`. The review run's figures come from two sources the plugin and the daemon feed the hub: the
-session digest that the Stop hook of the `evo-hub` plugin pushes for every Claude Code session of 6 messages or more,
-with every string that looks like a secret replaced before it leaves the machine and deleted 90 days after its last
-push (`docs/hub.md`, "Session digests"); and the tool figures of each run, written when it ends and kept after its
-events are pruned (`docs/workers.md`, "Tool figures").
+it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session's facet, else of its digest), `run:ID:SEQ` (an event of
+a run, a local run of the owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project). A proposal
+carries a draft plan in outcome steps, each with `verify` and `acceptance`. The review run's figures come from what the
+plugin and the daemon feed the hub: the facet of each session (`docs/hub.md`, "Session facets"), made from the
+transcripts the `evo-hub` plugin sends (`docs/hub.md`, "Session transcripts") or, while the hub holds none, from the
+session digest its Stop hook pushes for every session of 6 messages or more (`docs/hub.md`, "Session digests"), with
+every string that looks like a secret replaced before it leaves the machine; the facet of each local run of the
+charter's owner; and the tool figures of each run, written when it ends and kept after its events are pruned
+(`docs/workers.md`, "Tool figures").
 
 **The Builder** is a plan run of `curator-<proposal>-<slug>`, a plan the hub made in the same transaction as the
 accepting answer: in the one repo the proposal names, every step pending. Its what, goal, context, verify and
@@ -382,9 +386,11 @@ evo-agents hub curator figures --night 2026-10-08 --project demo
 | 0017 | runs of kind `judge`, `curator_changes`, `curator_repo_checks` |
 | 0018 | `curator_ledger`, revert proposals, `schedules.pause_reason`, the notice `curator_paused` |
 | 0019 | `curator_changes.judge_key` |
+| 0051 | `session_facets`, the deterministic facet of each session and each run that ended |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
-`curator.collect`, `curator.brief`, `curator.changes` and `curator.outcomes` (`docs/hub.md`, "Worker and queue").
+`curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes` and `hub.analyze_facets` (`docs/hub.md`,
+"Worker and queue").
 
 ## What the Curator does not do
 

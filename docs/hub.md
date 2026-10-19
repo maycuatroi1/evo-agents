@@ -675,7 +675,8 @@ no worker is locked there, and a heartbeat neither takes nor keeps a commit or a
 (session transcripts) is described under Memories, skills and knowledge graphs below. Schema 0050 adds
 `workers.kg_sync`, what the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift
 it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0049 drops it, and a
-heartbeat no longer keeps it.
+heartbeat no longer keeps it. Schema 0051 (session facets) is described under Memories, skills and knowledge graphs
+below.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -846,15 +847,25 @@ states and kind in `hub run list/show`; the machine side talks HTTP.
 roles, its GitHub App and the ruleset it needs, and Telegram. This section and the next two hold the details.
 
 Each night of a project's charter, the hub reviews the project with a run of kind `review` (schema 0014): the job
-`curator.collect` counts the night's figures, without any model, from the session digests, the runs and their tool
-figures, the plans and the decisions of the last `review.days` of the charter (7 by default): the failures per tool
+`curator.collect` counts the night's figures, without any model, from the facets of the sessions (Session facets,
+below), the runs and their tool figures, the plans and the decisions of the last `review.days` of the charter (7 by
+default): the failures per tool
 and per program, the failures that come from the environment by cause (a command the harness blocked, the hub
 answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
 one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
 steps that have not moved for 3 days, each with evidence a finding can cite, and what the worker on duty last said of
 keeping the project's graph fresh (`kg_sync`: each git source with the commit it holds, how far behind it was, when it
-was read and pushed, and the error of a sync that failed, with how many failed; null when it said nothing). Then the night shift queues the review
+was read and pushed, and the error of a sync that failed, with how many failed; null when it said nothing). The sessions
+of the span are their facets: each session's whose transcripts or digest the charter's owner may read, a digest the job
+has not read yet as its facet would be, and a local run's only when its member owns the charter and no facet or digest
+of the same session counts it already (`sessions` says how many came from each). The night's figures add `weekly`, per
+week (from Monday, UTC, the latest first) over the whole history, the sessions, runs and members, the tool calls and
+failures, the failures from the environment, the corrections, the calls of the knowledge graph, the compactions, the
+tokens with cache reads and writes, the cost and the largest context, and `facets`, how far the facets of the project
+are: its sessions with transcripts and those analyzed or waiting, the facets made from digests, the runs that ended
+and those analyzed, and the failed attempts. Counted again from the same data, a night's figures are the same: each
+list is ordered by its counts and then by its keys. Then the night shift queues the review
 run on the worker on duty, before any plan run of the night, once that worker's daemon says it runs review runs.
 
 A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the
@@ -870,8 +881,9 @@ evo-agents worker propose --lens environment --kind fix --title "A wait helper" 
   --finding 12 --plan-file draft.yaml --summary-file why.md
 ```
 
-The hub refuses a finding or a proposal whose evidence it cannot find: a digest of the project and the entry of its
-list, an event of a run of the project, a file of a repo of the project (and of its knowledge graph, when it has one).
+The hub refuses a finding or a proposal whose evidence it cannot find: a session of the project and the entry of the
+list of its facet (`resolved` `facet`), else of its digest (`digest`), an event of a run of the project (a local run of
+the owner's included), a file of a repo of the project (and of its knowledge graph, when it has one).
 A proposal carries a draft plan of plan.schema.json in outcome steps (each step with `verify` and `acceptance`). The
 hub computes its tier, 0 to 3, from the charter, the paths it names (and what they reach in the knowledge graph) and
 its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint and test configuration, and the kinds
@@ -1132,6 +1144,33 @@ row `transcript.delete`; the rows stay, marked deleted and without parts, so no 
 blobs no part names leave the bucket. `hub.prune_transcripts` does the same for the transcripts that got no part for
 `EVO_HUB_TRANSCRIPT_DAYS` days (365 by default), and drops the blobs of kind `transcript` a project holds that no part
 names, a day after they came. Neither touches what is computed from transcripts elsewhere.
+
+**Session facets.** The job `hub.analyze_facets` (`evo_agents/hub/facet_job.py`) reads each session and each run
+that ended once, without any model, and keeps what it counted in `session_facets` (schema 0051): one row per session
+of a project, made from its transcripts (the session's own and its subagents') or, while the hub holds none, from its
+digest, and one per run that ended (`done`, `failed`, `lost`, `cancelled`, a local run's `ended`), made from the log its
+worker uploaded (blob kind `run-log`) or else from its events on the hub. A facet (`evo_agents/hub/facets.py`,
+`facet_readers.py`) holds the tools with their calls, failures, output size and time; the failures by cause (the
+environment causes of the Curator's review, else `work`), each with where it first came (`main:LINE` of a transcript,
+the seq of a run's event); the commands, those run again and the programs; the files read and edited; the calls of the
+knowledge graph's tools, those that named no node, the searches after them and the first one after a miss, and of the
+files edited after the first call, those an earlier result named and those among its first five; the context of the
+first request and the largest; the compactions with their trigger and size; the tokens with cache reads and writes and
+the cost (Claude Code's `cost-state`, a run's `usage`); each hook's runs, time and timeouts; the skills loaded; the
+errors of the model's API; and what the person wrote with the turns that correct the agent. Its lists keep the names
+and shapes of a digest's, so `session:ID:FIELD:INDEX` names an entry of a facet as it names one of a digest. The facet
+of a digest says null for what a digest does not hold.
+
+Each pass, every 5 minutes and one at a time, takes up to 200 sessions and runs, the latest first, quiet for 10 minutes,
+and stops after 240 seconds; the next pass goes on. A facet is made again when its content changed (a session's
+fingerprint is the md5 of its files' chains of hashes; a run's, its log's hash and its count of events) or when the
+facet's version (`FACET_VERSION`) did; a facet made from transcripts is never replaced by one from a digest. The job
+holds no lock on the tables the hub writes to: each read is a short transaction of its own, the blobs are read and
+parsed outside any, and a facet is written with one upsert. A blob store that does not answer, or a blob that is
+missing, fails the attempt: the facet made before stays, and the row counts `attempts` with the `error` and waits
+5 minutes before the next one, twice as long after each failure up to a day. A session's facet has no foreign key to its
+transcripts, so deleting their content, by an admin or by the retention, leaves it: the hub keeps facets without a
+limit, until the project goes. Going back to 0050 drops the table, and the job makes the facets again.
 
 **Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
 result out of the model's context. A successful result of Bash, Grep, WebFetch or an MCP tool longer than 10,000
@@ -1621,6 +1660,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.prune_transcripts`, daily at 04:53: deletes the content of the session transcripts that got no part for
   `EVO_HUB_TRANSCRIPT_DAYS` days, keeping their rows marked deleted, and the blobs of kind `transcript` no part names
   (Session transcripts, above).
+- `hub.analyze_facets`, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
+  or digest came and of each run that ended, made once and again when its content or the facet's version changed
+  (Session facets, above).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
