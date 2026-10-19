@@ -66,6 +66,12 @@ MAX_REVIEW_CHARS = 10_000
 MAX_COMMENT_CHARS = 20_000
 
 
+def code_key(code: str) -> str:
+    """The form two codes are compared in, as srs_codes.code_key holds it: whitespace runs as one space, case folded.
+    The plugin tasks finds an item by code in this form too."""
+    return " ".join(code.split()).casefold()
+
+
 @dataclass(frozen=True)
 class SrsTables:
     """The tables of the core plugin srs, by what each holds."""

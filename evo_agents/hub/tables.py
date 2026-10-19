@@ -1,6 +1,6 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
-``tables_settings``, ``tables_triage`` and ``tables_srs`` (the core plugin srs, ``tables.srs``) hold the rest by area.
+``tables_settings`` and ``tables_triage`` hold them by area; ``tables.srs`` and ``tables.tasks`` are core plugins'.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -35,7 +35,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
-from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles, tables_settings, tables_srs, tables_triage
+from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles, tables_settings, tables_triage
 from evo_agents.hub.tables_chats import chat_tables
 
 metadata = MetaData()
@@ -1278,4 +1278,4 @@ plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0037, 0043
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
-srs = tables_srs.srs_tables(metadata)  # the core plugin srs (0046)
+srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)

@@ -105,6 +105,10 @@ SRS_TABLES = frozenset(
         "srs_comments",
     }
 )
+# migration 0047: the tasks of the core plugin tasks, their sprints, people, links, history and comments
+TASKS_TABLES = frozenset(
+    {"tasks_sprints", "tasks_items", "tasks_people", "tasks_links", "tasks_events", "tasks_comments"}
+)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
