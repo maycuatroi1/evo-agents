@@ -107,7 +107,7 @@ function BacklogBody({ project, settings, sprints, tasks, writer, onDialog }: { 
     <>
       <SprintBadge state={sprint.state} />
       {days(sprint) ? <span className="text-xs text-muted-foreground">{days(sprint)}</span> : null}
-      <Link href={boardHref(project, { sprint: sprint.name })} className="text-xs text-brand underline-offset-4 hover:text-brand-hover hover:underline">
+      <Link href={boardHref(project, { sprint: sprint.name })} className="text-xs text-brand underline underline-offset-4 hover:text-brand-hover">
         {t("openBoard")}
       </Link>
     </>
