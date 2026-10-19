@@ -202,23 +202,44 @@ agent:
 | 2 | it reaches the owner's Inbox; once accepted, the night shift builds it and the Judge judges it, and the pull request stays open for the owner |
 | 3 | it stays in the list; accepting it builds nothing, and the owner alone makes the change |
 
-The tier is the highest of three rules, and the proposal lists in words which rule raised it:
+The tier is the highest of these rules, and the proposal lists in words which rule raised it:
 
-- **Its kind.** `docs`, `memory` and `test_add` are tier 0; `fix`, `refactor`, `lint`, `skill`, `cli`,
+- **Its kind.** `docs`, `memory`, `test_add` and `kg_source` are tier 0; `fix`, `refactor`, `lint`, `skill`, `cli`,
   `release_prep` and `revert` tier 1; `feature`, `api_change`, `schema_change`, `global_config`, `dependency_major`
   and `operation` tier 2; `test_loosen`, `verify_change`, `ci_change`, `credentials` and `curator_rules` always tier 3.
 - **Its paths**, each `repo:path`. A protected glob of the charter, or CI, lint and test configuration and the copies
   of plans (`tiers.HARD_PATHS`), make it tier 3; a migration or schema path makes it at least tier 2; any path that is
-  neither documentation nor a test makes it at least tier 1.
+  neither documentation nor a test makes it at least tier 1, knowledge.yaml included, except under `kg_source` (below).
 - **What those paths reach** in the project's knowledge graph, when it has one: a reached path that is protected, or
   one of `HARD_PATHS`, makes it tier 3 too.
+- **What the graph cannot tell**, when the project has a graph on the hub: a path it has no file for, one the latest
+  measure of its health found it lacks, holds older than the default branch has it or holds though the branch deleted
+  it (`kg_health`, "The graph's health" in `docs/hub.md`), or any path while the graph cannot be read, makes it at
+  least tier 1. The reason names the path and why the raise by what the graph reaches cannot know what editing it
+  reaches. A project with no graph on the hub keeps the tier its kind and paths give.
+- **knowledge.yaml under `kg_source`.** A change of kind `kg_source` edits, of a git or harness source that
+  knowledge.yaml at the root of a repo of the project already has, nothing but its `ref`, `fetch`, `refresh`,
+  `include`, `exclude` or `allow`. The hub reads what the pull request does to the file key by key, at its merge base
+  and at its head (`knowledge_diff.classify`), never from the proposal's words: such a change stays tier 0, and so may
+  be merged by the hub when `auto_merge` holds `0`. Anything else it does to the file makes it at least tier 1, as
+  knowledge.yaml is under any other kind:
+
+  | What the pull request does to knowledge.yaml | Tier |
+  | --- | --- |
+  | the `ref`, `fetch`, `refresh`, `include`, `exclude` or `allow` of git and harness sources it has, at most 10 sources | 0 |
+  | `policy` (its levels, locations, sinks or memo), `identifiers`, `version`, `project`, `ontology` or `bindings` | at least 1 |
+  | a source's `label`, `connector`, `repo`, `path`, `branch`, `pulls`, `credentials`, `command`, `config` or any other key | at least 1 |
+  | a source added, removed or moved; any change of a source of another connector, an exec command included | at least 1 |
+  | the file added, deleted, not a mapping, or not readable at both ends by the hub (on GitLab it never reads it) | at least 1 |
+  | a path the charter protects (`knowledge.yaml` among `protected_paths`) | 3 |
 
 A protected glob matches the path within its repo, so `.github/workflows/**` protects that directory of every repo;
 `repo:glob` protects one repo's paths. `*` matches within a directory, `**` across directories, `?` one character.
 
-The tier only ever goes up. The hub computes it again from the paths the pull request really changes, when it opens
-the pull request and again before a merge, and from the paths the Judge's worker read in the diff: a proposal of docs
-whose pull request changes code is tier 1 from then on, and a sign of score hacking makes it tier 3.
+The tier only ever goes up. The hub computes it again from the paths the pull request really changes, with what the
+graph says of them (read as the owner of the night shift) and what the pull request does to knowledge.yaml, when it
+opens the pull request and again before a merge, and from the paths the Judge's worker read in the diff: a proposal of
+docs whose pull request changes code is tier 1 from then on, and a sign of score hacking makes it tier 3.
 
 A proposal like one the owner rejected in the last 30 days (the same kind and paths, or the same kind and title when
 it names no path) is dropped, unless its evidence counts at least twice the rejected one's.
@@ -270,7 +291,13 @@ reason the change keeps while it waits or stays open; `evo-agents hub curator pr
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
 trust, without the worker's variables or credentials, and only then starts the agent on the hub's prompt, which never
 holds what the Builder wrote. The change passes only when the agent passed it, every verify command and hidden check ran
-and exited 0, no sign of score hacking showed, and the commit judged is the pull request's head. On GitHub the hub
+and exited 0, no sign of score hacking showed, and the commit judged is the pull request's head. For a change of kind
+`kg_source` whose pull request changed knowledge.yaml, the Judge's inputs name the sources it edits and the worker runs
+two more checks, whose results join the verify results and must exit 0 too: `evo-agents harness validate` in the
+worktree, as code it does not trust, and a trial sync of each edited source by the daemon's own code, from the
+knowledge.yaml of the commit judged into a corpus of the run's own (a git source fetched under the lock of its
+checkout, and failed when the worker's nightly sync would skip it; a harness source over the worktree; nothing
+pushed). On GitHub the hub
 writes the verdict on the pull request as the check run `evo-agents Judge`. The Judge's inputs and verdict travel with
 the run's own key, which the hub hands the daemon in the claim alone and keeps as a SHA-256 (schema 0019): code on the
 worker's machine that reads the worker token neither reads a hidden check nor writes a verdict.
@@ -437,6 +464,7 @@ evo-agents hub kg health --project demo
 | 0051 | `session_facets`, the deterministic facet of each session and each run that ended |
 | 0052 | `kg_builds.coverage`, `kg_source_files`, `kg_health`: the health of a project's graph; the lens `kg_health` |
 | 0053 | runs of kind `replay`, `replay_tasks`, `curator_replays`: the suite of replay tasks and the replays of the changes |
+| 0054 | the kind `kg_source`, `curator_changes.knowledge`: what a pull request does to knowledge.yaml, key by key |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

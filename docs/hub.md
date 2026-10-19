@@ -680,7 +680,9 @@ heartbeat no longer keeps it. Schema 0051 (session facets) and schema 0052 (the 
 Memories, skills and knowledge graphs below. Schema 0053 adds the replay run (a run of kind `replay`, on the plan of
 the change it measures, which only the night shift queues and of which a project has one active at a time),
 `replay_tasks` and `curator_replays` (The Curator's replays, below); going back to 0052 deletes the replay runs and
-drops the two tables.
+drops the two tables. Schema 0054 adds the kind of change `kg_source` and `curator_changes.knowledge`, what a pull
+request of such a change does to knowledge.yaml (The Curator's changes, below); going back to 0053 deletes the
+proposals of kind `kg_source`, their changes with them, and drops the column.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -896,7 +898,10 @@ project with no graph).
 A proposal carries a draft plan of plan.schema.json in outcome steps (each step with `verify` and `acceptance`). The
 hub computes its tier, 0 to 3, from the charter, the paths it names (and what they reach in the knowledge graph) and
 its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint and test configuration, and the kinds
-that loosen a test, change a plan's verify or change CI are tier 3, always. A proposal like one the owner rejected in
+that loosen a test, change a plan's verify or change CI are tier 3, always. In a project with a graph on the hub, a
+path the graph has no file for, one the latest measure of its health found missing, stale or deleted (each source's
+`off`, below), or any path while the graph cannot be read, makes it at least tier 1, the reason saying which
+(`evo_agents/hub/server/change_tiers.py`). A proposal like one the owner rejected in
 the last 30 days is dropped unless its evidence doubled. When the review run ends, its tier 2 proposals with the most
 evidence become Inbox items of the owner (notifications of kind `proposal`), up to the charter's
 `max_decisions_per_day` a day; the others wait in the list. The project's admins answer:
@@ -978,14 +983,22 @@ the configuration of tests and types (`norecursedirs`, mypy's `ignore_errors`, `
 justfile, noxfile or package script a verify command runs, and a binary or unknown file where tests, CI or
 configuration live. A list of files GitHub cuts short (more than it lists, or fewer than the pull request says it
 changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The files also give the proposal its
-tier again (`tiers.tier_of` over the paths the pull request really changes, which only ever raises it), at the pull
-request and again before a merge, so a proposal of docs whose pull request changes code is tier 1 and stays open.
+tier again (`change_tiers.retier`: `tiers.tier_of` over the paths the pull request really changes, what the graph says
+they reach and cannot tell, read as the night shift's owner, and for kind `kg_source` what it does to each
+knowledge.yaml at a repo's root, read with `contents: read` at the merge base and the head and compared key by key,
+which only ever raises it), at the pull request and again before a merge, so a proposal of docs whose pull request
+changes code is tier 1 and stays open; a `kg_source` change that edits only the `ref`, `fetch`, `refresh`, `include`,
+`exclude` or `allow` of git and harness sources the file has stays tier 0, and what the hub read of the file stays
+with the change (`curator_changes.knowledge`).
 Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
 project's hidden checks (`docs/workers.md`, A judge run on the machine), never the Builder's transcript, on Codex when
 the project's policy declares a sink for Codex (an id `codex@...`) that clears the change's label and the worker has
 it, else on Claude Code with a model other than the Builder's. The change passes only when the Judge's agent passed it,
 every verify command and hidden check ran and exited 0, the worker found no sign either, and the commit judged is the
-pull request's head; the paths the worker read in the diff give the proposal its tier again. The hub writes the
+pull request's head; the paths the worker read in the diff give the proposal its tier again. For a change whose
+`curator_changes.knowledge` is set, the judge inputs' `knowledge` names two more checks the worker runs, `evo-agents
+harness validate` and a trial sync of each source the change edits, and the verdict's verify results must hold each
+of them, exited 0. The hub writes the
 verdict on the pull request as a check run of the workers' App, `evo-agents Judge`, and merges the pull request with
 the workers' App, at the head the Judge passed, only when the change is tier 0, tier 0 is in the charter's
 `auto_merge`, the repo's ruleset still keeps the Curator off (checked again then), the pull request is open into the
@@ -1377,7 +1390,9 @@ read, then what GitHub says now through the workers' App, with `contents: read` 
 how many commits of it the graph lacks (`behind`) and how many hours the oldest of them has waited (`lag_hours`), and
 the files of the branch's tree against those the build holds, as the source reads the tree (its `exclude` and `allow`
 over the default exclusions, and with `assets: false` only what it selects): `missing`, `stale` (another blob SHA) and
-`deleted`, counted with a few paths each and the `code:` evidence a finding can cite. A source no build holds, a repo
+`deleted`, counted with a few paths each and the `code:` evidence a finding can cite, and those paths whole in `off`
+(2,000 at most, `cut` when there were more), which the tier rules read and the night's figures leave out. A source no
+build holds, a repo
 off GitHub, a hub without the App, an App not installed on the repo, a commit GitHub does not know or a tree it cuts
 gives the reason (`why`) and keeps what was read. Once for the project, a measure scores retrieval on the latest
 build's graph (`evo_agents/hub/kg_health_eval.py`), the way `evo-agents kg eval` scores it, with the plan-step

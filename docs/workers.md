@@ -1863,6 +1863,15 @@ at the commit judged before each one, every file a command left removed, those i
 command installs what it needs in the worktree itself, and the next one does again), and once it ended every process it left is killed (its process group, its
 session, and any process whose environment holds its marker). The log has each verify command with its exit code and
 the end of its output, and each hidden check by its number and its exit code alone, never its command or output.
+When the judge inputs name `knowledge` (a change of kind `kg_source` whose pull request changed knowledge.yaml), the
+preflight also looks for `evo-agents`, and after the verify commands the daemon runs two more checks, each a verify
+result under the name the inputs give it (`evo_agents/worker/runner/judge_knowledge.py`): `evo-agents harness validate`
+in the worktree, as code it does not trust, and a trial sync of each source the change edits, by its own code. A trial
+sync loads the project from a view under the run's directory, harness.yaml with each repo's path the worker's checkout
+of it and knowledge.yaml byte for byte from the commit judged, with a corpus of its own there, and syncs the source as
+the worker's sync of the graph would (Keeping the graph fresh): a git source fetched under the lock of its checkout,
+and failed (exit 1, the reason in its event) when that sync would skip it or the worker has no checkout of its repo; a
+harness source over the worktree itself; any other connector never runs, and nothing is pushed.
 Unless the diff showed a sign, the agent starts, the worktree put back once more, in the run's directory on the hub's
 prompt (`judge.build_judge_prompt`: the proposal and each step's what, verify and acceptance, never what the Builder
 wrote) and what the daemon ran, and ends its last message with its verdict as a JSON object (`{"verdict": "pass" |
