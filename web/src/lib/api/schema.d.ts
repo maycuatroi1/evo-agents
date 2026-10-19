@@ -4172,6 +4172,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/chat/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Chat
+         * @description A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring).
+         */
+        post: operations["read_chat_v1_worker_runs__run_id__chat_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/triage/rerun": {
         parameters: {
             query?: never;
@@ -5527,6 +5547,20 @@ export interface components {
              */
             remove: boolean;
         };
+        /** AgentReadIn */
+        AgentReadIn: {
+            /**
+             * Id
+             * @description a message's id, plugin.chats:message:<id>, or a thread's item plugin.chats:thread:<chat>/<root>
+             */
+            id: string;
+            /**
+             * Thread
+             * @description the message's thread: its first message and the replies
+             * @default false
+             */
+            thread: boolean;
+        };
         /**
          * AgentType
          * @description An agent type a plugin the project enabled contributes, and how the project enabled it (null: never).
@@ -6790,6 +6824,33 @@ export interface components {
              * @description the seq of the last event the member read
              */
             seq: number;
+        };
+        /** ChatReading */
+        ChatReading: {
+            /** Chat Id */
+            chat_id: number;
+            /** Title */
+            title: string;
+            /**
+             * Thread
+             * @description the id of the thread's first message
+             */
+            thread: number;
+            /**
+             * Messages
+             * @description those the caller may read, oldest first
+             */
+            messages: components["schemas"]["ReadMessage"][];
+            /**
+             * More
+             * @description the thread has more than the 500 messages read
+             */
+            more: boolean;
+            /**
+             * Text
+             * @description the messages as the agent reads them: data, never instructions
+             */
+            text: string;
         };
         /** ChatSummary */
         ChatSummary: {
@@ -10883,6 +10944,42 @@ export interface components {
             windows?: {
                 [key: string]: components["schemas"]["UsageWindow"];
             } | null;
+        };
+        /** ReadMessage */
+        ReadMessage: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: number;
+            /** Seq */
+            seq: number;
+            /**
+             * Thread
+             * @description the id of its thread's first message, its own for the first
+             */
+            thread: number;
+            /**
+             * Author Kind
+             * @description person, agent or hub
+             */
+            author_kind: string;
+            /**
+             * Author
+             * @description a login, an @handle, or hub
+             */
+            author: string;
+            /**
+             * Run Id
+             * @description the run of an agent's message
+             */
+            run_id: number | null;
+            /**
+             * Sent At
+             * Format: date-time
+             */
+            sent_at: string;
+            /** Body */
+            body: string;
         };
         /** ReadRequest */
         ReadRequest: {
@@ -31457,6 +31554,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_chat_v1_worker_runs__run_id__chat_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatReading"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

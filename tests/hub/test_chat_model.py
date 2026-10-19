@@ -91,7 +91,8 @@ def test_a_chat_run_snapshot_keeps_the_first_message_and_leaves_out_the_oldest_f
     text = "\n".join(blocks)
     assert len(text.encode()) <= chat_runs.SNAPSHOT_BYTES
     assert "[#50] owner, 2026-10-14 08:00 UTC:\nThe wait helper sleeps 5 seconds." in text, "the first message stays"
-    assert blocks[0].startswith("[") and blocks[0].endswith("older message(s) of the chat are left out of this prompt]")
+    assert blocks[0].startswith("[") and "older message(s) of the chat are left out of this prompt: " in blocks[0]
+    assert 'kg_search with kinds ["ChatMessage"]' in blocks[0] and "chat_thread" in blocks[0]  # how to find them again
     left = int(blocks[0][1:].split()[0])
     shown = [block for block in blocks if block.startswith("[#")]
     assert left + len(shown) == len(before) + len(thread) + 1, "every message is shown or counted"

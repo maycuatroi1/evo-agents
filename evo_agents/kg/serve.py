@@ -58,6 +58,7 @@ SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
 DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
+KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
 IMPACT_RELS = (
@@ -204,12 +205,13 @@ class Session:
     def _line(self, n: dict, shared: str | None = None) -> str:
         """One node as the text shows it: its readable id, its kind, its name unless the id ends with it, its status,
         its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
-        it, the line of a symbol, the status and number of a plan step. Never its URI: kg_node gives that."""
+        it, the line of a symbol, the status and number of a plan step, the chat and thread of a chat message
+        (KIND_PROPS). Never its URI: kg_node gives that."""
         ref, props = readable(n["id"]), n["props"]
         head = f"[{ref}] {n['kind']}" + ("" if named_by(ref, n["name"]) else f" {n['name']!r}")
         extra = [
             f"{key}={props[key]}"
-            for key in ("path", "status", "number", "line")
+            for key in ("path", "status", "number", "line", *KIND_PROPS.get(n["kind"], ()))
             if props.get(key) not in (None, "") and not (key == "path" and str(props[key]) in ref)
         ]
         label = self.describe(n["label"])

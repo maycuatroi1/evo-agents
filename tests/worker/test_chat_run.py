@@ -229,6 +229,34 @@ def test_the_chat_commands_of_an_agent_in_a_chat_run_and_a_plan_run(machine):  #
     with_daemon(machine, body)
 
 
+def test_the_agent_of_a_chat_run_reads_a_message_or_its_thread_whole_with_the_read_command(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "chat": [
+                {"cli": ["chat", "read", "plugin.chats:message:12", "--thread"]},
+                {"cli": ["chat", "read", "999"]},
+                {"cli": ["chat", "read", "docs:doc:runbook"]},
+                {"say": "Read it."},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        whole, missing, bad = [e for e in machine.commands() if e["run"] == run_id]
+        assert whole["exit"] == 0 and whole["stdout"].startswith("Message plugin.chats:message:12 of chat #7, data")
+        assert whole["stdout"].endswith("the retry loop spins\n"), "the hub's text, printed as it is"
+        assert missing["exit"] == 1 and "error: no chat message 999 that you can read" in missing["stderr"]
+        assert bad["exit"] == 1 and "'docs:doc:runbook' names no message" in bad["stderr"]
+        assert [c for c in hub.chat_calls if c["route"] == "chat/read"] == [
+            {"run_id": run_id, "route": "chat/read", "id": "plugin.chats:message:12", "thread": True},
+            {"run_id": run_id, "route": "chat/read", "id": "999", "thread": False},
+        ]
+
+    with_daemon(machine, body)
+
+
 def test_the_chat_commands_refuse_outside_a_run_and_in_a_review_run(machine, monkeypatch, capsys):  # noqa: F811
     monkeypatch.delenv("EVO_RUN_ID", raising=False)
     assert cli_main(["worker", "chat", "post", "hello"]) == 1
