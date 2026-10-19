@@ -777,7 +777,10 @@ def _command(hook: str) -> Callable:
     def command(args) -> int:
         try:
             with hooks.budget(BUDGET[hook]):
-                notes = hook_run(hook, hooks.read_payload())
+                payload = hooks.read_payload()
+                if hook == "session-end" and hooks.worker_run() is None:
+                    hooks.queue_transcript(payload, ended=True)  # the transcripts' own switch, not this one's
+                notes = hook_run(hook, payload)
                 if notes:
                     out = {
                         "hookSpecificOutput": {

@@ -6364,6 +6364,326 @@
       ],
       "json": null
     },
+    "hub sessions backfill": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--since"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "hub",
+          "dry_run",
+          "project",
+          "since",
+          "sessions",
+          "transcripts",
+          "complete",
+          "missing",
+          "missing_sessions",
+          "missing_ended",
+          "uploaded",
+          "projects",
+          "skipped",
+          "errors"
+        ]
+      }
+    },
+    "hub sessions delete": {
+      "positionals": [
+        {
+          "name": "session",
+          "metavar": "SESSION",
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--all"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "session_id",
+          "transcripts",
+          "parts",
+          "bytes"
+        ],
+        "schema": "TranscriptsDeleted"
+      }
+    },
+    "hub sessions list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--session"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--login"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--machine"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--runtime"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "claude-code",
+            "codex"
+          ]
+        },
+        {
+          "flags": [
+            "--since"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 500,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--offset"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "transcripts",
+          "total",
+          "limit",
+          "offset"
+        ],
+        "schema": "TranscriptList"
+      }
+    },
+    "hub sessions show": {
+      "positionals": [
+        {
+          "name": "session",
+          "metavar": "SESSION",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "session_id",
+          "transcripts"
+        ],
+        "schema": "SessionTranscripts"
+      }
+    },
+    "hub sessions sync": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--wait"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 0,
+          "maximum": 300,
+          "default": 0
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "hub",
+          "dry_run",
+          "project",
+          "since",
+          "sessions",
+          "transcripts",
+          "complete",
+          "missing",
+          "missing_sessions",
+          "missing_ended",
+          "uploaded",
+          "projects",
+          "skipped",
+          "errors"
+        ]
+      }
+    },
+    "hub sessions usage": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "sessions",
+          "transcripts",
+          "parts",
+          "bytes",
+          "raw_bytes",
+          "source_bytes",
+          "blob_bytes",
+          "deleted",
+          "first_at",
+          "last_at",
+          "retention_days",
+          "members"
+        ],
+        "schema": "TranscriptUsage"
+      }
+    },
     "hub skills list": {
       "positionals": [],
       "options": [
@@ -23032,6 +23352,732 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/DigestList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/transcripts/parts": {
+        "post": {
+          "tags": [
+            "transcripts"
+          ],
+          "summary": "Put Parts",
+          "description": "Commit the uploads of the request, then record each part that continues its transcript.",
+          "operationId": "put_parts_v1_projects__project__transcripts_parts_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PartsRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/PartsAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/transcripts/held": {
+        "post": {
+          "tags": [
+            "transcripts"
+          ],
+          "summary": "Held Transcripts",
+          "description": "How far the hub holds each of the caller's own transcripts of these sessions.",
+          "operationId": "held_transcripts_v1_projects__project__transcripts_held_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HeldRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HeldAnswer"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/transcripts": {
+        "get": {
+          "tags": [
+            "transcripts"
+          ],
+          "summary": "List Transcripts",
+          "description": "The transcripts of the project the caller may read, the latest updated first.",
+          "operationId": "list_transcripts_v1_projects__project__transcripts_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "session_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Session Id"
+              }
+            },
+            {
+              "name": "login",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "uploaded by this member",
+                "title": "Login"
+              },
+              "description": "uploaded by this member"
+            },
+            {
+              "name": "machine",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9-]{1,40}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Machine"
+              }
+            },
+            {
+              "name": "runtime",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "claude-code",
+                      "codex"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "Runtime"
+              }
+            },
+            {
+              "name": "since",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "updated at or after this time",
+                "title": "Since"
+              },
+              "description": "updated at or after this time"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 500,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "offset",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 20000,
+                "minimum": 0,
+                "default": 0,
+                "title": "Offset"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TranscriptList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "transcripts"
+          ],
+          "summary": "Delete Project Transcripts",
+          "description": "Delete the content of every transcript of the project; an admin of the project only.",
+          "operationId": "delete_project_transcripts_v1_projects__project__transcripts_delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TranscriptsDeleted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/transcripts/usage": {
+        "get": {
+          "tags": [
+            "transcripts"
+          ],
+          "summary": "Transcript Usage",
+          "description": "What the project's transcripts come to in the blob store, per member, with the retention.",
+          "operationId": "transcript_usage_v1_projects__project__transcripts_usage_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TranscriptUsage"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/transcripts/{session_id}": {
+        "get": {
+          "tags": [
+            "transcripts"
+          ],
+          "summary": "Show Session",
+          "description": "The transcripts of session ``session_id`` the caller may read, with their parts.",
+          "operationId": "show_session_v1_projects__project__transcripts__session_id__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "session_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "description": "the id Claude Code gives the session, as its transcript names it",
+                "title": "Session Id"
+              },
+              "description": "the id Claude Code gives the session, as its transcript names it"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SessionTranscripts"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "transcripts"
+          ],
+          "summary": "Delete Session",
+          "description": "Delete the content of the transcripts of session ``session_id``; an admin of the project only.",
+          "operationId": "delete_session_v1_projects__project__transcripts__session_id__delete",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "session_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+                "description": "the id Claude Code gives the session, as its transcript names it",
+                "title": "Session Id"
+              },
+              "description": "the id Claude Code gives the session, as its transcript names it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TranscriptsDeleted"
                   }
                 }
               }
@@ -42385,6 +43431,23 @@
           ],
           "title": "HeartbeatRequest"
         },
+        "HeldAnswer": {
+          "properties": {
+            "transcripts": {
+              "items": {
+                "$ref": "#/components/schemas/HeldTranscript"
+              },
+              "type": "array",
+              "title": "Transcripts",
+              "description": "the caller's transcripts of those sessions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "transcripts"
+          ],
+          "title": "HeldAnswer"
+        },
         "HeldBy": {
           "properties": {
             "run_id": {
@@ -42407,6 +43470,69 @@
             "state"
           ],
           "title": "HeldBy"
+        },
+        "HeldRequest": {
+          "properties": {
+            "session_ids": {
+              "items": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+              },
+              "type": "array",
+              "maxItems": 1000,
+              "minItems": 1,
+              "title": "Session Ids"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_ids"
+          ],
+          "title": "HeldRequest"
+        },
+        "HeldTranscript": {
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "file": {
+              "type": "string",
+              "title": "File"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "source_bytes": {
+              "type": "integer",
+              "title": "Source Bytes"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines"
+            },
+            "parts": {
+              "type": "integer",
+              "title": "Parts"
+            },
+            "deleted": {
+              "type": "boolean",
+              "title": "Deleted",
+              "description": "its content was deleted; the hub takes no more of it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_id",
+            "file",
+            "runtime",
+            "source_bytes",
+            "lines",
+            "parts",
+            "deleted"
+          ],
+          "title": "HeldTranscript"
         },
         "HiddenResult": {
           "properties": {
@@ -43461,6 +44587,34 @@
             "active_days"
           ],
           "title": "MemberCounts"
+        },
+        "MemberUsage": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "sessions": {
+              "type": "integer",
+              "title": "Sessions"
+            },
+            "transcripts": {
+              "type": "integer",
+              "title": "Transcripts"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "sessions",
+            "transcripts",
+            "bytes"
+          ],
+          "title": "MemberUsage"
         },
         "Memory": {
           "properties": {
@@ -45651,6 +46805,245 @@
             "worker_id"
           ],
           "title": "PairingState"
+        },
+        "PartIn": {
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$",
+              "title": "Session Id"
+            },
+            "file": {
+              "type": "string",
+              "maxLength": 512,
+              "pattern": "^(main|subagents(/[A-Za-z0-9_][A-Za-z0-9_.-]{0,199}){1,5})$",
+              "title": "File",
+              "description": "main for the session's own transcript, subagents/... for a subagent's"
+            },
+            "runtime": {
+              "type": "string",
+              "enum": [
+                "claude-code",
+                "codex"
+              ],
+              "title": "Runtime"
+            },
+            "machine": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9-]{1,40}$",
+              "title": "Machine",
+              "description": "the machine, as its hooks name it"
+            },
+            "cwd": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 4096
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cwd",
+              "description": "the session's directory"
+            },
+            "start": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Start",
+              "description": "the byte of the file on the machine the part starts at"
+            },
+            "end": {
+              "type": "integer",
+              "exclusiveMinimum": 0.0,
+              "title": "End",
+              "description": "the byte after its last"
+            },
+            "first_line": {
+              "type": "integer",
+              "minimum": 1.0,
+              "title": "First Line",
+              "description": "the number of its first line in the file"
+            },
+            "lines": {
+              "type": "integer",
+              "maximum": 100000000.0,
+              "minimum": 1.0,
+              "title": "Lines"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Sha256",
+              "description": "the blob of kind transcript that holds its lines, gzipped"
+            },
+            "size": {
+              "type": "integer",
+              "maximum": 50331648.0,
+              "minimum": 1.0,
+              "title": "Size",
+              "description": "bytes of that blob"
+            },
+            "raw_size": {
+              "type": "integer",
+              "maximum": 10000000000.0,
+              "minimum": 0.0,
+              "title": "Raw Size",
+              "description": "bytes of its redacted lines before gzip"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At",
+              "description": "the earliest timestamp of its lines"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At",
+              "description": "the latest"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_id",
+            "file",
+            "runtime",
+            "machine",
+            "start",
+            "end",
+            "first_line",
+            "lines",
+            "sha256",
+            "size",
+            "raw_size"
+          ],
+          "title": "PartIn",
+          "description": "One part of a transcript, as ``evo_agents.hub.transcripts.Part.wire`` sends it."
+        },
+        "PartOutcome": {
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "file": {
+              "type": "string",
+              "title": "File"
+            },
+            "start": {
+              "type": "integer",
+              "title": "Start"
+            },
+            "end": {
+              "type": "integer",
+              "title": "End"
+            },
+            "status": {
+              "type": "string",
+              "enum": [
+                "stored",
+                "held",
+                "conflict",
+                "missing",
+                "refused",
+                "deleted"
+              ],
+              "title": "Status"
+            },
+            "source_bytes": {
+              "type": "integer",
+              "title": "Source Bytes",
+              "description": "bytes of the file on the machine the hub holds now"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines",
+              "description": "lines of it the hub holds now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_id",
+            "file",
+            "start",
+            "end",
+            "status",
+            "source_bytes",
+            "lines"
+          ],
+          "title": "PartOutcome"
+        },
+        "PartsAnswer": {
+          "properties": {
+            "parts": {
+              "items": {
+                "$ref": "#/components/schemas/PartOutcome"
+              },
+              "type": "array",
+              "title": "Parts",
+              "description": "in the order of the files and their bytes"
+            },
+            "stored": {
+              "type": "integer",
+              "title": "Stored",
+              "description": "parts this request recorded"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes",
+              "description": "bytes of the blobs of those parts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "parts",
+            "stored",
+            "bytes"
+          ],
+          "title": "PartsAnswer"
+        },
+        "PartsRequest": {
+          "properties": {
+            "upload_ids": {
+              "items": {
+                "type": "string",
+                "format": "uuid4"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Upload Ids",
+              "description": "uploads of kind transcript to commit first"
+            },
+            "parts": {
+              "items": {
+                "$ref": "#/components/schemas/PartIn"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "minItems": 1,
+              "title": "Parts"
+            }
+          },
+          "type": "object",
+          "required": [
+            "parts"
+          ],
+          "title": "PartsRequest"
         },
         "PathIn": {
           "properties": {
@@ -53288,6 +54681,33 @@
           "title": "SessionDigest",
           "description": "The digest of one session, as ``evo_agents.hub.digest.build`` makes it."
         },
+        "SessionTranscripts": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "transcripts": {
+              "items": {
+                "$ref": "#/components/schemas/TranscriptFile"
+              },
+              "type": "array",
+              "title": "Transcripts",
+              "description": "the session's own (main) first, then its subagents'"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "session_id",
+            "transcripts"
+          ],
+          "title": "SessionTranscripts"
+        },
         "SettingsLayer": {
           "properties": {
             "kind": {
@@ -58887,6 +60307,541 @@
           ],
           "title": "ToolStat"
         },
+        "TranscriptFile": {
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "file": {
+              "type": "string",
+              "title": "File"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the member who uploaded it"
+            },
+            "machine": {
+              "type": "string",
+              "title": "Machine"
+            },
+            "cwd": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cwd"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label"
+            },
+            "source_bytes": {
+              "type": "integer",
+              "title": "Source Bytes",
+              "description": "bytes of the file on the machine the hub holds"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines"
+            },
+            "parts": {
+              "type": "integer",
+              "title": "Parts"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size",
+              "description": "bytes of its parts in the blob store, gzipped"
+            },
+            "raw_size": {
+              "type": "integer",
+              "title": "Raw Size",
+              "description": "bytes of its redacted lines"
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sha256",
+              "description": "the chain of its parts' hashes (evo_agents.hub.transcripts.chain)"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At",
+              "description": "its first part"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "its latest part, or its deletion"
+            },
+            "deleted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deleted At",
+              "description": "when its content was deleted; null while the hub holds it"
+            },
+            "part_list": {
+              "items": {
+                "$ref": "#/components/schemas/TranscriptPart"
+              },
+              "type": "array",
+              "title": "Part List",
+              "description": "its parts in order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_id",
+            "file",
+            "runtime",
+            "login",
+            "machine",
+            "cwd",
+            "label",
+            "source_bytes",
+            "lines",
+            "parts",
+            "size",
+            "raw_size",
+            "sha256",
+            "started_at",
+            "ended_at",
+            "created_at",
+            "updated_at",
+            "deleted_at",
+            "part_list"
+          ],
+          "title": "TranscriptFile"
+        },
+        "TranscriptList": {
+          "properties": {
+            "transcripts": {
+              "items": {
+                "$ref": "#/components/schemas/TranscriptSummary"
+              },
+              "type": "array",
+              "title": "Transcripts",
+              "description": "the latest updated first"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total",
+              "description": "transcripts the caller may read that match the filters"
+            },
+            "limit": {
+              "type": "integer",
+              "title": "Limit"
+            },
+            "offset": {
+              "type": "integer",
+              "title": "Offset"
+            }
+          },
+          "type": "object",
+          "required": [
+            "transcripts",
+            "total",
+            "limit",
+            "offset"
+          ],
+          "title": "TranscriptList"
+        },
+        "TranscriptPart": {
+          "properties": {
+            "seq": {
+              "type": "integer",
+              "title": "Seq"
+            },
+            "source_start": {
+              "type": "integer",
+              "title": "Source Start"
+            },
+            "source_end": {
+              "type": "integer",
+              "title": "Source End"
+            },
+            "first_line": {
+              "type": "integer",
+              "title": "First Line"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines"
+            },
+            "sha256": {
+              "type": "string",
+              "title": "Sha256"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size"
+            },
+            "raw_size": {
+              "type": "integer",
+              "title": "Raw Size"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "seq",
+            "source_start",
+            "source_end",
+            "first_line",
+            "lines",
+            "sha256",
+            "size",
+            "raw_size",
+            "created_at"
+          ],
+          "title": "TranscriptPart"
+        },
+        "TranscriptSummary": {
+          "properties": {
+            "session_id": {
+              "type": "string",
+              "title": "Session Id"
+            },
+            "file": {
+              "type": "string",
+              "title": "File"
+            },
+            "runtime": {
+              "type": "string",
+              "title": "Runtime"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login",
+              "description": "the member who uploaded it"
+            },
+            "machine": {
+              "type": "string",
+              "title": "Machine"
+            },
+            "cwd": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cwd"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label"
+            },
+            "source_bytes": {
+              "type": "integer",
+              "title": "Source Bytes",
+              "description": "bytes of the file on the machine the hub holds"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines"
+            },
+            "parts": {
+              "type": "integer",
+              "title": "Parts"
+            },
+            "size": {
+              "type": "integer",
+              "title": "Size",
+              "description": "bytes of its parts in the blob store, gzipped"
+            },
+            "raw_size": {
+              "type": "integer",
+              "title": "Raw Size",
+              "description": "bytes of its redacted lines"
+            },
+            "sha256": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sha256",
+              "description": "the chain of its parts' hashes (evo_agents.hub.transcripts.chain)"
+            },
+            "started_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Started At"
+            },
+            "ended_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ended At"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At",
+              "description": "its first part"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At",
+              "description": "its latest part, or its deletion"
+            },
+            "deleted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Deleted At",
+              "description": "when its content was deleted; null while the hub holds it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "session_id",
+            "file",
+            "runtime",
+            "login",
+            "machine",
+            "cwd",
+            "label",
+            "source_bytes",
+            "lines",
+            "parts",
+            "size",
+            "raw_size",
+            "sha256",
+            "started_at",
+            "ended_at",
+            "created_at",
+            "updated_at",
+            "deleted_at"
+          ],
+          "title": "TranscriptSummary"
+        },
+        "TranscriptUsage": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "sessions": {
+              "type": "integer",
+              "title": "Sessions",
+              "description": "sessions whose transcripts the hub holds"
+            },
+            "transcripts": {
+              "type": "integer",
+              "title": "Transcripts",
+              "description": "their transcript files, subagents' included"
+            },
+            "parts": {
+              "type": "integer",
+              "title": "Parts"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes",
+              "description": "bytes of their parts in the blob store, gzipped"
+            },
+            "raw_bytes": {
+              "type": "integer",
+              "title": "Raw Bytes",
+              "description": "bytes of their redacted lines"
+            },
+            "source_bytes": {
+              "type": "integer",
+              "title": "Source Bytes",
+              "description": "bytes of the files on the machines they came from"
+            },
+            "blob_bytes": {
+              "type": "integer",
+              "title": "Blob Bytes",
+              "description": "bytes of the distinct blobs of kind transcript the project holds"
+            },
+            "deleted": {
+              "type": "integer",
+              "title": "Deleted",
+              "description": "transcripts whose content was deleted; their rows stay"
+            },
+            "first_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "First At",
+              "description": "the earliest first part"
+            },
+            "last_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Last At",
+              "description": "the latest part"
+            },
+            "retention_days": {
+              "type": "integer",
+              "title": "Retention Days",
+              "description": "days a transcript stays after its latest part (EVO_HUB_TRANSCRIPT_DAYS)"
+            },
+            "members": {
+              "items": {
+                "$ref": "#/components/schemas/MemberUsage"
+              },
+              "type": "array",
+              "title": "Members",
+              "description": "per member who uploaded, the most bytes first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "sessions",
+            "transcripts",
+            "parts",
+            "bytes",
+            "raw_bytes",
+            "source_bytes",
+            "blob_bytes",
+            "deleted",
+            "first_at",
+            "last_at",
+            "retention_days",
+            "members"
+          ],
+          "title": "TranscriptUsage"
+        },
+        "TranscriptsDeleted": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id",
+              "description": "the session; null when every transcript of the project went"
+            },
+            "transcripts": {
+              "type": "integer",
+              "title": "Transcripts",
+              "description": "transcripts whose content was deleted"
+            },
+            "parts": {
+              "type": "integer",
+              "title": "Parts"
+            },
+            "bytes": {
+              "type": "integer",
+              "title": "Bytes"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "session_id",
+            "transcripts",
+            "parts",
+            "bytes"
+          ],
+          "title": "TranscriptsDeleted"
+        },
         "TriageActed": {
           "properties": {
             "message_id": {
@@ -59195,6 +61150,7 @@
                 "kg-blob",
                 "run-log",
                 "run-diff",
+                "transcript",
                 "plugin-bundle"
               ],
               "title": "Kind"

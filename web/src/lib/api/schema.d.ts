@@ -2788,6 +2788,114 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/transcripts/parts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Put Parts
+         * @description Commit the uploads of the request, then record each part that continues its transcript.
+         */
+        post: operations["put_parts_v1_projects__project__transcripts_parts_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/held": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Held Transcripts
+         * @description How far the hub holds each of the caller's own transcripts of these sessions.
+         */
+        post: operations["held_transcripts_v1_projects__project__transcripts_held_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Transcripts
+         * @description The transcripts of the project the caller may read, the latest updated first.
+         */
+        get: operations["list_transcripts_v1_projects__project__transcripts_get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Project Transcripts
+         * @description Delete the content of every transcript of the project; an admin of the project only.
+         */
+        delete: operations["delete_project_transcripts_v1_projects__project__transcripts_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/usage": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Transcript Usage
+         * @description What the project's transcripts come to in the blob store, per member, with the retention.
+         */
+        get: operations["transcript_usage_v1_projects__project__transcripts_usage_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/transcripts/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Session
+         * @description The transcripts of session ``session_id`` the caller may read, with their parts.
+         */
+        get: operations["show_session_v1_projects__project__transcripts__session_id__get"];
+        put?: never;
+        post?: never;
+        /**
+         * Delete Session
+         * @description Delete the content of the transcripts of session ``session_id``; an admin of the project only.
+         */
+        delete: operations["delete_session_v1_projects__project__transcripts__session_id__delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -8119,6 +8227,14 @@ export interface components {
             /** @description what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the hub shows, so a daemon sends it every time once it has one */
             self_update?: components["schemas"]["SelfUpdateReport"] | null;
         };
+        /** HeldAnswer */
+        HeldAnswer: {
+            /**
+             * Transcripts
+             * @description the caller's transcripts of those sessions
+             */
+            transcripts: components["schemas"]["HeldTranscript"][];
+        };
         /** HeldBy */
         HeldBy: {
             /** Run Id */
@@ -8127,6 +8243,31 @@ export interface components {
             project: string;
             /** State */
             state: string;
+        };
+        /** HeldRequest */
+        HeldRequest: {
+            /** Session Ids */
+            session_ids: string[];
+        };
+        /** HeldTranscript */
+        HeldTranscript: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Runtime */
+            runtime: string;
+            /** Source Bytes */
+            source_bytes: number;
+            /** Lines */
+            lines: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Deleted
+             * @description its content was deleted; the hub takes no more of it
+             */
+            deleted: boolean;
         };
         /** HiddenResult */
         HiddenResult: {
@@ -8560,6 +8701,17 @@ export interface components {
             not_signed_in: number;
             /** Active Days */
             active_days: number;
+        };
+        /** MemberUsage */
+        MemberUsage: {
+            /** Login */
+            login: string;
+            /** Sessions */
+            sessions: number;
+            /** Transcripts */
+            transcripts: number;
+            /** Bytes */
+            bytes: number;
         };
         /** Memory */
         Memory: {
@@ -9546,6 +9698,130 @@ export interface components {
              * @description the worker the pairing made, once a machine joined with it
              */
             worker_id: number | null;
+        };
+        /**
+         * PartIn
+         * @description One part of a transcript, as ``evo_agents.hub.transcripts.Part.wire`` sends it.
+         */
+        PartIn: {
+            /** Session Id */
+            session_id: string;
+            /**
+             * File
+             * @description main for the session's own transcript, subagents/... for a subagent's
+             */
+            file: string;
+            /**
+             * Runtime
+             * @enum {string}
+             */
+            runtime: "claude-code" | "codex";
+            /**
+             * Machine
+             * @description the machine, as its hooks name it
+             */
+            machine: string;
+            /**
+             * Cwd
+             * @description the session's directory
+             */
+            cwd?: string | null;
+            /**
+             * Start
+             * @description the byte of the file on the machine the part starts at
+             */
+            start: number;
+            /**
+             * End
+             * @description the byte after its last
+             */
+            end: number;
+            /**
+             * First Line
+             * @description the number of its first line in the file
+             */
+            first_line: number;
+            /** Lines */
+            lines: number;
+            /**
+             * Sha256
+             * @description the blob of kind transcript that holds its lines, gzipped
+             */
+            sha256: string;
+            /**
+             * Size
+             * @description bytes of that blob
+             */
+            size: number;
+            /**
+             * Raw Size
+             * @description bytes of its redacted lines before gzip
+             */
+            raw_size: number;
+            /**
+             * Started At
+             * @description the earliest timestamp of its lines
+             */
+            started_at?: string | null;
+            /**
+             * Ended At
+             * @description the latest
+             */
+            ended_at?: string | null;
+        };
+        /** PartOutcome */
+        PartOutcome: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Start */
+            start: number;
+            /** End */
+            end: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "stored" | "held" | "conflict" | "missing" | "refused" | "deleted";
+            /**
+             * Source Bytes
+             * @description bytes of the file on the machine the hub holds now
+             */
+            source_bytes: number;
+            /**
+             * Lines
+             * @description lines of it the hub holds now
+             */
+            lines: number;
+        };
+        /** PartsAnswer */
+        PartsAnswer: {
+            /**
+             * Parts
+             * @description in the order of the files and their bytes
+             */
+            parts: components["schemas"]["PartOutcome"][];
+            /**
+             * Stored
+             * @description parts this request recorded
+             */
+            stored: number;
+            /**
+             * Bytes
+             * @description bytes of the blobs of those parts
+             */
+            bytes: number;
+        };
+        /** PartsRequest */
+        PartsRequest: {
+            /**
+             * Upload Ids
+             * @description uploads of kind transcript to commit first
+             */
+            upload_ids?: string[];
+            /** Parts */
+            parts: components["schemas"]["PartIn"][];
         };
         /** PathIn */
         PathIn: {
@@ -12961,6 +13237,18 @@ export interface components {
              */
             spool_reads?: number | null;
         };
+        /** SessionTranscripts */
+        SessionTranscripts: {
+            /** Project */
+            project: string;
+            /** Session Id */
+            session_id: string;
+            /**
+             * Transcripts
+             * @description the session's own (main) first, then its subagents'
+             */
+            transcripts: components["schemas"]["TranscriptFile"][];
+        };
         /**
          * SettingsLayer
          * @description One layer of a setting at one version.
@@ -15197,6 +15485,267 @@ export interface components {
              */
             duration_ms: number;
         };
+        /** TranscriptFile */
+        TranscriptFile: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Login
+             * @description the member who uploaded it
+             */
+            login: string;
+            /** Machine */
+            machine: string;
+            /** Cwd */
+            cwd: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source Bytes
+             * @description bytes of the file on the machine the hub holds
+             */
+            source_bytes: number;
+            /** Lines */
+            lines: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Size
+             * @description bytes of its parts in the blob store, gzipped
+             */
+            size: number;
+            /**
+             * Raw Size
+             * @description bytes of its redacted lines
+             */
+            raw_size: number;
+            /**
+             * Sha256
+             * @description the chain of its parts' hashes (evo_agents.hub.transcripts.chain)
+             */
+            sha256: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first part
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest part, or its deletion
+             */
+            updated_at: string;
+            /**
+             * Deleted At
+             * @description when its content was deleted; null while the hub holds it
+             */
+            deleted_at: string | null;
+            /**
+             * Part List
+             * @description its parts in order
+             */
+            part_list: components["schemas"]["TranscriptPart"][];
+        };
+        /** TranscriptList */
+        TranscriptList: {
+            /**
+             * Transcripts
+             * @description the latest updated first
+             */
+            transcripts: components["schemas"]["TranscriptSummary"][];
+            /**
+             * Total
+             * @description transcripts the caller may read that match the filters
+             */
+            total: number;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+        };
+        /** TranscriptPart */
+        TranscriptPart: {
+            /** Seq */
+            seq: number;
+            /** Source Start */
+            source_start: number;
+            /** Source End */
+            source_end: number;
+            /** First Line */
+            first_line: number;
+            /** Lines */
+            lines: number;
+            /** Sha256 */
+            sha256: string;
+            /** Size */
+            size: number;
+            /** Raw Size */
+            raw_size: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** TranscriptSummary */
+        TranscriptSummary: {
+            /** Session Id */
+            session_id: string;
+            /** File */
+            file: string;
+            /** Runtime */
+            runtime: string;
+            /**
+             * Login
+             * @description the member who uploaded it
+             */
+            login: string;
+            /** Machine */
+            machine: string;
+            /** Cwd */
+            cwd: string | null;
+            /** Label */
+            label: {
+                [key: string]: unknown;
+            };
+            /**
+             * Source Bytes
+             * @description bytes of the file on the machine the hub holds
+             */
+            source_bytes: number;
+            /** Lines */
+            lines: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Size
+             * @description bytes of its parts in the blob store, gzipped
+             */
+            size: number;
+            /**
+             * Raw Size
+             * @description bytes of its redacted lines
+             */
+            raw_size: number;
+            /**
+             * Sha256
+             * @description the chain of its parts' hashes (evo_agents.hub.transcripts.chain)
+             */
+            sha256: string | null;
+            /** Started At */
+            started_at: string | null;
+            /** Ended At */
+            ended_at: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             * @description its first part
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             * @description its latest part, or its deletion
+             */
+            updated_at: string;
+            /**
+             * Deleted At
+             * @description when its content was deleted; null while the hub holds it
+             */
+            deleted_at: string | null;
+        };
+        /** TranscriptUsage */
+        TranscriptUsage: {
+            /** Project */
+            project: string;
+            /**
+             * Sessions
+             * @description sessions whose transcripts the hub holds
+             */
+            sessions: number;
+            /**
+             * Transcripts
+             * @description their transcript files, subagents' included
+             */
+            transcripts: number;
+            /** Parts */
+            parts: number;
+            /**
+             * Bytes
+             * @description bytes of their parts in the blob store, gzipped
+             */
+            bytes: number;
+            /**
+             * Raw Bytes
+             * @description bytes of their redacted lines
+             */
+            raw_bytes: number;
+            /**
+             * Source Bytes
+             * @description bytes of the files on the machines they came from
+             */
+            source_bytes: number;
+            /**
+             * Blob Bytes
+             * @description bytes of the distinct blobs of kind transcript the project holds
+             */
+            blob_bytes: number;
+            /**
+             * Deleted
+             * @description transcripts whose content was deleted; their rows stay
+             */
+            deleted: number;
+            /**
+             * First At
+             * @description the earliest first part
+             */
+            first_at: string | null;
+            /**
+             * Last At
+             * @description the latest part
+             */
+            last_at: string | null;
+            /**
+             * Retention Days
+             * @description days a transcript stays after its latest part (EVO_HUB_TRANSCRIPT_DAYS)
+             */
+            retention_days: number;
+            /**
+             * Members
+             * @description per member who uploaded, the most bytes first
+             */
+            members: components["schemas"]["MemberUsage"][];
+        };
+        /** TranscriptsDeleted */
+        TranscriptsDeleted: {
+            /** Project */
+            project: string;
+            /**
+             * Session Id
+             * @description the session; null when every transcript of the project went
+             */
+            session_id: string | null;
+            /**
+             * Transcripts
+             * @description transcripts whose content was deleted
+             */
+            transcripts: number;
+            /** Parts */
+            parts: number;
+            /** Bytes */
+            bytes: number;
+        };
         /** TriageActed */
         TriageActed: {
             /**
@@ -15358,7 +15907,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "plugin-bundle";
+            kind: "skill-bundle" | "kg-log" | "kg-blob" | "run-log" | "run-diff" | "transcript" | "plugin-bundle";
         };
         /** UploadRequest */
         UploadRequest: {
@@ -25557,6 +26106,456 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DigestList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    put_parts_v1_projects__project__transcripts_parts_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PartsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PartsAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    held_transcripts_v1_projects__project__transcripts_held_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HeldRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HeldAnswer"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_transcripts_v1_projects__project__transcripts_get: {
+        parameters: {
+            query?: {
+                session_id?: string | null;
+                /** @description uploaded by this member */
+                login?: string | null;
+                machine?: string | null;
+                runtime?: ("claude-code" | "codex") | null;
+                /** @description updated at or after this time */
+                since?: string | null;
+                limit?: number;
+                offset?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_project_transcripts_v1_projects__project__transcripts_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptsDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    transcript_usage_v1_projects__project__transcripts_usage_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptUsage"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_session_v1_projects__project__transcripts__session_id__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SessionTranscripts"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    delete_session_v1_projects__project__transcripts__session_id__delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+                /** @description the id Claude Code gives the session, as its transcript names it */
+                session_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TranscriptsDeleted"];
                 };
             };
             /** @description Unauthorized */

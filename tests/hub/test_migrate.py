@@ -89,6 +89,7 @@ TABLES |= pg.BUILDER_TABLES  # migration 0043
 TABLES |= pg.TRIAGE_TABLES  # migration 0044
 TABLES |= pg.SRS_TABLES  # migration 0046
 TABLES |= pg.TASKS_TABLES  # migration 0047
+TABLES |= pg.TRANSCRIPT_TABLES  # migration 0049
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -163,8 +164,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_eighty_eight_tables(hub_db):
-    assert len(TABLES) == 88  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_ninety_tables(hub_db):
+    assert len(TABLES) == 90  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)

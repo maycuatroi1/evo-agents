@@ -41,6 +41,8 @@ Jobs (names in ``evo_agents.hub.jobs``):
   again with a backoff (``evo_agents.hub.plugin_events``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
+- ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
+  EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 - ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
@@ -298,6 +300,15 @@ async def prune_digests(context: JobContext, timestamp: int | None = None) -> di
     from evo_agents.hub.server.digests import prune_digests as prune
 
     return await prune(hub(context).engine)
+
+
+@queue.periodic(cron="53 4 * * *")
+@queue.task(name=jobs.PRUNE_TRANSCRIPTS, pass_context=True, queueing_lock=jobs.PRUNE_TRANSCRIPTS)
+async def prune_transcripts(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.transcript_prune import prune_transcripts as prune
+
+    found = hub(context)
+    return await prune(found.engine, found.blobs, found.config.transcript_days)
 
 
 @queue.periodic(cron="43 3 * * *")

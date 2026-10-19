@@ -92,6 +92,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
+| session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}` (Session transcripts, below) |
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
@@ -1071,6 +1072,61 @@ may. When the hub does not answer, the digest waits in `~/.evo/hub/digest-state.
 the hub pushes it, with up to three others that waited. `hub.prune_digests` deletes the digests not pushed for 90
 days.
 
+**Session transcripts.** The whole transcript of every Claude Code and Codex session whose directory belongs to a hub
+project goes to the hub too, with no threshold of messages: the session's own JSONL file and each of its subagents'
+(Claude Code's `<session>/subagents/**/*.jsonl`, a Codex thread whose `session_meta` names another session), every line,
+in parts as the session goes on. Stop and SessionEnd (`evo_agents/hub/transcripts.py`, `on_turn`) only add the session
+to `~/.evo/hub/transcripts/queue.json` and start `evo-agents hub sessions sync --wait 15` in the background, detached
+from the hook's output, so the hook waits for none of it; SessionStart starts one when sessions wait in the queue or
+the last sync of the machine was an hour ago or more. The sync (`evo_agents/hub/transcript_sync.py`) takes the
+machine's lock (a second one leaves at once), waits 15 seconds so the turns of a moment go in one part, then sends the
+queued sessions, their subagents' transcripts and every transcript changed since an hour before the last sync, takes
+the queue again before it lets the lock go, and after it starts another sync when a hook queued a session meanwhile. A
+directory decides its project as for memories; a directory of no project sends nothing, nor does the session of a
+worker run, whose log is on the hub already. `EVO_HUB_TRANSCRIPTS=0` (or `off`) turns it off. A sync that cannot
+reach the hub sends nothing more and the next one sends it; each writes one line to `~/.evo/hub/transcripts/sync.log`.
+
+A part is the whole lines from where the hub's copy ends to at most 8 MiB further (its first line whole however long; a
+line over 32 MiB becomes `{"type": "evo-hub-omitted", "bytes": N}`), each line redacted on the machine with
+`redact_data`, the same as the digest's (a line that is not JSON with `redact`), the machine's hub token among the
+values replaced. A line redaction leaves unchanged keeps its bytes, so line N on the hub is line N of the file. A line
+not finished yet waits for the next part. The part goes as a blob of kind `transcript` (gzip of its lines, at most 48
+MiB, the same lines making the same blob) through `POST /v1/blobs/uploads` and the presigned PUT, then `POST
+/v1/projects/{project}/transcripts/parts` commits the uploads and records each part under the write rule (the writer
+role and a hub sink that clears the project's default label, which every transcript carries). A part continues its
+file: it starts at the byte where the hub's copy ends and at the line after its last. Each part comes back `stored`,
+`held` (the hub has this very part: a request sent again), `conflict` (send again from the `source_bytes` the answer
+gives), `missing` (no blob of that hash: upload it), `refused` (another member sent this transcript first) or
+`deleted`. So a part sent twice is stored once, and a machine that went down mid-way loses nothing. A Codex rollout
+compressed to `.jsonl.zst` is read through `compression.zstd`, the `zstandard` module or the `zstd` command; without
+any it is skipped and said so. Reading and redacting a part took about 1.9 seconds for 8 MiB on an Apple M4 Pro
+(2026-10-19), so 5 GB of transcripts take a backfill about 20 minutes.
+
+`evo-agents hub sessions backfill` sends every transcript still on the machine that the hub does not hold whole
+(`--project`, `--since YYYY-MM-DD`), asking the hub first how far it holds each (`POST .../transcripts/held`), so a
+second run sends nothing, nor does a machine that lost `~/.evo/hub/transcripts/state.json`. `--dry-run` counts the
+sessions and files of each project, those the hub holds whole, those it misses, and among the sessions missing one
+those unchanged for more than an hour (`missing_ended`), which should be on the hub already. It looks in
+`$CLAUDE_CONFIG_DIR/projects` (else `~/.claude/projects`), every `~/.claude*/projects`, the projects directories a hook
+named, and `$CODEX_HOME` (else `~/.codex`) `sessions` and `archived_sessions`. A transcript deleted on the hub is not
+sent again.
+
+Postgres holds the index (schema 0049): `session_transcripts`, a row per transcript file (session, `file` `main` or
+`subagents/...`, project, the member who sent it first, machine, runtime, directory, the project's label, bytes of the
+file the hub holds, lines, parts, their bytes gzipped and redacted, the chain of their hashes, when its lines start
+and end), and `transcript_parts`, the parts in order; the content lives in the blob store. Going back to 0048 drops
+both tables and leaves the blobs as rows of their project. `GET /v1/projects/{project}/transcripts` lists the
+transcripts the caller may read (by session, member, machine, runtime, `since`), and `GET .../transcripts/{session}`
+shows one session's with their parts; both need a grant and go through the read rule with the transcript's label and
+the sink, as digests do. `GET .../transcripts/usage` counts what the project holds: sessions, transcripts, parts,
+bytes in the blob store, per member, and the retention (`evo-agents hub sessions usage`, `list`, `show`). An admin of
+the project deletes the content of one session's transcripts or of all of the project's (`DELETE
+.../transcripts/{session}`, `DELETE .../transcripts`, `evo-agents hub sessions delete SESSION|--all`), with an audit
+row `transcript.delete`; the rows stay, marked deleted and without parts, so no backfill sends them again, and the
+blobs no part names leave the bucket. `hub.prune_transcripts` does the same for the transcripts that got no part for
+`EVO_HUB_TRANSCRIPT_DAYS` days (365 by default), and drops the blobs of kind `transcript` a project holds that no part
+names, a day after they came. Neither touches what is computed from transcripts elsewhere.
+
 **Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
 result out of the model's context. A successful result of Bash, Grep, WebFetch or an MCP tool longer than 10,000
 characters is written whole to `~/.evo/tool-output/<session>/<tool_use_id>.txt` (directories 0700, file 0600), and
@@ -1469,8 +1525,9 @@ Postgres holds metadata; the blob store holds bytes. The bucket stays private, a
 be limited to that one bucket. Keys:
 
 - `blobs/sha256/<sha256>`: a blob, written only by the hub and only with bytes whose SHA-256 the hub computed. A
-  blob never changes. The hub deletes only built graphs that the retention dropped, and the old graphs and source
-  blobs holding a secret that an admin's scrub deleted (see above), and only once no row refers to them. The `blobs`
+  blob never changes. The hub deletes only built graphs that the retention dropped, the old graphs and source
+  blobs holding a secret that an admin's scrub deleted (see above), and the parts of session transcripts an admin or
+  the retention deleted (Session transcripts, above), and only once no row refers to them. The `blobs`
   table says which projects hold each.
 - `uploads/<upload_id>` and `uploads/<upload_id>.sealed`: an upload in progress, and the hub's own copy of it.
 
@@ -1479,7 +1536,7 @@ the declared size only), PUTs the bytes straight to R2, then calls `POST /v1/blo
 back, hashes it, and copies it under `blobs/sha256/` only when size and hash match what the client declared. A blob
 another project holds must still be uploaded and checked, so knowing a hash gives nobody another project's bytes.
 Limits per kind: 10 MiB for a skill bundle, 32 MiB for a plugin bundle, 256 MiB for a run log, 64 MiB for a source
-file.
+file, 48 MiB for a part of a session's transcript.
 
 A commit's time grows with its uploads, because R2 takes about a quarter of a second per call. The hub copies each
 upload to a sealed key, streams the copy through SHA-256 in 1 MiB pieces, and copies it to its blob key: three calls
@@ -1535,6 +1592,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   ago counted again, its outcome (keep, revert or unclear) added to its proposal's ledger, and a revert proposed when
   they got worse (The Curator's ledger, outcomes and circuit breaker, above).
 - `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
+- `hub.prune_transcripts`, daily at 04:53: deletes the content of the session transcripts that got no part for
+  `EVO_HUB_TRANSCRIPT_DAYS` days, keeping their rows marked deleted, and the blobs of kind `transcript` no part names
+  (Session transcripts, above).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
@@ -1664,6 +1724,7 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_KG_KEEP_ARTIFACTS` | api, worker | newest built graphs of each project whose artifact stays in the bucket; older ones are deleted every hour; default `3`, at least `1` |
 | `EVO_HUB_RUN_LOG_DAYS` | worker | days the events of a finished run are kept before the daily pruning deletes them; default `30`, from `1` to `3650` |
 | `EVO_HUB_AUDIT_DAYS` | worker | days an audit row is kept before the daily `hub.prune_audit` deletes it; default `365`, from `30` to `3650` |
+| `EVO_HUB_TRANSCRIPT_DAYS` | api, worker | days a session's transcript is kept after its latest part before the daily `hub.prune_transcripts` deletes its content; default `365`, from `30` to `3650`; `GET .../transcripts/usage` says it |
 | `EVO_HUB_POOL_MIN_SIZE`, `EVO_HUB_POOL_MAX_SIZE`, `EVO_HUB_POOL_TIMEOUT` | api, worker | the connection pool: its smallest and largest size and the seconds a request waits for a connection; defaults `1`, `10` and `10` |
 | `EVO_HUB_RUN_LEASE_SECONDS` | api | how long a claim and each heartbeat of a worker daemon lease a run for before the reaper finds it lost; default `300`, from `5` to `3600`, and well above the daemon's heartbeat of 15 seconds (the end-to-end tests shorten it) |
 | `EVO_HUB_DECISION_WAIT_SECONDS` | worker | how long a plan run waits for its owner's answer before the reaper parks it; default `86400` (a day), from `1` to `604800` (the end-to-end tests shorten it) |

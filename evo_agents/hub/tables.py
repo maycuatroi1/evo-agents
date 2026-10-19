@@ -1,7 +1,7 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
-``tables_settings``, ``tables_triage`` and ``tables_workers`` hold them by area; ``tables.srs`` and ``tables.tasks`` are
-core plugins'.
+``tables_sessions``, ``tables_settings``, ``tables_triage`` and ``tables_workers`` hold them by area; ``tables.srs``
+and ``tables.tasks`` are core plugins'.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -40,6 +40,7 @@ from evo_agents.hub import (
     tables_accounts,
     tables_plugins,
     tables_profiles,
+    tables_sessions,
     tables_settings,
     tables_triage,
     tables_workers,
@@ -924,31 +925,7 @@ schedules = Table(
     UniqueConstraint("project_id", "kind", name="schedules_project_id_kind_key"),
 )
 
-# Session digests and the tool figures of runs (0013)
-
-session_digests = Table(
-    "session_digests",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("session_id", Text, nullable=False),
-    Column("user_id", BigInteger, nullable=False),
-    Column("label", JSONB, nullable=False),
-    Column("cwd", Text, nullable=False),
-    Column("messages", Integer, nullable=False),
-    Column("model", Text),
-    _when("started_at"),
-    _when("ended_at"),
-    Column("body", JSONB, nullable=False),
-    _stamp("created_at"),
-    _stamp("updated_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="session_digests_project_id_fkey"),
-    ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="RESTRICT", name="session_digests_user_id_fkey"),
-    PrimaryKeyConstraint("id", name="session_digests_pkey"),
-    UniqueConstraint("project_id", "session_id", name="session_digests_project_id_session_id_key"),
-    Index("session_digests_project_idx", "project_id", "updated_at"),
-    Index("session_digests_updated_idx", "updated_at"),
-)
+# The tool figures of runs (0013); the session digests are in tables_sessions
 
 run_tool_stats = Table(
     "run_tool_stats",
@@ -1211,3 +1188,4 @@ plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_
 hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0037, 0043
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)
+session_digests, session_transcripts, transcript_parts = tables_sessions.session_tables(metadata)  # 0013, 0049

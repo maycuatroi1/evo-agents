@@ -266,7 +266,7 @@ def create_app(config: HubConfig) -> FastAPI:
     ):
         app.include_router(routes)
 
-    from evo_agents.hub.server import changes, ledger, proposal_plans, protection
+    from evo_agents.hub.server import changes, ledger, proposal_plans, protection, transcripts
 
     for routes in (
         changes.router,
@@ -275,6 +275,7 @@ def create_app(config: HubConfig) -> FastAPI:
         changes.worker_router,
         ledger.router,
         digests.router,
+        transcripts.router,
     ):
         app.include_router(routes)
 
