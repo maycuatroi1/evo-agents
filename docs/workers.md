@@ -31,7 +31,7 @@ how decisions and notices reach a member.
 
 | Entity | What it is | Table |
 | --- | --- | --- |
-| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`); its owner changes its name, slots, labels and plugins after it joined | `workers` |
+| worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins and version lock after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
 | run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
@@ -67,9 +67,10 @@ a task run its agent type and the draft pull requests of its branch (`agent_type
   machine token that leaked cannot hand it work; a message or a decision answer sent with a token to a run on it, or
   that it may claim, gets 403 too, so that token cannot steer its agent. Only the owner turns this on or off, from a web session: a machine
   token gets 403 there. [credentials.md](credentials.md#who-may-hand-a-worker-its-work) has the details.
-- **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels, name and plugins
-  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)), from a web session with its CSRF
-  header or with the owner's machine token. A hub admin who does not own the worker gets
+- **Only the owner changes a worker's settings.** `PATCH /v1/workers/{id}` changes its slots, labels, name, plugins
+  (the plugins whose runtimes it takes, [Runtimes of plugins](#runtimes-of-plugins)) and version lock
+  ([Updating itself to nightly](#updating-itself-to-nightly)), from a web session with its CSRF header or with the
+  owner's machine token. A hub admin who does not own the worker gets
   403 and anyone else 404, and a revoked worker is 409. The projects a worker serves and whether it allows the web
   terminal are not settings: the machine sets them when it joins or registers, and changing them means registering
   again.
@@ -717,7 +718,9 @@ it holds:
   "runs": [12],
   "agent_version": "0.3.0",
   "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task"],
-  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs"]
+  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs"],
+  "agent_commit": "<40 or 64 hex>",
+  "self_update": {"state": "current", "nightly_commit": "<40 or 64 hex>", "checked_at": "..."}
 }
 ```
 
@@ -742,7 +745,18 @@ that runs the runtimes of plugins through its adapter of ACP, `environments`, a 
 the environment its claim names, a container of a plugin's environment, and `agent_packs`, a daemon that builds the
 agent packs a run's profile attaches ([Agent packs](#agent-packs)). This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
-`features`, and a heartbeat without it says the daemon does none of them.
+`features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
+evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
+what the daemon found of updating itself to the tag nightly ([Updating itself to nightly](#updating-itself-to-nightly)):
+`state` (required, a name of at most 32 lowercase letters, digits and underscores that starts with a letter; this
+daemon sends one of
+`runs.SELF_UPDATE_STATES`), `reason` (1 to 500 characters), `nightly_commit` (where nightly points, as the daemon read
+it last), `checked_at` (when it read it), `error` (1 to 2,000 characters) and `error_at`. A value out of these bounds
+makes the whole heartbeat 422, so the daemon clips the text and leaves a field out rather than send it empty. Each
+heartbeat replaces both with what it carries, and one without them clears them, as `run_kinds` and `features` work; the
+hub notes when a state began (`since`, by its own clock: the first heartbeat of an unbroken line that reported that
+state). `GET /v1/workers` and `GET /v1/workers/{id}` show them as `agent_commit` and `self_update` (with `since`), and
+both null for an older daemon, which sends neither.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
@@ -751,7 +765,7 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 ```json
 {
   "drain": false,
-  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"]},
+  "settings": {"slots": 2, "name": "mac-mini", "labels": ["gpu"], "plugins": ["sandbox"], "version_locked": false},
   "plugin_runtimes": [{"runtime": "sandbox/gemini", "plugin": "sandbox", "version": "0.2.0", "title": "Gemini CLI",
                        "command": ["gemini", "--experimental-acp"], "models": ["gemini-2.5-pro"],
                        "secrets": ["GEMINI_API_KEY"]}],
@@ -763,8 +777,9 @@ the worker still holds by 300 seconds (the same `EVO_HUB_RUN_LEASE_SECONDS`), st
 
 For each run: whether to `cancel` (the owner asked for it), `takeover`, `handback` or open the terminal
 (`terminal_open`), how many `inbox` messages wait, and how many `decisions` of the run are open; for the worker,
-whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`), which the owner may
-change with `PATCH /v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
+whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`, and
+`version_locked`, which a hub before schema 0048 does not send), which the owner may change with `PATCH
+/v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
 those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon). When they differ from `config.json`, the daemon takes them in memory, writes
 `config.json` again (atomically, mode 0600, its other fields as they are on disk) and logs the old and new values. More
 slots are claimed at the next turn of the claim loop, without a restart; fewer stop no run, and the daemon only
@@ -890,7 +905,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}` | member | create a pairing code, follow it |
 | `POST /v1/workers` | member (machine token) | register this machine directly |
 | `GET /v1/workers`, `GET /v1/workers/{id}` | owner; a hub admin sees all | list and show workers |
-| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), at least one; the values it has already change nothing and are not audited |
+| `PATCH /v1/workers/{id}` | owner, web session or machine token | change `slots` (1 to 16), `labels` (as a pairing takes them), `name` (unique among the owner's workers not revoked, 409 otherwise) or `plugins` (at most 16 plugin ids, `[]` for none), or `version_locked` (`true` or `false`, [Updating itself to nightly](#updating-itself-to-nightly)), at least one; the values it has already change nothing and are not audited |
 | `POST /v1/workers/{id}/drain`, `/revoke` | owner or hub admin | stop new claims, end the worker |
 | `POST /v1/workers/{id}/undrain` | owner | resume claims |
 | `POST /v1/workers/{id}/dispatch-from` | owner, web session only | `{"value": "web"}`: claim only runs dispatched from the web; `"any"`: from anywhere again |
@@ -1207,7 +1222,8 @@ again at its start.
 
 Everything lives under `~/.evo/worker` (or `$EVO_WORKER_HOME`), mode 0700: `token` (0600) holds the `evw_` token,
 which no command prints; `config.json` (0600) the hub, the worker as the hub registered it (its name, slots and labels as the last heartbeat
-answer gave them) and the repos of its projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB with five old files kept, with tokens,
+answer gave them, and `version_locked`, the lock the hub sent last, null until a hub sent one) and the repos of its
+projects; `worker.log` (0600) the daemon's JSON log lines, rotated at 10 MiB with five old files kept, with tokens,
 pairing codes and presigned signatures masked; `service.log` what the daemon printed under launchd before its log
 was open; `daemon.pid`, locked while a daemon runs, so a second one refuses to start; `spool/` the events not
 acknowledged yet; `runs/<id>/` what the daemon knows of each run and its whole event log (and, for a plan run, the
@@ -1216,7 +1232,8 @@ decisions its agent asked, `decisions.jsonl`, the commits `evo-agents worker ste
 `agent.json`: the pid and the
 process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
 holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
-runs' worktrees, and each plan run's directory. No lease value is ever written under it.
+runs' worktrees, and each plan run's directory. No lease value is ever written under it. The daemons that run from
+one install of evo-agents also share `~/.evo/installs/<install>/` ([Updating itself to nightly](#updating-itself-to-nightly)).
 
 ### Runtimes and checkouts
 
@@ -2052,7 +2069,10 @@ reach their timeout, and the daemon exits 0. A second signal interrupts the agen
 a machine that is not a worker, such as one `evo-agents worker revoke` left: starting the daemon again changes
 nothing, so a service does not (see [In the background](#in-the-background)). `EVO_WORKER_REVOKED_EXIT` names
 another status for both. A 426 (a protocol the hub no longer speaks) stops the daemon with exit status 1, which an
-upgrade of evo-agents mends.
+upgrade of evo-agents mends. Once its runs ended, a daemon that may update itself and whose `config.json` says the hub
+last sent `version_locked: false` first updates its install to the tag nightly, and exits 75 when that worked, so its
+service starts the new version instead of starting the old one again and again
+([Updating itself to nightly](#updating-itself-to-nightly)).
 
 A daemon that dies without ending its runs (SIGKILL, or a service manager whose 60 seconds ran out, which can happen
 while a plan run waits up to a day for its owner's answer) leaves each run's `agent.json`, and may leave the agents
@@ -2082,7 +2102,8 @@ command says so, and `evo-agents worker run` can go under a supervisor of your o
   (launchd `KeepAlive` with `SuccessfulExit` false, systemd `Restart=on-failure`); one that stopped cleanly, exit 0
   after SIGTERM, stays stopped, and so does one that is no longer a worker: the systemd unit lists its exit status 3
   in `RestartPreventExitStatus`, and since launchd tells exits apart only as 0 or not, the LaunchAgent sets
-  `EVO_WORKER_REVOKED_EXIT=0`.
+  `EVO_WORKER_REVOKED_EXIT=0`. A daemon that updated its install exits 75, an error to both, so it starts again on the
+  new version ([Updating itself to nightly](#updating-itself-to-nightly)).
 - A service manager starts a job with almost no environment, so the service keeps PATH as it was at the install,
   without relative entries and with `/usr/local/bin`, `/usr/bin`, `/bin`, `/usr/sbin` and `/sbin` added when
   missing, and pins `EVO_WORKER_HOME` to the state directory. The install prints where it found `claude`,
@@ -2110,6 +2131,120 @@ heartbeat, and a daemon started after `evo-agents worker revoke` deleted the tok
 does not start either again; at each login it starts the daemon once more, which stops the same way, until the
 machine is a worker again. `evo-agents worker revoke` leaves the service installed and says so; `evo-agents worker
 service uninstall` removes it.
+
+### Updating itself to nightly
+
+The tag `nightly` of maycuatroi1/evo-agents points to the newest commit of main whose CI passed, and a workflow moves
+it every night (`.github/workflows/nightly.yml`). A worker installed from it keeps itself there:
+
+```sh
+uv tool install --force 'evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@nightly'
+evo-agents worker service install
+```
+
+`evo_agents/worker/selfupdate` does the work. At each turn of its loop (every heartbeat period, 15 seconds) the daemon
+decides whether to reinstall its own install, and it does when all of these hold:
+
+- **Its version is not locked**, and the hub said so in this daemon's life: `settings.version_locked` of a heartbeat
+  answer was `false`. Until the hub says, the daemon waits, and a hub before schema 0048, which sends no lock, never
+  lets it update.
+- **uv installed it as a tool, from this repository or from PyPI.** The receipt uv writes into the environment
+  (`uv-receipt.toml`) names evo-ak as its one requirement, from git of maycuatroi1/evo-agents or from an index, and the
+  `evo-agents` command. An editable install, a local path, a URL, another repository, `pip install`, or a tool
+  installed with `--with`, constraints or overrides beside evo-ak (which an update would drop) is not updated.
+- **launchd or systemd runs the daemon and starts it again after exit 75.** For launchd the daemon is a child of
+  pid 1 with a label in `XPC_SERVICE_NAME`, and its plist in `~/Library/LaunchAgents` has `KeepAlive` true or
+  `{SuccessfulExit: false}`. For systemd `INVOCATION_ID` is set, `/proc/self/cgroup` names the unit, and `systemctl
+  [--user] show` of it says `Restart=on-failure` or `always` without 75 in `RestartPreventExitStatus`. The service
+  that `evo-agents worker service install` writes passes both checks; a plist or unit written by hand must too. A
+  daemon run by hand (`evo-agents worker run` in a terminal) never updates itself, since its exit would end it for
+  good.
+- **uv is there**: on the service's PATH, or in `~/.local/bin`, `~/.cargo/bin`, `/opt/homebrew/bin`, `/usr/local/bin`
+  or `/usr/bin`.
+- **nightly points to another commit** than the one the install was built from, which the daemon reads from
+  `direct_url.json` of evo-ak's dist-info.
+- **Every daemon of the install is idle and may update**: none holds a run or agents a previous daemon left, none is
+  locked, and none is run by hand or otherwise unable to update (see Daemons that share an install, below).
+- **It is not turned off on the machine**: `EVO_WORKER_SELF_UPDATE` is not `off`, `0`, `false` or `no`.
+
+The daemon reads where nightly points with `git ls-remote` of the repository, and with the GitHub API when git fails:
+at its first turn once the hub said it is not locked, then every hour, and 15 minutes after a read that failed. An idle
+daemon thus sees a moved tag within the hour; one that holds runs waits until they end. A run it holds is never
+stopped for an update.
+
+The update, once decided:
+
+1. `uv tool install` of `evo-ak[<extras>] @ git+https://github.com/maycuatroi1/evo-agents@nightly`, with the extras of
+   the install, into `~/.evo/installs/<install>/staging`. The staged install must start (`python -c 'import
+   evo_agents.cli, evo_agents.worker.daemon'` and `evo-agents --version`) and the daemon reads its commit. A failure
+   here leaves the install as it was.
+2. The same over the install itself, with `--python` the interpreter the install was made from (so uv replaces the
+   changed packages in place and never deletes the environment), `--force`, `--reinstall-package evo-ak` and
+   `--refresh-package evo-ak`. The install must start the same way and carry the staged commit.
+3. When it does not, the old version goes back: `@<old commit>` for an install from git, `evo-ak[<extras>]==<old
+   version>` for one from PyPI, and it is started again. uv's receipt then names that commit instead of nightly
+   until the next update that works. An install from PyPI that updated is an install from git at nightly from then on.
+
+When the update worked, the daemon exits 75 (`home.EXIT_UPDATED`, EX_TEMPFAIL of sysexits.h): neither 0 nor the
+revoke status 3, so launchd and systemd start it again on the new version (10 seconds later under the service of
+`worker service install`), and its next heartbeat reports the new commit. When it failed, the daemon reports the `error`, goes on claiming runs on the version it runs,
+and tries that commit again an hour later. uv's behaviour here was checked with uv 0.6.13: without `--python` a uv
+tool install can recreate the environment on another interpreter, and a build that then fails leaves no install at
+all, which is why the update stages first and pins the interpreter.
+
+**Daemons that share an install.** Two workers of one machine may run from one install, as two services with their
+own `EVO_WORKER_HOME`. An update changes the code of both, so they meet in `~/.evo/installs/<install>/` (0700), where
+`<install>` is the first 16 hexadecimal digits of the SHA-256 of the install's path:
+
+| Path | What it holds |
+| --- | --- |
+| `daemons/<home>.json` | each daemon's state, written at each of its turns: its worker, pid and home, whether it may update now (`ready`) and why not (`why`); a file whose daemon no longer runs is removed |
+| `busy.lock` | held shared by each daemon while it claims or holds runs |
+| `gate.lock` | held exclusive by the daemon that updates, from the moment it waits for the others until it exits; a daemon claims nothing while it is closed |
+| `staging/` | the new version, installed and started there first |
+
+The updater closes the gate, then waits up to 75 seconds for `busy.lock` exclusive, and gives up when a claim brought a
+run meanwhile. A daemon whose install changed under it claims nothing more and, once its runs end, exits 75 to start
+again on the new code. A daemon of the install that may not update (locked, run by hand) goes on with the code it
+started with and logs that once; it also keeps every other daemon of the install from updating, so locking one worker
+of a shared install holds the install for all of them.
+
+**The version lock.** The owner locks a worker with the Lock version switch on the worker's page, or with `PATCH
+/v1/workers/{id}` and `{"version_locked": true}`; `false` unlocks it. Every worker is unlocked until its owner locks
+it, and a real change leaves the audit row `worker.update`. A locked worker's daemon stays on the evo-agents it runs:
+the lock is no way to choose another version. The answer of each heartbeat carries the lock in `settings`, and the
+daemon keeps the last one in `config.json` (`version_locked`). When the hub answers 426 (see [When the hub does not
+answer, and stopping](#when-the-hub-does-not-answer-and-stopping)), the daemon reads it there: once its runs end, it
+updates to nightly first when that value is exactly `false` and it may update itself, and exits 75; otherwise it
+exits 1 as before.
+
+**Turning it off.** Lock the worker, for one worker; or set `EVO_WORKER_SELF_UPDATE=off` in the environment of the
+service, for every daemon of the machine (add it to the plist or the unit by hand: `worker service install` keeps it,
+as it keeps every `EVO_WORKER_*` variable). The daemon then reports `unsupported` with the reason "turned off on this
+machine".
+
+**What the daemon reports.** Each heartbeat carries `agent_commit` and `self_update` ([Heartbeat](#heartbeat)). Its
+`state` is one of `runs.SELF_UPDATE_STATES`:
+
+| State | When |
+| --- | --- |
+| `current` | the install is the commit nightly points to |
+| `waiting` | the hub has not said whether the worker is locked, nightly has not been read yet, or nightly points to another commit and the daemon waits: for its runs or another daemon's to end, for another daemon of the install that is updating it, or for the hour after an update to that commit failed |
+| `updating` | it is installing nightly, and exits 75 once the new version starts |
+| `locked` | its owner locked the worker's version |
+| `unsupported` | it cannot update itself; `reason` says why (the install, the service, uv, or `EVO_WORKER_SELF_UPDATE`) |
+
+`reason` says why it waits or cannot update, `nightly_commit` and `checked_at` where nightly pointed when it last read
+it, and `error` with `error_at` the last attempt that failed: reading the tag, installing, or the new version not
+starting. A read of the tag that works again clears an error of reading it, and a turn that finds the install on
+nightly clears an error of installing. Each change of state is one line `self-update: <state>` in `worker.log`, with
+the reason.
+
+The worker's page on the web shows the release and the commit the daemon runs, linked to the commit on GitHub, with a
+line on its updates. The page and the list of workers show a sign only when something is wrong: an update that failed
+(with the daemon's error), a daemon that cannot update itself (with its reason), or one that has said `waiting` for 12
+hours or more while it sends heartbeats. They show none for a worker that is locked, a daemon that reports nothing of
+updating (an older one), or a revoked worker.
 
 ## A machine others administer
 
