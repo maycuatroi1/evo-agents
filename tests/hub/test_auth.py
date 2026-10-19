@@ -603,14 +603,14 @@ def test_evo_hub_home_holds_the_login_of_another_hub_and_leaves_the_default_alon
     hub_client.save_credentials("https://hub.test", "octo", "evh_default")
 
     # As Claude Code passes it from the env of .claude/settings.json: unexpanded, ~ and all.
-    monkeypatch.setenv("EVO_HUB_HOME", "~/.evo/hub-m1")
-    other = tmp_path / ".evo" / "hub-m1"
+    monkeypatch.setenv("EVO_HUB_HOME", "~/.evo/hub-lumen")
+    other = tmp_path / ".evo" / "hub-lumen"
     assert hub_client.hub_dir() == other
     with pytest.raises(hub_client.NotSignedIn, match="evo-agents hub login"):
         hub_client.load_credentials()
-    assert hub_client.save_credentials("https://m1.test", "octo", "evh_m1") == other
+    assert hub_client.save_credentials("https://lumen.test", "octo", "evh_m1") == other
     assert mode(other) == 0o700 and mode(other / "token") == 0o600 and mode(other / "config.json") == 0o600
-    assert hub_client.load_credentials() == hub_client.Credentials("https://m1.test", "octo", "evh_m1")
+    assert hub_client.load_credentials() == hub_client.Credentials("https://lumen.test", "octo", "evh_m1")
     hub_client.remove_credentials()
     assert list(other.iterdir()) == []
     assert (default / "token").read_text() == "evh_default\n"  # the default login was never touched
@@ -624,11 +624,11 @@ def test_evo_hub_home_holds_the_login_of_another_hub_and_leaves_the_default_alon
     checkout = tmp_path / "checkout"
     checkout.mkdir()
     monkeypatch.chdir(checkout)
-    monkeypatch.setenv("EVO_HUB_HOME", ".evo/hub-m1")
+    monkeypatch.setenv("EVO_HUB_HOME", ".evo/hub-lumen")
     with pytest.raises(hub_client.HubError, match="EVO_HUB_HOME must be an absolute path"):
         hub_client.load_credentials()
     with pytest.raises(hub_client.HubError, match="EVO_HUB_HOME must be an absolute path"):
-        hub_client.save_credentials("https://m1.test", "octo", "evh_m1")
+        hub_client.save_credentials("https://lumen.test", "octo", "evh_m1")
     assert list(checkout.iterdir()) == []
 
 

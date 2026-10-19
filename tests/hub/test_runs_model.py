@@ -573,8 +573,8 @@ WORKTREES = "/Users/me/.evo/worker/worktrees/demo-12"
 def sixty_steps() -> dict:
     """A plan of 60 steps over three repos in the shape of the harness plans, the first 10 done: long titles, a few
     KiB of what, verify and note each, and evidence on the done ones."""
-    repos = [{"repo": name, "branch": "feat/kb-type-dashboard"} for name in ("m1-kb-service", "m1-portal")]
-    repos.append({"repo": "meridai-harness", "branch": "main"})
+    repos = [{"repo": name, "branch": "feat/kb-type-dashboard"} for name in ("lumen-kb-service", "lumen-portal")]
+    repos.append({"repo": "northwind-harness", "branch": "main"})
     steps = []
     for number in range(1, 61):
         title = f"Bước {number}: thêm bảng điều khiển loại tài liệu cho kho tri thức, có kiểm thử đầu cuối"
@@ -585,7 +585,7 @@ def sixty_steps() -> dict:
                 "repo": repos[number % 3]["repo"],
                 "what": f"Làm phần {number} của bảng điều khiển. " * 80,
                 "depends_on": list(range(max(1, number - 3), number)),
-                "verify": "cd ~/github/m1-portal && pnpm lint && pnpm typecheck && pnpm test " * 10,
+                "verify": "cd ~/github/lumen-portal && pnpm lint && pnpm typecheck && pnpm test " * 10,
                 "status": "done" if number <= 10 else "pending",
                 "note": "Ghi chú dài cho bước này. " * 40,
                 **({"evidence": "commit abc1234; pnpm test 0. " * 30} if number <= 10 else {}),
@@ -613,14 +613,14 @@ def test_a_plan_run_prompt_of_60_steps_lists_every_open_step_and_stays_under_32_
     assert (
         "\n- 13 [pending] Bước 13: thêm bảng điều khiển loại tài liệu cho kho tri thức, có kiểm thử đầu cuối " in prompt
     )
-    assert "(repo m1-portal; after 10, 11, 12)\n" in prompt
+    assert "(repo lumen-portal; after 10, 11, 12)\n" in prompt
     # a title over its budget is cut on its own line
     (line,) = [line for line in prompt.splitlines() if line.startswith("- 30 [pending] ")]
-    assert line.endswith("... (repo m1-kb-service; after 27, 28, 29)")
+    assert line.endswith("... (repo lumen-kb-service; after 27, 28, 29)")
     assert size(line[len("- 30 [pending] ") : line.index(" (repo")]) <= runs.LIST_TITLE_BYTES
     assert plan["steps"][20]["what"][:200] not in prompt  # what, verify and note stay in the plan file
     assert plan["steps"][20]["note"][:100] not in prompt
-    assert f"- meridai-harness: branch main, worktree {WORKTREES}/meridai-harness" in prompt
+    assert f"- northwind-harness: branch main, worktree {WORKTREES}/northwind-harness" in prompt
     # the context is cut to its budget, the rest is whole
     assert prompt.count("cut by the hub") == 1 and "# Context of the plan, shortened" in prompt
 

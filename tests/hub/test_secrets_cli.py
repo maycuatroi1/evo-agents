@@ -284,7 +284,7 @@ def test_set_list_and_delete_a_secret_without_ever_printing_its_value(hub, monke
         "--kind",
         "git",
         "--url-prefix",
-        "https://GitLab.m1ops.com/fis-gb-m1/m1-kb-docs.git/",
+        "https://GitLab.lumenops.example/fir-gb-lumen/lumen-kb-docs.git/",
         "--worker",
         "mac-mini",
         "--expires",

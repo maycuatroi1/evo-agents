@@ -719,7 +719,7 @@ def test_the_hub_calls_the_store_at_its_internal_endpoint_and_presigns_for_the_p
 
     for env, problem in (
         ({**dsn, S3_INTERNAL_ENDPOINT: s3.endpoint}, "is set but the blob store is not"),
-        ({**dsn, **s3.env(), S3_INTERNAL_ENDPOINT: "m1-hub-seaweedfs:8333"}, "must be an http(s) URL"),
+        ({**dsn, **s3.env(), S3_INTERNAL_ENDPOINT: "lumen-hub-seaweedfs:8333"}, "must be an http(s) URL"),
     ):
         with pytest.raises(ConfigError, match=re.escape(problem)) as caught:
             load_config(env)

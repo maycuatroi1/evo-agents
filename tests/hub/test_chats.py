@@ -331,12 +331,12 @@ def test_a_person_mentioned_in_a_chat_or_added_to_one_gets_a_notice(client, hub)
 
 def test_chat_notices_of_a_restricted_project_name_the_chat_and_link_only(client, hub):
     sinks = [{"id": "hub", "kind": "hub", "clearance": {"level": "customer", "location": "any"}}]
-    restricted = client.put("/v1/projects/meridai", json=registration(sinks), headers=hub["admin"])
+    restricted = client.put("/v1/projects/northwind", json=registration(sinks), headers=hub["admin"])
     assert restricted.status_code == 200, restricted.text
     for login in (OWNER, OTHER):
         grant = {"role": "admin", "max_level": "customer"}
-        assert client.put(f"/v1/admin/projects/meridai/grants/{login}", json=grant, headers=hub["admin"]).status_code
-    agent(client, hub["owner"], "analyst", project="meridai")
+        assert client.put(f"/v1/admin/projects/northwind/grants/{login}", json=grant, headers=hub["admin"]).status_code
+    agent(client, hub["owner"], "analyst", project="northwind")
     chat = created(client, hub["owner"], title="Customer call", people=[OTHER], agents=["analyst"])
     assert chat["restricted"] is True
     message = sent(client, hub["owner"], chat["id"], "@someone-else the customer's numbers are in")
@@ -344,7 +344,7 @@ def test_chat_notices_of_a_restricted_project_name_the_chat_and_link_only(client
     assert (added["title"], added["body"], added["project"]) == (
         "You were added to chat Customer call",
         None,
-        "meridai",
+        "northwind",
     )
     assert (mentioned["title"], mentioned["body"]) == ("You were mentioned in chat Customer call", None)
     assert mentioned["link"] == f"/chats/{chat['id']}?message={message['id']}"

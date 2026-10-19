@@ -58,7 +58,7 @@ from tests.hub.test_runs import moved
 WAIT_TEST = [{"repo": "evo-agents", "path": "tests/test_wait.py"}]
 FEATURE = {"kind": "feature", "paths": WAIT_TEST}  # tier 2, from its kind alone
 CI_CHANGE = {"kind": "ci_change", "paths": [{"repo": "evo-agents", "path": ".github/workflows/ci.yml"}]}  # tier 3
-TWO_REPOS = {"kind": "feature", "paths": [*WAIT_TEST, {"repo": "m1-identity", "path": "tests/test_x.py"}]}
+TWO_REPOS = {"kind": "feature", "paths": [*WAIT_TEST, {"repo": "lumen-identity", "path": "tests/test_x.py"}]}
 
 
 def audited_plans(world) -> list[str]:  # noqa: F811
@@ -227,7 +227,7 @@ def test_curator_plan_route_refuses_a_proposal_not_accepted_or_of_tier_3(world, 
     assert left.status_code == 201, left.text
     change = left.json()
     assert (change["state"], change["plan_id"], change["branch"]) == ("open", None, None)
-    assert "works in one repo, and the proposal names evo-agents, m1-identity" in change["reason"]
+    assert "works in one repo, and the proposal names evo-agents, lumen-identity" in change["reason"]
     assert acts(ledger_of(world, wide["id"]))[-1] == ("left_open", "curator")
     assert audited_plans(world) == [f"{PROJECT}/no plan proposal:{wide['id']} change:{change['id']} branch=-"]
     assert answer(world.client, world.headers["owner"], deferred["id"], "accept").status_code == 200
@@ -271,7 +271,7 @@ def test_curator_plan_a_proposal_carries_the_change_accepting_it_made(world):  #
         assert shown.status_code == 200 and shown.json()["change"] == listed[made["id"]], shown.text
     left = proposal_of(world, wide["id"])["change"]
     assert (left["state"], left["plan_id"], left["branch"]) == ("open", None, None)
-    assert "works in one repo, and the proposal names evo-agents, m1-identity" in left["reason"]
+    assert "works in one repo, and the proposal names evo-agents, lumen-identity" in left["reason"]
     assert proposal_of(world, deferred["id"])["change"] is None  # not accepted
     assert top["change"] is None and proposal_of(world, top["id"])["change"] is None  # tier 3 builds nothing
 

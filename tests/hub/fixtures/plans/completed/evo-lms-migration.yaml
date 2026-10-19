@@ -10,7 +10,7 @@ goal: >
 created_at: '2026-10-03T00:45:00+07:00'
 
 context: >
-  Prototype (plan kg-prototype) chạy trên meridai. evo-lms-harness lớn hơn nhiều: 21 repo, 79 plan,
+  Prototype (plan kg-prototype) chạy trên northwind. evo-lms-harness lớn hơn nhiều: 21 repo, 79 plan,
   48 seam, cùng một graph SRS cũ (lms graph, PostgreSQL, bindings/ theo định dạng riêng). Kiểm ngày
   2026-10-03: validate báo 6 file lỗi, gồm 11 seam verify null, 4 order số thực, một plan có non_goals
   và assumptions là chuỗi, một evidence là dict. Lần thử sync đầu: 17 nguồn, khoảng 7.400 item, 8 giây.
@@ -39,7 +39,7 @@ non_goals:
 
 references:
   - what: Kết quả prototype và độ lệch so với thiết kế
-    where: reports/Prototype khung knowledge graph trên meridai.md
+    where: reports/Prototype khung knowledge graph trên northwind.md
   - what: Phép đo định danh tường minh trên evo-lms (mốc 74%)
     where: reports/Thiết kế khung knowledge graph.md, mục 1.3
   - what: Tiền lệ graph SRS của evo-lms
@@ -97,7 +97,7 @@ steps:
     status: done
     done_at: '2026-10-03T00:51:00+07:00'
     evidence: >
-      evo-agents 6c0af66 trên nhánh evo-lms-migration (chưa push); 11 test harness xanh. Validate lại: meridai 30 file và evo-agents-harness 5 file vẫn 0 lỗi; evo-lms còn 3 lỗi dữ liệu thật cho bước 4.
+      evo-agents 6c0af66 trên nhánh evo-lms-migration (chưa push); 11 test harness xanh. Validate lại: northwind 30 file và evo-agents-harness 5 file vẫn 0 lỗi; evo-lms còn 3 lỗi dữ liệu thật cho bước 4.
   - id: 3
     title: 'Thư mục binding theo knowledge.yaml và tên repo của harness'
     repo: evo-agents
@@ -105,13 +105,13 @@ steps:
       Connector harness lấy thư mục binding từ khoá bindings của knowledge.yaml (mặc định bindings),
       để harness có binding định dạng khác (bindings/ của lms graph) vẫn build được. Tên repo của harness
       lấy theo mục khớp trong harness.yaml (theo path rồi theo origin), không theo tên thư mục, để chạy
-      từ worktree vẫn phân giải được đường dẫn dạng evo-lms-harness/... (lệch ghi trong báo cáo meridai).
+      từ worktree vẫn phân giải được đường dẫn dạng evo-lms-harness/... (lệch ghi trong báo cáo northwind).
     depends_on: []
     verify: pytest tests/kg -q
     status: done
     done_at: '2026-10-03T00:52:00+07:00'
     evidence: >
-      evo-agents 1447e3f trên nhánh evo-lms-migration (chưa push); 48 test xanh, ruff sạch. build --verify khớp trên evo-agents (sha256:ad9f29be) và meridai (sha256:83499b80, không đổi so với báo cáo prototype). meridai-harness không tự khai trong harness.yaml nên vẫn mang tên thư mục worktree.
+      evo-agents 1447e3f trên nhánh evo-lms-migration (chưa push); 48 test xanh, ruff sạch. build --verify khớp trên evo-agents (sha256:ad9f29be) và northwind (sha256:83499b80, không đổi so với báo cáo prototype). northwind-harness không tự khai trong harness.yaml nên vẫn mang tên thư mục worktree.
   - id: 4
     title: 'Sửa lỗi dữ liệu của evo-lms'
     repo: evo-lms-harness
@@ -181,11 +181,11 @@ steps:
 seams_touched:
   - name: knowledge-manifest-v1
     owner: evo-agents
-    consumers: [meridai-harness, evo-agents-harness, evo-lms-harness]
-    verify: evo-agents harness validate ~/github/meridai-harness ~/github/evo-agents-harness ~/github/evo-lms-harness
+    consumers: [northwind-harness, evo-agents-harness, evo-lms-harness]
+    verify: evo-agents harness validate ~/github/northwind-harness ~/github/evo-agents-harness ~/github/evo-lms-harness
 
 risks:
-  - risk: Nới schema làm meridai hay evo-agents-harness đổi kết quả validate.
+  - risk: Nới schema làm northwind hay evo-agents-harness đổi kết quả validate.
     mitigation: Chỉ thêm khoá và kiểu; chạy validate trên cả ba harness trước khi push.
   - risk: Sửa plan đã xong làm sync_plans.py hay console đọc khác đi.
     mitigation: Chạy tests/test_sync_plans.py và sync_plans.py --dry-run trên nhánh trước khi mở PR.

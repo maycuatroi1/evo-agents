@@ -479,7 +479,7 @@ def test_curator_watch_reads_every_change_of_a_worktree(machine):  # noqa: F811
     assert ".evo-run" in done.stdout  # there, and left out of what the watchdog reads
 
 
-HOOK_FILES = (  # what the continuous-learning Stop hook wrote in the worktree of run #26 of meridai, at any depth
+HOOK_FILES = (  # what the continuous-learning Stop hook wrote in the worktree of run #26 of northwind, at any depth
     ".claude/cli-suggestions/_pending/test-db-setup.md",
     ".claude/skills/.learned/_pending/postgres-test-container-setup/SKILL.md",
     ".agents/skills/.learned/usage.json",

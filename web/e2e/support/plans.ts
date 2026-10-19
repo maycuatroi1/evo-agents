@@ -38,7 +38,7 @@ export const ACTIVE_PLAN = "kg-assertion-layer";
 export const ACTIVE_STEPS = 20;
 /** Step 10 is marked done in revision 2 with this evidence (two lines, the second indented). */
 export const EVIDENCE_STEP = "10";
-export const EVIDENCE = "evo-agents@4f2c1d9: pytest tests/kg 212 passed, ruff sạch.\n  Chạy lại trên meridai-harness: 0 lỗi, 3 cảnh báo về nhãn.";
+export const EVIDENCE = "evo-agents@4f2c1d9: pytest tests/kg 212 passed, ruff sạch.\n  Chạy lại trên northwind-harness: 0 lỗi, 3 cảnh báo về nhãn.";
 export const DONE_AT = "2026-10-04T15:20:00+07:00";
 /** After revision 3: 10 done, step 11 in progress, step 12 blocked, the other 8 pending. */
 export const ACTIVE_DONE = 10;
@@ -51,7 +51,7 @@ export const CHANGED_LINES = {
     `    done_at: '${DONE_AT}'`,
     "    evidence: |-",
     "      evo-agents@4f2c1d9: pytest tests/kg 212 passed, ruff sạch.",
-    "        Chạy lại trên meridai-harness: 0 lỗi, 3 cảnh báo về nhãn.",
+    "        Chạy lại trên northwind-harness: 0 lỗi, 3 cảnh báo về nhãn.",
   ],
 };
 

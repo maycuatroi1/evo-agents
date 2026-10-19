@@ -130,11 +130,11 @@ def test_below_customer_and_domestic_only_on_the_ladder_is_not_restricted(cleara
 
 def test_a_restricted_message_holds_the_project_the_kind_and_the_link_only():
     url = "https://hub.test/inbox?decision=5"
-    message = telegram.minimal_message("meridai", "decision", None, url, "/inbox?decision=5")
-    assert message.text == f"<b>meridai</b>: A decision waits for your answer.\n\n{url}"
+    message = telegram.minimal_message("northwind", "decision", None, url, "/inbox?decision=5")
+    assert message.text == f"<b>northwind</b>: A decision waits for your answer.\n\n{url}"
     assert message.buttons == [[{"text": "Open on the hub", "url": url}]]
-    brief = telegram.minimal_message("meridai", "notice", "curator_brief", None, "/p/meridai/curator")
-    assert brief.text == "<b>meridai</b>: Morning brief.\n\n/p/meridai/curator" and brief.buttons == []
+    brief = telegram.minimal_message("northwind", "notice", "curator_brief", None, "/p/northwind/curator")
+    assert brief.text == "<b>northwind</b>: Morning brief.\n\n/p/northwind/curator" and brief.buttons == []
 
 
 def test_a_decision_has_a_button_per_option_and_one_for_the_web_and_escapes_what_the_agent_wrote():

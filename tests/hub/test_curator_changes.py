@@ -103,7 +103,7 @@ def curator_charter(**changes) -> dict:
 
 @pytest.fixture
 def world(hub_db, tmp_path, github, app_key):  # noqa: F811
-    """test_credentials_api's project (evo-agents on GitHub, m1-kb-docs on GitLab, two more repos), its hub holding the
+    """test_credentials_api's project (evo-agents on GitHub, lumen-kb-docs on GitLab, two more repos), its hub holding the
     secrets key, the workers' App and the Curator's App, both installed on evo-agents, whose default branch has a
     ruleset only the workers' App bypasses; owner an admin with a charter whose worker on duty, mac-mini, runs every
     kind of run."""
@@ -282,11 +282,11 @@ def test_curator_plan_an_accepted_tier_0_proposal_becomes_a_plan_on_a_branch_of_
 
 
 def test_curator_plan_a_draft_that_cannot_become_a_plan_is_left_open_with_why(world):
-    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "m1-identity", "path": "tests/test_x.py"}]
+    two = [{"repo": "evo-agents", "path": "tests/test_wait.py"}, {"repo": "lumen-identity", "path": "tests/test_x.py"}]
     accepted(world, paths=two)
     change = one_change(world)
     assert change["state"] == "open" and change["plan_id"] is None and change["branch"] is None
-    assert "works in one repo, and the proposal names evo-agents, m1-identity" in change["reason"]
+    assert "works in one repo, and the proposal names evo-agents, lumen-identity" in change["reason"]
     assert fire(world.client, NIGHT).get("builder") is None  # nothing of it runs
 
 
@@ -296,10 +296,10 @@ def test_curator_plan_never_names_a_default_branch_and_keeps_its_verify(world):
     plan = world.client.get(f"/v1/projects/{PROJECT}/plans/{PLAN_ID}", headers=owner).json()
     for change in (
         {"repos": [{"repo": "evo-agents", "branch": "main"}]},
-        {"repos": [{"repo": "evo-agents", "branch": BRANCH}, {"repo": "m1-identity", "branch": "x"}]},
+        {"repos": [{"repo": "evo-agents", "branch": BRANCH}, {"repo": "lumen-identity", "branch": "x"}]},
         {"steps": [{**plan["body"]["steps"][0], "verify": "true"}]},
         {"steps": [{**plan["body"]["steps"][0], "acceptance": ["anything"]}]},
-        {"steps": [{**plan["body"]["steps"][0], "repo": "m1-identity"}]},
+        {"steps": [{**plan["body"]["steps"][0], "repo": "lumen-identity"}]},
         {"goal": "A clearer goal."},  # its goal, what and context are the hub's too (H1 of the security review)
     ):
         body = {**plan["body"], **change}
@@ -348,7 +348,7 @@ def test_protection_a_ruleset_that_lets_the_curator_by_is_not_protected(world, c
 def test_protection_is_checked_by_an_admin_with_the_curators_app_and_listed_for_readers(world):
     client, headers = world.client, world.headers
     assert protect(world, headers=headers["other"]).status_code == 403  # a writer, not an admin
-    assert protect(world, "m1-kb-docs").status_code == 422  # on GitLab
+    assert protect(world, "lumen-kb-docs").status_code == 422  # on GitLab
     assert protect(world, "gone").status_code == 404
     found = protect(world).json()
     assert found["protected"] is True and found["github_repo"] == f"{MINE}/evo-agents"
@@ -356,7 +356,7 @@ def test_protection_is_checked_by_an_admin_with_the_curators_app_and_listed_for_
     assert found["rulesets"] == [{"id": 11, "enforcement": "active", "can_bypass": "never"}]
     assert_json_keys("hub curator protection", found, "--check")
     listed = client.get(path("protection"), headers=headers["other"]).json()
-    assert [repo["repo"] for repo in listed["repos"]] == ["evo-agents", "m1-identity", "m1-kb-docs", "notes"]
+    assert [repo["repo"] for repo in listed["repos"]] == ["evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]
     assert [repo["protected"] for repo in listed["repos"]] == [True, None, None, None]
     asked = [r for r in world.github.requests if r.path.startswith("/repos/") and "rulesets" in r.path]
     app, permissions = token_permissions(world.github, asked[0].headers["authorization"].partition(" ")[2])
@@ -603,15 +603,15 @@ def test_curator_plan_a_gitlab_builder_gets_the_charters_git_secret_and_env_secr
     owner = world.headers["owner"]
     developer, maintainer, oauth, other = sample("glpat-dev-"), sample("glpat-max-"), sample("oat-"), sample("tok-")
     git_secret(world.client, owner, "gitlab-dev", GITLAB_KB, developer)
-    git_secret(world.client, owner, "gitlab-maintainer", "https://gitlab.m1ops.com/fis-gb-m1", maintainer)
+    git_secret(world.client, owner, "gitlab-maintainer", "https://gitlab.lumenops.example/fir-gb-lumen", maintainer)
     env_secret(world.client, owner, "claude-oauth", "CLAUDE_CODE_OAUTH_TOKEN", oauth)
     env_secret(world.client, owner, "gh-admin", "GH_TOKEN", other)
-    plan = {**DRAFT, "steps": [{**DRAFT["steps"][0], "repo": "m1-kb-docs"}]}
-    accepted(world, paths=[{"repo": "m1-kb-docs", "path": "tests/test_kb.py"}], plan=plan)
+    plan = {**DRAFT, "steps": [{**DRAFT["steps"][0], "repo": "lumen-kb-docs"}]}
+    accepted(world, paths=[{"repo": "lumen-kb-docs", "path": "tests/test_kb.py"}], plan=plan)
     assert one_change(world)["forge"] == "gitlab"
     assert fire(world.client, NIGHT).get("builder") is None  # the charter names no git secret
     assert one_change(world)["reason"] == (
-        "repo m1-kb-docs is on GitLab, where a Builder pushes with the owner's git secret the charter names, and the "
+        "repo lumen-kb-docs is on GitLab, where a Builder pushes with the owner's git secret the charter names, and the "
         "charter names none (git_secret)"
     )
     written(world.client, owner, curator_charter(git_secret="gitlab-gone"))
@@ -998,13 +998,13 @@ def test_merge_never_for_a_gitlab_merge_request(world):
     owner = world.headers["owner"]
     git_secret(world.client, owner, "gitlab-dev", GITLAB_KB, sample("glpat-dev-"))
     written(world.client, owner, curator_charter(git_secret="gitlab-dev"))
-    plan = {**DRAFT, "steps": [{**DRAFT["steps"][0], "repo": "m1-kb-docs"}]}
-    accepted(world, paths=[{"repo": "m1-kb-docs", "path": "tests/test_kb.py"}], plan=plan)
+    plan = {**DRAFT, "steps": [{**DRAFT["steps"][0], "repo": "lumen-kb-docs"}]}
+    accepted(world, paths=[{"repo": "lumen-kb-docs", "path": "tests/test_kb.py"}], plan=plan)
     assert fire(world.client, NIGHT)["builder"] == 1
     spec = claim(world.client, world.worker)
     moved(world.client, world.worker, spec["id"], "running")
     verify = [{"command": VERIFY, "exit_code": 0}]
-    reported(world.client, world.worker, spec["id"], 1, "done", repo="m1-kb-docs", verify=verify, commit_sha=HEAD)
+    reported(world.client, world.worker, spec["id"], 1, "done", repo="lumen-kb-docs", verify=verify, commit_sha=HEAD)
     moved(world.client, world.worker, spec["id"], "verifying", "done")
     assert one_change(world)["state"] == "judge_pending"  # the push opened the merge request: no pull request to open
     assert moved_on(world) == {}

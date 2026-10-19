@@ -141,14 +141,14 @@ def test_the_write_rule_needs_a_writer_and_a_label_the_hub_sink_clears():
 
 
 def test_a_hub_sink_that_clears_a_location_bounds_it_too():
-    meridai = ProjectRules(
-        "meridai",
+    northwind = ProjectRules(
+        "northwind",
         LEVELS,
         LOCATIONS,
         [{"id": "hub", "kind": "hub", "clearance": {"level": "customer", "location": "any"}}],
     )
-    assert meridai.check_push({"level": "customer"}, "writer")["location"] == "any"
-    assert refused(meridai, {"level": "customer", "location": "domestic-only"}).status == 422
+    assert northwind.check_push({"level": "customer"}, "writer")["location"] == "any"
+    assert refused(northwind, {"level": "customer", "location": "domestic-only"}).status == 422
 
 
 def test_a_project_without_a_hub_sink_refuses_every_push_naming_the_sink_to_declare():

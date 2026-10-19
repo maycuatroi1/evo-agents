@@ -190,37 +190,37 @@ def test_the_git_configuration_resets_the_helpers_of_leased_origins_and_rewrites
     assert (
         credentials.https_url("https://me@GitLab.example.org:8443/g/r.git") == "https://gitlab.example.org:8443/g/r.git"
     )
-    assert credentials.https_url("git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git") == (
-        "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs.git"
+    assert credentials.https_url("git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git") == (
+        "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs.git"
     )
-    assert credentials.https_url("ssh://git@gitlab.m1ops.com:2222/fis-gb-m1/m1-kb-docs") == (
-        "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"
+    assert credentials.https_url("ssh://git@gitlab.lumenops.example:2222/fir-gb-lumen/lumen-kb-docs") == (
+        "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"
     )
     assert credentials.https_url("http://me@Git.example.org:8080/group/repo.git") == (
         "https://git.example.org:8080/group/repo.git"
     ), "a lease never goes over plain http: an http origin is reached over https"
     leases = [
-        Lease.from_json(git_lease(1, "https://gitlab.m1ops.com/fis-gb-m1", "a" * 20)),
-        Lease.from_json(git_lease(2, "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs", "b" * 20)),
+        Lease.from_json(git_lease(1, "https://gitlab.lumenops.example/fir-gb-lumen", "a" * 20)),
+        Lease.from_json(git_lease(2, "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs", "b" * 20)),
         Lease.from_json(app_lease(3, "maycuatroi1", "c" * 20, 60)),
         Lease.from_json(env_lease(4, "CLAUDE_CODE_OAUTH_TOKEN", "d" * 20)),
     ]
-    assert credentials.covering(leases, "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git").id == 2, "the longest prefix"
-    assert credentials.covering(leases, "https://gitlab.m1ops.com/fis-gb-m1/other.git").id == 1
-    assert credentials.covering(leases, "https://github.com/hawkteam404/m1-identity.git") is None
+    assert credentials.covering(leases, "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git").id == 2, "the longest prefix"
+    assert credentials.covering(leases, "https://gitlab.lumenops.example/fir-gb-lumen/other.git").id == 1
+    assert credentials.covering(leases, "https://github.com/heron-team/lumen-identity.git") is None
     origins = [
-        "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git",
+        "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git",
         "https://github.com/maycuatroi1/evo-agents.git",
-        "https://github.com/hawkteam404/m1-identity.git",  # no lease: the machine's helpers stay
+        "https://github.com/heron-team/lumen-identity.git",  # no lease: the machine's helpers stay
         "https://github.com/maycuatroi1/evo-agents.git",
     ]
     helper = "!evo-agents worker git-credential --run 7"
-    kb, evo = "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs.git", "https://github.com/maycuatroi1/evo-agents.git"
+    kb, evo = "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs.git", "https://github.com/maycuatroi1/evo-agents.git"
     assert credentials.git_config(origins, leases, helper) == [
         (f"credential.{kb}.helper", ""),
         (f"credential.{kb}.helper", helper),
         (f"credential.{kb}.useHttpPath", "true"),
-        (f"url.{kb}.insteadOf", "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git"),
+        (f"url.{kb}.insteadOf", "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git"),
         (f"credential.{evo}.helper", ""),
         (f"credential.{evo}.helper", helper),
         (f"credential.{evo}.useHttpPath", "true"),
@@ -623,7 +623,7 @@ def test_a_github_token_near_its_end_is_asked_for_again_before_git_gets_it(machi
         await leases.take(hub, {"evo-agents": ["git@github.com:maycuatroi1/evo-agents.git"]})
         first = await leases.answer(request)
         second = await leases.answer(request)
-        other_owner = await leases.answer({**request, "path": "hawkteam404/m1-identity.git"})
+        other_owner = await leases.answer({**request, "path": "heron-team/lumen-identity.git"})
         await leases.release()
         return first, second, other_owner
 
@@ -772,7 +772,7 @@ def test_origins_without_a_lease_are_noted_and_keep_the_machines_credentials(mac
         {
             "leases": [],
             "missing": [
-                {"repo": "kb", "origin": "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git", "reason": "no git secret"},
+                {"repo": "kb", "origin": "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git", "reason": "no git secret"},
                 {"repo": "notes", "origin": None, "reason": "the project registered no origin for it"},
             ],
         }
@@ -780,7 +780,7 @@ def test_origins_without_a_lease_are_noted_and_keep_the_machines_credentials(mac
 
     async def go():
         leases = machine.leases()
-        await leases.take(hub, {"kb": ["git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git"], "app": ["/srv/app.git"]})
+        await leases.take(hub, {"kb": ["git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git"], "app": ["/srv/app.git"]})
         exists = credentials.socket_path(machine.worker, RUN).exists()
         await leases.release()
         return leases, exists
@@ -788,7 +788,7 @@ def test_origins_without_a_lease_are_noted_and_keep_the_machines_credentials(mac
     leases, exists = asyncio.run(go())
     texts = [text for text, _ in machine.notes]
     assert texts == [
-        MISSING_NOTE.format(origin="git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git", reason="no git secret"),
+        MISSING_NOTE.format(origin="git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git", reason="no git secret"),
         MISSING_NOTE.format(origin="notes", reason="the project registered no origin for it"),
         MISSING_NOTE.format(origin="/srv/app.git", reason=credentials.NOT_COVERED),
     ]

@@ -83,7 +83,7 @@ def test_an_accepted_proposal_becomes_a_curator_plan_on_a_branch_of_its_own():
 def test_the_forge_of_an_origin():
     assert judge.forge_of("git@github.com:maycuatroi1/evo-agents.git") == "github"
     assert judge.forge_of("https://github.com/maycuatroi1/evo-agents") == "github"
-    assert judge.forge_of("git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git") == "gitlab"
+    assert judge.forge_of("git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git") == "gitlab"
     assert judge.forge_of(None) is None and judge.forge_of("") is None and judge.forge_of("not a url") is None
     assert judge.gitlab_push_options("main", "A wait helper") == [
         "merge_request.create",
@@ -263,7 +263,7 @@ CUSTOMER = {"level": "customer", "location": "domestic-only", "projects": ["evo-
 
 def test_judge_runs_codex_only_when_the_policy_clears_codex_for_the_projects_label():
     assert judge.codex_cleared(rules([HUB, CLAUDE, CODEX]), INTERNAL)
-    assert not judge.codex_cleared(rules([HUB, CLAUDE]), INTERNAL)  # meridai: no sink for Codex
+    assert not judge.codex_cleared(rules([HUB, CLAUDE]), INTERNAL)  # northwind: no sink for Codex
     assert not judge.codex_cleared(rules([HUB, CLAUDE, CODEX]), CUSTOMER)  # a label above the sink's clearance
     unknown = {**CODEX, "clearance": {"level": "galactic"}}
     assert not judge.codex_cleared(rules([HUB, unknown]), INTERNAL)  # a clearance the ladder lacks admits nothing

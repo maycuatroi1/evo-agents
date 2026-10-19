@@ -66,7 +66,7 @@ TRIAGER = {
 }
 CONTRIBUTES = {"events": [{"name": "results", "on": ["task.result"]}], "agent_types": [TRIAGER]}
 TASK = "Fix the flaky wait in tests/test_wait.py."
-REPOS = ["evo-agents-harness", "evo-agents", "m1-identity", "m1-kb-docs", "notes"]  # its harness, then its repos
+REPOS = ["evo-agents-harness", "evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]  # its harness, then its repos
 
 
 @pytest.fixture
@@ -321,7 +321,7 @@ def test_task_dispatch_needs_a_live_plugin_token_and_runs_dispatch_and_an_enable
     assert "agent type triager of plugin triage is not enabled" in message(hand(client, key), 404)
     enabled(client, hub["owner"])
     assert hand(client, key, name="fixer").status_code == 404
-    assert "with runs:dispatch granted" in message(hand(client, key, project="m1-other"), 403)
+    assert "with runs:dispatch granted" in message(hand(client, key, project="lumen-other"), 403)
     assert client.post(f"/v1/projects/{PROJECT}/plugins/{PLUGIN}/disable", headers=hub["owner"]).status_code == 200
     assert "with runs:dispatch granted" in message(hand(client, key), 403)
     enable_plugin(client, hub["owner"], PLUGIN, [DISPATCH])
@@ -400,7 +400,7 @@ def test_task_dispatch_push_gets_a_draft_pull_request_and_the_end_reaches_the_pl
     assert (made.base, made.draft, made.merged, made.state) == ("main", True, False, "open")
     again = in_chats(client, laptop, run_id, "task/pulls", {**body, "head": "2" * 40}).json()
     assert (again["number"], again["opened"]) == (1, False)
-    elsewhere = in_chats(client, laptop, run_id, "task/pulls", {**body, "repo": "m1-kb-docs"}).json()
+    elsewhere = in_chats(client, laptop, run_id, "task/pulls", {**body, "repo": "lumen-kb-docs"}).json()
     assert (elsewhere["url"], elsewhere["number"]) == (None, None)
     for wrong, status in (({"branch": "main"}, 422), ({"repo": "other"}, 422)):
         assert in_chats(client, laptop, run_id, "task/pulls", {**body, **wrong}).status_code == status

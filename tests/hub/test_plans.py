@@ -45,7 +45,7 @@ FIXTURES = Path(__file__).parent / "fixtures" / "plans"
 COMPLETED = sorted((FIXTURES / "completed").glob("*.yaml"))
 PROJECT = "evo-agents"
 LEVELS = ["public", "internal", "customer", "secret"]
-REPOS = ["evo-agents", "meridai-harness", "evo-cli", "agent-skills", "evo-lms-harness"]
+REPOS = ["evo-agents", "northwind-harness", "evo-cli", "agent-skills", "evo-lms-harness"]
 MARKER = "Zebra-Quokka-Plan-Content"  # in plan bodies only: must never reach an audit row or a log line
 
 needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)

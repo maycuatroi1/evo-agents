@@ -160,7 +160,7 @@ def test_one_secret_per_variable_without_a_policy_leases_as_before(client, hub, 
 def test_round_robin_spreads_consecutive_runs_and_a_run_keeps_its_account(client, hub, hub_db):
     three(client, hub["owner"])
     worker = worker_of(client, hub["owner"], "mac-mini", slots=4)
-    out = {repo: run_on(client, hub["owner"], worker, repo) for repo in ("evo-agents", "m1-kb-docs", "m1-identity")}
+    out = {repo: run_on(client, hub["owner"], worker, repo) for repo in ("evo-agents", "lumen-kb-docs", "lumen-identity")}
     first = {repo: account_of(client, worker, run_id) for repo, run_id in out.items()}
     assert sorted(first.values()) == ["claude-a", "claude-b", "claude-c"]
     # asked again, given back and asked again, paused meanwhile: the same account
@@ -236,7 +236,7 @@ def test_an_account_bound_to_the_worker_comes_before_the_pool(client, hub):
 def test_two_runs_asking_at_once_take_two_turns(client, hub):
     three(client, hub["owner"])
     worker = worker_of(client, hub["owner"], "mac-mini", slots=3)
-    out = [run_on(client, hub["owner"], worker, repo) for repo in ("evo-agents", "m1-kb-docs", "m1-identity")]
+    out = [run_on(client, hub["owner"], worker, repo) for repo in ("evo-agents", "lumen-kb-docs", "lumen-identity")]
 
     async def ask_all():
         import asyncio

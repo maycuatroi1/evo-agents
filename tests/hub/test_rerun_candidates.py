@@ -25,7 +25,7 @@ from tests.hub.test_runs import (  # noqa: F401  (fixtures)
     moved,
 )
 
-OTHER_REPO = {f"{PROJECT}/m1-kb-docs": {"path": "/src/m1-kb-docs", "branch": "main"}}
+OTHER_REPO = {f"{PROJECT}/lumen-kb-docs": {"path": "/src/lumen-kb-docs", "branch": "main"}}
 
 
 def candidates(client, headers, run_id: int):

@@ -210,11 +210,11 @@ hook and the MCP proxy then read the token, the hub URL and their state files (`
 other hub sets it in the `env` of its `.claude/settings.json`, so only the sessions of that harness go there:
 
 ```json
-{ "env": { "EVO_HUB_HOME": "~/.evo/hub-m1" } }
+{ "env": { "EVO_HUB_HOME": "~/.evo/hub-lumen" } }
 ```
 
 ```sh
-EVO_HUB_HOME=~/.evo/hub-m1 evo-agents hub login --url https://hub.other.example
+EVO_HUB_HOME=~/.evo/hub-lumen evo-agents hub login --url https://hub.other.example
 ```
 
 A leading `~/` is expanded, since Claude Code passes the value as written; a blank value counts as unset, and a

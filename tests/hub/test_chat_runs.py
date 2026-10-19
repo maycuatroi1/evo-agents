@@ -39,7 +39,7 @@ from tests.hub.test_runs import PROJECT, add_worker, claim, expire, moved, recov
 app_key = credentials_api.app_key  # a fixture
 MINE = credentials_api.MINE
 OWNER, OTHER, STRANGER = credentials_api.OWNER, credentials_api.OTHER, "stranger"
-CHECKOUTS = credentials_api.CHECKOUTS  # evo-agents, m1-identity, m1-kb-docs and notes
+CHECKOUTS = credentials_api.CHECKOUTS  # evo-agents, lumen-identity, lumen-kb-docs and notes
 ONE_REPO = {f"{PROJECT}/evo-agents": {"path": "/src/evo-agents", "branch": "main"}}
 ADMIN_GRANT = {"role": "admin", "max_level": "internal"}
 EYES, CHECK, CROSS = chats.EYES, chats.CHECK, chats.CROSS
@@ -197,7 +197,7 @@ def test_a_chat_mention_makes_one_run_on_the_senders_worker_with_the_most_repos(
         1,
         f"chat/{made}",
     )
-    assert [entry["repo"] for entry in run["repos"]] == ["evo-agents", "m1-identity", "m1-kb-docs", "notes"]
+    assert [entry["repo"] for entry in run["repos"]] == ["evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]
     assert {entry["branch"] for entry in run["repos"]} == {f"chat/{made}"}
     assert run["budget"] == {"max_usd": chat_runs.DEFAULT_BUDGET_USD, "max_turns": None, "max_seconds": 1800}
     assert run["title"] == "@reviewer in Release talk: @reviewer please fix the flaky wait test"
@@ -535,7 +535,7 @@ def test_a_chat_run_branch_gets_a_draft_pull_request_linked_in_the_thread(client
     assert (again["number"], again["opened"]) == (1, False)
     assert message(client, hub["owner"], chat["id"], again["message_id"])["body"].startswith("Pushed more commits")
     # a repo off GitHub gets the message without a pull request, and the run's branch alone is taken
-    elsewhere = in_chats(client, worker, spec["id"], "chat/pulls", {**body, "repo": "m1-kb-docs"}).json()
+    elsewhere = in_chats(client, worker, spec["id"], "chat/pulls", {**body, "repo": "lumen-kb-docs"}).json()
     assert elsewhere["url"] is None and elsewhere["number"] is None
     wrong = in_chats(client, worker, spec["id"], "chat/pulls", {**body, "branch": "main"})
     assert wrong.status_code == 422

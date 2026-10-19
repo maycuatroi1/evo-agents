@@ -5,7 +5,7 @@ goal: >
   Knowledge graph được dùng hằng ngày trên máy này: evo-agents phát hành trên PyPI và plugin evo-kg ghim
   đúng phiên bản; tầng khẳng định có đủ kg_impact, kg_path, kiểm ontology, khoá PG-Keys, định nghĩa từ
   frontmatter, node thư mục và lint quy ước định danh; LaunchAgent tự sync theo refresh của từng nguồn và
-  ghi bản kiểm toán; hai hook mới cộng dồn nhãn phiên và gợi ý ID từ graph trước Grep, đã đo trên meridai.
+  ghi bản kiểm toán; hai hook mới cộng dồn nhãn phiên và gợi ý ID từ graph trước Grep, đã đo trên northwind.
 
 created_at: '2026-10-03T14:30:00+07:00'
 
@@ -19,7 +19,7 @@ context: >
   5 trên 9 tool (thiếu kg_path, kg_impact); evo_agents/kg/schema.py có validate_ontology nhưng không nơi nào
   gọi, dù knowledge.schema.json đã có khoá ontology; kho chưa có partial unique index cho Symbol; frontmatter
   id: chưa được coi là nơi định nghĩa nên 734 node Requirement SRS.<hex> của evo-lms không có cạnh defines;
-  graph chưa có node thư mục, nguyên nhân chính của mention treo ở kb-docs của meridai; harness validate chưa
+  graph chưa có node thư mục, nguyên nhân chính của mention treo ở kb-docs của northwind; harness validate chưa
   lint quy ước ở mục 4.6; khoá refresh có trong schema nhưng không lệnh nào đọc; chưa có bản kiểm toán
   JSONL. (3) Plugin chỉ có hook SessionStart. Corpus đã có khoá theo nguồn (corpus.lock) và bảng runs, nên
   sync theo lịch không chạy chồng lên sync tay. CI Harness Validate của evo-lms ghim evo-agents theo commit
@@ -29,46 +29,46 @@ acceptance:
   - criterion: >
       evo-agents 0.1.0 có trên PyPI dưới tên evo-ak, phát hành từ tag v0.1.0 qua GitHub Actions; plugin evo-kg
       0.1.0 khởi động MCP server và các hook bằng `uvx --from evo-ak==0.1.0 evo-agents` trong một phiên Claude Code thường (không
-      --plugin-dir) mở trong meridai-harness, và phiên đó gọi được kg_status.
+      --plugin-dir) mở trong northwind-harness, và phiên đó gọi được kg_status.
     verify: >
-      uvx --from evo-ak==0.1.0 evo-agents --version; claude plugin install evo-kg@evo-agents; trong ~/github/meridai-harness:
-      claude -p "gọi kg_status rồi in tên dự án đã gắn" phải in meridai
+      uvx --from evo-ak==0.1.0 evo-agents --version; claude plugin install evo-kg@evo-agents; trong ~/github/northwind-harness:
+      claude -p "gọi kg_status rồi in tên dự án đã gắn" phải in northwind
   - criterion: >
       kg_impact trả phụ thuộc ngược từ một symbol, một danh sách đường dẫn hoặc một unified diff, chỉ qua
       cạnh tầng A (không có status proposed), độ sâu tối đa 3; kg_path trả chuỗi truy vết tối đa 6 hop giữa
       hai node hoặc từ một node theo quan hệ truy vết. Cả hai giữ nhãn và trần CAP_CHARS.
     verify: >
       pytest tests/kg/test_serve.py -k "impact or path"; evo-agents kg query kg_impact
-      "symbol:kb-service:src/kb_service/mcp_adapter/asgi.py::Router" --project meridai phải liệt kê
+      "symbol:kb-service:src/kb_service/mcp_adapter/asgi.py::Router" --project northwind phải liệt kê
       build_router (cạnh calls, status resolved) và file asgi.py
   - criterion: >
-      build --verify khớp hash trên ba dự án meridai, evo-lms, evo-agents sau khi kho lên schema 2; kho
+      build --verify khớp hash trên ba dự án northwind, evo-lms, evo-agents sau khi kho lên schema 2; kho
       schema 1 được dựng lại từ nhật ký thay vì báo lỗi; hai Symbol trùng khoá (repo, path, qualname) làm
       build thất bại và in cả hai nguồn.
     verify: >
-      pytest tests/kg -k "pg_key or schema_upgrade"; evo-agents kg build --verify --project meridai;
+      pytest tests/kg -k "pg_key or schema_upgrade"; evo-agents kg build --verify --project northwind;
       evo-agents kg build --verify --project evo-lms; evo-agents kg build --verify --project evo-agents
   - criterion: >
       Trên evo-lms, mỗi tài liệu có frontmatter id: khớp một mẫu trong identifiers sinh đúng một cạnh defines
       tới node mã tương ứng; số node Requirement không có defines giảm từ 734 và con số mới nằm trong báo cáo.
-      Trên meridai, link tới thư mục phân giải về node Directory và số mention treo của nguồn kb-docs giảm so
+      Trên northwind, link tới thư mục phân giải về node Directory và số mention treo của nguồn kb-docs giảm so
       với lượt đo của kg-prototype.
-    verify: evo-agents kg status --project evo-lms --json; evo-agents kg status --project meridai --json; báo cáo trong reports/
+    verify: evo-agents kg status --project evo-lms --json; evo-agents kg status --project northwind --json; báo cáo trong reports/
   - criterion: >
       evo-agents harness validate kiểm ontology.yaml mà knowledge.yaml trỏ tới và in cảnh báo lint quy ước
-      định danh; ba harness evo-agents-harness, meridai-harness, evo-lms-harness vẫn 0 lỗi.
-    verify: evo-agents harness validate ~/github/evo-agents-harness ~/github/meridai-harness ~/github/evo-lms-harness
+      định danh; ba harness evo-agents-harness, northwind-harness, evo-lms-harness vẫn 0 lỗi.
+    verify: evo-agents harness validate ~/github/evo-agents-harness ~/github/northwind-harness ~/github/evo-lms-harness
   - criterion: >
       LaunchAgent của evo-agents đã nạp trên máy này, chạy `kg sync --due --all --build` mỗi giờ; trong vòng
-      hai giờ sau khi cài, audit.jsonl của meridai có bản ghi từ lượt chạy theo lịch, và kg status không còn
+      hai giờ sau khi cài, audit.jsonl của northwind có bản ghi từ lượt chạy theo lịch, và kg status không còn
       nguồn nào có tuổi vượt refresh cộng một giờ.
     verify: >
-      launchctl print gui/$(id -u)/io.github.maycuatroi1.evo-agents.kg-sync; tail -n 5 ~/.evo/kg/meridai/audit.jsonl;
-      evo-agents kg status --project meridai
+      launchctl print gui/$(id -u)/io.github.maycuatroi1.evo-agents.kg-sync; tail -n 5 ~/.evo/kg/northwind/audit.jsonl;
+      evo-agents kg status --project northwind
   - criterion: >
       Hook PostToolUse ghi nhãn cao nhất đã đọc vào ~/.evo/kg/sessions/<session_id>.json trong một phiên
       thật. Hook PreToolUse gợi ý chỉ chứa ID và đường dẫn do parser rút ra, tắt được bằng
-      EVO_KG_GREP_HINTS=0, và trên ít nhất 50 mẫu tìm kiếm lấy từ transcript meridai có độ trễ p95 không quá
+      EVO_KG_GREP_HINTS=0, và trên ít nhất 50 mẫu tìm kiếm lấy từ transcript northwind có độ trễ p95 không quá
       1,5 giây đo qua đúng lệnh hook của plugin.
     verify: >
       pytest tests/kg/test_hooks.py; báo cáo đo trong reports/ (độ trễ p50 và p95, tỉ lệ có gợi ý, tỉ lệ gợi ý
@@ -97,7 +97,7 @@ references:
   - what: Kiến trúc, thành phần và phạm vi đã chốt
     where: reports/Thiết kế khung knowledge graph.md, mục 2 đến 5, 6.4, 6.5
   - what: Kết quả và lệch của prototype, việc nên làm tiếp
-    where: reports/Prototype khung knowledge graph trên meridai.md, mục "Lệch so với thiết kế" và "Việc nên làm tiếp"
+    where: reports/Prototype khung knowledge graph trên northwind.md, mục "Lệch so với thiết kế" và "Việc nên làm tiếp"
   - what: 734 Requirement không có defines, kg bind không tồn tại, ghim CI của evo-lms
     where: reports/Khung knowledge graph trên evo-lms.md, mục "Mã SRS chưa có nơi định nghĩa" và "Phát hiện ngoài phạm vi"
   - what: Plan đã đóng của giai đoạn 3
@@ -133,7 +133,7 @@ repos:
       kg bind, ontology, PG-Keys và schema kho 2, định nghĩa từ frontmatter, node Directory, kg_impact,
       kg_path, lint quy ước, sync --due và kg schedule, audit.jsonl, hai hook mới, skill và eval, phát hành
       0.1.0 lên PyPI.
-  - repo: meridai-harness
+  - repo: northwind-harness
     branch: kg-assertion-layer
     order: 2
     depends_on: [evo-agents]
@@ -141,7 +141,7 @@ repos:
     merged_into: main
     merged_at: '2026-10-03'
     scope: >
-      knowledge.yaml: refresh cho các nguồn chưa có. Làm trong worktree ~/github/meridai-harness-assertion vì
+      knowledge.yaml: refresh cho các nguồn chưa có. Làm trong worktree ~/github/northwind-harness-assertion vì
       checkout chính có thay đổi chưa commit của phiên khác.
   - repo: evo-lms-harness
     branch: kg-assertion-layer
@@ -156,7 +156,7 @@ repos:
   - repo: evo-agents-harness
     branch: main
     order: 4
-    depends_on: [evo-agents, meridai-harness, evo-lms-harness]
+    depends_on: [evo-agents, northwind-harness, evo-lms-harness]
     status: done
     done_at: '2026-10-03'
     scope: knowledge.yaml (refresh), cài đặt trên máy, báo cáo đo, CLUSTER.md, AGENTS.md, plan.
@@ -199,7 +199,7 @@ steps:
     done_at: '2026-10-03'
     evidence: >
       evo-agents@ba65d01, merge vào kg-assertion-layer. Chạy lại: 11 test ontology xanh; validate evo-lms 82
-      file, meridai 32 file, evo-agents-harness 6 file, đều 0 lỗi và output -v giống bản 1447e3f; sau merge
+      file, northwind 32 file, evo-agents-harness 6 file, đều 0 lỗi và output -v giống bản 1447e3f; sau merge
       67 test xanh, ruff sạch. Lệch: kiểm kind của identifiers cũng chỉ chạy khi knowledge.yaml có khoá
       ontology, để harness không khai khoá giữ nguyên hành vi; validate_ontology từ chối thêm node_kinds hoặc
       relations không phải danh sách và mục không có tên.
@@ -216,14 +216,14 @@ steps:
       chồng nhau sinh khoá trùng thì ghi lại ở note của step 16 và 17 để harness đó sửa include/exclude.
     depends_on: []
     verify: >
-      pytest tests/kg -k "pg_key or schema_upgrade" -q; evo-agents kg build --verify --project meridai;
+      pytest tests/kg -k "pg_key or schema_upgrade" -q; evo-agents kg build --verify --project northwind;
       evo-agents kg build --verify --project evo-lms; evo-agents kg build --verify --project evo-agents
     status: done
     done_at: '2026-10-03'
     evidence: >
       evo-agents@dc2a225, merge vào kg-assertion-layer ở evo-agents@98e4ca4 (gỡ xung đột import trong build.py
       với step 2). Chạy lại: 6 test pg_key và schema_upgrade xanh; trên bản sao kho (EVO_KG_HOME trong
-      scratchpad, kho thật không đổi) build --verify khớp hash: meridai sha256:040c9179 (19.686 node, 32.476
+      scratchpad, kho thật không đổi) build --verify khớp hash: northwind sha256:040c9179 (19.686 node, 32.476
       cạnh), evo-lms sha256:ade79cae (43.854 node, 73.570 cạnh), evo-agents sha256:7ff71399; cả ba tự dựng lại
       từ schema 1 lên 2. Không có Symbol trùng khoá ở dự án nào, nên step 16 và 17 không cần sửa
       include/exclude. Sau merge 103 test xanh. Thêm: STRUCTURE_VERSION lên 3; serve, query và kg status báo
@@ -247,7 +247,7 @@ steps:
       step 5; LINK_VERSION lên 7 vì cả hai nhánh cùng nâng 5 lên 6). Chạy lại: 20 test frontmatter xanh. Trên bản
       sao kho evo-lms, Requirement không có defines 734/734 xuống 1/734 (mã còn lại chỉ được một plan step nhắc,
       không tài liệu nào mang nó ở frontmatter); 0 mã có từ hai nơi defines. Sau merge 153 test xanh; build
-      --verify khớp trên evo-lms sha256:f30c1d7c (45.562 node, 82.099 cạnh, có cả node Directory) và meridai
+      --verify khớp trên evo-lms sha256:f30c1d7c (45.562 node, 82.099 cạnh, có cả node Directory) và northwind
       sha256:d0fb9d2a. Thêm: frontmatter có derived_from không defines; link stage bỏ cạnh mentions khi chính
       tài liệu đó đã defines mã.
     blocking: true
@@ -258,14 +258,14 @@ steps:
       Thêm hub kind Directory vào HUB_KINDS. Chặng map sinh một node Directory cho mỗi thư mục chứa ít nhất một
       item của nguồn git hoặc harness, cạnh child_of từ File, Document và Directory con tới thư mục cha. Chỉ mục
       định danh nhận đường dẫn thư mục; Linker.path_target phân giải mention đường dẫn kết thúc bằng / hoặc
-      trùng một thư mục về node Directory, status parsed. Đo lại mention treo của nguồn kb-docs trên meridai.
+      trùng một thư mục về node Directory, status parsed. Đo lại mention treo của nguồn kb-docs trên northwind.
     depends_on: [3]
-    verify: pytest tests/kg -k directory -q; evo-agents kg build --verify --project meridai
+    verify: pytest tests/kg -k directory -q; evo-agents kg build --verify --project northwind
     status: done
     done_at: '2026-10-03'
     evidence: >
       evo-agents@c041ce6, merge vào kg-assertion-layer ở evo-agents@e2505cb. Chạy lại: 7 test directory xanh;
-      trên bản sao kho meridai build --verify khớp sha256:474a48d9 (20.119 node, 35.440 cạnh, trước đó 19.686 và
+      trên bản sao kho northwind build --verify khớp sha256:474a48d9 (20.119 node, 35.440 cạnh, trước đó 19.686 và
       32.476; thêm 433 node Directory). Mention treo của kb-docs 442 xuống 282 (phân giải 72% lên 81%), tổng
       treo 1.109 xuống 946. Sau merge 133 test xanh. ID dạng dir:<repo>:<path>; gốc repo không có node riêng;
       phần lớn 282 link treo còn lại bắt đầu bằng / (tính từ gốc site docs), step này chưa xử lý.
@@ -287,7 +287,7 @@ steps:
     done_at: '2026-10-03'
     evidence: >
       evo-agents@d33fc2d, merge vào kg-assertion-layer ở evo-agents@856c362. Chạy lại: 9 test impact và path
-      xanh; sau merge 197 test xanh. Trên bản sao kho meridai, kg_impact của Router trả 5 phụ thuộc gồm file
+      xanh; sau merge 197 test xanh. Trên bản sao kho northwind, kg_impact của Router trả 5 phụ thuộc gồm file
       asgi.py (defines, parsed) và build_router (calls, resolved), kết quả mang project và join nhãn; kg_path
       Router tới build_router đi qua cạnh calls. Sửa thêm lỗi có sẵn ở _envelope: mỗi mảnh dài đúng CAP_CHARS
       nên phần kg_more bị cắt lại; giờ mảnh là CAP_CHARS trừ 100. kg_path bỏ qua in_source; kg_impact chỉ đi
@@ -303,14 +303,14 @@ steps:
       trần thay vì repo@sha. Thêm khoá external vào harness.schema.json cho repo. Ghi số cảnh báo mới của ba
       harness vào note của step.
     depends_on: []
-    verify: pytest tests/harness -q; evo-agents harness validate ~/github/evo-agents-harness ~/github/meridai-harness ~/github/evo-lms-harness
+    verify: pytest tests/harness -q; evo-agents harness validate ~/github/evo-agents-harness ~/github/northwind-harness ~/github/evo-lms-harness
     status: done
     done_at: '2026-10-03'
     evidence: >
       evo-agents@6a3071f, merge vào kg-assertion-layer ở evo-agents@6d2e8be (gỡ xung đột với step 2 ở
       _validate_file và test_harness.py). Chạy lại: 25 test harness xanh; validate ba harness 120 file, 0 lỗi,
       exit 0; sau merge 117 test xanh. Cảnh báo mới: evo-agents-harness 0 lên 20 (19 SHA trần, 1 source seam
-      không phải danh sách); meridai 54 lên 174 (39 [redacted] chưa khai, 81 SHA trần); evo-lms 707 lên 1.672
+      không phải danh sách); northwind 54 lên 174 (39 [redacted] chưa khai, 81 SHA trần); evo-lms 707 lên 1.672
       (253 step có order thiếu id, 53 repo chưa khai, 48 source seam, 611 SHA trần). Lệch: khoá external đã có
       sẵn trong harness.schema.json từ 9203974 nên không đổi schema; tên repo của chính harness lấy theo tên
       thư mục gốc vì Harness.name là tên cụm; SHA trần chỉ tính 7 đến 12 hoặc 40 ký tự hex.
@@ -496,25 +496,25 @@ steps:
       uvx --from evo-ak==0.1.0 evo-agents --version tải từ PyPI và in evo-agents 0.1.0.
     blocking: true
   - id: 16
-    title: 'refresh cho nguồn của meridai'
-    repo: meridai-harness
+    title: 'refresh cho nguồn của northwind'
+    repo: northwind-harness
     what: >
-      Trong worktree ~/github/meridai-harness-assertion (nhánh kg-assertion-layer từ origin/main): thêm
+      Trong worktree ~/github/northwind-harness-assertion (nhánh kg-assertion-layer từ origin/main): thêm
       refresh: 1h cho các nguồn git và harness trong knowledge.yaml, giữ 6h của lark-wiki. Sửa include/exclude
       nếu step 3 ghi nhận Symbol trùng khoá. Merge fast-forward vào main và push như lần merge
       kg-connector-lark-wiki; checkout chính không bị đụng vì knowledge.yaml không nằm trong thay đổi chưa
       commit của nó (kiểm git status trước khi merge).
     depends_on: [8, 15]
-    verify: evo-agents harness validate ~/github/meridai-harness; evo-agents kg sync --due --project meridai
+    verify: evo-agents harness validate ~/github/northwind-harness; evo-agents kg sync --due --project northwind
     status: done
     done_at: '2026-10-03'
     evidence: >
-      meridai-harness@f793a4e (worktree ~/github/meridai-harness-assertion, nhánh kg-assertion-layer), main
+      northwind-harness@f793a4e (worktree ~/github/northwind-harness-assertion, nhánh kg-assertion-layer), main
       fast-forward b58c2db..f793a4e và push; checkout chính không có thay đổi ở knowledge.yaml. refresh: 1h cho 5
       nguồn git và harness. Validate checkout chính 32 file, 0 lỗi. uvx --from evo-ak==0.1.0 evo-agents kg sync
-      --due --project ~/github/meridai-harness: 6 nguồn đến hạn, cả 6 OK, lark-wiki 64 item trong 65 giây, tổng
-      68 giây; audit.jsonl có dòng sync cho từng nguồn; chỉ mục projects.json của meridai chuyển từ worktree
-      meridai-harness-kg về checkout chính.
+      --due --project ~/github/northwind-harness: 6 nguồn đến hạn, cả 6 OK, lark-wiki 64 item trong 65 giây, tổng
+      68 giây; audit.jsonl có dòng sync cho từng nguồn; chỉ mục projects.json của northwind chuyển từ worktree
+      northwind-harness-kg về checkout chính.
     blocking: true
   - id: 17
     title: 'refresh và ghim 0.1.0 cho evo-lms'
@@ -545,8 +545,8 @@ steps:
       đầu tiên và kiểm schedule.log, audit.jsonl.
     depends_on: [15, 16, 17]
     verify: >
-      launchctl print gui/$(id -u)/io.github.maycuatroi1.evo-agents.kg-sync; tail -n 5 ~/.evo/kg/meridai/audit.jsonl;
-      evo-agents kg status --project meridai
+      launchctl print gui/$(id -u)/io.github.maycuatroi1.evo-agents.kg-sync; tail -n 5 ~/.evo/kg/northwind/audit.jsonl;
+      evo-agents kg status --project northwind
     status: done
     done_at: '2026-10-03'
     evidence: >
@@ -554,12 +554,12 @@ steps:
       evo-ak 0.1.0 vào ~/.local/bin/evo-agents; marketplace maycuatroi1/evo-agents đã thêm, plugin evo-kg 0.1.0
       cài ở scope user và đã bật. kg schedule install nạp io.github.maycuatroi1.evo-agents.kg-sync (run interval
       3600 giây); kích chạy ngay bằng launchctl kickstart: 4 dự án, evo-dubbing không có nguồn đến hạn, evo-agents
-      2 nguồn, evo-lms 17 nguồn, meridai 5 nguồn, tất cả OK; cả ba kho thật tự dựng lại từ schema 1 lên 2; audit.jsonl
-      có dòng trigger schedule (evo-agents 3, evo-lms 18, meridai 6). Lượt đầu mất khoảng 32 phút vì launchd giới
+      2 nguồn, evo-lms 17 nguồn, northwind 5 nguồn, tất cả OK; cả ba kho thật tự dựng lại từ schema 1 lên 2; audit.jsonl
+      có dòng trigger schedule (evo-agents 3, evo-lms 18, northwind 6). Lượt đầu mất khoảng 32 phút vì launchd giới
       hạn CPU và I/O của job nền và memo phải tính lại hết. Phát hiện: cài không có extra graphify thì build lặng lẽ
-      lùi về python-ast (meridai 3.242 Symbol thay vì 8.816); cài lại evo-ak[graphify]==0.1.0 rồi build tay: build
-      --verify khớp trên meridai sha256:d0edc269 (20.493 node, 36.423 cạnh), evo-lms sha256:fcfeeae6 (45.562 node,
-      82.099 cạnh), evo-agents sha256:01fbfa2c. kg status meridai: các nguồn git và harness 2 phút tuổi.
+      lùi về python-ast (northwind 3.242 Symbol thay vì 8.816); cài lại evo-ak[graphify]==0.1.0 rồi build tay: build
+      --verify khớp trên northwind sha256:d0edc269 (20.493 node, 36.423 cạnh), evo-lms sha256:fcfeeae6 (45.562 node,
+      82.099 cạnh), evo-agents sha256:01fbfa2c. kg status northwind: các nguồn git và harness 2 phút tuổi.
     blocking: true
   - id: 19
     title: 'Đo và báo cáo'
@@ -567,22 +567,22 @@ steps:
     what: >
       Đo trên ba dự án và ghi reports/Tầng khẳng định của khung knowledge graph.md: build --verify và hash,
       thời gian sync và build, kích thước kho sau schema 2; Requirement không có defines trên evo-lms trước và
-      sau; mention treo theo nguồn trên meridai trước và sau node Directory; số cảnh báo lint mới theo harness.
+      sau; mention treo theo nguồn trên northwind trước và sau node Directory; số cảnh báo lint mới theo harness.
       Với hook gợi ý: trích ít nhất 50 mẫu Grep, Glob, rg từ transcript ~/.claude/projects/
-      -Users-[redacted]-github-meridai-harness/*.jsonl, chạy qua đúng lệnh hook của plugin, ghi độ trễ p50
+      -Users-[redacted]-github-northwind-harness/*.jsonl, chạy qua đúng lệnh hook của plugin, ghi độ trễ p50
       và p95, tỉ lệ có gợi ý, và tỉ lệ đúng trên 30 gợi ý chấm tay. Báo cáo chỉ ghi số tổng hợp và loại mẫu,
-      không chép nội dung khách hàng. Kiểm nhãn phiên trong một phiên claude -p thật trên meridai.
+      không chép nội dung khách hàng. Kiểm nhãn phiên trong một phiên claude -p thật trên northwind.
     depends_on: [18]
-    verify: file báo cáo tồn tại và có đủ các số đo trên; evo-agents kg status --project meridai --json
+    verify: file báo cáo tồn tại và có đủ các số đo trên; evo-agents kg status --project northwind --json
     status: done
     done_at: '2026-10-03'
     evidence: >
-      reports/Tầng khẳng định của khung knowledge graph.md (commit cùng lần đánh dấu step). kg status meridai: 20.493
+      reports/Tầng khẳng định của khung knowledge graph.md (commit cùng lần đánh dấu step). kg status northwind: 20.493
       node, 36.423 cạnh, mention 7.525/8.841 (85,1%), treo 1.030 (prototype 1.109), kb-docs 442 xuống 282; evo-lms
       Requirement thiếu defines 1/734 (kiểm lại bằng sqlite chỉ đọc). Lint: 1.869 cảnh báo, 0 lỗi trên ba harness.
-      Hook gợi ý trên 232 lệnh grep thật của meridai (transcript không có Grep, Glob hay rg): p50 0,111 giây, p95
+      Hook gợi ý trên 232 lệnh grep thật của northwind (transcript không có Grep, Glob hay rg): p50 0,111 giây, p95
       0,124 giây; 23 gợi ý, 5 đúng, 8 một phần, 10 sai; EVO_KG_GREP_HINTS=0 tắt được. Phiên claude -p thật trong
-      meridai trả "meridai" (0,23 USD); phiên thứ hai ghi nhãn phiên customer, U, meridai, 10 kết quả. Báo cáo chỉ
+      northwind trả "northwind" (0,23 USD); phiên thứ hai ghi nhãn phiên customer, U, northwind, 10 kết quả. Báo cáo chỉ
       có số tổng hợp, không chép nội dung khách hàng.
     blocking: true
   - id: 20
@@ -602,15 +602,15 @@ steps:
       kg query kg_impact), cách cài evo-ak[graphify] thay cho đường dẫn venv, trạng thái giai đoạn 4 và việc còn
       mở; AGENTS.md trỏ về plan đã xong; contracts.yaml: source của knowledge-manifest-v1 thành danh sách, notes
       ghi ontology được kiểm và evo-lms ghim evo-ak==0.1.0. Verify seam: kg-protocol-v1 6/6 PASS từ checkout chính
-      meridai bằng evo-agents 0.1.0; knowledge-manifest-v1 120 file, 0 lỗi. Plan chuyển sang plans/completed/.
+      northwind bằng evo-agents 0.1.0; knowledge-manifest-v1 120 file, 0 lỗi. Plan chuyển sang plans/completed/.
       Báo cáo mới chưa có bản Notion.
     blocking: false
 
 seams_touched:
   - name: knowledge-manifest-v1
     owner: evo-agents
-    consumers: [meridai-harness, evo-agents-harness, evo-lms-harness]
-    verify: evo-agents harness validate ~/github/meridai-harness ~/github/evo-agents-harness ~/github/evo-lms-harness
+    consumers: [northwind-harness, evo-agents-harness, evo-lms-harness]
+    verify: evo-agents harness validate ~/github/northwind-harness ~/github/evo-agents-harness ~/github/evo-lms-harness
 
 risks:
   - risk: Phát hành nhầm một bản PyPI hỏng; số phiên bản đã đăng không dùng lại được.
@@ -620,7 +620,7 @@ risks:
   - risk: Dữ liệu khách hàng hoặc định danh nội bộ lọt vào repo public evo-agents qua fixture, mẫu stdin của hook hay ca eval.
     mitigation: >
       Mẫu stdin ở step 10 bỏ nội dung trước khi commit; fixture và mock eval chỉ dùng dữ liệu tự tạo; quét chuỗi
-      nhạy cảm trên toàn cây trước mỗi lần push (step 15). Số đo từ transcript meridai chỉ nằm trong báo cáo
+      nhạy cảm trên toàn cây trước mỗi lần push (step 15). Số đo từ transcript northwind chỉ nằm trong báo cáo
       của harness riêng tư này.
   - risk: Hook gợi ý bật mặc định chèn gợi ý sai vào mọi phiên, hoặc làm chậm mỗi lần Grep.
     mitigation: >
@@ -639,19 +639,19 @@ risks:
     mitigation: >
       Plist khai PATH tường minh; lỗi đi vào schedule.log, audit.jsonl và exit code của kg status; step 18 chờ
       lượt chạy theo lịch đầu tiên và kiểm cả hai file.
-  - risk: Sửa meridai-harness hoặc evo-lms-harness đè lên thay đổi chưa commit của phiên khác.
+  - risk: Sửa northwind-harness hoặc evo-lms-harness đè lên thay đổi chưa commit của phiên khác.
     mitigation: Làm trong worktree riêng; kiểm git status của checkout chính trước khi merge fast-forward.
 
 rollback: >
   evo-agents: revert commit merge của nhánh kg-assertion-layer trên main; bản 0.1.0 trên PyPI không xoá được,
   chỉ yank, và plugin quay về ghim bản cũ bằng một commit. Kho schema 2: xoá graph.sqlite của dự án rồi dựng
   lại bằng phiên bản cũ từ nhật ký, vì nhật ký và blob không đổi định dạng. LaunchAgent: `evo-agents kg
-  schedule uninstall` (launchctl bootout rồi xoá plist). meridai-harness và evo-lms-harness: revert commit
+  schedule uninstall` (launchctl bootout rồi xoá plist). northwind-harness và evo-lms-harness: revert commit
   knowledge.yaml; evo-lms đưa ghim CI về commit 1447e3f. Không có thao tác nào sửa corpus đã có.
 
 assumptions:
   - uv và uvx có ở ~/.local/bin (kiểm 2026-10-03).
-  - Lệnh meridai đã cài trên máy có kg-connector (kiểm 2026-10-03), nên LaunchAgent gọi được connector Lark.
+  - Lệnh northwind đã cài trên máy có kg-connector (kiểm 2026-10-03), nên LaunchAgent gọi được connector Lark.
   - Corpus có khoá theo nguồn (corpus.lock), nên lượt sync theo lịch và lượt sync tay không chạy chồng lên nhau.
   - Tên evo-ak trên PyPI còn trống (pypi.org/pypi/evo-ak/json và các biến thể chuẩn hoá trả 404 ngày 2026-10-03). Tên evo-agents bị PyPI từ chối vì quá giống project evoagents đã có.
   - Claude Code hỗ trợ additionalContext và trường if cho hook PreToolUse theo tài liệu hooks tra ngày 2026-10-03; step 11 kiểm lại trên bản cài thật.
@@ -704,7 +704,7 @@ tech_debt:
       Sửa ở evo-agents@60287a3, phát hành 0.1.1 (tag v0.1.1, release thành công, PyPI có 0.1.1): kg build và kg
       status in backend code theo nguồn, cảnh báo khi auto lùi về python-ast, nguồn khai graphify-ast mà thiếu
       graphify thì build hỏng; README hướng dẫn cài evo-ak[graphify]. Trên máy đã cài evo-ak[graphify]==0.1.1 và
-      plugin evo-kg 0.1.1; build meridai bằng 0.1.1 cùng hash sha256:d0edc269 với 0.1.0.
+      plugin evo-kg 0.1.1; build northwind bằng 0.1.1 cùng hash sha256:d0edc269 với 0.1.0.
 
 open_questions:
   - issue: Hook gợi ý trước Grep có nên chuyển sang opt-in theo harness nếu tỉ lệ gợi ý đúng đo ở step 19 thấp?
@@ -712,7 +712,7 @@ open_questions:
     blocking: false
     note: >
       Người dùng quyết ngày 2026-10-03 sau khi đọc báo cáo step 19 (5/23 gợi ý đúng): giữ bật mặc định, sửa
-      cách xếp hạng rồi đo lại trên tập dev meridai và tập holdout evo-lms, evo-agents-harness. Làm trên nhánh
+      cách xếp hạng rồi đo lại trên tập dev northwind và tập holdout evo-lms, evo-agents-harness. Làm trên nhánh
       hook-ranking của evo-agents.
   - issue: Câu 6 ở mục 7 của thiết kế (hook chặn kênh ra ngoài) dùng nhãn phiên mà step 10 ghi lại.
     status: open

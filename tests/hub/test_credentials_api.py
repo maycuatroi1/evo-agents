@@ -42,20 +42,20 @@ from tests.hub.test_web_auth import cookie, csrf_for, web_sign_in
 
 PLAN = "credentials-smoke"
 ADMIN_ID, OWNER, OWNER_ID, OTHER, OTHER_ID = 302, "owner", 501, "someone-else", 502
-MINE, THEIRS = "maycuatroi1", "hawkteam404"
+MINE, THEIRS = "maycuatroi1", "heron-team"
 ORIGINS = {
     "evo-agents": f"https://github.com/{MINE}/evo-agents.git",
-    "m1-identity": f"git@github.com:{THEIRS}/m1-identity.git",
-    "m1-kb-docs": "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git",
+    "lumen-identity": f"git@github.com:{THEIRS}/lumen-identity.git",
+    "lumen-kb-docs": "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git",
     "notes": None,
 }
-STEPS = {"evo-agents": 1, "m1-kb-docs": 2, "m1-identity": 3, "notes": 4}
+STEPS = {"evo-agents": 1, "lumen-kb-docs": 2, "lumen-identity": 3, "notes": 4}
 # The hub dispatches no run on a repo the project lists no origin for: notes has one at dispatch, on a host nothing
 # covers, and a test that needs it without one registers ORIGINS again once its run is out.
 DISPATCHED = {**ORIGINS, "notes": "https://notes.example.org/team/notes.git"}
 CHECKOUTS = {f"{PROJECT}/{name}": {"path": f"/src/{name}", "branch": "main"} for name in ORIGINS}
 WRITER = {"role": "writer", "max_level": "internal"}
-GITLAB_KB = "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"
+GITLAB_KB = "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"
 
 
 def sample(prefix: str = "sk-sample-") -> str:
@@ -318,7 +318,7 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
 
     # each repo nothing covers comes back with its origin and why
     assert missing(answer) == {
-        "m1-identity": (ORIGINS["m1-identity"], f"the GitHub App is not installed on {THEIRS}/m1-identity"),
+        "lumen-identity": (ORIGINS["lumen-identity"], f"the GitHub App is not installed on {THEIRS}/lumen-identity"),
         "notes": (None, f"project {PROJECT} lists no origin for notes"),
     }
     # the daemon reads the leases with the shared model, whose repr leaves the value out
@@ -339,7 +339,7 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
     )
     assert Sealer(config.secrets_key).open(Sealed(sealed, nonce, key_id), lease_aad(lease_id)) == app["value"]
 
-    repos = "evo-agents,m1-identity,m1-kb-docs,notes"
+    repos = "evo-agents,lumen-identity,lumen-kb-docs,notes"
     secrets = secret_ids(hub_db, "claude-oauth", "gitlab-kb")  # by id: their names are the owner's
     target = f"{PROJECT}/{PLAN} run:{run_id} secrets={secrets} github-app={MINE} repos={repos}"
     assert audit_rows(hub_db, "credential.lease") == [(target, OWNER, PROJECT, True)]
@@ -348,42 +348,42 @@ def test_a_run_gets_its_owners_secrets_and_an_app_token_for_its_own_github_repos
 def test_a_repo_of_an_account_the_owner_cannot_push_to_gets_no_app_token(client, hub, github, hub_db):
     """A project's admin can register any origin: one naming another GitHub account, on which the App is installed,
     gets no token unless the run's owner may push to that repo on GitHub."""
-    github.install(THEIRS, "m1-identity")
+    github.install(THEIRS, "lumen-identity")
     github.accounts[OWNER] = OWNER_ID
     worker = worker_of(client, hub["owner"], "mac-mini")
-    run_id = step_run(client, hub["owner"], "m1-identity", worker)
+    run_id = step_run(client, hub["owner"], "lumen-identity", worker)
 
     answer = leased(client, worker, run_id)
     assert answer["leases"] == []
     assert missing(answer) == {
-        "m1-identity": (
-            ORIGINS["m1-identity"],
-            f"{OWNER} cannot push to {THEIRS}/m1-identity on GitHub: their role there is none, and pushing needs write",
+        "lumen-identity": (
+            ORIGINS["lumen-identity"],
+            f"{OWNER} cannot push to {THEIRS}/lumen-identity on GitHub: their role there is none, and pushing needs write",
         )
     }
     assert leases_of(hub_db, run_id) == []
     # the token made to ask GitHub opened the repo: it was revoked, and is in no lease
     (made,) = github.app_tokens
-    assert revoked_at_github(github) == [made] and not github.covers(made, THEIRS, "m1-identity")
+    assert revoked_at_github(github) == [made] and not github.covers(made, THEIRS, "lumen-identity")
     (target, *_), *_ = audit_rows(hub_db, "credential.lease")
-    assert target.endswith(" github-app=- repos=m1-identity")
+    assert target.endswith(" github-app=- repos=lumen-identity")
 
     for role, covered in (("read", False), ("triage", False), ("write", True)):
-        github.collaborate(THEIRS, "m1-identity", Account(OWNER, OWNER_ID), role)
+        github.collaborate(THEIRS, "lumen-identity", Account(OWNER, OWNER_ID), role)
         answer = leased(client, worker, run_id)
         assert (f"github-app:{THEIRS}" in by_name(answer)) is covered, role
     token = by_name(answer)[f"github-app:{THEIRS}"]["value"]
-    assert github.covers(token, THEIRS, "m1-identity")
+    assert github.covers(token, THEIRS, "lumen-identity")
 
 
 def test_an_ssh_origin_on_gitlab_is_covered_by_an_https_url_prefix_the_longest_first(client, hub, hub_db, github):
     group = sample("glpat-")
-    git_secret(client, hub["owner"], "gitlab-host", "https://gitlab.m1ops.com", sample("glpat-"))
-    git_secret(client, hub["owner"], "gitlab-group", "https://gitlab.m1ops.com/fis-gb-m1", group)
-    git_secret(client, hub["owner"], "gitlab-near", "https://gitlab.m1ops.com/fis-gb", sample("glpat-"))
-    git_secret(client, hub["owner"], "gitlab-agents", "https://gitlab.m1ops.com/fis-gb-m1/m1-cloud-agents", sample())
+    git_secret(client, hub["owner"], "gitlab-host", "https://gitlab.lumenops.example", sample("glpat-"))
+    git_secret(client, hub["owner"], "gitlab-group", "https://gitlab.lumenops.example/fir-gb-lumen", group)
+    git_secret(client, hub["owner"], "gitlab-near", "https://gitlab.lumenops.example/fir-gb", sample("glpat-"))
+    git_secret(client, hub["owner"], "gitlab-agents", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-cloud-agents", sample())
     worker = worker_of(client, hub["owner"], "mac-mini")
-    run_id = step_run(client, hub["owner"], "m1-kb-docs", worker)
+    run_id = step_run(client, hub["owner"], "lumen-kb-docs", worker)
 
     answer = leased(client, worker, run_id)
     assert list(by_name(answer)) == ["gitlab-group"] and answer["missing"] == []
@@ -392,17 +392,17 @@ def test_an_ssh_origin_on_gitlab_is_covered_by_an_https_url_prefix_the_longest_f
 
     # the other SSH form, with a port of SSH, is the same origin; a host the secrets do not name is not
     for origin, covered in (
-        ("ssh://git@gitlab.m1ops.com:2222/fis-gb-m1/m1-kb-docs.git", True),
-        ("https://GitLab.m1ops.com/fis-gb-m1/m1-kb-docs.git/", True),
-        ("git@gitlab.example.org:fis-gb-m1/m1-kb-docs.git", False),
+        ("ssh://git@gitlab.lumenops.example:2222/fir-gb-lumen/lumen-kb-docs.git", True),
+        ("https://GitLab.lumenops.example/fir-gb-lumen/lumen-kb-docs.git/", True),
+        ("git@gitlab.example.org:fir-gb-lumen/lumen-kb-docs.git", False),
     ):
-        body = registration({**ORIGINS, "m1-kb-docs": origin})
+        body = registration({**ORIGINS, "lumen-kb-docs": origin})
         assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
         answer = leased(client, worker, run_id)
         assert ("gitlab-group" in by_name(answer)) is covered, origin
         if not covered:
             assert missing(answer) == {
-                "m1-kb-docs": (origin, f"no git secret of {OWNER} bound to project {PROJECT} covers {origin}")
+                "lumen-kb-docs": (origin, f"no git secret of {OWNER} bound to project {PROJECT} covers {origin}")
             }
     assert not github.calls("/app/installations/1001/access_tokens")  # nothing here is on github.com
 
@@ -418,7 +418,7 @@ def test_a_secret_bound_to_a_worker_goes_to_that_worker_alone(client, hub, hub_d
     sql(hub_db, stale.where(tables.secrets.c.name == "stale"))
     env_secret(client, hub["other"], "theirs", "THEIR_TOKEN", values["theirs"])
     on_box = step_run(client, hub["owner"], "notes", box)
-    on_desk = step_run(client, hub["owner"], "m1-kb-docs", desk)
+    on_desk = step_run(client, hub["owner"], "lumen-kb-docs", desk)
 
     # on its own worker a secret wins over one of the same variable bound to any worker
     box_leases = by_name(leased(client, box, on_box))
@@ -642,7 +642,7 @@ def test_revoking_a_worker_revokes_every_lease_still_out(client, hub, github, hu
     git_secret(client, hub["owner"], "gitlab-kb", GITLAB_KB, sample("glpat-"))
     worker = worker_of(client, hub["owner"], "mac-mini", slots=2)
     on_github = step_run(client, hub["owner"], "evo-agents", worker)
-    on_gitlab = step_run(client, hub["owner"], "m1-kb-docs", worker)
+    on_gitlab = step_run(client, hub["owner"], "lumen-kb-docs", worker)
     token = by_name(leased(client, worker, on_github))[f"github-app:{MINE}"]["value"]
     assert len(leased(client, worker, on_gitlab)["leases"]) == 2
     # a run that left the worker without a move, as an older hub could leave one, keeps its leases out

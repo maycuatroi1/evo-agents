@@ -23,10 +23,10 @@ from evo_agents.hub.credentials import (
     ("origin", "expected"),
     [
         ("https://github.com/maycuatroi1/evo-agents.git", "https://github.com/maycuatroi1/evo-agents"),
-        ("https://github.com/hawkteam404/m1-identity.git", "https://github.com/hawkteam404/m1-identity"),
-        ("git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git", "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"),
-        ("ssh://git@gitlab.m1ops.com/fis-gb-m1/m1-kb-docs", "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"),
-        ("ssh://git@gitlab.m1ops.com:2222/fis-gb-m1/m1-kb-docs.git", "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"),
+        ("https://github.com/heron-team/lumen-identity.git", "https://github.com/heron-team/lumen-identity"),
+        ("git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"),
+        ("ssh://git@gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"),
+        ("ssh://git@gitlab.lumenops.example:2222/fir-gb-lumen/lumen-kb-docs.git", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"),
         ("https://user@GitHub.com/maycuatroi1/evo-agents/", "https://github.com/maycuatroi1/evo-agents"),
         ("https://git.example.com:8443/a/b.git", "https://git.example.com:8443/a/b"),
     ],
@@ -36,27 +36,27 @@ def test_normalize_origin(origin, expected):
 
 
 def test_ssh_origins():
-    assert is_ssh_origin("git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git")
-    assert is_ssh_origin("ssh://git@gitlab.m1ops.com/fis-gb-m1/m1-kb-docs")
+    assert is_ssh_origin("git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git")
+    assert is_ssh_origin("ssh://git@gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs")
     assert not is_ssh_origin("https://github.com/maycuatroi1/evo-agents.git")
     assert not is_ssh_origin("/tmp/repo.git")
 
 
 def test_matches_whole_path_parts():
-    prefix = "https://gitlab.m1ops.com/fis-gb-m1/m1-kb-docs"
-    assert matches(prefix, "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git")
-    assert matches(prefix, "ssh://git@gitlab.m1ops.com/fis-gb-m1/m1-kb-docs")
-    assert matches("https://gitlab.m1ops.com/fis-gb-m1", "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git")
-    assert not matches(prefix, "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs-old.git")
-    assert not matches("https://gitlab.m1ops.com/fis", "git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git")
+    prefix = "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"
+    assert matches(prefix, "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git")
+    assert matches(prefix, "ssh://git@gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs")
+    assert matches("https://gitlab.lumenops.example/fir-gb-lumen", "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git")
+    assert not matches(prefix, "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs-old.git")
+    assert not matches("https://gitlab.lumenops.example/fir", "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git")
     assert not matches(prefix, "https://github.com/maycuatroi1/evo-agents.git")
     assert not matches("ssh-not-a-url", "ssh-not-a-url")
 
 
 def test_github_repo():
-    assert github_repo("https://github.com/hawkteam404/m1-identity.git") == ("hawkteam404", "m1-identity")
+    assert github_repo("https://github.com/heron-team/lumen-identity.git") == ("heron-team", "lumen-identity")
     assert github_repo("git@github.com:maycuatroi1/evo-agents.git") == ("maycuatroi1", "evo-agents")
-    assert github_repo("git@gitlab.m1ops.com:fis-gb-m1/m1-kb-docs.git") is None
+    assert github_repo("git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git") is None
     assert github_repo("https://github.com/maycuatroi1") is None
 
 
