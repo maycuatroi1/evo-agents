@@ -1,12 +1,11 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles`` (with columns of runs and leases),
-``tables_chats`` (with columns of runs), ``tables_plugins`` and ``tables_settings`` describe accounts, profiles, chats,
-plugins and the hub's own settings.
+``tables_chats`` (with columns of runs), ``tables_plugins``, ``tables_settings`` and ``tables_srs`` describe accounts,
+profiles, chats, plugins, the hub's own settings and the core plugin srs (``tables.srs``, one attribute per table).
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
-(CHECK constraints and triggers live in the migrations only). Import the module: a table is an attribute of its name.
-"""
+(CHECK constraints and triggers live in the migrations only). A table is an attribute of its name."""
 
 from __future__ import annotations
 
@@ -37,7 +36,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
-from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles, tables_settings
+from evo_agents.hub import tables_accounts, tables_plugins, tables_profiles, tables_settings, tables_srs
 from evo_agents.hub.tables_chats import chat_tables
 
 metadata = MetaData()
@@ -1279,3 +1278,4 @@ chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events =
 plugins, plugin_versions, project_plugins, plugin_configs, run_plugins = tables_plugins.plugin_tables(metadata, runs)
 plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_plugins.backend_tables(metadata, runs)
 hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0037, 0043
+srs = tables_srs.srs_tables(metadata)  # the core plugin srs (0044)

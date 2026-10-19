@@ -2846,6 +2846,257 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Documents
+         * @description The BA documents of the project the caller sees, by slug, each with its latest version.
+         */
+        get: operations["list_documents_v1_x_srs__project__documents_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Document
+         * @description A document with every version, the newest first, and one version whole: the latest, or ``version``.
+         */
+        get: operations["show_document_v1_x_srs__project__documents__slug__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Versions
+         * @description Every version of a document, the newest first, with its reviews.
+         */
+        get: operations["list_versions_v1_x_srs__project__documents__slug__versions_get"];
+        put?: never;
+        /**
+         * Save Version
+         * @description Save changes made on version ``base_version`` as the document's next version, built on its latest; 409 with
+         *     both texts of an item that changed since ``base_version``.
+         */
+        post: operations["save_version_v1_x_srs__project__documents__slug__versions_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Version
+         * @description A version whole: its items and what is wrong with it.
+         */
+        get: operations["show_version_v1_x_srs__project__documents__slug__versions__number__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/items/{ref}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Item
+         * @description An item of a version (the latest unless asked), by code, alias or key, with its children.
+         */
+        get: operations["show_item_v1_x_srs__project__documents__slug__items__ref__get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/diff": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Compare Versions
+         * @description What changed from version ``from`` to version ``to``, item by item.
+         */
+        get: operations["compare_versions_v1_x_srs__project__documents__slug__diff_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/export": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Export Version
+         * @description A version (the latest unless asked) as Markdown, in the template's structure, with the same codes.
+         */
+        get: operations["export_version_v1_x_srs__project__documents__slug__export_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/import": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Document
+         * @description Import Markdown as a new document, or as the next version of ``document``, after a preview; ``dry_run`` stops
+         *     at the preview.
+         */
+        post: operations["import_document_v1_x_srs__project__import_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Submit Version
+         * @description Send a draft to review, once it has no error.
+         */
+        post: operations["submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}/reviews": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Review Version
+         * @description Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
+         *     it, and the agent of a run never does.
+         */
+        post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/comments": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Comments
+         * @description The comments of a document, oldest first.
+         */
+        get: operations["list_comments_v1_x_srs__project__documents__slug__comments_get"];
+        put?: never;
+        /**
+         * Add Comment
+         * @description Comment on a document, a version of it or an item, or answer a comment.
+         */
+        post: operations["add_comment_v1_x_srs__project__documents__slug__comments_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/comments/{comment_id}/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Comment
+         * @description Close the thread of a comment.
+         */
+        post: operations["resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/me/telegram": {
         parameters: {
             query?: never;
@@ -12518,6 +12769,624 @@ export interface components {
              * @description the commit on its forge, when the repo's origin is on one
              */
             url: string | null;
+        };
+        /**
+         * SrsChange
+         * @description A change of the item ``key`` (title, body, steps, links, or drop it with ``retire``), or a ``new`` item.
+         */
+        SrsChange: {
+            /** Key */
+            key?: string | null;
+            /** Title */
+            title?: string | null;
+            /** Body */
+            body?: string | null;
+            /** Steps */
+            steps?: string[] | null;
+            /** Refs */
+            refs?: components["schemas"]["SrsRefIn"][] | null;
+            /**
+             * Retire
+             * @default false
+             */
+            retire: boolean;
+            new?: components["schemas"]["SrsNewItem"] | null;
+        };
+        /** SrsComment */
+        SrsComment: {
+            /** Id */
+            id: number;
+            /** Version */
+            version: number | null;
+            /**
+             * Item
+             * @description the key of the item
+             */
+            item: string | null;
+            /** Item Code */
+            item_code: string | null;
+            /** Parent Id */
+            parent_id: number | null;
+            /** Author */
+            author: string;
+            /** Run Id */
+            run_id: number | null;
+            /** Body */
+            body: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Resolved By */
+            resolved_by: string | null;
+            /** Resolved At */
+            resolved_at: string | null;
+        };
+        /** SrsCommentIn */
+        SrsCommentIn: {
+            /** Body */
+            body: string;
+            /** Version */
+            version?: number | null;
+            /**
+             * Item
+             * @description the code or key of the item
+             */
+            item?: string | null;
+            /**
+             * Parent Id
+             * @description the comment it answers
+             */
+            parent_id?: number | null;
+        };
+        /** SrsDiff */
+        SrsDiff: {
+            /** Document */
+            document: string;
+            /** From Version */
+            from_version: number;
+            /** To Version */
+            to_version: number;
+            /**
+             * Preamble
+             * @description a unified diff of the text before the first heading; empty when the same
+             */
+            preamble: string[];
+            /** Items */
+            items: components["schemas"]["SrsDiffItem"][];
+        };
+        /** SrsDiffItem */
+        SrsDiffItem: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Code */
+            code: string | null;
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "added" | "removed" | "changed" | "moved";
+            /** Title From */
+            title_from: string | null;
+            /** Title To */
+            title_to: string | null;
+            /**
+             * Lines
+             * @description a unified diff of the item's Markdown
+             */
+            lines: string[];
+        };
+        /**
+         * SrsDocument
+         * @description A document with every version, the newest first, and one of them whole (the latest unless asked).
+         */
+        SrsDocument: {
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "srs" | "spec";
+            /** Template */
+            template: string;
+            /**
+             * Approved Version
+             * @description the version approved last
+             */
+            approved_version: number | null;
+            /** Latest Version */
+            latest_version: number | null;
+            /** Latest State */
+            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            /**
+             * Label
+             * @description the label every row of the document carries
+             */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Archived At */
+            archived_at: string | null;
+            /** Versions */
+            versions: components["schemas"]["SrsVersion"][];
+            shown: components["schemas"]["SrsVersionDetail"] | null;
+        };
+        /**
+         * SrsDocumentSummary
+         * @description A BA document of a project, with its latest version.
+         */
+        SrsDocumentSummary: {
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "srs" | "spec";
+            /** Template */
+            template: string;
+            /**
+             * Approved Version
+             * @description the version approved last
+             */
+            approved_version: number | null;
+            /** Latest Version */
+            latest_version: number | null;
+            /** Latest State */
+            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            /**
+             * Label
+             * @description the label every row of the document carries
+             */
+            label: {
+                [key: string]: unknown;
+            };
+            /** Created By */
+            created_by: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Archived At */
+            archived_at: string | null;
+        };
+        /** SrsExport */
+        SrsExport: {
+            /** Document */
+            document: string;
+            /** Version */
+            version: number;
+            /** Markdown */
+            markdown: string;
+        };
+        /** SrsImport */
+        SrsImport: {
+            /** Markdown */
+            markdown: string;
+            /**
+             * Document
+             * @description the document whose next version this is
+             */
+            document?: string | null;
+            /**
+             * Slug
+             * @description the slug of a new document; from its title if left out
+             */
+            slug?: string | null;
+            /** Title */
+            title?: string | null;
+            /**
+             * Kind
+             * @default srs
+             * @enum {string}
+             */
+            kind: "srs" | "spec";
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** @description a new document's label, an admin's choice; the project's if not */
+            label?: components["schemas"]["LabelIn"] | null;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** SrsImportResult */
+        SrsImportResult: {
+            /** Document */
+            document: string;
+            /**
+             * Created
+             * @description whether the import created the document
+             */
+            created: boolean;
+            /**
+             * Version
+             * @description the version saved; null for a dry run
+             */
+            version: number | null;
+            /** Dry Run */
+            dry_run: boolean;
+            preview: components["schemas"]["SrsPreview"];
+        };
+        /**
+         * SrsItem
+         * @description An item of a version: its key (fixed), kind, code and aliases, title, parent (key), heading level (null for a
+         *     table row), the fields its kind holds, its Markdown body and its links.
+         */
+        SrsItem: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Code */
+            code: string | null;
+            /** Aliases */
+            aliases: string[];
+            /** Title */
+            title: string;
+            /** Parent */
+            parent: string | null;
+            /** Heading Level */
+            heading_level: number | null;
+            /** Fields */
+            fields: {
+                [key: string]: unknown;
+            };
+            /** Body */
+            body: string;
+            /** Refs */
+            refs: components["schemas"]["SrsRef"][];
+        };
+        /**
+         * SrsItemDetail
+         * @description An item of a version, with the items above it and those under it.
+         */
+        SrsItemDetail: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Code */
+            code: string | null;
+            /** Aliases */
+            aliases: string[];
+            /** Title */
+            title: string;
+            /** Parent */
+            parent: string | null;
+            /** Heading Level */
+            heading_level: number | null;
+            /** Fields */
+            fields: {
+                [key: string]: unknown;
+            };
+            /** Body */
+            body: string;
+            /** Refs */
+            refs: components["schemas"]["SrsRef"][];
+            /** Document */
+            document: string;
+            /** Version */
+            version: number;
+            /**
+             * Path
+             * @description the titles of the items above it, the top first
+             */
+            path: string[];
+            /** Children */
+            children: components["schemas"]["SrsItem"][];
+        };
+        /** SrsNewItem */
+        SrsNewItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Title */
+            title: string;
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+            /** Code */
+            code?: string | null;
+            /**
+             * Parent
+             * @description the key of its parent
+             */
+            parent?: string | null;
+            /**
+             * After
+             * @description the key of the sibling it follows
+             */
+            after?: string | null;
+            /** Heading Level */
+            heading_level?: number | null;
+            /**
+             * Steps
+             * @description a business rule's steps of its use case
+             */
+            steps?: string[] | null;
+        };
+        /** SrsPreview */
+        SrsPreview: {
+            /** Items */
+            items: components["schemas"]["SrsPreviewItem"][];
+            /**
+             * Counts
+             * @description items per kind
+             */
+            counts: {
+                [key: string]: number;
+            };
+            /** Problems */
+            problems: components["schemas"]["SrsProblem"][];
+            /**
+             * Added
+             * @description the codes (or titles) of the items an import adds to the document
+             */
+            added: string[];
+            /** Changed */
+            changed: string[];
+            /** Removed */
+            removed: string[];
+        };
+        /** SrsPreviewItem */
+        SrsPreviewItem: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Code */
+            code: string | null;
+            /** Title */
+            title: string;
+            /** Level */
+            level: number | null;
+            /**
+             * Parent
+             * @description the index of its parent in items
+             */
+            parent: number | null;
+            /** Line */
+            line: number | null;
+        };
+        /** SrsProblem */
+        SrsProblem: {
+            /**
+             * Level
+             * @enum {string}
+             */
+            level: "error" | "warning";
+            /** Check */
+            check: string;
+            /** Message */
+            message: string;
+            /** Code */
+            code: string | null;
+            /**
+             * Item
+             * @description the key of the item
+             */
+            item: string | null;
+            /**
+             * Line
+             * @description the line of the Markdown it came from
+             */
+            line: number | null;
+        };
+        /** SrsRef */
+        SrsRef: {
+            /**
+             * Rel
+             * @enum {string}
+             */
+            rel: "uses_screen" | "refines" | "relates";
+            /**
+             * To
+             * @description the key of the item it links to
+             */
+            to: string;
+            /** To Code */
+            to_code: string | null;
+        };
+        /** SrsRefIn */
+        SrsRefIn: {
+            /**
+             * Rel
+             * @enum {string}
+             */
+            rel: "uses_screen" | "refines" | "relates";
+            /**
+             * To
+             * @description the code or key of the item it links to
+             */
+            to: string;
+        };
+        /** SrsReview */
+        SrsReview: {
+            /** Reviewer */
+            reviewer: string;
+            /**
+             * Role
+             * @description the role the review counts for
+             */
+            role: ("ba" | "qa" | "dev") | null;
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes";
+            /** Body */
+            body: string;
+            /** Round */
+            round: number;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SrsReviewIn */
+        SrsReviewIn: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approve" | "request_changes";
+            /**
+             * Role
+             * @description the role it counts for; one the reviewer holds
+             */
+            role?: ("ba" | "qa" | "dev") | null;
+            /**
+             * Body
+             * @default
+             */
+            body: string;
+        };
+        /** SrsSave */
+        SrsSave: {
+            /**
+             * Base Version
+             * @description the version the changes were made on
+             */
+            base_version: number;
+            /**
+             * Summary
+             * @default
+             */
+            summary: string;
+            /** Preamble */
+            preamble?: string | null;
+            /** Changes */
+            changes: components["schemas"]["SrsChange"][];
+        };
+        /**
+         * SrsVersion
+         * @description A version of a document, never changed after it was saved, and the reviews of each round.
+         */
+        SrsVersion: {
+            /** Number */
+            number: number;
+            /**
+             * Parent Number
+             * @description the version it was built on
+             */
+            parent_number: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "in_review" | "approved" | "superseded";
+            /**
+             * Round
+             * @description how many times it was submitted
+             */
+            round: number;
+            /** Author */
+            author: string;
+            /**
+             * Drafted By Run
+             * @description the run of the agent that drafted it, when one did
+             */
+            drafted_by_run: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** Reviews */
+            reviews: components["schemas"]["SrsReview"][];
+        };
+        /**
+         * SrsVersionDetail
+         * @description A version with its content and what is wrong with it.
+         */
+        SrsVersionDetail: {
+            /** Number */
+            number: number;
+            /**
+             * Parent Number
+             * @description the version it was built on
+             */
+            parent_number: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "draft" | "in_review" | "approved" | "superseded";
+            /**
+             * Round
+             * @description how many times it was submitted
+             */
+            round: number;
+            /** Author */
+            author: string;
+            /**
+             * Drafted By Run
+             * @description the run of the agent that drafted it, when one did
+             */
+            drafted_by_run: number | null;
+            /** Summary */
+            summary: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Submitted At */
+            submitted_at: string | null;
+            /** Decided At */
+            decided_at: string | null;
+            /** Reviews */
+            reviews: components["schemas"]["SrsReview"][];
+            /** Document */
+            document: string;
+            /** Preamble */
+            preamble: string;
+            /** Items */
+            items: components["schemas"]["SrsItem"][];
+            /** Problems */
+            problems: components["schemas"]["SrsProblem"][];
         };
         /**
          * StateCounts
@@ -23496,6 +24365,1146 @@ export interface operations {
             };
             /** @description Conflict */
             409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_documents_v1_x_srs__project__documents_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsDocumentSummary"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_document_v1_x_srs__project__documents__slug__get: {
+        parameters: {
+            query?: {
+                /** @description a version's number; the latest when left out */
+                version?: number | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsDocument"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_versions_v1_x_srs__project__documents__slug__versions_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersion"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    save_version_v1_x_srs__project__documents__slug__versions_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsSave"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersionDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_version_v1_x_srs__project__documents__slug__versions__number__get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersionDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    show_item_v1_x_srs__project__documents__slug__items__ref__get: {
+        parameters: {
+            query?: {
+                /** @description a version's number; the latest when left out */
+                version?: number | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                /** @description the item's code, an alias or its key */
+                ref: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsItemDetail"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    compare_versions_v1_x_srs__project__documents__slug__diff_get: {
+        parameters: {
+            query: {
+                from: number;
+                to: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsDiff"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    export_version_v1_x_srs__project__documents__slug__export_get: {
+        parameters: {
+            query?: {
+                /** @description a version's number; the latest when left out */
+                version?: number | null;
+                /** @description write each screen's code as a comment after its heading */
+                anchors?: boolean;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsExport"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    import_document_v1_x_srs__project__import_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsImport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsImportResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_comments_v1_x_srs__project__documents__slug__comments_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsComment"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    add_comment_v1_x_srs__project__documents__slug__comments_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsCommentIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                comment_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
                 headers: {
                     [name: string]: unknown;
                 };
