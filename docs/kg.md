@@ -214,8 +214,10 @@ The index holds the latest build only. A build deletes and inserts only the rows
 `node_fts_rows` keeps each node's row id and digest, and an index without it is written again whole. The build's
 content hash covers the store's schema and what the index holds, so two builds with the same hash answer searches
 alike. Store schema 3 added the index's
-`kind` and `path` columns, `nodes_name` and `node_alias`: an older store is rebuilt from the corpus log by the next
-`kg build` or `kg sync --build`, and readers refuse it until then.
+`kind` and `path` columns, `nodes_name` and `node_alias`; schema 4 added `label_aud`, the audience of a unit, node or
+edge (`evo_agents/kg/policy.py`), and `node_fts_aud`, which holds the index rows of nodes with an audience apart, so
+they never weigh in the ranking a reader without that audience gets. An older store is rebuilt from the corpus log by
+the next `kg build` or `kg sync --build`, and readers refuse it until then.
 
 ## After grep
 

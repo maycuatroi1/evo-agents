@@ -1,8 +1,11 @@
 """``evo-agents kg serve``: an MCP server over stdio, bound to one project for its whole life.
 
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
-session's sink. The store is opened read-only. When the highest label of the build (``Store.top_label``) flows to
-the sink, V_o is the whole build and no label is compared. Results carry ids, labels, status and evidence; free
+session's sink and whose audience is within the session's (``Session.audience``: none for kg serve, so an element with
+an audience never shows here). The store is opened read-only and reads as that audience (``Store.reader``), so hidden
+elements fill no limit, count or page. When the highest label of the build (``Store.top_label``) flows to the sink and
+its audiences (``Store.top_audience``) are within the session's, V_o is the whole build and no label is compared.
+Results carry ids, labels, status and evidence; free
 text from sources (integrity U) is never returned by these tools. Each result stays under about 9,000 tokens; the
 rest waits behind a handle for ``kg_more``. The structured result of a call that reveals elements names the project
 and the join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
@@ -42,7 +45,7 @@ from evo_agents.kg.budget import (
 )
 from evo_agents.kg.freshness import Links
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
-from evo_agents.kg.policy import Label
+from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
 from evo_agents.kg.search import with_mentions
@@ -93,6 +96,7 @@ class Session:
         self.clearance = None
         self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
         self.read: Label | None = None  # join of the labels the current call reveals
+        self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.kg.policy)
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
                 # The local operator already holds the corpus; the cli sink sees everything unless declared.
@@ -107,26 +111,32 @@ class Session:
     # -- visibility -----------------------------------------------------------------------------
 
     def visible(self, label: tuple) -> bool:
+        """Whether an element labelled ``label`` (level, location, integrity and, from the store, audience) shows."""
         if self.sees_all:
             return True
-        level, location, _integrity = label
-        return level <= self.clearance[0] and location <= self.clearance[1]
+        level, location, *_rest = label
+        audience = label[3] if len(label) > 3 else frozenset()
+        return level <= self.clearance[0] and location <= self.clearance[1] and audience_below(audience, self.audience)
 
     def describe(self, label: tuple) -> str:
         lvl = self.policy.level_name(label[0])
         loc = self.policy.location_name(label[1])
-        return f"{lvl}{'' if loc == 'any' else '/' + loc},{label[2]}"
+        audience = " audience " + " ".join(sorted(label[3])) if len(label) > 3 and label[3] else ""
+        return f"{lvl}{'' if loc == 'any' else '/' + loc},{label[2]}{audience}"
 
     def _saw(self, label: tuple) -> None:
-        seen = Label(label[0], label[1], label[2], frozenset({self.project.name}))
+        seen = Label.of(label, {self.project.name})
         self.read = seen if self.read is None else self.read.join(seen)
 
     def _store(self) -> tuple[Store, int]:
-        """The graph this call reads and its latest ready build. When the highest label of that build is within the
-        clearance, every element is visible, and ``visible`` answers so without comparing labels."""
+        """The graph this call reads, as the session's audience reads it, and its latest ready build. When the highest
+        label of that build is within the clearance and its audiences within the session's, every element is
+        visible, and ``visible`` answers so without comparing labels."""
         store, b = self._graph()
+        store.reader = self.audience
         top = store.top_label(b)
-        self.sees_all = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
+        within = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
+        self.sees_all = within and audience_below(store.top_audience(b), self.audience)
         return store, b
 
     def _graph(self) -> tuple[Store, int]:
@@ -218,11 +228,7 @@ class Session:
 
     def _node_json(self, n: dict) -> dict:
         self._saw(n["label"])  # every node in a structured result is revealed
-        label = {
-            "level": self.policy.level_name(n["label"][0]),
-            "location": self.policy.location_name(n["label"][1]),
-            "integrity": n["label"][2],
-        }
+        label = self.policy.describe(Label.of(n["label"]))  # level, location, integrity; audience when it has one
         return {
             "id": n["id"],
             "kind": n["kind"],
