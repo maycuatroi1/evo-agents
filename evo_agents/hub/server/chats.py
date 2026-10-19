@@ -1,6 +1,7 @@
 """Group chats (``evo_agents.hub.chats``): GET and POST /v1/chats, GET /v1/chats/{id}, GET and POST
 .../messages, POST and DELETE .../messages/{message}/reactions and POST .../read. ``chat_members`` adds and removes
-people and agents, ``chat_events`` streams what happens, and ``docs/hub.md`` (Group chats) is the design.
+people and agents, ``chat_images`` sets a group chat's image, ``chat_events`` streams what happens, ``chat_summaries``
+puts the list together, and ``docs/hub.md`` (Group chats) is the design.
 
 A signed-in person creates a chat with a title and the people and agents it starts with, under the checks of
 ``chat_members``; they are its creator and first member. Only members read a chat and write to it (``chat_access``),
@@ -77,18 +78,17 @@ from evo_agents.hub.server.chat_store import (
     put_reaction,
     take_reaction,
 )
+from evo_agents.hub.server.chat_summaries import chat_summaries
 from evo_agents.hub.server.chat_views import (
     Chat,
     ChatPage,
     ChatSummary,
     GroupMessage,
     chat_view,
-    member_names,
     message_rows,
     message_select,
     messages_view,
     person_author,
-    summaries_query,
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
@@ -171,9 +171,7 @@ class ChatUpdate(BaseModel):
 async def list_chats(request: Request, user: CurrentUser) -> list[ChatSummary]:
     """The chats the caller is in, the latest active first, with the unread messages of others."""
     async with request.app.state.engine.begin() as conn:
-        rows = (await conn.execute(summaries_query(user.user_id))).all()
-        names = await member_names(conn, [row.id for row in rows])
-    return [ChatSummary(**row._mapping, people=names[row.id][0], agents=names[row.id][1]) for row in rows]
+        return await chat_summaries(conn, user.user_id)
 
 
 async def _starting(conn: AsyncConnection, user: Principal, body: ChatCreate):

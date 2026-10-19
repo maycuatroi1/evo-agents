@@ -4072,6 +4072,34 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/{chat_id}/image": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Get Image
+         * @description The group chat's image, for its members; 404 when it has none.
+         */
+        get: operations["get_image_v1_chats__chat_id__image_get"];
+        /**
+         * Put Image
+         * @description Set the group chat's image, a PNG, JPEG or WebP image: its members see it in their list and its header.
+         */
+        put: operations["put_image_v1_chats__chat_id__image_put"];
+        post?: never;
+        /**
+         * Delete Image
+         * @description Take the group chat's image off: the web draws the faces of its members again.
+         */
+        delete: operations["delete_image_v1_chats__chat_id__image_delete"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/events": {
         parameters: {
             query?: never;
@@ -6558,6 +6586,11 @@ export interface components {
              * @enum {string}
              */
             kind: "group" | "direct";
+            /**
+             * Image Url
+             * @description the image its members set, on this hub; null for none, and always for a direct chat
+             */
+            image_url: string | null;
         };
         /** ChatAgent */
         ChatAgent: {
@@ -6635,6 +6668,11 @@ export interface components {
              * @default false
              */
             deleted: boolean;
+            /**
+             * Avatar Url
+             * @description a person's GitHub avatar; null for a login that never signed in, an agent or the hub
+             */
+            avatar_url?: string | null;
         };
         /** ChatCreate */
         ChatCreate: {
@@ -6659,7 +6697,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "message" | "reaction_added" | "reaction_removed" | "member_added" | "member_removed";
+            kind: "message" | "reaction_added" | "reaction_removed" | "member_added" | "member_removed" | "image_changed";
             /**
              * Created At
              * Format: date-time
@@ -6669,6 +6707,8 @@ export interface components {
             message?: components["schemas"]["GroupMessage"] | null;
             reaction?: components["schemas"]["ChatReactionChange"] | null;
             member?: components["schemas"]["ChatMemberChange"] | null;
+            /** @description an image_changed event's image */
+            image?: components["schemas"]["ChatImageChange"] | null;
         };
         /** ChatEvents */
         ChatEvents: {
@@ -6683,6 +6723,46 @@ export interface components {
              * @description with progress=true: the progress of every message of the chat whose run is on its way now
              */
             progress?: components["schemas"]["ChatProgress"][] | null;
+        };
+        /** ChatImageChange */
+        ChatImageChange: {
+            /**
+             * Image Url
+             * @description the chat's image now; null once it was taken off
+             */
+            image_url: string | null;
+            /**
+             * By
+             * @description the person who set it or took it off
+             */
+            by: string;
+        };
+        /**
+         * ChatLastMessage
+         * @description The latest message of a chat's main line, as its list shows it: the messages that start no thread, and in a
+         *     direct chat its threads too, whose answers the web shows under the message they answer.
+         */
+        ChatLastMessage: {
+            /** Id */
+            id: number;
+            /** Thread Root Id */
+            thread_root_id: number | null;
+            author: components["schemas"]["ChatAuthor"];
+            /**
+             * Preview
+             * @description its text as one line without markdown, at most 140 characters, an ellipsis last when cut; null when the reader does not clear its label
+             */
+            preview: string | null;
+            /**
+             * Hidden
+             * @description the reader does not clear its label: its text is left out
+             */
+            hidden: boolean;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
         };
         /** ChatMemberChange */
         ChatMemberChange: {
@@ -6798,6 +6878,11 @@ export interface components {
              * Format: date-time
              */
             added_at: string;
+            /**
+             * Avatar Url
+             * @description their GitHub avatar; null for a login that never signed in
+             */
+            avatar_url: string | null;
         };
         /** ChatPost */
         ChatPost: {
@@ -7042,6 +7127,20 @@ export interface components {
              * @enum {string}
              */
             kind: "group" | "direct";
+            /**
+             * Image Url
+             * @description the image its members set; null for none, and always for a direct chat
+             */
+            image_url: string | null;
+            /** @description a direct chat's agent, whose avatar is its face; null for a group */
+            direct_agent: components["schemas"]["ChatAuthor"] | null;
+            /**
+             * Faces
+             * @description at most 3 members other than the reader, in the order they were added: what the web draws for a group chat without an image
+             */
+            faces: components["schemas"]["ChatAuthor"][];
+            /** @description the latest message of its main line; null for none */
+            last_message: components["schemas"]["ChatLastMessage"] | null;
         };
         /** ChatUpdate */
         ChatUpdate: {
@@ -31423,6 +31522,241 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    get_image_v1_chats__chat_id__image_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the ETag of the image the browser holds */
+                "if-none-match"?: string | null;
+            };
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "image/png": unknown;
+                    "image/jpeg": unknown;
+                    "image/webp": unknown;
+                };
+            };
+            /** @description the image the browser holds, named by If-None-Match, is the chat's still */
+            304: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    put_image_v1_chats__chat_id__image_put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AvatarUpload"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    delete_image_v1_chats__chat_id__image_delete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                chat_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
             };
             /** @description Unauthorized */
             401: {

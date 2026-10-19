@@ -39,8 +39,8 @@ const CHAT = {
   created_by: "octo",
   created_at: "2026-10-14T08:00:00Z",
   people: [
-    { login: "octo", added_by: "octo", added_at: "2026-10-14T08:00:00Z" },
-    { login: "mai", added_by: "octo", added_at: "2026-10-14T08:00:00Z" },
+    { login: "octo", added_by: "octo", added_at: "2026-10-14T08:00:00Z", avatar_url: null },
+    { login: "mai", added_by: "octo", added_at: "2026-10-14T08:00:00Z", avatar_url: null },
   ],
   agents: [agent("reviewer", { name: "Code reviewer" }), agent("fixer", { name: "Fixer" }), agent("demo", { name: "Demo", is_default: true })],
   label: [],
@@ -49,6 +49,7 @@ const CHAT = {
   last_read_seq: 3,
   budget_usd: 5,
   kind: "group",
+  image_url: null,
 } satisfies Chat;
 
 function setup(onSent = vi.fn()) {
