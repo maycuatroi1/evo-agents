@@ -9,6 +9,7 @@ from evo_agents.worker.runner.author import AuthorRun
 from evo_agents.worker.runner.chat import ChatRun
 from evo_agents.worker.runner.judge import JudgeRun
 from evo_agents.worker.runner.plan import PlanRun
+from evo_agents.worker.runner.replay import ReplayRun
 from evo_agents.worker.runner.review import ReviewRun
 from evo_agents.worker.runner.step import StepRun
 from evo_agents.worker.runner.task import TaskRun
@@ -24,6 +25,7 @@ KINDS = {
     "author": AuthorRun,
     "chat": ChatRun,
     "task": TaskRun,
+    "replay": ReplayRun,
 }
 
 

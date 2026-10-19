@@ -357,12 +357,37 @@ class PlanCopy(BaseModel):
     body: dict
 
 
+class ReplayTask(BaseModel):
+    """The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its
+    base commit (null until a replay of it read it from its commits)."""
+
+    id: int
+    plan_id: str
+    step_key: str
+    repo: str
+    title: str | None
+    what: str
+    verify: list[str] = Field(description="the step's verify, one shell line: the worker runs it on each arm's work")
+    commits: list[str] = Field(description="the commits the step made, as its evidence or a run of it named them")
+    base_sha: str | None = Field(description="the first parent of the oldest of its commits; null: the worker finds it")
+
+
+class ReplaySpec(BaseModel):
+    """What the worker of a replay run is told besides the change's branch and head: the replay, its task, and the
+    change's repo, whose harness files the two arms run with."""
+
+    replay_id: int
+    task: ReplayTask
+    repo: str = Field(description="the change's repo")
+
+
 class CuratorSpec(BaseModel):
     """What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
-    charter's protected paths its watchdog compares the worktrees with, and for a Builder or a Judge the change, its
-    branch, its forge and its pull request; for a Judge the commit to judge."""
+    charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
+    change, its branch, its forge and its pull request; for a Judge the commit to judge, and for a replay the change's
+    head, its task and its own key (``evo_agents.hub.server.replays``)."""
 
-    role: Literal["reviewer", "builder", "judge"]
+    role: Literal["reviewer", "builder", "judge", "replay"]
     protected_paths: list[str] = Field(default_factory=list, description="globs of the charter, repo:glob for one repo")
     change_id: int | None = None
     branch: str | None = Field(None, description="curator/..., the one branch a Builder pushes")
@@ -374,6 +399,12 @@ class CuratorSpec(BaseModel):
         None,
         description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "
         "it in memory alone, never in a file, an environment or a log line",
+    )
+    replay: ReplaySpec | None = Field(None, description="a replay run's replay and task; null for any other run")
+    replay_key: str | None = Field(
+        None,
+        description="a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge "
+        "run's",
     )
 
 

@@ -120,14 +120,15 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
-# plugin hands an agent type of its own; a Claude Code session on a member's own machine, which no worker runs
-# (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a
-# claim hands out)
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task")
+# plugin hands an agent type of its own; the replay of a past step of the project with the harness of the default
+# branch and with that of a change of the Curator (``evo_agents.hub.replay``); a Claude Code session on a member's own
+# machine, which no worker runs (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of
+# run a daemon announces and a claim hands out)
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay")
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
-CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
+CURATOR_KINDS = ("review", "judge", "replay")  # the kinds only the night shift queues, and the Builder
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers

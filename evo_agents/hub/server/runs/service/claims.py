@@ -166,6 +166,7 @@ def _claimable(
     web_only: bool,
     review_runs: bool = False,
     judge_runs: bool = False,
+    replay_runs: bool = False,
     author_runs: bool = False,
     chat_runs: bool = False,
     task_runs: bool = False,
@@ -179,11 +180,12 @@ def _claimable(
     repo), and, while the worker is not ``steady``, not the next attempt of a run it lost (``lost_here``). A run of one
     step needs a checkout of its repo, and a plan run one of every repo in its repos and a daemon of runs.PLAN_RUN_AGENT
     or later (``plan_runs``); a review run one of every repo in its repos and a daemon that says it runs review runs
-    (``review_runs``), and a judge run likewise (``judge_runs``); an author run one of its first repo, the project's
-    harness, and a daemon that says it runs author runs (``author_runs``): the worker leaves out the other repos it has
-    no checkout of. A chat run is pinned to the worker the hub picked for it and needs a daemon that says it runs chat
-    runs (``chat_runs``). A task run needs a checkout of one of its repos when it has any, a daemon that says it runs
-    task runs (``task_runs``) and, when its agent type names workers, to be one of them. A plan run with a session per
+    (``review_runs``), and a judge run and a replay run likewise (``judge_runs``, ``replay_runs``); an author run one
+    of its first repo, the project's harness, and a daemon that says it runs author runs (``author_runs``): the worker
+    leaves out the other repos it has no checkout of. A chat run is pinned to the worker the hub picked for it and
+    needs a daemon that says it runs chat runs (``chat_runs``). A task run needs a checkout of one of its repos when it
+    has any, a daemon that says it runs task runs (``task_runs``) and, when its agent type names workers, to be one of
+    them. A plan run with a session per
     step needs a daemon that says it runs one (``step_sessions``). A worker set to take runs dispatched from the web
     only (``web_only``) passes over the others, those dispatched before schema 0011 included; and it takes only the runs
     whose agent profile lets it (``profile_gate``, ``profiles.claim_clause``, with the plugins' ``environments`` it
@@ -215,7 +217,7 @@ def _claimable(
         or_(r.c.pinned_worker_id.is_(None), r.c.pinned_worker_id == worker_id),
         or_(*asked),
         case(
-            (r.c.kind.in_(("plan", "review", "judge")), every_repo),
+            (r.c.kind.in_(("plan", "review", "judge", "replay")), every_repo),
             (r.c.kind == "author", harness),
             (r.c.kind == "chat", true()),  # pinned to the worker the hub picked, which works without a repo it lacks
             (r.c.kind == "task", or_(r.c.repos.is_(None), exists().select_from(needed).where(has_needed))),
@@ -232,6 +234,8 @@ def _claimable(
         query = query.where(r.c.kind != "review")
     if not judge_runs:
         query = query.where(r.c.kind != "judge")
+    if not replay_runs:
+        query = query.where(r.c.kind != "replay")
     if not author_runs:
         query = query.where(r.c.kind != "author")
     if not chat_runs:
@@ -363,6 +367,7 @@ async def _try_claim(
             web_only=dispatch_from == "web",
             review_runs="review" in (kinds or ()),
             judge_runs="judge" in (kinds or ()),
+            replay_runs="replay" in (kinds or ()),
             author_runs="author" in (kinds or ()),
             chat_runs="chat" in (kinds or ()),
             task_runs="task" in (kinds or ()),
@@ -514,6 +519,33 @@ async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, 
     return None
 
 
+OWN_PROMPTS = ("review", "chat", "task", "judge", "replay")  # the kinds whose prompt their own module builds
+
+
+async def _own_prompt(conn: AsyncConnection, view: Run) -> str:
+    """The prompt of run ``view`` of one of OWN_PROMPTS, as the module of its kind builds it; each module queues runs
+    through this package, so it is imported here."""
+    if view.kind == "review":
+        from evo_agents.hub.server.collect import review_prompt
+
+        return await review_prompt(conn, view)
+    if view.kind == "chat":
+        from evo_agents.hub.server.chat_runs import chat_prompt
+
+        return await chat_prompt(conn, view.id, view.branch, [repo.model_dump() for repo in view.repos or []])
+    if view.kind == "task":
+        from evo_agents.hub.server.task_dispatch import task_prompt
+
+        return await task_prompt(conn, view)
+    if view.kind == "judge":
+        from evo_agents.hub.server.changes import judge_prompt
+
+        return await judge_prompt(conn, view)
+    from evo_agents.hub.server.replays import run_prompt
+
+    return await run_prompt(conn, view)
+
+
 async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...] = ()) -> RunSpec:
     """The claim of run ``run_id`` by a worker whose daemon says it does ``features`` (``runs.WORKER_FEATURES``): an
     author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``."""
@@ -528,10 +560,8 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     body = (await conn.execute(dispatched)).scalar_one_or_none()
     plan = body if body is not None else {"id": view.plan_id, "steps": []}
     copy, verify = None, None
-    if view.kind == "review":
-        from evo_agents.hub.server.collect import review_prompt  # it queues runs through this package
-
-        prompt = await review_prompt(conn, view)
+    if view.kind in OWN_PROMPTS:
+        prompt = await _own_prompt(conn, view)
         title = view.title
     elif view.kind == "author":
         skill = await author_skill(conn)
@@ -547,21 +577,6 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
             plan=target,
             decisions=runs.AUTHOR_DECISIONS in features,
         )
-        title = view.title
-    elif view.kind == "chat":
-        from evo_agents.hub.server.chat_runs import chat_prompt  # it queues runs through this package
-
-        prompt = await chat_prompt(conn, run_id, view.branch, [repo.model_dump() for repo in view.repos or []])
-        title = view.title
-    elif view.kind == "task":
-        from evo_agents.hub.server.task_dispatch import task_prompt  # it queues runs through this package
-
-        prompt = await task_prompt(conn, view)
-        title = view.title
-    elif view.kind == "judge":
-        from evo_agents.hub.server.changes import judge_prompt  # it queues runs through this package
-
-        prompt = await judge_prompt(conn, view)
         title = view.title
     elif view.kind == "plan":
         current = await current_plan(conn, project_id, view.plan_id)

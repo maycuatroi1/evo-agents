@@ -46,7 +46,7 @@ GITHUB_READ_PERMISSIONS = {"contents": "read", "metadata": "read"}  # all the to
 # Asked as well for a run that writes, when the workers' App holds it on the installation: GitHub refuses a push that
 # creates or updates a file of .github/workflows without it, whatever the pusher may do. Never for the Curator's App.
 GITHUB_WORKFLOW_PERMISSIONS = {"workflows": "write"}
-READ_ONLY_KINDS = ("review", "judge", "author")  # the kinds of run whose GitHub token reads only (runs.RUN_KINDS)
+READ_ONLY_KINDS = ("review", "judge", "author", "replay")  # the kinds of run whose GitHub token reads only
 
 
 def github_permissions(run_kind: str) -> dict[str, str]:

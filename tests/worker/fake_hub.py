@@ -27,6 +27,7 @@ from aiohttp import web
 
 from evo_agents.hub import runs
 from evo_agents.hub.judge import JUDGE_KEY_HEADER
+from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
 TOKEN = "evw_" + "f" * 43
 
@@ -57,6 +58,8 @@ class FakeHub:
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
         self.judge_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon, which its routes take
         self.judge_refused: list[tuple[str, int]] = []  # (route, run id) of each ask without the run's key
+        self.replays: list[dict] = []  # what the replay runs posted, with the run's id
+        self.replay_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
@@ -120,6 +123,7 @@ class FakeHub:
                 post("/v1/worker/runs/{id}/proposals", self._proposal),
                 get("/v1/worker/runs/{id}/judge", self._judge),
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
+                post("/v1/worker/runs/{id}/replay", self._replay),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
                 post("/v1/worker/runs/{id}/rate-limit", self._rate_limit),
@@ -286,6 +290,39 @@ class FakeHub:
         )
         self.judge_inputs[run_id] = inputs
         self.judge_keys[run_id] = key
+        return run_id
+
+    def queue_replay_run(self, repos: list[dict], curator: dict, prompt: str = "Do the step again.", **extra) -> int:
+        """A replay run of the task and the change ``curator`` names, over ``repos``, as the night shift queues it; its
+        claim hands the daemon the run's own key, which POST .../replay takes."""
+        key = secrets.token_urlsafe(16)
+        run_id = self.queue_run(
+            kind="replay",
+            project=self.project,
+            plan_id="curator-1-change",
+            step_key=None,
+            title="Replay of fleet#3 for the Curator's change #1",
+            plan_revision=1,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model="opus",
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=repos,
+            lease_expires_at=_now(),
+            prompt=prompt,
+            plan=None,
+            curator={"role": "replay", **curator, "replay_key": key},
+            **extra,
+        )
+        self.replay_keys[run_id] = key
         return run_id
 
     def add_skill(self, name: str, version: int, bundle: bytes, *, sha256: str | None = None) -> dict:
@@ -862,6 +899,17 @@ class FakeHub:
         self._judge_key(request, run_id, "judge")
         self.judge_reads.append(run_id)
         return web.json_response(self.judge_inputs.get(run_id) or {})
+
+    async def _replay(self, request: web.Request) -> web.Response:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "replay":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a replay run")
+        if request.headers.get(REPLAY_KEY_HEADER) != self.replay_keys.get(run_id):
+            self.judge_refused.append(("replay", run_id))
+            raise _refusal(403, f"run {run_id} is a replay run: its route takes the run's own key")
+        body = await request.json()
+        self.replays.append({"run_id": run_id, **body})
+        return web.json_response({"id": 1, "state": "running"})
 
     async def _verdict(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)

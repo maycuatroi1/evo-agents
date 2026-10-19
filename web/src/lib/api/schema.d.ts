@@ -3042,6 +3042,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/replay/tasks": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Tasks
+         * @description The project's suite of replay tasks, in the order they came in, of the plans the caller may read.
+         */
+        get: operations["list_tasks_v1_projects__project__curator_replay_tasks_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/changes/{change_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Change Replay
+         * @description A change's replays: each task, what arm a (the default branch's harness) and arm b (the change's) found.
+         */
+        get: operations["show_change_replay_v1_projects__project__curator_changes__change_id__replay_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/replay": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report Replay
+         * @description One arm's result of the replay run this worker holds, or why it cannot replay its task; with the run's key.
+         */
+        post: operations["report_replay_v1_worker_runs__run_id__replay_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -5885,6 +5945,61 @@ export interface components {
              */
             text?: string | null;
         };
+        /**
+         * ArmResult
+         * @description What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took.
+         */
+        ArmResult: {
+            /**
+             * Passed
+             * @description every verify command exited 0
+             */
+            passed: boolean;
+            /**
+             * Harness Sha
+             * @description the commit of the change's repo the arm's harness is at
+             */
+            harness_sha: string;
+            /**
+             * Harness Paths
+             * @description the files of the change the arm ran with
+             */
+            harness_paths?: string[];
+            /** Verify */
+            verify?: components["schemas"]["VerifyRun"][];
+            /**
+             * Cost Usd
+             * @description the agent's session; null when its runtime names none
+             */
+            cost_usd?: number | null;
+            /** Turns */
+            turns?: number | null;
+            /**
+             * Tool Calls
+             * @default 0
+             */
+            tool_calls: number;
+            /**
+             * Tool Errors
+             * @description the tool calls that failed
+             * @default 0
+             */
+            tool_errors: number;
+            /** Peak Context Tokens */
+            peak_context_tokens?: number | null;
+            /**
+             * Duration Ms
+             * @description the agent's time
+             */
+            duration_ms: number;
+            /**
+             * Agent Error
+             * @description why its turn did not end
+             */
+            agent_error?: string | null;
+            /** Session Id */
+            session_id?: string | null;
+        };
         /** AuditCounts */
         AuditCounts: {
             /** Rows */
@@ -6434,6 +6549,27 @@ export interface components {
              */
             changes: components["schemas"]["Change"][];
         };
+        /** ChangeReplay */
+        ChangeReplay: {
+            /** Project */
+            project: string;
+            /** Change Id */
+            change_id: number;
+            /**
+             * Tasks
+             * @description the tasks each change is replayed on, as the charter says now
+             */
+            tasks: number;
+            /** Replays */
+            replays: components["schemas"]["Replay"][];
+            /**
+             * Arms
+             * @description replay.compare: per arm the replays, passed, cost, turns, tool errors, context
+             */
+            arms: {
+                [key: string]: unknown;
+            };
+        };
         /** Charter */
         Charter: {
             /**
@@ -6508,6 +6644,7 @@ export interface components {
              */
             outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
+            replay?: components["schemas"]["ReplaySettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -6636,6 +6773,7 @@ export interface components {
              */
             outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
+            replay?: components["schemas"]["ReplaySettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -7316,15 +7454,16 @@ export interface components {
         /**
          * CuratorSpec
          * @description What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
-         *     charter's protected paths its watchdog compares the worktrees with, and for a Builder or a Judge the change, its
-         *     branch, its forge and its pull request; for a Judge the commit to judge.
+         *     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
+         *     change, its branch, its forge and its pull request; for a Judge the commit to judge, and for a replay the change's
+         *     head, its task and its own key (``evo_agents.hub.server.replays``).
          */
         CuratorSpec: {
             /**
              * Role
              * @enum {string}
              */
-            role: "reviewer" | "builder" | "judge";
+            role: "reviewer" | "builder" | "judge" | "replay";
             /**
              * Protected Paths
              * @description globs of the charter, repo:glob for one repo
@@ -7359,6 +7498,13 @@ export interface components {
              * @description a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line
              */
             judge_key?: string | null;
+            /** @description a replay run's replay and task; null for any other run */
+            replay?: components["schemas"]["ReplaySpec"] | null;
+            /**
+             * Replay Key
+             * @description a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge run's
+             */
+            replay_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -9824,7 +9970,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -11612,6 +11758,141 @@ export interface components {
             /** Conf */
             conf: number | null;
         };
+        /** Replay */
+        Replay: {
+            /** Id */
+            id: number;
+            /** Change Id */
+            change_id: number;
+            /** Task Id */
+            task_id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Step Key */
+            step_key: string;
+            /** Repo */
+            repo: string;
+            /** Title */
+            title: string | null;
+            /**
+             * Split
+             * @enum {string}
+             */
+            split: "select" | "holdout";
+            /** Run Id */
+            run_id: number | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "done" | "failed";
+            /** Attempts */
+            attempts: number;
+            /** Base Sha */
+            base_sha: string | null;
+            /**
+             * A
+             * @description arm a, the harness of the default branch: ArmResult
+             */
+            a: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * B
+             * @description arm b, the harness of the change's branch: ArmResult
+             */
+            b: {
+                [key: string]: unknown;
+            } | null;
+            /** Reason */
+            reason: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Updated At
+             * Format: date-time
+             */
+            updated_at: string;
+        };
+        /**
+         * ReplayReport
+         * @description One arm's result with the task's base commit; or why the worker cannot replay the task at all.
+         */
+        ReplayReport: {
+            /** Arm */
+            arm?: ("a" | "b") | null;
+            /**
+             * Base Sha
+             * @description the task's base commit the arm started at
+             */
+            base_sha?: string | null;
+            result?: components["schemas"]["ArmResult"] | null;
+            /** Refused */
+            refused?: string | null;
+            /**
+             * Task Unusable
+             * @description with refused: no replay can run the task, whatever the change
+             * @default false
+             */
+            task_unusable: boolean;
+        };
+        /**
+         * ReplaySettings
+         * @description How the night shift replays the Curator's changes of a skill, an AGENTS.md or a CLAUDE.md on tasks of the
+         *     project's own history (``evo_agents.hub.replay``).
+         */
+        ReplaySettings: {
+            /**
+             * Tasks
+             * @description tasks of the holdout split each change is replayed on
+             * @default 3
+             */
+            tasks: number;
+            /**
+             * Budget Usd
+             * @description the most a night's replay runs cost; null: no replay
+             */
+            budget_usd?: number | null;
+        };
+        /**
+         * ReplaySpec
+         * @description What the worker of a replay run is told besides the change's branch and head: the replay, its task, and the
+         *     change's repo, whose harness files the two arms run with.
+         */
+        ReplaySpec: {
+            /** Replay Id */
+            replay_id: number;
+            task: components["schemas"]["evo_agents__hub__server__runs__models__ReplayTask"];
+            /**
+             * Repo
+             * @description the change's repo
+             */
+            repo: string;
+        };
+        /** ReplayTaskList */
+        ReplayTaskList: {
+            /** Project */
+            project: string;
+            /** Split */
+            split: ("select" | "holdout") | null;
+            /**
+             * Tasks
+             * @description in the order they came into the suite
+             */
+            tasks: components["schemas"]["evo_agents__hub__server__replays__ReplayTask"][];
+            /** Total */
+            total: number;
+            /**
+             * Counts
+             * @description the tasks of each split the caller may read
+             */
+            counts: {
+                [key: string]: number;
+            };
+        };
         /** Repo */
         Repo: {
             /** Name */
@@ -11914,7 +12195,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "local";
             /** Project */
             project: string;
             /**
@@ -12922,7 +13203,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay";
             /** Project */
             project: string;
             /**
@@ -16393,6 +16674,13 @@ export interface components {
             /** Duration Ms */
             duration_ms?: number | null;
         };
+        /** VerifyRun */
+        VerifyRun: {
+            /** Exit Code */
+            exit_code: number;
+            /** Duration Ms */
+            duration_ms?: number | null;
+        };
         /** Version */
         Version: {
             /** Version */
@@ -16903,6 +17191,84 @@ export interface components {
              * @description what plan_semantics found; the plan was stored anyway
              */
             warnings: components["schemas"]["Problem"][];
+        };
+        /** ReplayTask */
+        evo_agents__hub__server__replays__ReplayTask: {
+            /** Id */
+            id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Step Key */
+            step_key: string;
+            /** Repo */
+            repo: string;
+            /** Title */
+            title: string | null;
+            /** What */
+            what: string;
+            /** Verify */
+            verify: string;
+            /** Commits */
+            commits: string[];
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "evidence" | "run";
+            /**
+             * Split
+             * @enum {string}
+             */
+            split: "select" | "holdout";
+            /**
+             * Base Sha
+             * @description the first parent of the oldest of its commits, once a replay read it
+             */
+            base_sha: string | null;
+            /**
+             * Unusable
+             * @description why no replay can run it
+             */
+            unusable: string | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /**
+         * ReplayTask
+         * @description The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its
+         *     base commit (null until a replay of it read it from its commits).
+         */
+        evo_agents__hub__server__runs__models__ReplayTask: {
+            /** Id */
+            id: number;
+            /** Plan Id */
+            plan_id: string;
+            /** Step Key */
+            step_key: string;
+            /** Repo */
+            repo: string;
+            /** Title */
+            title: string | null;
+            /** What */
+            what: string;
+            /**
+             * Verify
+             * @description the step's verify, one shell line: the worker runs it on each arm's work
+             */
+            verify: string[];
+            /**
+             * Commits
+             * @description the commits the step made, as its evidence or a run of it named them
+             */
+            commits: string[];
+            /**
+             * Base Sha
+             * @description the first parent of the oldest of its commits; null: the worker finds it
+             */
+            base_sha: string | null;
         };
     };
     responses: never;
@@ -21763,7 +22129,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -27552,6 +27918,223 @@ export interface operations {
             };
             /** @description Not Found */
             404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_tasks_v1_projects__project__curator_replay_tasks_get: {
+        parameters: {
+            query?: {
+                /** @description the tasks of this split alone */
+                split?: ("select" | "holdout") | null;
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayTaskList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_change_replay_v1_projects__project__curator_changes__change_id__replay_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                change_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChangeReplay"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_replay_v1_worker_runs__run_id__replay_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the replay run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-Replay-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReplayReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Replay"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
                 headers: {
                     [name: string]: unknown;
                 };

@@ -770,6 +770,41 @@
         },
         "additionalProperties": false
       }
+    },
+    {
+      "name": "curator_replay",
+      "description": "The replays of the project's past steps that measure a change of the Curator: with change_id, each task the change was replayed on, arm a with the harness of the default branch and arm b with the change's, whether the step's verify passed, cost, turns, tool errors, largest context and time, added up per arm; without it, the project's suite of replay tasks, of split select or holdout.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "change_id": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 9223372036854775807,
+            "description": "a Curator change"
+          },
+          "split": {
+            "type": "string",
+            "enum": [
+              "select",
+              "holdout"
+            ],
+            "description": "without change_id"
+          },
+          "limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 100,
+            "default": 20
+          },
+          "project": {
+            "type": "string",
+            "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+            "description": "a project on the hub (see hub_projects); default: the session's project"
+          }
+        },
+        "additionalProperties": false
+      }
     }
   ]
 }

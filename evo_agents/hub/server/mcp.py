@@ -19,28 +19,30 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
   the owner's grant there capped at writer, and never a hub admin, so ``projects.project_access`` holds every tool to
   it. Once the run leaves the held states, its id opens nothing. The agent of a judge run gets the code graph's tools
   and hub_projects alone (JUDGE_TOOLS): never a run's events, a plan, a memory or a digest, which the Builder it judges
-  wrote or could have written for it. ``tools/list`` shows a run's agent only what it may call (``mcp_tools.offered``):
-  a judge run JUDGE_TOOLS, any other run all but ask_member. X-Evo-Run with a machine token is 400;
+  wrote or could have written for it; the agent of a replay run gets none of the tools (REPLAY_TOOLS), which hold the
+  project as it is now. ``tools/list`` shows a run's agent only what it may call (``mcp_tools.offered``): a judge run
+  JUDGE_TOOLS, a replay run none, any other run all but ask_member. X-Evo-Run with a machine token is 400;
 - X-Evo-Project names the session's project and X-Evo-Sink its sink (default claude-code@anthropic); a malformed one is
   400. The session of a run's agent is the run's project: X-Evo-Project naming another is 403.
 
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 23 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+The 24 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project, with or without a graph. The others call the
 hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
-review run reads (the night's figures, session digests, the events of a run, decisions) in this process, so they read
-and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write rule,
-revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text goes through
-the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a tool's answer
-is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its structuredContent comes only
-when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend hub`` does. A refusal of the hub
-becomes a tool error carrying its message, an unexpected failure one carrying the request id only; so does a tool of a
-feature a hub admin turned off for the project (``hub_settings.require_tool``: kg_*, curator_figures). The log has one
-line per tool call with its name, project, outcome and duration, never its arguments or its result.
+review run reads (the night's figures, session digests, the events of a run, decisions, replays) in this process, so
+they read and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the
+write rule, revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text
+goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a
+tool's answer is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its
+structuredContent comes only when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend
+hub`` does. A refusal of the hub becomes a tool error carrying its message, an unexpected failure one carrying the
+request id only; so does a tool of a feature a hub admin turned off for the project (``hub_settings.require_tool``:
+kg_*, curator_figures, curator_replay). The log has one line per tool call with its name, project, outcome and
+duration, never its arguments or its result.
 """
 
 from __future__ import annotations
@@ -75,11 +77,11 @@ from evo_agents.hub.config import HubConfig
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
 from evo_agents.hub.mcp_tools import (
     INSTRUCTIONS,
-    JUDGE_TOOLS,
     KG_TOOL_NAMES,
     LOCAL_RUN_HEADER,
     PROJECT_HEADER,
     RUN_HEADER,
+    RUN_TOOLS,
     SCHEMAS,
     SERVER_NAME,
     SINK_HEADER,
@@ -102,6 +104,7 @@ from evo_agents.hub.server import (
     plugin_tools,
     projects,
     proposals,
+    replays,
     run_events,
     skills,
     tool_stats,
@@ -168,10 +171,11 @@ def _held_run(token_id: int, run_id: int):
     )
 
 
-JUDGE_ONLY = (  # what a judge run may call is mcp_tools.JUDGE_TOOLS
-    "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is not for "
-    "a judge run"
-)
+KIND_ONLY = {  # what a judge run and a replay run may call is mcp_tools.RUN_TOOLS
+    "judge": "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is "
+    "not for a judge run",
+    "replay": "a replay run does a past step from its base commit alone; {tool} is not for a replay run",
+}
 
 
 class Refusal(Exception):
@@ -434,6 +438,7 @@ class HubMcp(MCPServer):
             "digest_show": self._digest_show,
             "run_events": self._run_events,
             "decision_list": self._decision_list,
+            "curator_replay": self._curator_replay,
         }
 
     async def list_tools(self) -> list[McpTool]:
@@ -481,8 +486,8 @@ class HubMcp(MCPServer):
 
     async def _answer(self, caller: Caller, name: str, arguments: dict, request_id) -> dict:
         scope = caller.user.scope
-        if scope is not None and scope.kind == "judge" and name not in JUDGE_TOOLS:
-            return _error(JUDGE_ONLY.format(tool=name))
+        if scope is not None and scope.kind in RUN_TOOLS and name not in RUN_TOOLS[scope.kind]:
+            return _error(KIND_ONLY[scope.kind].format(tool=name))
         if plugin_tools.split(name) is not None:
             return await plugin_tools.answer(
                 self.hub.state, caller.user, caller.project, name, arguments, sink=caller.sink
@@ -870,6 +875,11 @@ class HubMcp(MCPServer):
         text = head + "\n" + json.dumps(found.figures, ensure_ascii=False, indent=1, default=str)
         data = {**found.model_dump(mode="json"), "summary": f"figures of the night of {found.night}"}
         return text, data
+
+    async def _curator_replay(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        project = self._project(caller, arguments)
+        await self._readable(caller, project)
+        return await replays.mcp_answer(caller.request, project, caller.user, arguments, sink=caller.sink)
 
     async def _digest_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)

@@ -326,7 +326,7 @@ class CuratorPolicy:
     """A run of the Curator, and what its charter lets it have: its role, the owner's git secret it uses on other
     forges than GitHub, the env secrets it gets, and the charter's protected paths."""
 
-    role: str  # reviewer, builder or judge
+    role: str  # reviewer, builder, judge or replay
     git_secret: str | None
     env_secrets: tuple[str, ...]
     protected: tuple[str, ...]
@@ -336,19 +336,12 @@ class CuratorPolicy:
 async def curator_policy(
     conn: AsyncConnection, project_id: int, kind: str, plan_id: str | None
 ) -> CuratorPolicy | None:
-    """The policy of a run of ``kind`` on ``plan_id`` when it is a run of the Curator (a review run, a judge run, or
-    any run of a Curator's plan); None for any other run."""
-    change = None
-    if kind == "review":
-        role = "reviewer"
-    elif kind == "judge":
-        role = "judge"
-        change = await change_of_plan(conn, project_id, plan_id)
-    else:
-        change = await change_of_plan(conn, project_id, plan_id)
-        if change is None:
-            return None
-        role = "builder"
+    """The policy of a run of ``kind`` on ``plan_id`` when it is a run of the Curator (a review run, a judge run, a
+    replay run, or any run of a Curator's plan); None for any other run."""
+    role = {"review": "reviewer", "judge": "judge", "replay": "replay"}.get(kind, "builder")
+    change = None if kind == "review" else await change_of_plan(conn, project_id, plan_id)
+    if change is None and role == "builder":
+        return None
     charter = await _charter(conn, project_id)
     secret = charter.get("git_secret")
     return CuratorPolicy(
@@ -362,8 +355,11 @@ async def curator_policy(
 
 async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | None:
     """What the claim of run ``view`` (a ``runs.Run``) tells its worker of the Curator: its role, the charter's
-    protected paths its watchdog compares the worktree with, and for a Builder or a Judge the change, its branch and
-    forge, and for a Judge the commit to judge. None for any other run."""
+    protected paths its watchdog compares the worktree with, and for a Builder, a Judge or a replay the change, its
+    branch and forge, for a Judge and a replay the change's head, and for a replay its task and its own key
+    (``replays.replay_claim``). None for any other run."""
+    from evo_agents.hub.server.replays import replay_claim  # it reads the changes of this module
+
     policy = await curator_policy(conn, project_id, view.kind, view.plan_id or None)
     if policy is None:
         return None
@@ -377,11 +373,13 @@ async def run_curator(conn: AsyncConnection, project_id: int, view) -> dict | No
             branch=change.branch,
             forge=change.forge,
             base_branch=change.base_branch,
-            head_sha=change.head_sha if policy.role == "judge" else None,
+            head_sha=change.head_sha if policy.role in ("judge", "replay") else None,
             pr_url=change.pr_url,
         )
         if policy.role == "judge" and change.state == "judging" and change.judge_run_id == view.id:
             found["judge_key"] = await issue_judge_key(conn, change.id)
+        if policy.role == "replay":
+            found.update(await replay_claim(conn, change, view.id))
     return found
 
 

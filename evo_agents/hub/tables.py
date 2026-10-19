@@ -1,7 +1,7 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
-``tables_kg``, ``tables_sessions``, ``tables_settings``, ``tables_triage`` and ``tables_workers`` hold them by area;
-``tables.srs`` and ``tables.tasks`` are core plugins'.
+``tables_kg``, ``tables_sessions``, ``tables_settings``, ``tables_triage``, ``tables_workers`` and ``tables_curator``
+hold them by area; ``tables.srs`` and ``tables.tasks`` are core plugins'.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -38,6 +38,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 from evo_agents.hub import (
     tables_accounts,
+    tables_curator,
     tables_kg,
     tables_plugins,
     tables_profiles,
@@ -980,112 +981,6 @@ telegram_links = Table(
     Index("telegram_links_user_idx", "user_id"),
 )
 
-# The Curator's changes: an accepted proposal's plan, pull request, Judge and merge; the repos' ruleset checks (0017)
-
-curator_changes = Table(
-    "curator_changes",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("proposal_id", BigInteger, nullable=False),
-    Column("plan_id", Text),
-    Column("repo", Text),
-    Column("branch", Text),
-    Column("forge", Text),
-    Column("tier", SmallInteger, nullable=False),
-    Column("state", Text, nullable=False, server_default="planned"),
-    Column("reason", Text),
-    Column("builder_run_id", BigInteger),
-    Column("judge_run_id", BigInteger),
-    Column("judge_attempts", SmallInteger, nullable=False, server_default="0"),
-    Column("pr_number", Integer),
-    Column("pr_url", Text),
-    Column("base_branch", Text),
-    Column("head_sha", Text),
-    Column("hidden_count", SmallInteger),
-    Column("verdict", JSONB),
-    Column("passed", Boolean),
-    Column("check_run_id", BigInteger),
-    _when("merged_at"),
-    Column("merge_sha", Text),
-    _stamp("created_at"),
-    _stamp("updated_at"),
-    Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon (0019)
-    ForeignKeyConstraint(
-        ["builder_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_builder_run_id_fkey"
-    ),
-    ForeignKeyConstraint(["judge_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_judge_run_id_fkey"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_changes_project_id_fkey"),
-    ForeignKeyConstraint(
-        ["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_changes_proposal_id_fkey"
-    ),
-    PrimaryKeyConstraint("id", name="curator_changes_pkey"),
-    UniqueConstraint("proposal_id", name="curator_changes_proposal_id_key"),
-    UniqueConstraint("project_id", "plan_id", name="curator_changes_project_id_plan_id_key"),
-    Index("curator_changes_state_idx", "state", "id"),
-)
-
-curator_repo_checks = Table(
-    "curator_repo_checks",
-    metadata,
-    Column("project_id", BigInteger, nullable=False),
-    Column("repo", Text, nullable=False),
-    Column("github_repo", Text, nullable=False),
-    Column("default_branch", Text),
-    Column("protected", Boolean, nullable=False),
-    Column("reason", Text, nullable=False),
-    Column("rulesets", JSONB, nullable=False),
-    Column("checked_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
-    Column("checked_by", BigInteger),
-    ForeignKeyConstraint(["checked_by"], ["users.id"], ondelete="RESTRICT", name="curator_repo_checks_checked_by_fkey"),
-    ForeignKeyConstraint(
-        ["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_repo_checks_project_id_fkey"
-    ),
-    PrimaryKeyConstraint("project_id", "repo", name="curator_repo_checks_pkey"),
-)
-
-# The Curator's ledger: what happened to each proposal, never changed or deleted; each merged change's outcome (0018)
-
-curator_ledger = Table(
-    "curator_ledger",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("proposal_id", BigInteger, nullable=False),
-    Column("change_id", BigInteger),
-    Column("action", Text, nullable=False),
-    Column("actor", Text, nullable=False),
-    Column("actor_id", BigInteger),
-    Column("run_id", BigInteger),
-    Column("what", Text, nullable=False),
-    Column("commit_sha", Text),
-    Column("before_sha", Text),
-    Column("after_sha", Text),
-    Column("figures", JSONB),
-    Column("verdict", JSONB),
-    Column("pr_url", Text),
-    Column("pr_number", Integer),
-    _when("merged_at"),
-    Column("outcome", Text),
-    Column("details", JSONB),
-    _stamp("created_at"),
-    ForeignKeyConstraint(["actor_id"], ["users.id"], ondelete="RESTRICT", name="curator_ledger_actor_id_fkey"),
-    ForeignKeyConstraint(
-        ["change_id"], ["curator_changes.id"], ondelete="CASCADE", name="curator_ledger_change_id_fkey"
-    ),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="curator_ledger_project_id_fkey"),
-    ForeignKeyConstraint(["proposal_id"], ["proposals.id"], ondelete="CASCADE", name="curator_ledger_proposal_id_fkey"),
-    ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_ledger_run_id_fkey"),
-    PrimaryKeyConstraint("id", name="curator_ledger_pkey"),
-    Index("curator_ledger_proposal_idx", "proposal_id", "id"),
-)
-Index("curator_ledger_project_idx", curator_ledger.c.project_id, curator_ledger.c.created_at)
-Index(  # a merged change has one outcome
-    "curator_ledger_outcome_key",
-    curator_ledger.c.change_id,
-    unique=True,
-    postgresql_where=curator_ledger.c.action == "outcome",
-)
 accounts, account_policies, run_accounts = tables_accounts.account_tables(metadata)  # accounts and their use (0027)
 agent_profiles, agent_profile_versions = tables_profiles.profile_tables(metadata, runs, credential_leases)  # 0030
 chats, chat_members, chat_messages, chat_mentions, chat_reactions, chat_events = chat_tables(metadata, runs)  # 0031
@@ -1095,4 +990,7 @@ hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
+curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_replays = tables_curator.tables(
+    metadata, runs, RUN_ACTIVE
+)  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0053), and runs_active_replay_key
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)

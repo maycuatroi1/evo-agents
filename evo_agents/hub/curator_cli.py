@@ -23,7 +23,8 @@ prints the change. ``curator findings`` lists what the review runs found (GET ..
 figures`` prints the figures of the latest night, or of ``--night`` (GET .../curator/figures).
 
 ``curator changes`` lists what the accepted proposals of tier 0 to 2 became: the Curator's plan, its branch, its pull
-request, the Judge's verdict and the merge, newest first (GET .../curator/changes). ``curator protection`` lists the
+request, the Judge's verdict and the merge, newest first (GET .../curator/changes); ``curator replay tasks|show``
+(``evo_agents.hub.replay_cli``) the replays that measure them. ``curator protection`` lists the
 project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check REPO`` checks one now
 with the Curator's App, which only an admin of the project may (POST .../curator/protection/{repo}/check): a Builder
 runs on a repo of GitHub only once its default branch keeps the Curator's App off.
@@ -46,6 +47,8 @@ from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money
 from evo_agents.hub.plan_cli import _project
+from evo_agents.hub.replay import DEFAULT_TASKS
+from evo_agents.hub.replay_cli import register_replay
 from evo_agents.hub.review import ANSWERS, DEFER_DAYS, LENSES, PROPOSAL_STATES, evidence_text
 
 # The keys of the hub's answers these commands print with --json (the contract, `evo-agents hub contract print`).
@@ -66,6 +69,7 @@ CHARTER_BODY_KEYS = (
     "circuit_breaker",
     "outcome_days",
     "review",
+    "replay",
     "reviewer",
     "builder",
     "judge",
@@ -185,6 +189,13 @@ def _review(settings: dict) -> str:
     return f"{settings.get('lenses', 3)} lenses a night, {settings.get('days', 7)} days of figures, {spend}"
 
 
+def _replay(settings: dict) -> str:
+    cap, tasks = settings.get("budget_usd"), settings.get("tasks", DEFAULT_TASKS)
+    if cap is None or not tasks:
+        return "none: the charter sets no replay.budget_usd, or replay.tasks 0"
+    return f"{tasks} tasks of the holdout split a change, at most {money(cap)} a night"
+
+
 def _print_charter(charter: dict) -> None:
     window = charter["window"]
     print(
@@ -204,6 +215,7 @@ def _print_charter(charter: dict) -> None:
         ("breaker", f"{charter['circuit_breaker']['max_failed_in_a_row']} failed in a row"),
         ("outcome", f"figures counted again {charter.get('outcome_days', 7)} days after a merge"),
         ("review", _review(charter.get("review") or {})),
+        ("replay", _replay(charter.get("replay") or {})),
         ("reviewer", _role(charter["reviewer"])),
         ("builder", _role(charter["builder"])),
         ("judge", _role(charter["judge"])),
@@ -630,6 +642,25 @@ def _register_proposal(csub, with_project) -> None:
     planned.set_defaults(func=cmd_proposal_plan)
 
 
+def _register_protection(csub, with_project) -> None:
+    """``curator protection``."""
+    protection = csub.add_parser(
+        "protection", help="whether a ruleset keeps the Curator off each repo's default branch; --check REPO checks one"
+    )
+    with_project(protection)
+    protection.add_argument("--check", metavar="REPO", help="check this repo now; an admin of the project only")
+    json_option(
+        protection,
+        returns_object(
+            "project",
+            "repos",
+            schema="Protection",
+            variants=[("--check", returns_object(*REPO_CHECK_KEYS, schema="RepoCheck"))],
+        ),
+    )
+    protection.set_defaults(func=cmd_protection)
+
+
 def register_curator(hsub) -> None:
     curator = hsub.add_parser(
         "curator", help="the night shift of a project: its charter, status, pause, resume, and its review's proposals"
@@ -703,18 +734,5 @@ def register_curator(hsub) -> None:
     json_option(changes, returns_object("project", "changes", schema="ChangeList"))
     changes.set_defaults(func=cmd_changes)
 
-    protection = csub.add_parser(
-        "protection", help="whether a ruleset keeps the Curator off each repo's default branch; --check REPO checks one"
-    )
-    with_project(protection)
-    protection.add_argument("--check", metavar="REPO", help="check this repo now; an admin of the project only")
-    json_option(
-        protection,
-        returns_object(
-            "project",
-            "repos",
-            schema="Protection",
-            variants=[("--check", returns_object(*REPO_CHECK_KEYS, schema="RepoCheck"))],
-        ),
-    )
-    protection.set_defaults(func=cmd_protection)
+    _register_protection(csub, with_project)
+    register_replay(csub, with_project)

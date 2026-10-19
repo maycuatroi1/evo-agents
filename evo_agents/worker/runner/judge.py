@@ -21,21 +21,19 @@ committing and pushing nothing.
 
 from __future__ import annotations
 
-import asyncio
-import contextlib
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import judge, runs
-from evo_agents.worker import credentials, gitops, untrusted
+from evo_agents.worker import gitops, untrusted
 from evo_agents.worker.checkouts import default_branch_of
 from evo_agents.worker.hubapi import HubProblem
-from evo_agents.worker.runner import access, origin
-from evo_agents.worker.runner.common import RunFailed, Stopped, cut, log
+from evo_agents.worker.runner import access, origin, verify
+from evo_agents.worker.runner.common import RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation
 from evo_agents.worker.runner.directory import RunDirectory
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
-from evo_agents.worker.runner.verify import read_tail, verify_event
+from evo_agents.worker.runner.verify import verify_event
 
 if TYPE_CHECKING:
     from evo_agents.worker.runner.context import Run
@@ -252,41 +250,10 @@ class JudgeRun:
             raise RunFailed(f"the worktree {cwd} could not be put back at {self.head[:12]}: {exc}") from None
 
     async def run_untrusted(self, command: str, cwd: Path) -> tuple[int, str]:
-        """(exit code, the end of its output) of ``command``, code of the change the worker does not trust
-        (``evo_agents.worker.untrusted``): in the worktree put back at the commit judged, on the standard input of
-        ``/bin/sh -s``, in a session of its own, with an environment that leads to no credential, and every process
-        it left killed once it ends; Stopped when the run is asked to stop or runs out of time first."""
-        run = self.run
+        """(exit code, the end of its output) of ``command``, code of the change the worker does not trust, in the
+        worktree put back at the commit judged (``verify.run_untrusted``)."""
         await self.restore(cwd)
-        marker = untrusted.new_marker()
-        env = untrusted.scrubbed_env(run.daemon.env, credentials.held_values())
-        proc = await untrusted.start(command, cwd=cwd, env=env, marker=marker)
-        tail = bytearray()
-        reader = asyncio.create_task(read_tail(proc, tail))
-        waiter = asyncio.create_task(proc.wait())
-        stopper = asyncio.create_task(run.stop_event.wait())
-        try:
-            done, _ = await asyncio.wait(
-                {waiter, stopper},
-                timeout=max(0.0, run.deadline - run.loop.time()),
-                return_when=asyncio.FIRST_COMPLETED,
-            )
-        finally:
-            stopper.cancel()
-            killed = await untrusted.kill_leftovers(proc.pid, marker)
-            if not waiter.done():
-                await waiter
-        if killed:
-            log.info("processes a judged command left were killed", extra={"run_id": run.id, "killed": killed})
-        if waiter not in done:
-            reader.cancel()
-            if run.stop_reason is None:
-                run.stop_reason = "timeout"
-            raise Stopped(run.stop_reason)
-        with contextlib.suppress(asyncio.TimeoutError):
-            await asyncio.wait_for(reader, 5)
-        reader.cancel()
-        return proc.returncode, tail.decode(errors="replace")
+        return await verify.run_untrusted(self.run, command, cwd)
 
     async def run_checks(self, cwd: Path, commands: list[str]) -> list[dict]:
         """Run each verify command of the plan in the worktree, as code the worker does not trust: each one's exit

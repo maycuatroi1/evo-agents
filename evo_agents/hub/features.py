@@ -45,7 +45,7 @@ FEATURES = (
         "curator",
         LAYERS,
         (re.compile(rf"/v1/projects/{_PROJECT}/curator(?:/.*)?"),),
-        frozenset({"curator_figures"}),
+        frozenset({"curator_figures", "curator_replay"}),
     ),
     Feature(
         "kg",

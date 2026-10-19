@@ -56,6 +56,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
   ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
   got worse (``evo_agents.hub.server.outcomes``).
+- ``curator.replay_suite``, hourly, one pass at a time: each project with a charter gets a replay task for each step
+  of its plans that is done, has a verify of one line and names its commits, added once with its fixed split and never
+  changed (``evo_agents.hub.replay_suite``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
@@ -315,6 +318,14 @@ async def prune_transcripts(context: JobContext, timestamp: int | None = None) -
 
     found = hub(context)
     return await prune(found.engine, found.blobs, found.config.transcript_days)
+
+
+@queue.periodic(cron="41 * * * *")
+@queue.task(name=jobs.REPLAY_SUITE, pass_context=True, lock=jobs.REPLAY_SUITE, queueing_lock=jobs.REPLAY_SUITE)
+async def replay_suite(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.replay_suite import build_suites
+
+    return await build_suites(hub(context).engine)
 
 
 @queue.periodic(cron="*/5 * * * *")

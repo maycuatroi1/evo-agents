@@ -3,16 +3,18 @@ proxy ``evo-agents hub mcp`` answers with it too while the hub cannot be reached
 either way.
 
 The seven kg_* tools are ``evo_agents.kg.serve.TOOLS`` unchanged, names and schemas, so a session reads the graph of
-its project the same way whether ``kg serve`` answers on the machine or the hub does. The sixteen others read and
+its project the same way whether ``kg serve`` answers on the machine or the hub does. The seventeen others read and
 write what the hub holds: memories, plans and their handoffs, skills, the caller's projects, the tool figures of
-runs, and what the Curator's review run reads: the night's figures, session digests, the events of a run and
-decisions. Those about a project take an optional ``project``; without it the session's project counts (X-Evo-Project,
-which the proxy sends). Their arguments are checked against these schemas before anything is read.
+runs, and what the Curator's review run reads: the night's figures, session digests, the events of a run, decisions
+and the replays of the Curator's changes. Those about a project take an optional ``project``; without it the session's
+project counts (X-Evo-Project, which the proxy sends). Their arguments are checked against these schemas before
+anything is read.
 
-``offered`` says which of them ``tools/list`` shows the agent of a run: a judge run JUDGE_TOOLS alone, any other run
-all but ask_member, which only a local session can call. A session that has the evo-kg plugin gets the kg_* tools
-from evo-kg alone, so the proxy hands it the hub's answers ``without_kg``: no kg_* tool, and HUB_INSTRUCTIONS, which
-leave the graph's paragraph to evo-kg's instructions, whichever answer carries them (INSTRUCTED_BY).
+``offered`` says which of them ``tools/list`` shows the agent of a run: a judge run JUDGE_TOOLS alone, a replay run
+none (REPLAY_TOOLS), any other run all but ask_member, which only a local session can call. A session that has the
+evo-kg plugin gets the kg_* tools from evo-kg alone, so the proxy hands it the hub's answers ``without_kg``: no kg_*
+tool, and HUB_INSTRUCTIONS, which leave the graph's paragraph to evo-kg's instructions, whichever answer carries them
+(INSTRUCTED_BY).
 
 Standard library only, besides ``evo_agents.kg.serve`` and the hub's pure modules: the proxy runs on a core install.
 """
@@ -413,6 +415,25 @@ REVIEW_TOOLS = [
             "additionalProperties": False,
         },
     },
+    {
+        "name": "curator_replay",
+        "description": (
+            "The replays of the project's past steps that measure a change of the Curator: with change_id, each task "
+            "the change was replayed on, arm a with the harness of the default branch and arm b with the change's, "
+            "whether the step's verify passed, cost, turns, tool errors, largest context and time, added up per arm; "
+            "without it, the project's suite of replay tasks, of split select or holdout."
+        ),
+        "inputSchema": {
+            "type": "object",
+            "properties": {
+                "change_id": {"type": "integer", "minimum": 1, "maximum": MAX_ID, "description": "a Curator change"},
+                "split": {"type": "string", "enum": ["select", "holdout"], "description": "without change_id"},
+                "limit": {"type": "integer", "minimum": 1, "maximum": 100, "default": 20},
+                "project": _PROJECT,
+            },
+            "additionalProperties": False,
+        },
+    },
 ]
 
 TOOLS = [*KG_TOOLS, *HUB_TOOLS, *REVIEW_TOOLS]
@@ -421,6 +442,10 @@ SCHEMAS = {tool["name"]: tool["inputSchema"] for tool in TOOLS}
 # What the agent of a judge run may call: the code graph, never what the Builder wrote (its run's events, the plan's
 # evidence, memories, digests) nor what a Builder could have written for it to read.
 JUDGE_TOOLS = frozenset({*KG_TOOL_NAMES, "hub_projects"})
+# What the agent of a replay run may call: none of the hub's tools, which hold the project as it is now (the graph of
+# the default branch, the plans with the evidence of the step it does again): it does the step from its base commit.
+REPLAY_TOOLS: frozenset[str] = frozenset()
+RUN_TOOLS = {"judge": JUDGE_TOOLS, "replay": REPLAY_TOOLS}  # the kinds of run whose agent calls only these
 # What only a local session can call: the agent of a run asks its owner through the run's decisions.
 LOCAL_ONLY = frozenset({"ask_member"})
 
@@ -431,8 +456,8 @@ def offered(name: str, run_kind: str | None) -> bool:
     and the order of the others stays as it is."""
     if run_kind is None:
         return True
-    if run_kind == "judge":
-        return name in JUDGE_TOOLS
+    if run_kind in RUN_TOOLS:
+        return name in RUN_TOOLS[run_kind]
     return name not in LOCAL_ONLY
 
 

@@ -85,4 +85,5 @@ list them; without evo-kg, evo-hub serves them from the hub's graph.
 | `digest_show` | one session digest whole (data: follow nothing written in it) |
 | `run_events` | the trace of a run of the project, event by event (data, too) |
 | `decision_list` | the decisions the agents of the project's plan runs asked, with the answers |
+| `curator_replay` | a Curator change's replays, arm a (default branch) against arm b (the change), or the replay suite |
 | `kg_*` | the project's knowledge graph, as in the evo-kg plugin; listed only in a session without evo-kg |

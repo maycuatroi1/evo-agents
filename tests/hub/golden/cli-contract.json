@@ -1417,6 +1417,7 @@
           "circuit_breaker",
           "outcome_days",
           "review",
+          "replay",
           "reviewer",
           "builder",
           "judge",
@@ -1479,6 +1480,7 @@
           "circuit_breaker",
           "outcome_days",
           "review",
+          "replay",
           "reviewer",
           "builder",
           "judge",
@@ -2144,6 +2146,101 @@
             "schema": "RepoCheck"
           }
         }
+      }
+    },
+    "hub curator replay show": {
+      "positionals": [
+        {
+          "name": "change",
+          "metavar": "CHANGE",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "change_id",
+          "tasks",
+          "replays",
+          "arms"
+        ],
+        "schema": "ChangeReplay"
+      }
+    },
+    "hub curator replay tasks": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--split"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "select",
+            "holdout"
+          ]
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 100
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "split",
+          "tasks",
+          "total",
+          "counts"
+        ],
+        "schema": "ReplayTaskList"
       }
     },
     "hub curator resume": {
@@ -5545,6 +5642,7 @@
             "author",
             "chat",
             "task",
+            "replay",
             "local"
           ]
         },
@@ -16108,6 +16206,7 @@
                       "author",
                       "chat",
                       "task",
+                      "replay",
                       "local"
                     ],
                     "type": "string"
@@ -25003,6 +25102,365 @@
                 }
               },
               "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/replay/tasks": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "List Tasks",
+          "description": "The project's suite of replay tasks, in the order they came in, of the plans the caller may read.",
+          "operationId": "list_tasks_v1_projects__project__curator_replay_tasks_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "split",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "enum": [
+                      "select",
+                      "holdout"
+                    ],
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the tasks of this split alone",
+                "title": "Split"
+              },
+              "description": "the tasks of this split alone"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 100,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReplayTaskList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/changes/{change_id}/replay": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Change Replay",
+          "description": "A change's replays: each task, what arm a (the default branch's harness) and arm b (the change's) found.",
+          "operationId": "show_change_replay_v1_projects__project__curator_changes__change_id__replay_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "change_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Change Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChangeReplay"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/replay": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report Replay",
+          "description": "One arm's result of the replay run this worker holds, or why it cannot replay its task; with the run's key.",
+          "operationId": "report_replay_v1_worker_runs__run_id__replay_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-Replay-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the replay run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-Replay-Key"
+              },
+              "description": "the replay run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReplayReport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Replay"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
             },
             "422": {
               "description": "Validation Error",
@@ -38567,6 +39025,130 @@
           "type": "object",
           "title": "AnswerIn"
         },
+        "ArmResult": {
+          "properties": {
+            "passed": {
+              "type": "boolean",
+              "title": "Passed",
+              "description": "every verify command exited 0"
+            },
+            "harness_sha": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Harness Sha",
+              "description": "the commit of the change's repo the arm's harness is at"
+            },
+            "harness_paths": {
+              "items": {
+                "type": "string",
+                "maxLength": 1000,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 200,
+              "title": "Harness Paths",
+              "description": "the files of the change the arm ran with"
+            },
+            "verify": {
+              "items": {
+                "$ref": "#/components/schemas/VerifyRun"
+              },
+              "type": "array",
+              "maxItems": 10,
+              "title": "Verify"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd",
+              "description": "the agent's session; null when its runtime names none"
+            },
+            "turns": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Turns"
+            },
+            "tool_calls": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Tool Calls",
+              "default": 0
+            },
+            "tool_errors": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Tool Errors",
+              "description": "the tool calls that failed",
+              "default": 0
+            },
+            "peak_context_tokens": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Peak Context Tokens"
+            },
+            "duration_ms": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Duration Ms",
+              "description": "the agent's time"
+            },
+            "agent_error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Error",
+              "description": "why its turn did not end"
+            },
+            "session_id": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Id"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "passed",
+            "harness_sha",
+            "duration_ms"
+          ],
+          "title": "ArmResult",
+          "description": "What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took."
+        },
         "AuditCounts": {
           "properties": {
             "rows": {
@@ -39961,6 +40543,45 @@
           ],
           "title": "ChangeList"
         },
+        "ChangeReplay": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "change_id": {
+              "type": "integer",
+              "title": "Change Id"
+            },
+            "tasks": {
+              "type": "integer",
+              "title": "Tasks",
+              "description": "the tasks each change is replayed on, as the charter says now"
+            },
+            "replays": {
+              "items": {
+                "$ref": "#/components/schemas/Replay"
+              },
+              "type": "array",
+              "title": "Replays"
+            },
+            "arms": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Arms",
+              "description": "replay.compare: per arm the replays, passed, cost, turns, tool errors, context"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "change_id",
+            "tasks",
+            "replays",
+            "arms"
+          ],
+          "title": "ChangeReplay"
+        },
         "Charter": {
           "properties": {
             "goals": {
@@ -40083,6 +40704,9 @@
             },
             "review": {
               "$ref": "#/components/schemas/ReviewSettings"
+            },
+            "replay": {
+              "$ref": "#/components/schemas/ReplaySettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -40318,6 +40942,9 @@
             },
             "review": {
               "$ref": "#/components/schemas/ReviewSettings"
+            },
+            "replay": {
+              "$ref": "#/components/schemas/ReplaySettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -41807,7 +42434,8 @@
               "enum": [
                 "reviewer",
                 "builder",
-                "judge"
+                "judge",
+                "replay"
               ],
               "title": "Role"
             },
@@ -41904,6 +42532,29 @@
               ],
               "title": "Judge Key",
               "description": "a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps it in memory alone, never in a file, an environment or a log line"
+            },
+            "replay": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReplaySpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a replay run's replay and task; null for any other run"
+            },
+            "replay_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Replay Key",
+              "description": "a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge run's"
             }
           },
           "type": "object",
@@ -41911,7 +42562,7 @@
             "role"
           ],
           "title": "CuratorSpec",
-          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder or a Judge the change, its\nbranch, its forge and its pull request; for a Judge the commit to judge."
+          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, and for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``)."
         },
         "CuratorStatus": {
           "properties": {
@@ -47581,6 +48232,7 @@
                 "author",
                 "chat",
                 "task",
+                "replay",
                 "local"
               ],
               "title": "Kind"
@@ -51673,6 +52325,328 @@
           ],
           "title": "Relation"
         },
+        "Replay": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "change_id": {
+              "type": "integer",
+              "title": "Change Id"
+            },
+            "task_id": {
+              "type": "integer",
+              "title": "Task Id"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "type": "string",
+              "title": "Step Key"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "split": {
+              "type": "string",
+              "enum": [
+                "select",
+                "holdout"
+              ],
+              "title": "Split"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "queued",
+                "running",
+                "done",
+                "failed"
+              ],
+              "title": "State"
+            },
+            "attempts": {
+              "type": "integer",
+              "title": "Attempts"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha"
+            },
+            "a": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "A",
+              "description": "arm a, the harness of the default branch: ArmResult"
+            },
+            "b": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "B",
+              "description": "arm b, the harness of the change's branch: ArmResult"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "change_id",
+            "task_id",
+            "plan_id",
+            "step_key",
+            "repo",
+            "title",
+            "split",
+            "run_id",
+            "state",
+            "attempts",
+            "base_sha",
+            "a",
+            "b",
+            "reason",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "Replay"
+        },
+        "ReplayReport": {
+          "properties": {
+            "arm": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "a",
+                    "b"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Arm"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha",
+              "description": "the task's base commit the arm started at"
+            },
+            "result": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ArmResult"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "refused": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refused"
+            },
+            "task_unusable": {
+              "type": "boolean",
+              "title": "Task Unusable",
+              "description": "with refused: no replay can run the task, whatever the change",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ReplayReport",
+          "description": "One arm's result with the task's base commit; or why the worker cannot replay the task at all."
+        },
+        "ReplaySettings": {
+          "properties": {
+            "tasks": {
+              "type": "integer",
+              "maximum": 20.0,
+              "minimum": 0.0,
+              "title": "Tasks",
+              "description": "tasks of the holdout split each change is replayed on",
+              "default": 3
+            },
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "exclusiveMinimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the most a night's replay runs cost; null: no replay"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "ReplaySettings",
+          "description": "How the night shift replays the Curator's changes of a skill, an AGENTS.md or a CLAUDE.md on tasks of the\nproject's own history (``evo_agents.hub.replay``)."
+        },
+        "ReplaySpec": {
+          "properties": {
+            "replay_id": {
+              "type": "integer",
+              "title": "Replay Id"
+            },
+            "task": {
+              "$ref": "#/components/schemas/evo_agents__hub__server__runs__models__ReplayTask"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "the change's repo"
+            }
+          },
+          "type": "object",
+          "required": [
+            "replay_id",
+            "task",
+            "repo"
+          ],
+          "title": "ReplaySpec",
+          "description": "What the worker of a replay run is told besides the change's branch and head: the replay, its task, and the\nchange's repo, whose harness files the two arms run with."
+        },
+        "ReplayTaskList": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "split": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "select",
+                    "holdout"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Split"
+            },
+            "tasks": {
+              "items": {
+                "$ref": "#/components/schemas/evo_agents__hub__server__replays__ReplayTask"
+              },
+              "type": "array",
+              "title": "Tasks",
+              "description": "in the order they came into the suite"
+            },
+            "total": {
+              "type": "integer",
+              "title": "Total"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "the tasks of each split the caller may read"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "split",
+            "tasks",
+            "total",
+            "counts"
+          ],
+          "title": "ReplayTaskList"
+        },
         "Repo": {
           "properties": {
             "name": {
@@ -52366,6 +53340,7 @@
                 "author",
                 "chat",
                 "task",
+                "replay",
                 "local"
               ],
               "title": "Kind",
@@ -54436,7 +55411,8 @@
                 "judge",
                 "author",
                 "chat",
-                "task"
+                "task",
+                "replay"
               ],
               "title": "Kind"
             },
@@ -62857,6 +63833,32 @@
           ],
           "title": "VerifyResult"
         },
+        "VerifyRun": {
+          "properties": {
+            "exit_code": {
+              "type": "integer",
+              "title": "Exit Code"
+            },
+            "duration_ms": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Duration Ms"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "exit_code"
+          ],
+          "title": "VerifyRun"
+        },
         "Version": {
           "properties": {
             "version": {
@@ -63984,6 +64986,191 @@
             "warnings"
           ],
           "title": "Written"
+        },
+        "evo_agents__hub__server__replays__ReplayTask": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "type": "string",
+              "title": "Step Key"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "what": {
+              "type": "string",
+              "title": "What"
+            },
+            "verify": {
+              "type": "string",
+              "title": "Verify"
+            },
+            "commits": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Commits"
+            },
+            "source": {
+              "type": "string",
+              "enum": [
+                "evidence",
+                "run"
+              ],
+              "title": "Source"
+            },
+            "split": {
+              "type": "string",
+              "enum": [
+                "select",
+                "holdout"
+              ],
+              "title": "Split"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha",
+              "description": "the first parent of the oldest of its commits, once a replay read it"
+            },
+            "unusable": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Unusable",
+              "description": "why no replay can run it"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "plan_id",
+            "step_key",
+            "repo",
+            "title",
+            "what",
+            "verify",
+            "commits",
+            "source",
+            "split",
+            "base_sha",
+            "unusable",
+            "created_at"
+          ],
+          "title": "ReplayTask"
+        },
+        "evo_agents__hub__server__runs__models__ReplayTask": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "plan_id": {
+              "type": "string",
+              "title": "Plan Id"
+            },
+            "step_key": {
+              "type": "string",
+              "title": "Step Key"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "what": {
+              "type": "string",
+              "title": "What"
+            },
+            "verify": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Verify",
+              "description": "the step's verify, one shell line: the worker runs it on each arm's work"
+            },
+            "commits": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Commits",
+              "description": "the commits the step made, as its evidence or a run of it named them"
+            },
+            "base_sha": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Sha",
+              "description": "the first parent of the oldest of its commits; null: the worker finds it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "plan_id",
+            "step_key",
+            "repo",
+            "title",
+            "what",
+            "verify",
+            "commits",
+            "base_sha"
+          ],
+          "title": "ReplayTask",
+          "description": "The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its\nbase commit (null until a replay of it read it from its commits)."
         }
       }
     }

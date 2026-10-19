@@ -61,6 +61,7 @@ from evo_agents.hub.contract import json_option, returns_object
 from evo_agents.worker.agent_input import evidence_items, read_text
 from evo_agents.worker.chat_cli import register_chat
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
+from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 from evo_agents.worker.triage_cli import register_triage
 
 EXIT_FAILED = 1
@@ -500,7 +501,7 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
         raise WorkerStateError(
-            f"`evo-agents worker {command}` works only inside {_kinds_of(kinds)} of this worker: {RUN_VARIABLE} is "
+            f"`evo-agents worker {command}` works only inside {kinds_of(kinds)} of this worker: {RUN_VARIABLE} is "
             "not set. The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
         )
     run_id = int(raw)
@@ -515,38 +516,8 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
         )
     kind = record.get("kind") or "step"
     if kind not in kinds:
-        if kinds in (("review",), ("author",)):
-            raise WorkerStateError(
-                f"run {run_id} is {'an' if kind[:1] in 'aeiou' else 'a'} {kind} run: only the agent of "
-                f"{'an' if kinds[0][:1] in 'aeiou' else 'a'} {kinds[0]} run uses `evo-agents worker {command}`"
-            )
-        if kind == "review":
-            raise WorkerStateError(
-                f"run {run_id} is a review run, which reads only: it records what it finds with `evo-agents worker "
-                f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`, which only the agent "
-                f"of {_kinds_of(kinds)} uses"
-            )
-        if kind == "author":
-            raise WorkerStateError(
-                f"run {run_id} is an author run, which writes a plan and changes nothing: it does not use "
-                f"`evo-agents worker {command}`"
-            )
-        if kind == "judge":
-            raise WorkerStateError(
-                f"run {run_id} is a judge run, which reads and judges only: its verdict is the JSON object that ends "
-                f"the agent's last message, not `evo-agents worker {command}`, which only the agent of "
-                f"{_kinds_of(kinds)} uses"
-            )
-        raise WorkerStateError(
-            f"run {run_id} is a run of one step: only the agent of {_kinds_of(kinds)} uses `evo-agents worker "
-            f"{command}`; a run of one step writes {runs.RESULT_FILE} instead"
-        )
+        raise WorkerStateError(kind_refusal(run_id, kind, kinds, command))
     return _AgentRun(run_id, home, config, token, record)
-
-
-def _kinds_of(kinds: tuple[str, ...]) -> str:
-    """The runs of ``kinds`` in words: "a plan run", "a plan run or an author run"."""
-    return " or ".join(f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind} run" for kind in kinds)
 
 
 def _with_hub(agent: _AgentRun, work):
