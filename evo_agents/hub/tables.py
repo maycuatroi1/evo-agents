@@ -1,7 +1,7 @@
 """The hub's tables as SQLAlchemy Core metadata: what queries are written on, and what Alembic autogenerates the next
 migration from (``migrations/env.py``). ``tables_accounts``, ``tables_profiles``, ``tables_chats``, ``tables_plugins``,
-``tables_sessions``, ``tables_settings``, ``tables_triage`` and ``tables_workers`` hold them by area; ``tables.srs``
-and ``tables.tasks`` are core plugins'.
+``tables_kg``, ``tables_sessions``, ``tables_settings``, ``tables_triage`` and ``tables_workers`` hold them by area;
+``tables.srs`` and ``tables.tasks`` are core plugins'.
 
 The migrations make the schema; this module describes it, and ``tests/hub/test_schema_metadata.py`` keeps the two
 equal: columns, types, nullability, server defaults, identities, keys and indexes, named as the migrations name them
@@ -38,6 +38,7 @@ from sqlalchemy.dialects.postgresql import ARRAY, JSONB, TSVECTOR
 
 from evo_agents.hub import (
     tables_accounts,
+    tables_kg,
     tables_plugins,
     tables_profiles,
     tables_sessions,
@@ -328,22 +329,7 @@ skill_versions = Table(
     PrimaryKeyConstraint("skill_id", "version", name="skill_versions_pkey"),
 )
 
-# Knowledge graph ingests and audit (0001, 0007)
-
-kg_ingests = Table(
-    "kg_ingests",
-    metadata,
-    Column("project_id", BigInteger, nullable=False),
-    Column("run_id", Uuid, nullable=False),
-    Column("source", Text, nullable=False),
-    Column("log_sha256", Text, nullable=False),
-    Column("log_size", BigInteger, nullable=False),
-    Column("pushed_by", BigInteger, nullable=False),
-    _stamp("received_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_ingests_project_id_fkey"),
-    ForeignKeyConstraint(["pushed_by"], ["users.id"], ondelete="RESTRICT", name="kg_ingests_pushed_by_fkey"),
-    PrimaryKeyConstraint("project_id", "run_id", name="kg_ingests_pkey"),
-)
+# The audit (0001, 0007); the knowledge graph's tables are in tables_kg
 
 audit = Table(
     "audit",
@@ -417,86 +403,6 @@ Index(
     "blob_deletions_pending_idx",
     blob_deletions.c.requested_at,
     postgresql_where=blob_deletions.c.deleted_at.is_(None),
-)
-
-# Knowledge graph builds (0006, 0008)
-
-kg_configs = Table(
-    "kg_configs",
-    metadata,
-    Column("project_id", BigInteger, nullable=False, autoincrement=False),
-    Column("digest", Text, nullable=False),
-    Column("knowledge", JSONB, nullable=False),
-    Column("ontology", JSONB),
-    Column("updated_by", BigInteger, nullable=False),
-    _stamp("updated_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_configs_project_id_fkey"),
-    ForeignKeyConstraint(["updated_by"], ["users.id"], ondelete="RESTRICT", name="kg_configs_updated_by_fkey"),
-    PrimaryKeyConstraint("project_id", name="kg_configs_pkey"),
-)
-
-kg_pending_runs = Table(
-    "kg_pending_runs",
-    metadata,
-    Column("project_id", BigInteger, nullable=False),
-    Column("run_id", Uuid, nullable=False),
-    Column("source", Text, nullable=False),
-    Column("log_sha256", Text, nullable=False),
-    Column("log_size", BigInteger, nullable=False),
-    Column("blobs", ARRAY(Text), nullable=False),
-    Column("pushed_by", BigInteger, nullable=False),
-    _stamp("created_at"),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="kg_pending_runs_project_id_fkey"),
-    ForeignKeyConstraint(["pushed_by"], ["users.id"], ondelete="CASCADE", name="kg_pending_runs_pushed_by_fkey"),
-    PrimaryKeyConstraint("project_id", "run_id", name="kg_pending_runs_pkey"),
-)
-
-kg_builds = Table(
-    "kg_builds",
-    metadata,
-    _id(),
-    Column("project_id", BigInteger, nullable=False),
-    Column("job_id", BigInteger),
-    Column("status", Text, nullable=False),
-    Column("requested_by", BigInteger),
-    Column("config_digest", Text),
-    Column("runs", Integer),
-    Column("artifact_sha256", Text),
-    Column("artifact_size", BigInteger),
-    Column("content_hash", Text),
-    Column("nodes", Integer),
-    Column("edges", Integer),
-    Column("error", Text),
-    _stamp("queued_at"),
-    _when("started_at"),
-    _when("finished_at"),
-    Column("artifact_reused_from", BigInteger),
-    _when("artifact_pruned_at"),
-    ForeignKeyConstraint(
-        ["artifact_reused_from"], ["kg_builds.id"], ondelete="RESTRICT", name="kg_builds_artifact_reused_from_fkey"
-    ),
-    ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="RESTRICT", name="kg_builds_project_id_fkey"),
-    ForeignKeyConstraint(["requested_by"], ["users.id"], ondelete="RESTRICT", name="kg_builds_requested_by_fkey"),
-    PrimaryKeyConstraint("id", name="kg_builds_pkey"),
-    UniqueConstraint("job_id", name="kg_builds_job_id_key"),
-)
-Index("kg_builds_project_idx", kg_builds.c.project_id, kg_builds.c.id.desc())
-Index(
-    "kg_builds_succeeded_idx",
-    kg_builds.c.project_id,
-    kg_builds.c.id.desc(),
-    postgresql_where=kg_builds.c.status == "succeeded",
-)
-Index(
-    "kg_builds_artifact_idx",
-    kg_builds.c.project_id,
-    kg_builds.c.id.desc(),
-    postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
-)
-Index(
-    "kg_builds_artifact_sha256_idx",
-    kg_builds.c.artifact_sha256,
-    postgresql_where=kg_builds.c.artifact_sha256.is_not(None),
 )
 
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
@@ -1189,3 +1095,4 @@ hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
+kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)

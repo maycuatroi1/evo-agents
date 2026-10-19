@@ -4590,7 +4590,8 @@
       "skills_memory": "Skill và memory",
       "cost": "Chi phí",
       "security": "Bảo mật",
-      "product_goals": "Mục tiêu sản phẩm"
+      "product_goals": "Mục tiêu sản phẩm",
+      "kg_health": "Sức khoẻ graph"
     },
     "kinds": {
       "docs": "Tài liệu",
@@ -4749,7 +4750,8 @@
         "facet": "Tìm thấy trong facet của phiên",
         "run_event": "Tìm thấy trong log của run",
         "repo": "Một file trong repo của dự án",
-        "graph": "Một file trong knowledge graph của dự án"
+        "graph": "Một file trong knowledge graph của dự án",
+        "unmatched": "Một file trong repo của dự án mà knowledge graph chưa có"
       }
     },
     "draft": {

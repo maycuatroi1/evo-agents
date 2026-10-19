@@ -113,6 +113,8 @@ TASKS_TABLES = frozenset(
 TRANSCRIPT_TABLES = frozenset({"session_transcripts", "transcript_parts"})
 # migration 0051: the deterministic facets of sessions and runs
 FACET_TABLES = frozenset({"session_facets"})
+# migration 0052: the files each git source holds in a project's latest graph, and each measure of the graph's health
+KG_HEALTH_TABLES = frozenset({"kg_source_files", "kg_health"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

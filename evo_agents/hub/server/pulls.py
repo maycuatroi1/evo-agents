@@ -5,7 +5,8 @@ Curator's App (evo-agents-curator). ``evo_agents.hub.server.changes`` decides wh
 Each call asks the App's installation on the repo for a token of that repo alone, with the permissions the call needs
 and no more (SERVER_PERMISSIONS: open a pull request with pull_requests write and contents read, so the token sees the
 head and base branches of a private repo; read one, its files and its CI with pull_requests, checks and statuses read;
-write the Judge's check run with checks write; merge with contents and pull_requests write), uses it, and revokes it.
+write the Judge's check run with checks write; merge with contents and pull_requests write; read a branch, a tree and
+a comparison with contents read), uses it, and revokes it.
 The tokens a worker's run gets keep ``GITHUB_PERMISSIONS`` as they were. Calls go through ``GitHubClient`` (a timeout,
 no redirect, one log line without the token): GitHub failing raises ``GitHubUnavailable``, which the job takes as "try
 again next pass"; GitHub refusing raises ``Refused`` (a ``GitHubRefused``) with a message safe to show, which repeats
@@ -13,6 +14,10 @@ GitHub's ``message`` and the field, code and message of each item of its ``error
 
 ``open_pull`` tries again, after HEAD_WAITS, while GitHub's errors say the head branch is not there (field ``head``),
 as it may not be for a moment after the push; any other refusal is final.
+
+For the measure of a knowledge graph's health (``evo_agents.hub.server.kg_health``) the workers' App reads, with
+``contents: read``, the commit a default branch points at (``branch_head``), the files of a commit's tree
+(``tree``), and how many commits of the branch a commit lacks (``compare``).
 
 ``check_ruleset`` answers whether the Curator's App is kept off a repo's default branch: GET /repos/{o}/{r} names the
 default branch, GET /repos/{o}/{r}/rules/branches/{branch} the rules that apply to it, and for each ruleset with a rule
@@ -48,6 +53,7 @@ SERVER_PERMISSIONS = {
     "check": {"checks": "write", "metadata": "read"},
     "merge": {"contents": "write", "pull_requests": "write", "metadata": "read"},
     "ruleset": {"metadata": "read"},
+    "tree": {"contents": "read", "metadata": "read"},
 }
 PAGE = 100
 MAX_PAGES = 30  # GitHub lists at most 3000 files of a pull request
@@ -165,6 +171,68 @@ async def repository(app: GitHubApp, token: str, owner: str, repo: str) -> dict:
     if response.status_code != 200:
         raise _refused(response, doing)
     return app._json(response, doing)
+
+
+async def branch_head(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict:
+    """The commit ``branch`` of owner/repo points at: {sha, date}, its committer time."""
+    doing = f"reading branch {branch} of {owner}/{repo}"
+    response = await _api(app, token, "GET", _path("repos", owner, repo, "branches", branch), doing)
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    commit = app._json(response, doing).get("commit")
+    commit = commit if isinstance(commit, dict) else {}
+    sha = commit.get("sha")
+    if not isinstance(sha, str):
+        raise GitHubUnavailable(f"GitHub answered without the commit while {doing}")
+    when = ((commit.get("commit") or {}).get("committer") or {}).get("date")
+    return {"sha": sha, "date": when if isinstance(when, str) else None}
+
+
+async def tree(app: GitHubApp, token: str, owner: str, repo: str, sha: str) -> dict[str, str] | None:
+    """The files of commit ``sha`` of owner/repo, {path: blob SHA}, as GitHub lists its tree whole; None when GitHub
+    cut the listing (a tree of more than 100,000 entries), which is never read in part."""
+    doing = f"reading the tree of {sha[:12]} of {owner}/{repo}"
+    path = _path("repos", owner, repo, "git", "trees", sha)
+    response = await _api(app, token, "GET", path, doing, params={"recursive": "1"})
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    if data.get("truncated") is True:
+        return None
+    entries = data.get("tree")
+    if not isinstance(entries, list):
+        raise GitHubUnavailable(f"GitHub answered without a tree while {doing}")
+    return {
+        item["path"]: item["sha"]
+        for item in entries
+        if isinstance(item, dict)
+        and item.get("type") == "blob"
+        and isinstance(item.get("path"), str)
+        and isinstance(item.get("sha"), str)
+    }
+
+
+async def compare(app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str) -> dict:
+    """How commit ``head`` of owner/repo stands to ``base``: GitHub's status (ahead, behind, identical, diverged), the
+    commits ``head`` has that ``base`` lacks (``ahead_by``) and those ``base`` has that ``head`` lacks (``behind_by``),
+    and the committer time of the oldest commit ``head`` has that ``base`` lacks (``oldest``), GitHub listing them
+    oldest first."""
+    doing = f"comparing {base[:12]} with {head[:12]} on {owner}/{repo}"
+    path = _path("repos", owner, repo, "compare", f"{base}...{head}")
+    response = await _api(app, token, "GET", path, doing, params={"per_page": 1, "page": 1})
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    commits = data.get("commits") if isinstance(data.get("commits"), list) else []
+    first = commits[0] if commits and isinstance(commits[0], dict) else {}
+    oldest = ((first.get("commit") or {}).get("committer") or {}).get("date")
+    ahead, behind = data.get("ahead_by"), data.get("behind_by")
+    return {
+        "status": data.get("status") if isinstance(data.get("status"), str) else None,
+        "ahead_by": ahead if type(ahead) is int else None,
+        "behind_by": behind if type(behind) is int else None,
+        "oldest": oldest if isinstance(oldest, str) else None,
+    }
 
 
 async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict | None:

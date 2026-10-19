@@ -1573,7 +1573,8 @@
             "skills_memory",
             "cost",
             "security",
-            "product_goals"
+            "product_goals",
+            "kg_health"
           ]
         },
         {
@@ -1852,7 +1853,8 @@
             "skills_memory",
             "cost",
             "security",
-            "product_goals"
+            "product_goals",
+            "kg_health"
           ]
         },
         {
@@ -2538,6 +2540,45 @@
           "jobs"
         ],
         "schema": "Builds"
+      }
+    },
+    "hub kg health": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "default": 30
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "measures",
+          "builds"
+        ],
+        "schema": "KgHealthView"
       }
     },
     "hub kg prune": {
@@ -8125,7 +8166,8 @@
             "skills_memory",
             "cost",
             "security",
-            "product_goals"
+            "product_goals",
+            "kg_health"
           ]
         },
         {
@@ -8277,7 +8319,8 @@
             "skills_memory",
             "cost",
             "security",
-            "product_goals"
+            "product_goals",
+            "kg_health"
           ]
         },
         {
@@ -22174,7 +22217,8 @@
                       "skills_memory",
                       "cost",
                       "security",
-                      "product_goals"
+                      "product_goals",
+                      "kg_health"
                     ],
                     "type": "string"
                   },
@@ -22456,7 +22500,8 @@
                       "skills_memory",
                       "cost",
                       "security",
-                      "product_goals"
+                      "product_goals",
+                      "kg_health"
                     ],
                     "type": "string"
                   },
@@ -24821,6 +24866,110 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TranscriptsDeleted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/kg-health": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "Show Kg Health",
+          "description": "The health of the project's knowledge graph over time: its latest measures and its successful builds with what\neach covers, for a reader whose grant reaches the project's default label through the sink (the hub sink by\ndefault), as the night's figures are.",
+          "operationId": "show_kg_health_v1_projects__project__curator_kg_health_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "description": "measures and builds to list",
+                "default": 30,
+                "title": "Limit"
+              },
+              "description": "measures and builds to list"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/KgHealthView"
                   }
                 }
               }
@@ -43298,7 +43447,8 @@
                 "skills_memory",
                 "cost",
                 "security",
-                "product_goals"
+                "product_goals",
+                "kg_health"
               ],
               "title": "Lens"
             },
@@ -44623,6 +44773,45 @@
           "title": "JudgeInputs",
           "description": "What a judge run reads: the change, the proposal, the plan's verify commands, the charter's protected paths,\nand the project's hidden checks, which no other run reads."
         },
+        "KgBuildCoverage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "finished_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Finished At"
+            },
+            "changed": {
+              "type": "boolean",
+              "title": "Changed",
+              "description": "false when an earlier build had the same content"
+            },
+            "coverage": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Coverage",
+              "description": "what the build covers (kg_builds.coverage); null before schema 0052"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "finished_at",
+            "changed",
+            "coverage"
+          ],
+          "title": "KgBuildCoverage"
+        },
         "KgConfig": {
           "properties": {
             "knowledge": {
@@ -44678,6 +44867,115 @@
           ],
           "title": "KgDuty",
           "description": "A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it."
+        },
+        "KgHealthView": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "measures": {
+              "items": {
+                "$ref": "#/components/schemas/KgMeasure"
+              },
+              "type": "array",
+              "title": "Measures",
+              "description": "newest first"
+            },
+            "builds": {
+              "items": {
+                "$ref": "#/components/schemas/KgBuildCoverage"
+              },
+              "type": "array",
+              "title": "Builds",
+              "description": "the successful builds, newest first"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "measures",
+            "builds"
+          ],
+          "title": "KgHealthView"
+        },
+        "KgMeasure": {
+          "properties": {
+            "measured_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Measured At"
+            },
+            "build_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build Id",
+              "description": "the build whose graph the measure read"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why the measure failed; null when it did not"
+            },
+            "build": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Build",
+              "description": "that build: id, content_hash, finished_at"
+            },
+            "sources": {
+              "items": {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              "type": "array",
+              "title": "Sources",
+              "description": "each git source: the commit it read, its default branch and head, the commits behind and the hours the oldest waited, the files missing, stale and deleted with samples and evidence, and why for what was not read"
+            },
+            "eval": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Eval",
+              "description": "the retrieval evaluation of the build's graph, or why there is none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "measured_at",
+            "build_id",
+            "error",
+            "build",
+            "sources",
+            "eval"
+          ],
+          "title": "KgMeasure"
         },
         "KgNode": {
           "properties": {
@@ -50429,7 +50727,8 @@
                 "skills_memory",
                 "cost",
                 "security",
-                "product_goals"
+                "product_goals",
+                "kg_health"
               ],
               "title": "Lens"
             },
@@ -51791,7 +52090,7 @@
           "properties": {
             "lenses": {
               "type": "integer",
-              "maximum": 11.0,
+              "maximum": 12.0,
               "minimum": 1.0,
               "title": "Lenses",
               "description": "lenses a night looks through, in turn",

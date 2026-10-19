@@ -3020,6 +3020,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/kg-health": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Show Kg Health
+         * @description The health of the project's knowledge graph over time: its latest measures and its successful builds with what
+         *     each covers, for a reader whose grant reaches the project's default label through the sink (the hub sink by
+         *     default), as the night's figures are.
+         */
+        get: operations["show_kg_health_v1_projects__project__curator_kg_health_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -7962,7 +7984,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
             /**
              * Severity
              * @default medium
@@ -8536,6 +8558,28 @@ export interface components {
              */
             hidden_checks: string[];
         };
+        /** KgBuildCoverage */
+        KgBuildCoverage: {
+            /** Id */
+            id: number;
+            /**
+             * Finished At
+             * Format: date-time
+             */
+            finished_at: string;
+            /**
+             * Changed
+             * @description false when an earlier build had the same content
+             */
+            changed: boolean;
+            /**
+             * Coverage
+             * @description what the build covers (kg_builds.coverage); null before schema 0052
+             */
+            coverage: {
+                [key: string]: unknown;
+            } | null;
+        };
         /** KgConfig */
         KgConfig: {
             /**
@@ -8565,6 +8609,60 @@ export interface components {
              * @description when the hub last took a run of the project's graph, from any machine: a daemon that saw an earlier time merges the hub's runs and looks at the project's sources again; null when it holds none
              */
             received_at: string | null;
+        };
+        /** KgHealthView */
+        KgHealthView: {
+            /** Project */
+            project: string;
+            /**
+             * Measures
+             * @description newest first
+             */
+            measures: components["schemas"]["KgMeasure"][];
+            /**
+             * Builds
+             * @description the successful builds, newest first
+             */
+            builds: components["schemas"]["KgBuildCoverage"][];
+        };
+        /** KgMeasure */
+        KgMeasure: {
+            /**
+             * Measured At
+             * Format: date-time
+             */
+            measured_at: string;
+            /**
+             * Build Id
+             * @description the build whose graph the measure read
+             */
+            build_id: number | null;
+            /**
+             * Error
+             * @description why the measure failed; null when it did not
+             */
+            error: string | null;
+            /**
+             * Build
+             * @description that build: id, content_hash, finished_at
+             */
+            build: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Sources
+             * @description each git source: the commit it read, its default branch and head, the commits behind and the hours the oldest waited, the files missing, stale and deleted with samples and evidence, and why for what was not read
+             */
+            sources: {
+                [key: string]: unknown;
+            }[];
+            /**
+             * Eval
+             * @description the retrieval evaluation of the build's graph, or why there is none
+             */
+            eval: {
+                [key: string]: unknown;
+            } | null;
         };
         /** KgNode */
         KgNode: {
@@ -11141,7 +11239,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -25734,7 +25832,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -25863,7 +25961,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -27369,6 +27467,69 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TranscriptsDeleted"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    show_kg_health_v1_projects__project__curator_kg_health_get: {
+        parameters: {
+            query?: {
+                /** @description measures and builds to list */
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["KgHealthView"];
                 };
             };
             /** @description Unauthorized */

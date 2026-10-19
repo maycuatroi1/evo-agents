@@ -32,9 +32,10 @@ Jobs (names in ``evo_agents.hub.jobs``):
   inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
   it; its circuit breaker pauses a project's night shift once the charter's max_failed_in_a_row jobs of a night in a
   row failed or were reverted (``evo_agents.hub.server.curator``, ``evo_agents.hub.server.outcomes``).
-- ``curator.collect``, every minute: in each charter's window, the night's figures of the project, counted once
-  without any model, and its review run; and the deferred proposals whose time has passed open again
-  (``evo_agents.hub.server.collect``).
+- ``curator.collect``, every minute: the health of each charter's knowledge graph, measured every 6 hours against the
+  default branches on GitHub (``evo_agents.hub.server.kg_health``); in each charter's window, the night's figures of
+  the project, counted once without any model, and its review run; and the deferred proposals whose time has passed
+  open again (``evo_agents.hub.server.collect``).
 - ``hub.plugin_jobs``, every minute: a ``hub.plugin_job`` for each job of a plugin enabled in a project whose cron
   takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
 - ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
@@ -228,7 +229,9 @@ async def fire_schedules(context: JobContext, timestamp: int | None = None) -> d
 async def curator_collect(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.collect import collect
 
-    return await collect(hub(context).engine)
+    found = hub(context)
+    app = found.github_app or found.curator_app
+    return await collect(found.engine, github_app=app, blobs=found.blobs, data_dir=found.data_dir)
 
 
 @queue.periodic(cron="* * * * *")

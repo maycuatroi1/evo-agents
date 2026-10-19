@@ -22,11 +22,13 @@ answers for a login with no account.
 It plays a second App too, the Curator's (``curator_app_id``, ``curator_app_public_key``): a JWT is the App its ``iss``
 names, and each App sees only its own installations (``install(..., app="curator")``). For the Curator's changes it
 keeps repos (``add_repo``: default branch, branch heads, rulesets) and answers, for an installation token that opens the
-repo and holds the permission each needs, as GitHub does: GET /repos/{o}/{r}; GET .../rules/branches/{branch} and
-GET .../rulesets/{id}, whose ``current_user_can_bypass`` says whether the token's App is among the ruleset's bypass
-Apps; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set) and GET
-.../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them); POST
-.../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
+repo and holds the permission each needs, as GitHub does: GET /repos/{o}/{r}; GET .../rules/branches/{branch} and GET
+.../rulesets/{id}, whose ``current_user_can_bypass`` says whether the token's App is among the ruleset's bypass Apps;
+GET .../branches/{branch}, GET .../git/trees/{sha} and GET .../compare/{base}...{head} over the commits ``commit`` made
+on the default branch (its tree whole, or cut for a commit of ``cut_trees``; a comparison of two of them, its commits
+oldest first, paged); POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files``
+set) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them);
+POST .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
 the token's App may not bypass (405), and otherwise merges. A pull request names the base's commit it opened on, and
 once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing either on
 GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
@@ -91,6 +93,9 @@ class FakeRepo:
     messages: dict = field(default_factory=dict)  # commit -> its message
     claimed_files: dict = field(default_factory=dict)  # branch -> how many files its pull request says it changes
     drafts: bool = True  # False: GitHub takes no draft pull request on it (422)
+    history: list = field(default_factory=list)  # (sha, committer time) of the default branch's commits, oldest first
+    trees: dict = field(default_factory=dict)  # commit -> its files {path: blob sha}
+    cut_trees: set = field(default_factory=set)  # commits whose tree GitHub answers cut (truncated)
 
 
 @dataclass
@@ -247,6 +252,15 @@ class FakeGitHub:
             for found in self.pulls.values():
                 if (found.owner, found.name, found.head) == (repo.owner, repo.name, branch) and found.state == "open":
                     found.head_sha = sha
+
+    def commit(self, owner: str, name: str, sha: str, when: str, files: dict) -> None:
+        """A commit ``sha`` at ``when`` on the default branch of owner/name, which now points at it, holding ``files``
+        ({path: blob sha})."""
+        with self._lock:
+            repo = self.repos[(owner.lower(), name.lower())]
+            repo.history.append((sha, when))
+            repo.trees[sha] = dict(files)
+            repo.heads[repo.default_branch] = sha
 
     def ci(self, sha: str, runs: list | None = None, statuses: dict | None = None) -> None:
         """What CI says of ``sha``: its check runs (name, status, conclusion) and its combined status."""
@@ -578,6 +592,42 @@ class FakeGitHub:
         if method == "GET" and not rest:
             _, _, refused = need("metadata", "read")
             return refused or (200, self._repo_answer(repo))
+        if method == "GET" and rest[:1] == ["branches"] and len(rest) >= 2:
+            _, _, refused = need("metadata", "read")
+            if refused:
+                return refused
+            branch = "/".join(rest[1:])
+            if branch not in repo.heads:
+                return 404, {"message": "Branch not found"}
+            sha = repo.heads[branch]
+            when = dict(repo.history).get(sha)
+            return 200, {"name": branch, "commit": {"sha": sha, "commit": {"committer": {"date": when}}}}
+        if method == "GET" and rest[:2] == ["git", "trees"] and len(rest) == 3:
+            _, _, refused = need("contents", "read")
+            if refused:
+                return refused
+            files = repo.trees.get(rest[2])
+            if files is None:
+                return 404, {"message": "Not Found"}
+            entries = [
+                {"path": path, "mode": "100644", "type": "blob", "sha": sha} for path, sha in sorted(files.items())
+            ]
+            return 200, {"sha": rest[2], "tree": entries, "truncated": rest[2] in repo.cut_trees}
+        if method == "GET" and rest[:1] == ["compare"] and len(rest) == 2:
+            _, _, refused = need("contents", "read")
+            if refused:
+                return refused
+            base, _, head = rest[1].partition("...")
+            shas = [sha for sha, _ in repo.history]
+            if base not in shas or head not in shas:
+                return 404, {"message": "Not Found"}
+            low, high = shas.index(base), shas.index(head)
+            ahead, behind = max(high - low, 0), max(low - high, 0)
+            status = "identical" if low == high else ("ahead" if high > low else "behind")
+            size, page = int(query.get("per_page", "250")), int(query.get("page", "1"))
+            listed = repo.history[low + 1 : high + 1][(page - 1) * size : page * size]
+            commits = [{"sha": sha, "commit": {"committer": {"date": when}}} for sha, when in listed]
+            return 200, {"status": status, "ahead_by": ahead, "behind_by": behind, "commits": commits}
         if method == "GET" and rest[:2] == ["rules", "branches"]:
             _, _, refused = need("metadata", "read")
             if refused:

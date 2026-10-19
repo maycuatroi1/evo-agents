@@ -4590,7 +4590,8 @@
       "skills_memory": "Skills and memory",
       "cost": "Cost",
       "security": "Security",
-      "product_goals": "Product goals"
+      "product_goals": "Product goals",
+      "kg_health": "Graph health"
     },
     "kinds": {
       "docs": "Docs",
@@ -4749,7 +4750,8 @@
         "facet": "Found in the session's facet",
         "run_event": "Found in the run's log",
         "repo": "A file of the project's repo",
-        "graph": "A file of the project's knowledge graph"
+        "graph": "A file of the project's knowledge graph",
+        "unmatched": "A file of the project's repo the knowledge graph does not hold yet"
       }
     },
     "draft": {

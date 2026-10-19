@@ -39,7 +39,7 @@ MAX_WEEKS = 520
 TOP = 30
 SAMPLES = 5
 SAMPLE_CHARS = 200
-LISTS = ("tools", "bash", "errors", "repeated_commands", "commands", "command_at", "user_turns")
+LISTS = ("tools", "bash", "errors", "repeated_commands", "commands", "command_at", "user_turns", "kg")
 WEEK_SUMS = (
     "messages",
     "tool_calls",

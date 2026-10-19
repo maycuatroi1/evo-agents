@@ -2,10 +2,11 @@
 of it. ``evo_agents.hub.review`` holds the model (lenses, causes, the prompt), ``evo_agents.hub.server.curator`` the
 night shift whose schedule queues the run, and ``evo_agents.hub.server.proposals`` what the run writes.
 
-``collect`` is the job ``curator.collect``, every minute: for each night_shift schedule that is not paused, inside its
-charter's window, under the schedule's row lock (a schedule another job holds is passed over), it counts the night's
-figures once (``ensure_figures``), as the owner of the schedule may read the project, and keeps them in
-curator_figures; then, when the night shift may queue a run now (no run of the schedule queued or held, under the
+``collect`` is the job ``curator.collect``, every minute: it first measures the knowledge graph of each project with a
+night shift whose last measure is old enough (``kg_health.measure``); then for each night_shift schedule that is not
+paused, inside its charter's window, under the schedule's row lock (a schedule another job holds is passed over), it
+counts the night's figures once (``ensure_figures``), as the owner of the schedule may read the project, and keeps them
+in curator_figures; then, when the night shift may queue a run now (no run of the schedule queued or held, under the
 night's runs and budget, the worker on duty live), it queues the night's review run (``queue_review``). Each pass also
 opens again the proposals deferred until a moment that has passed. ``fire_schedules`` asks ``queue_review`` too before
 it queues a plan run, so the review comes first in a night whichever job runs first.
@@ -16,14 +17,16 @@ that ended (run_tool_stats) and of the sessions; per Bash program, those of the 
 the environment, from the sessions' failed results, the failed tool calls of the runs and the errors of the runs, by
 cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker reported
 (runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again across
-sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt,
-open_questions); the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the
-span; and what the worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that
-failed with its error. The sessions are their facets (``evo_agents.hub.server.facet_figures``): each session's whose
-transcripts or digest the owner may read, a digest the job hub.analyze_facets has not read yet as its facet would be,
-and a local run's only when its member is the schedule's owner. The night's figures add ``weekly``, the weekly series
-of every facet the owner may read, over the whole history, and ``facets``, how far the facets of the project are
-(``evo_agents.hub.facet_job.coverage``). Each entry names evidence a finding can cite as it is
+sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt, open_questions);
+the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the span; and what the
+worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that failed with its error;
+and the health of the project's knowledge graph (``kg_health``, ``evo_agents.hub.server.kg_health``): how far each git
+source lags its default branch and the files it lacks or holds stale, at the latest measure, what the builds of the span
+covered, and what agents got from the graph. The sessions are their facets (``evo_agents.hub.server.facet_figures``):
+each session's whose transcripts or digest the owner may read, a digest the job hub.analyze_facets has not read yet as
+its facet would be, and a local run's only when its member is the schedule's owner. The night's figures add ``weekly``,
+the weekly series of every facet the owner may read, over the whole history, and ``facets``, how far the facets of the
+project are (``evo_agents.hub.facet_job.coverage``). Each entry names evidence a finding can cite as it is
 (``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned skills waiting for review and the open items of reports live in
 files, not on the hub: the worker counts them in the review run's worktrees (``evo_agents.worker.run.ReviewRun``). A
 session, a plan, and the runs of a plan, that the schedule's owner may not read through the project's hub sink are left
@@ -51,7 +54,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, facet_job, review, runs, tables
-from evo_agents.hub.server import audit, facet_figures
+from evo_agents.hub.server import audit, facet_figures, kg_health
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event
@@ -263,6 +266,7 @@ async def _counted(
         **planned,
         "learned_skills": None,  # in files of the worktrees: the review run's worker counts them
         "decisions": await _decision_figures(conn, access.project_id, plans, since),
+        "kg_health": await kg_health.figures(conn, access, plans, since, until, held),
     }
     return figures, held, plans
 
@@ -480,12 +484,22 @@ async def reopen_deferred(conn: AsyncConnection) -> int:
     return len(opened.all())
 
 
-async def collect(engine: AsyncEngine, *, now: datetime | None = None) -> dict:
+async def collect(
+    engine: AsyncEngine, *, now: datetime | None = None, github_app=None, blobs=None, data_dir=None
+) -> dict:
     """One pass of ``curator.collect`` over every night_shift schedule, each in a transaction of its own, at ``now``
     (the database's now when None); how many schedules ended in each outcome, and how many deferred proposals opened
-    again."""
+    again. With ``data_dir``, the worker's cache (the job's), the graphs of the projects that are due are measured
+    first (``kg_health.measure``, with ``github_app`` and ``blobs``), and ``graphs`` says how many."""
     from evo_agents.hub.server.curator import _due, gate_of  # it imports this module
 
+    measured = None
+    if data_dir is not None:
+        try:
+            measured = await kg_health.measure(engine, github_app=github_app, blobs=blobs, data_dir=data_dir, now=now)
+        except Exception:  # the night's figures go on without a new measure of the graph
+            log.exception("measuring the knowledge graphs failed")
+            measured = {"failed": 1}
     async with engine.begin() as conn:
         due = (await conn.execute(_due(now))).all()
         reopened = await reopen_deferred(conn)
@@ -500,4 +514,5 @@ async def collect(engine: AsyncEngine, *, now: datetime | None = None) -> dict:
         except Exception:  # one schedule failing leaves the others their turn
             log.exception("collecting a night failed", extra={"project": row.project, "schedule_id": row.id})
             outcomes["failed"] += 1
-    return {**dict(sorted(outcomes.items())), "reopened": reopened}
+    found = {**dict(sorted(outcomes.items())), "reopened": reopened}
+    return found if measured is None else {**found, "graphs": measured}

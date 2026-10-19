@@ -18,7 +18,8 @@ night's date (``lenses_for``), so every lens comes round within a few nights and
 Evidence is one of EVIDENCE_KINDS, written ``session:ID[:FIELD:INDEX]`` (a session of the project, and an entry of
 one of the lists of its facet, else of its digest), ``run:ID:SEQ`` (an event of a run of the project) or
 ``code:REPO:PATH[:LINE]`` (a line of a file of a repo of the project) on the command line (``parse_evidence``), and as
-an object in the API. The hub refuses a finding or a proposal whose evidence it cannot find.
+an object in the API. The hub refuses a finding or a proposal whose evidence it cannot find; a file of a repo of the
+project that the knowledge graph does not hold yet is kept, as ``unmatched``.
 """
 
 from __future__ import annotations
@@ -44,6 +45,11 @@ LENSES: dict[str, str] = {
     "cost": "what the runs and sessions cost, and where the same result could cost less",
     "security": "secrets in the open, permissions wider than needed, text in data that tries to steer an agent",
     "product_goals": "how far the charter's goals are, and the next step that would move the first of them",
+    "kg_health": "the knowledge graph's health: how far each git source lags its default branch, the files the graph "
+    "lacks, holds stale or still holds after their deletion, what its builds cover over time (mentions resolved, "
+    "ambiguous, dangling; Python methods no call edge reaches; builds that changed nothing), and what agents got from "
+    "it: kg lookups that came back empty, searches that fell back to grep, edited files kg did not rank in its top 5, "
+    "and the retrieval eval's score",
 }
 LENSES_PER_NIGHT = 3  # the charter's review.lenses, by default
 REVIEW_DAYS = 7  # the days of sessions and runs the night's figures cover, by default
@@ -86,6 +92,7 @@ FIGURE_KEYS = (
     "sessions",
     "decisions",
     "kg_sync",
+    "kg_health",
     "facets",
     "weekly",
 )
@@ -301,8 +308,8 @@ def _rules(project: str) -> list[str]:
         "- Evidence is what the hub can find: `session:ID` or `session:ID:FIELD:INDEX` (a session of the project, "
         f"and the entry INDEX, from 0, of the list FIELD of its facet, the one the figures cite, else of its digest: "
         f"{', '.join(DIGEST_FIELDS)}), `run:ID:SEQ` (the event SEQ of a run of the project), or `code:REPO:PATH:LINE` "
-        "(a line of a file in your worktree of REPO). The hub refuses a finding or a proposal whose evidence it "
-        "cannot find.",
+        "(a line of a file in your worktree of REPO, which the knowledge graph may not hold yet). The hub refuses a "
+        "finding or a proposal whose evidence it cannot find.",
         "- Propose a change with `evo-agents worker propose --lens LENS --kind KIND --title TEXT --path REPO:PATH "
         "--finding ID --evidence SPEC --plan-file FILE --summary-file FILE`: --path once for each file the change "
         "would edit, --finding and --evidence for what supports it (at least one of the two), --summary-file "

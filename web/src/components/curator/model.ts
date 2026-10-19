@@ -38,6 +38,7 @@ export const LENSES = [
   "cost",
   "security",
   "product_goals",
+  "kg_health",
 ] as const satisfies readonly Lens[];
 
 /** `review.PROPOSAL_STATES`, in the order the list's filter shows them: what waits first. */

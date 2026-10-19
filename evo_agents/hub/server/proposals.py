@@ -9,8 +9,8 @@ it, who must still hold writer on the project; each is stored with the project's
 each piece before it stores anything (422 naming the first it cannot find): a session of the project, and the entry of
 the list that ``field`` and ``index`` name, in the session's facet when the hub made one (``evo_agents.hub.facet_job``),
 else in its digest; an event of a run of the project, of a plan the owner may read, a review run or a local run of the
-owner, whose ``seq`` the run has reached; a file of a repo of the project, which, when the project has a
-knowledge graph, the graph must have (``graph_view``). Each piece is kept with how the hub found it (``resolved``).
+owner, whose ``seq`` the run has reached; a file of a repo of the project, ``graph`` or ``unmatched`` (kept: the graph
+may lag) when the project has a knowledge graph (``graph_view``). Each piece is kept with how the hub found it.
 
 A proposal names a lens, a kind of change (``tiers.CHANGE_KINDS``), a title, a markdown summary, the paths it would
 edit (``{repo, path}``, each a repo of the project), the findings it rests on (of the project) and evidence of its own,
@@ -426,9 +426,8 @@ async def resolve(
                 known = ", ".join(sorted(repos)) or "none"
                 raise _refused(where, f"project {run.project} has no repo {item.repo} (its repos: {known})")
             target = f"{item.repo}:{item.path}"
-            if graph is not None and target in graph.unmatched:
-                raise _refused(where, f"the knowledge graph of project {run.project} has no file {target}")
-            found.append({**stored, "resolved": "repo" if graph is None else "graph"})
+            held = "repo" if graph is None else "unmatched" if target in graph.unmatched else "graph"
+            found.append({**stored, "resolved": held})  # a file the graph lacks yet is kept, not refused
     return found
 
 
