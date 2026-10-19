@@ -17,9 +17,10 @@ upload, commit and publish routes, and a browser sent to a presigned GET downloa
 /skills/bundle {name, description, files} packs a skill directory with ``evo_agents.hub.skills.pack`` and answers
 the bundle as base64 with its SHA-256, since the tests have no tar.gz writer of their own. The knowledge graph tests
 push their fixture through the same store, and POST /kg/seed and /kg/build run the worker's build in this process
-(``kg_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago} records what a worker
-daemon's heartbeat would (its time, and the runtimes and checkouts it reports), since this release of the API has
-no heartbeat route yet.
+(``kg_seed.py``). POST /workers/heartbeat {worker_id, runtimes, checkouts, seconds_ago, agent_commit, self_update,
+self_update_hours} records what a worker daemon's heartbeat would (its time, the runtimes and checkouts it reports,
+the commit its install was built from and what it says of updating itself, which the hub has kept for
+``self_update_hours``), without the worker's token the heartbeat route needs.
 
 The terminal specs need the worker's end of a run's terminal: POST /terminal/worker {run_id, token} connects it the way
 the daemon does (``FakeTerminal``: the worker's token and protocol header, retried until a browser waits on the run)
@@ -220,18 +221,33 @@ def plugin_bundle(body: dict) -> dict:
 
 def stamp_heartbeat(dsn: str, body: dict) -> dict:
     """What a worker's heartbeat records: its time (``seconds_ago`` before now) and, when given, the runtimes and
-    checkouts it reports. 404 for a worker the stack does not have."""
+    checkouts it reports. ``agent_commit`` and ``self_update`` are set when the body names them, as the heartbeat
+    route sets them from each heartbeat; ``self_update_hours`` backdates when the hub first got that state, so a
+    long wait need not take hours. 404 for a worker the stack does not have."""
     import psycopg
     from psycopg.types.json import Jsonb
 
     runtimes = Jsonb(body["runtimes"]) if isinstance(body.get("runtimes"), dict) else None
     checkouts = Jsonb(body["checkouts"]) if isinstance(body.get("checkouts"), dict) else None
+    sets, params = [], []
+    if "agent_commit" in body:
+        sets.append("agent_commit = %s")
+        params.append(body["agent_commit"])
+    if "self_update" in body:
+        report = body["self_update"] if isinstance(body["self_update"], dict) else None
+        sets.append("self_update = %s, self_update_since = CASE WHEN %s THEN now() - make_interval(secs => %s) END")
+        params += [
+            Jsonb(report) if report else None,
+            report is not None,
+            float(body.get("self_update_hours") or 0) * 3600,
+        ]
     with psycopg.connect(dsn, autocommit=True) as conn:
         row = conn.execute(
             "UPDATE workers SET last_heartbeat_at = now() - make_interval(secs => %s), "
-            "runtimes = coalesce(%s, runtimes), checkouts = coalesce(%s, checkouts) "
-            "WHERE id = %s RETURNING id, last_heartbeat_at",
-            (float(body.get("seconds_ago") or 0), runtimes, checkouts, int(body["worker_id"])),
+            "runtimes = coalesce(%s, runtimes), checkouts = coalesce(%s, checkouts)"
+            + "".join(f", {part}" for part in sets)
+            + " WHERE id = %s RETURNING id, last_heartbeat_at",
+            (float(body.get("seconds_ago") or 0), runtimes, checkouts, *params, int(body["worker_id"])),
         ).fetchone()
     if row is None:
         raise LookupError(f"no worker {body['worker_id']}")

@@ -56,7 +56,7 @@ import {
 } from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
 import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
-import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
+import { AGENT_COMMIT, CHECKOUTS, heartbeat, NIGHTLY_COMMIT, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
  * axe (WCAG 2.2 A and AA rules) on every page of the web, in light and dark: no serious or critical violation.
@@ -86,14 +86,24 @@ async function seedMemories(me: Member) {
   return { runbook };
 }
 
-/** Three workers of `me`: idle with what a heartbeat reports, offline, and draining; returns the idle one. */
+/**
+ * Three workers of `me`: idle with what a heartbeat reports (its commit, and an update that failed while it has waited
+ * half a day for an idle moment), offline, and draining on a daemon that cannot update itself; returns the idle one.
+ */
 async function seedWorkers(me: Member) {
   const project = me.projects[0];
   const idle = await registerWorker(me, { name: uniqueName("idle"), projects: [project], slots: 2, labels: ["macos", "gpu"] });
-  await heartbeat(idle.id, { runtimes: RUNTIMES, checkouts: CHECKOUTS, secondsAgo: 3 });
+  await heartbeat(idle.id, {
+    runtimes: RUNTIMES,
+    checkouts: CHECKOUTS,
+    secondsAgo: 3,
+    agentCommit: AGENT_COMMIT,
+    selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT, error: "uv tool install exited 2", error_at: new Date().toISOString() },
+    selfUpdateHours: 13,
+  });
   await registerWorker(me, { name: uniqueName("offline"), projects: [project] });
   const draining = await registerWorker(me, { name: uniqueName("draining"), projects: [project] });
-  await heartbeat(draining.id);
+  await heartbeat(draining.id, { selfUpdate: { state: "unsupported", reason: "editable install of a local checkout" } });
   const api = await apiOf(me);
   await api.POST("/v1/workers/{worker_id}/drain", { params: { path: { worker_id: draining.id } } });
   return idle;
@@ -592,6 +602,7 @@ const PAGES: Entry[] = [
       await page.goto("/workers");
       await expect(page.locator("#main").getByTestId("workers-table").locator("tbody tr")).toHaveCount(3);
       await expect(page.locator("#main").getByTestId("workers-summary")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("worker-update")).toHaveCount(2); // failed, and can't self-update
     },
   },
   {
@@ -621,6 +632,10 @@ const PAGES: Entry[] = [
       await page.goto(`/workers/${idle.id}`);
       await expect(page.locator("#main").getByTestId("heartbeat-strip")).toBeVisible();
       await expect(page.locator("#main").getByTestId("worker-runtimes")).toContainText("2.1.289");
+      await expect(page.locator("#main").getByTestId("worker-update-failed")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("worker-update-waiting")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("worker-commit-sha")).toBeVisible();
+      await expect(page.locator("#main").getByRole("switch", { name: "Lock version" })).toBeVisible();
     },
   },
   {

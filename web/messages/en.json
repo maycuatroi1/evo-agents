@@ -1894,6 +1894,64 @@
       "failed": "Couldn't save the settings of {name}",
       "revoked": "The worker was revoked, so its settings no longer change. The page was reloaded.",
       "requestId": "Request id: {id}"
+    },
+    "version": {
+      "title": "Version",
+      "description": "The evo-agents its daemon runs, as its last heartbeat said.",
+      "release": "Release",
+      "commit": "Commit",
+      "noCommit": "Not reported",
+      "noCommitWhy": "An older daemon, or one installed from PyPI or a local checkout, names no commit.",
+      "commitLink": "{commit} on GitHub (opens in a new tab)",
+      "copyCommit": "Copy commit",
+      "updatesLabel": "Updates",
+      "updates": {
+        "none": "Shown after its first heartbeat.",
+        "locked": "Locked: it stays on this version until you unlock it in Settings.",
+        "lockedBy": "Locked by {owner}: it stays on this version.",
+        "unlocking": "Unlocked: it follows nightly again from its next heartbeat.",
+        "unreported": "Not reported: its daemon does not update itself, so it is updated by hand.",
+        "current": "Runs the commit nightly points to.",
+        "checked": "Checked",
+        "waiting": "Waiting for an idle moment to update to nightly.",
+        "waitingTo": "Waiting for an idle moment to install",
+        "updating": "Installing nightly, then restarting on it.",
+        "updatingTo": "Installing",
+        "since": "Since {time}",
+        "unsupported": "Doesn't update itself."
+      }
+    },
+    "versionLock": {
+      "label": "Lock version",
+      "hint": "On: it stays on the evo-agents it runs now and does not update itself. Off: it updates itself to the tag nightly whenever it holds no run. It takes the change at its next heartbeat.",
+      "locked": "{name} stays on its version",
+      "lockedText": "From its next heartbeat, it no longer updates itself to nightly.",
+      "unlocked": "{name} updates itself again",
+      "unlockedText": "From its next heartbeat, it installs nightly whenever it holds no run.",
+      "lockFailed": "Couldn't lock the version of {name}",
+      "unlockFailed": "Couldn't unlock the version of {name}"
+    },
+    "update": {
+      "badge": {
+        "failed": "Update failed",
+        "unsupported": "Can't self-update",
+        "waiting": "Update waiting"
+      },
+      "tip": {
+        "failed": "Its last update to nightly failed; its page says why.",
+        "unsupported": "It can't update itself to nightly; its page says why.",
+        "waiting": "It has waited over 12 hours for an idle moment to update to nightly."
+      },
+      "note": {
+        "failed": "Its last update to nightly failed.",
+        "failedAt": "Its last update to nightly failed on {time}.",
+        "failedNext": "It keeps running the version it has and tries again later.",
+        "unsupported": "It can't update itself to nightly.",
+        "unsupportedNext": "Until that changes, update it by hand, or lock its version if it should stay as it is.",
+        "waiting": "Waiting since {time} for an idle moment to update to nightly.",
+        "waitingNext": "It updates only once no daemon of its install holds a run.",
+        "waitingOwner": "It updates only once no daemon of its install holds a run. To let it update sooner, drain it, then resume it once it shows the new commit."
+      }
     }
   },
   "secrets": {

@@ -230,6 +230,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Decision, waiting for you | `MessageSquare` |
 | Runs | `Activity` |
 | A worker's heartbeats: a next attempt waiting for its worker to be steady | `HeartPulse` |
+| A worker's update that failed; a daemon that cannot update itself; a long wait to update | `CircleX`; `RefreshCwOff`; `ClockAlert` |
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
 | Proposal of the Curator | `Lightbulb` |
@@ -718,7 +719,18 @@ Shared pieces built on them:
   3 px `neutral-solid` stub), one image named with the counts. On a worker's page its owner flips "Only runs
   dispatched from the web" (`dispatch_from`) with a switch in the Scope card; the switch moves once the hub answered
   and the worker was read again, the result is a toast, and nobody else sees the switch, only the value in "Who
-  dispatches".
+  dispatches". The Version card (`version-card.tsx`, the fourth card: two columns from `lg`, four from `2xl`) gives
+  the release, the commit its daemon's install was built from as an `Identifier` chip linking to the commit on GitHub
+  with a copy button, and one line on its updates: locked, or what the daemon last said of the tag nightly (the commit
+  it waits to install, since when). Its owner locks the version with "Lock version", a switch at the foot of the
+  Settings card that saves as soon as it is flipped (`version-lock.tsx`): it moves once the hub answered, a success is
+  a toast, and what the hub refuses stays under the switch as an alert until the next flip (a 404 or 409 is a toast,
+  since the page reloads to the worker as the hub holds it). A hub admin who is not the owner sees the card without the
+  switch. Updates say only what went wrong (`self-update.ts`): an update that failed (`danger`, `CircleX`, with the
+  daemon's error as it sent it), a daemon that cannot update itself (`attention`, `RefreshCwOff`, with its reason),
+  and a wait of 12 hours or more for an idle moment (`attention`, `ClockAlert`). Each is a note above the cards and a
+  pill beside the status in the list (`update-badge.tsx`; on a phone the icon alone after the name); a worker whose
+  updates go as they should, an older daemon that says nothing of them, and a locked worker show neither.
 - `components/secrets`, the Secrets page (`/secrets`, in the sidebar's hub section after Workers): the head is the
   title, the count as a tag and Add secret; its sub line says the secrets are the visitor's alone and no value comes
   back. The visitor's own secrets sit in a `DataCard` table sorted by name: the name in mono with the variable it sets
