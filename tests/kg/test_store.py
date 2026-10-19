@@ -270,13 +270,13 @@ def test_search_splits_camel_case_reads_d_for_dj_and_indexes_docstrings(tmp_path
     assert any(h.startswith("app:file:docs/long.md") for h in found(store, NEEDLE))  # past 4,000 characters
 
 
-def test_a_word_the_index_folds_into_an_english_stop_word_is_left_out_as_it_is():
-    # The tokenizer folds accents: "án" is "an" in the index, so it would match every English "an".
-    for typed in ("Phương án A", "phuong an a", "PHƯƠNG ÁN"):
-        assert [w.lower() for w in text_search.query_words(typed)] == ["phương" if "ư" in typed.lower() else "phuong"]
-    assert list(text_search.fts_queries(text_search.query_words("Phương án"))) == ['"phương"', '"phương"*']
-    assert text_search.query_words("mã lỗi của bảng") == ["mã", "lỗi", "bảng"]  # "của" asks; the others say
-    assert text_search.query_words("án") == ["án"]  # a query of nothing else keeps its words
+def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
+    # The tokenizer folds accents: "án" is "an" in the index and "cua" is "của", so either would match all of them.
+    assert text_search.query_words("Phương án A") == ["Phương", "án"]
+    assert list(text_search.fts_queries(["Phương", "án"])) == ['"phương" AND "án"', '"phương"* AND "án"*', '"phương"']
+    assert list(text_search.fts_queries(["loi", "cua", "evo"]))[-1] == '"loi" OR "evo"'
+    assert list(text_search.fts_queries(["kiểm", "thật"]))[0] == '"kiểm" AND "thật"'  # all words: each one kept
+    assert list(text_search.fts_queries(["thật", "án"])) == ['"thật" AND "án"', '"thật"* AND "án"*']
     assert text_search.phrases('("hubsession" OR ("hub" AND "session")) AND "x"* OR "hub"') == [
         '"hubsession"',
         '"hub"',

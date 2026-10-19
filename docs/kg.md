@@ -234,8 +234,9 @@ Projects and who sees what), and the core plugin chats labels each message with 
 - Then the full-text index (`node_fts`, SQLite FTS5, `unicode61 remove_diacritics 2`), read three ways, each filling
   what the one before left: every word whole (AND), every word as a prefix (AND), then any word (OR). Words that only
   ask (`where`, `does`, `the`, `của`, ...) are dropped from a query that has others, so a question whose words no
-  single node holds still gets ranked results; so is a word the index cannot tell from an English one of them once it
-  folds its accents (`án` is `an` there), so `Phương án` and `phuong an` find the same nodes.
+  single node holds still gets ranked results. The any-word way also leaves out a word the index cannot tell from one
+  of them once it folds accents (`án` is `an` there, `cua` is `của`), which would match every one of them: `Phương
+  án` and `phuong an` find the same messages.
 - Each way ranks by BM25 over the node's name (weight 6), path (2) and body (1), times a light prior by kind: a plan,
   a step, a commit, a pull request, a directory or a chat counts half, a section or a requirement 0.7, a chat thread
   0.9 (every thread is named after its chat), a chat message as much as code, so at the same text score code and
