@@ -11,8 +11,10 @@ config's ``on_steps_done`` moves a task to a status once every step it links is 
 of its history, with who made it, or the hub and why.
 
 The routes are under /v1/x/tasks/<project>/ (``server``) for members with a grant on a project that enabled the
-plugin; readers read, writers write. ``evo-agents hub task list|show|create|edit|import`` is their client; an import
-reads ``evo-tasks/1`` JSON once, linking its tasks to use cases by code. The tables are the hub's
+plugin; readers read, writers write. The hub's web shows them on the plugin's native pages (``PAGES``): the board of
+a sprint by status, the backlog by sprint, the caller's own tasks, a task whole with its links, history and comments,
+and the import. ``evo-agents hub task list|show|create|edit|import`` is their client; an import reads ``evo-tasks/1``
+JSON once, linking its tasks to use cases by code. The tables are the hub's
 (``evo_agents.hub.tables_tasks``, migration 0047), every task carrying its label, the project's by default. Every task
 is a Ticket of the project's knowledge graph (``kg``), which implements the use cases and requirements it links to and
 is implemented by the plan steps it links to.
@@ -97,6 +99,16 @@ TABLES = (
     ("tasks_comments", "Comments on a task"),
 )
 
+# The native pages of the hub's web (web/src/app/(app)/p/[project]/x/tasks, web/src/components/tasks): the board, with
+# a task's page and the form of a new task under it, in the project's menu; the backlog, the caller's own tasks and the
+# import, reached from the board's tabs.
+PAGES = {
+    "board": {"title": "Tasks", "icon": "kanban", "description": "The tasks of a sprint by status"},
+    "backlog": {"title": "Backlog", "icon": "list-checks", "menu": False},
+    "mine": {"title": "My work", "icon": "clipboard-list", "menu": False},
+    "import": {"title": "Import tasks", "icon": "kanban", "menu": False},
+}
+
 MANIFEST = {
     "id": "tasks",
     "version": "1.0.0",
@@ -113,6 +125,7 @@ MANIFEST = {
         "events": [{"name": "steps", "on": ["plan.step"], "python": f"{EVENTS}:on_plan_step"}],
         "kg_sources": [{"name": "backlog", "title": "The tasks of a project", "python": f"{KG}:kg_source"}],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
+        "pages": [{"name": name, **page} for name, page in PAGES.items()],
     },
 }
 

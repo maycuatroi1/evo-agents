@@ -1,5 +1,5 @@
 """What a task links to: finding the target a member names (``Target``, ``resolve``), and showing each link with what
-it points at now (``shown``, ``progress``).
+it points at now (``shown``, ``progress``, ``codes``).
 
 - ``srs_item``: a coded item of the plugin srs (a use case, a business rule, a screen, an NFR, a common rule), named
   by any code or alias it holds (compared as ``srs_codes.code_key`` holds them) while the project enables srs. The link
@@ -202,6 +202,28 @@ async def progress(
     return found
 
 
+async def codes(
+    conn: AsyncConnection, access: ProjectAccess, sink: str | None, task_ids: list[int]
+) -> dict[int, list[str]]:
+    """task id -> the codes of the SRS items it links to that the member sees, in the order linked; none while the
+    project does not enable srs."""
+    found: dict[int, list[str]] = {task_id: [] for task_id in task_ids}
+    if not task_ids or not await srs_enabled(conn, access.project_id):
+        return found
+    k, i, d = tables.tasks.links, tables.srs.items, tables.srs.documents
+    query = (
+        select(k.c.task_id, i.c.code, d.c.label)
+        .join_from(k, i, i.c.id == k.c.srs_item_id)
+        .join(d, d.c.id == i.c.document_id)
+        .where(k.c.task_id.in_(task_ids), k.c.kind == "srs_item")
+        .order_by(k.c.task_id, k.c.id)
+    )
+    for row in await conn.execute(query):
+        if row.code and visible(access, row.label, sink) and row.code not in found[row.task_id]:
+            found[row.task_id].append(row.code)
+    return found
+
+
 def _srs_query(item_ids: list[int]):
     i, d, iv, v = tables.srs.items, tables.srs.documents, tables.srs.item_versions, tables.srs.versions
     title = (
@@ -299,6 +321,7 @@ __all__ = [
     "LinkView",
     "StepState",
     "Target",
+    "codes",
     "plan_step",
     "progress",
     "pull",

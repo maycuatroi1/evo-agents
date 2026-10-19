@@ -2,8 +2,9 @@
 it (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
 
 Readers read: the config as tasks are written against it, the tasks (by status, sprint, the caller's own or an
-assignee's), a task whole with its links as they are now, its history and comments, the sprints. Writers create and
-change tasks, link and unlink them, set their people, comment, keep sprints and import ``evo-tasks/1`` JSON once.
+assignee's), a task whole with its links as they are now, its history and comments, the sprints, the members a task
+may name. Writers create and change tasks, link and unlink them, set their people, comment, keep sprints and import
+``evo-tasks/1`` JSON once.
 Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with an
 import's problems in ``detail``. Creating, changing or importing tasks queues a build of the project's knowledge graph,
 whose tickets they are.
@@ -27,6 +28,7 @@ from evo_agents.core_plugins.tasks.models import (
     TasksItemDetail,
     TasksItemEdit,
     TasksItemIn,
+    TasksPerson,
     TasksSettings,
     TasksSprint,
     TasksSprintEdit,
@@ -87,7 +89,8 @@ async def _items(conn, access: ProjectAccess, config: Settings, rows: list[store
     ids = [row.id for row in rows]
     held = await store.people(conn, ids)
     done = await links.progress(conn, access, sink, ids)
-    return [item_model(config, row, held[row.id], done[row.id]) for row in rows]
+    coded = await links.codes(conn, access, sink, ids)
+    return [item_model(config, row, held[row.id], done[row.id], coded[row.id]) for row in rows]
 
 
 async def _detail(conn, access: ProjectAccess, config: Settings, number: int, sink) -> TasksItemDetail:
@@ -154,6 +157,17 @@ async def list_sprints(request: Request, project: ProjectName, user: CurrentUser
     async def work(conn):
         access, _ = await _opened(conn, user, project)
         return [sprint_model(row) for row in await store.sprints(conn, access)]
+
+    return await _answer(request, work)
+
+
+@router.get("/{project}/people", response_model=list[TasksPerson])
+async def list_people(request: Request, project: ProjectName, user: CurrentUser):
+    """The members of the project, whom a task may name as an assignee, a BA, a QA or a Dev, by login."""
+
+    async def work(conn):
+        access, _ = await _opened(conn, user, project)
+        return [TasksPerson(login=row.login, role=row.role) for row in await store.project_members(conn, access)]
 
     return await _answer(request, work)
 
