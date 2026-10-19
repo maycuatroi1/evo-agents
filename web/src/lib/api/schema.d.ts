@@ -4004,6 +4004,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/direct/{handle}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Open Direct
+         * @description The caller's direct chat with agent ``handle``: the one there is (200), or one made now (201).
+         */
+        put: operations["open_direct_v1_chats_direct__handle__put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats/{chat_id}/people/{login}": {
         parameters: {
             query?: never;
@@ -6508,6 +6528,12 @@ export interface components {
              * @description what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it
              */
             budget_usd: number;
+            /**
+             * Kind
+             * @description group: members are added and removed; direct: one person and one agent, for good
+             * @enum {string}
+             */
+            kind: "group" | "direct";
         };
         /** ChatAgent */
         ChatAgent: {
@@ -6653,7 +6679,7 @@ export interface components {
              * Via
              * @description how it reached a member; null: it reached none
              */
-            via: ("login" | "handle" | "project" | "thread") | null;
+            via: ("login" | "handle" | "project" | "thread" | "direct") | null;
             /**
              * Login
              * @description the person it reached
@@ -6912,6 +6938,12 @@ export interface components {
             people: string[];
             /** Agents */
             agents: string[];
+            /**
+             * Kind
+             * @description group, or direct: one person and one agent
+             * @enum {string}
+             */
+            kind: "group" | "direct";
         };
         /** ChatUpdate */
         ChatUpdate: {
@@ -30914,6 +30946,83 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatRead"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    open_direct_v1_chats_direct__handle__put: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description an agent's handle, @ left out */
+                handle: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
+                };
+            };
+            /** @description the direct chat, made now */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Chat"];
                 };
             };
             /** @description Unauthorized */

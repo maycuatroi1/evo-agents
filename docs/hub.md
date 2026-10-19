@@ -95,7 +95,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
@@ -477,6 +477,23 @@ one agent whose session that person has there (`via` thread); with two people or
 reactions follow it as above, a run that failed says why in the thread, and the agent's reply at the end of each turn
 is its message in the thread, with the run that wrote it.
 
+**Direct chats.** A person opens a direct chat with one agent with `PUT /v1/chats/direct/{handle}`
+(`evo_agents/hub/server/chat_direct.py`): the one they have (200) or one made now (201), with them and the agent in it,
+titled with the agent's name. A person has one direct chat with each agent: the key `chats_direct_key` of (person,
+agent) holds it, so two requests at once make one chat and the second answers the first's. Making one takes the checks
+of adding the agent to a chat (404 for an agent the person cannot see, 403 without the writer role on its project, 409
+for a deleted agent, a person and an agent of the same name, or a label the person does not clear); a direct chat
+there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group` or `direct`, in
+Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
+agent is a group. The members of a direct chat never change: adding or removing a person or an agent, and its person
+leaving, are refused (409); a group chat is for more. Each message of the person that mentions no agent of the chat
+goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
+hop 1 for the person, within the chat's budget, and a reply in the thread of the agent's answer goes on in that session
+(`via` thread), as in any chat of one person; an `@` of the agent makes the same one run. A mention of another agent
+reaches no one and the hub says to start a group chat. The prompt of its run shows, instead of the chat before the
+thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
+within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
+
 **Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
 rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
 and counts 0, under a time cap instead). A mention once that is spent is refused, saying so in the thread; each run gets
@@ -530,6 +547,7 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | --- | --- | --- |
 | `GET /v1/chats` | `hub chat list` | anyone: their chats |
 | `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
+| `PUT /v1/chats/direct/{handle}`: their direct chat with the agent | | anyone (making one: writer on its project) |
 | `GET /v1/chats/{id}` | | a member |
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
@@ -560,7 +578,10 @@ notices and drops the six tables: every chat is lost. Schema 0032 adds the chat 
 that may go on from an earlier run of its session (`resume_of_run_id`), with `runs.chat_id`, `runs.chat_message_id`
 (the message that started it) and `runs.hop` (1 to 3), set for a chat run and null for any other, and
 `chats.budget_usd` (more than 0, at most 1000, 5 unless changed). Going back to 0031 deletes the chat runs and drops the
-columns.
+columns. Schema 0050 adds `chats.kind` (`group` for every chat there is and by default, or `direct`), and for a direct
+chat its person and agent (`chats.direct_user_id`, `chats.direct_profile_id`, both set for a direct chat and neither
+for a group), one direct chat per pair (`chats_direct_key`), and the `via` direct of a mention. Going back to 0049 makes
+every direct chat a group chat of the same person and agent, and a mention `via` direct reads as `via` thread.
 
 ### What a triage agent may do on its own
 

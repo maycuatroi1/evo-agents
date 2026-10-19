@@ -17,8 +17,10 @@ session again. In a chat of one person, a message in a thread whose session is t
 The run's prompt is the hub's (``build_chat_prompt``): the rules, the chat and its members, the run's repos, a bounded
 snapshot of the chat (``snapshot``: the first message of the thread, at most THREAD_MESSAGES of the thread and
 BEFORE_MESSAGES of the chat before it, SNAPSHOT_BYTES in all, the oldest left out first) and the message that mentioned
-the agent, whole. The profile's instructions reach the agent through its system prompt (``evo_agents.worker.runtimes.
-profiles``), not this prompt.
+the agent, whole. In a direct chat (``chats.DIRECT``), where each message of the person outside a thread is new work in
+a new session, what comes before the thread is the latest turns instead: at most DIRECT_MESSAGES of the earlier
+threads, the person's messages and the agent's answers in them. The profile's instructions reach the agent through its
+system prompt (``evo_agents.worker.runtimes.profiles``), not this prompt.
 
 The run works in a writable worktree of each repo of its project the worker has a checkout of, all on the branch
 ``chat/<id>``, the id of the first run of its session (``branch_of``): the worker commits what the agent left and pushes
@@ -43,6 +45,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
+from evo_agents.hub.chats import DIRECT as DIRECT_KIND
 from evo_agents.hub.runs import MAX_MESSAGE_BYTES, MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
 
 MAX_RUNS_PER_MESSAGE = 3  # agents one message hands work to; the ones after are refused in the thread
@@ -55,6 +58,7 @@ TIME_CAP_SECONDS = 30 * 60  # and its time cap, what a runtime that reports no c
 SNAPSHOT_BYTES = 12 * 1024  # the chat as the prompt shows it, the message that mentioned the agent left out
 THREAD_MESSAGES = 30  # the latest messages of the thread it shows
 BEFORE_MESSAGES = 10  # and of the chat before the thread's first message
+DIRECT_MESSAGES = 30  # or, in a direct chat, of its earlier threads: the person's messages and the agent's answers
 SNAPSHOT_MESSAGE_BYTES = 4 * 1024  # one message in the snapshot
 BRANCH_PREFIX = "chat/"
 BRANCH = re.compile(r"^chat/[1-9][0-9]{0,18}$")
@@ -129,11 +133,19 @@ def render_message(message: dict, limit: int = SNAPSHOT_MESSAGE_BYTES) -> str:
     return head + "\n" + clip(str(message.get("body") or "").strip(), limit)
 
 
-def snapshot(root: dict | None, thread: list[dict], before: list[dict], budget: int = SNAPSHOT_BYTES) -> list[str]:
+def snapshot(
+    root: dict | None,
+    thread: list[dict],
+    before: list[dict],
+    budget: int = SNAPSHOT_BYTES,
+    *,
+    direct: bool = False,
+) -> list[str]:
     """The chat as the prompt shows it: the ``before`` messages (of the chat, before the thread's first message, oldest
     first), the thread's first message ``root`` and the ``thread`` messages after it, oldest first, within ``budget``
-    bytes. The first message stays; the oldest of the others are left out first, and a line says how many."""
-    earlier = [render_message(message) for message in before[-BEFORE_MESSAGES:]]
+    bytes. The first message stays; the oldest of the others are left out first, and a line says how many. With
+    ``direct``, ``before`` holds the earlier turns of a direct chat, at most DIRECT_MESSAGES of them."""
+    earlier = [render_message(message) for message in before[-(DIRECT_MESSAGES if direct else BEFORE_MESSAGES) :]]
     later = [render_message(message) for message in thread[-THREAD_MESSAGES:]]
     first = [render_message(root)] if root is not None else []
     left = len(before) - len(earlier) + len(thread) - len(later)
@@ -146,15 +158,25 @@ def snapshot(root: dict | None, thread: list[dict], before: list[dict], budget: 
         left += 1
     blocks = [CUT_MARK.format(left=left)] if left else []
     if earlier:
-        blocks += ["## The chat before the thread", *earlier]
+        blocks += ["## Earlier turns of this direct chat" if direct else "## The chat before the thread", *earlier]
     if first or later:
         blocks += ["## The thread", *first, *later]
     return blocks
 
 
-def _rules(handle: str, login: str, branch: str, hop: int, budget_usd: float) -> list[str]:
+def _rules(handle: str, login: str, branch: str, hop: int, budget_usd: float, direct: bool = False) -> list[str]:
+    turns = (
+        [
+            f"- This is a direct chat of {login} and you: each message of {login} outside a thread is new work, which "
+            "starts a new session. The earlier turns below are what was said before; read them as the history of this "
+            "chat, not as work to do now."
+        ]
+        if direct
+        else []
+    )
     return [
         "Rules for this chat run:",
+        *turns,
         "- Your last message of this turn is your reply in the thread of the message below. Write it for the people "
         "of the chat, short, in the language they wrote in. The run ends with your turn: a reply to you in the thread "
         "starts your next turn in this session. Ask a question in your reply and end your turn; never use a question "
@@ -202,18 +224,20 @@ def build_chat_prompt(
     left_out: list[str] | None = None,
 ) -> str:
     """The prompt of a chat run of ``agent`` ({handle, name, project, description}) in ``chat`` ({id, title, people,
-    agents}), woken by message ``trigger`` (as ``render_message`` takes it) for ``login``, at ``hop``, on ``branch``,
+    agents, and kind: a direct chat's is ``chats.DIRECT``}), woken by message ``trigger`` (as ``render_message`` takes it) for ``login``, at ``hop``, on ``branch``,
     with the snapshot ``blocks`` (``snapshot``) and the run's ``repos`` in ``worktrees`` (a repo's folder, its name
     when it maps none), less ``left_out``; within MAX_PROMPT_BYTES."""
     handle = agent.get("handle") or "agent"
     people = ", ".join(chat.get("people") or []) or "none"
     agents = ", ".join(f"@{name}" for name in chat.get("agents") or []) or "none"
     about = str(agent.get("description") or "").strip()
+    direct = chat.get("kind") == DIRECT_KIND
+    where = f"a direct chat with {people}" if direct else f"the group chat {chat.get('title')!r}"
     lines = [
         f"You are @{handle} ({agent.get('name') or handle}), an agent of project {agent.get('project')} on the "
-        f"evo-agents hub, in the group chat {chat.get('title')!r} (#{chat.get('id')}). {about}".rstrip(),
+        f"evo-agents hub, in {where} (#{chat.get('id')}). {about}".rstrip(),
         "",
-        *_rules(handle, login, branch, hop, budget_usd),
+        *_rules(handle, login, branch, hop, budget_usd, direct),
         "",
         f"People of the chat: {people}. Agents: {agents}.",
         "",

@@ -110,6 +110,9 @@ class Chat(BaseModel):
     budget_usd: float = Field(
         description="what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
     )
+    kind: Literal[chats.CHAT_KINDS] = Field(
+        description="group: members are added and removed; direct: one person and one agent, for good"
+    )
 
 
 class ChatSummary(BaseModel):
@@ -122,6 +125,7 @@ class ChatSummary(BaseModel):
     unread: int = Field(description="messages of others after the reader's last read")
     people: list[str]
     agents: list[str]
+    kind: Literal[chats.CHAT_KINDS] = Field(description="group, or direct: one person and one agent")
 
 
 class ChatPage(BaseModel):
@@ -233,6 +237,7 @@ async def chat_view(conn: AsyncConnection, chat: ChatAccess) -> Chat:
         last_seq=seq,
         last_read_seq=read,
         budget_usd=budget,
+        kind=chat.kind,
     )
 
 
@@ -380,6 +385,7 @@ def summaries_query(user_id: int):
             last.label("last_message_at"),
             c.c.event_seq.label("last_seq"),
             unread.label("unread"),
+            c.c.kind,
         )
         .select_from(c.join(mine, mine.c.chat_id == c.c.id).join(u, u.c.id == c.c.created_by))
         .where(mine.c.user_id == user_id, mine.c.removed_at.is_(None))

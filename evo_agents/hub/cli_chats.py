@@ -33,8 +33,20 @@ CHAT_KEYS = (
     "last_seq",
     "last_read_seq",
     "budget_usd",
+    "kind",
 )
-SUMMARY_KEYS = ("id", "title", "created_by", "created_at", "last_message_at", "last_seq", "unread", "people", "agents")
+SUMMARY_KEYS = (
+    "id",
+    "title",
+    "created_by",
+    "created_at",
+    "last_message_at",
+    "last_seq",
+    "unread",
+    "people",
+    "agents",
+    "kind",
+)
 MESSAGE_KEYS = (
     "id",
     "chat_id",
