@@ -14,7 +14,17 @@ Criterion a2 of the chat-runs-start-fast plan: a push origin refuses at the end 
 words in its error (the hub says it in the thread), cause push_declined for a hook that declined it (the hub then goes
 on in the session at the next message, ``tests.hub.test_chat_runs``) and the usage of its turns, and leaves the commit
 on chat/<first run> in the worktree, which the next run of the session goes on in and pushes. What that next run asks
-of the origins before its agent starts is in ``tests.worker.test_preflight``."""
+of the origins before its agent starts is in ``tests.worker.test_preflight``.
+
+Criterion a4: the daemon says it does ``runs.LAZY_CHAT_REPOS``; in a chat run that starts without the repo it needs,
+the agent runs ``evo-agents worker repo open REPO``, and the daemon asks the fake hub to add it to the run, takes the
+leases again, fetches the checkout and makes the worktree on chat/<first run>, notes it in the run's events and record,
+and the command prints the path, the same path when the repo is open already. A repo the worker has no checkout of, one
+the project does not list, and the command outside a chat run (a task run among them, which still prepares every repo
+it names) are refused with one ``error:`` line and exit status 1. At the end only the repo opened is pushed and linked,
+and the run that goes on in the session has its worktree alone, fetched, and opens another one in the same
+directory. The socket's side, and that a guarded run's agent gets no credential from a repo opened, are in
+``tests.worker.test_credentials``."""
 
 from __future__ import annotations
 
@@ -29,7 +39,9 @@ from evo_agents.hub import author, chat_runs, runs
 from evo_agents.worker import gitops
 from tests.worker.test_plan_runs import (
     PLAN,
+    PROJECT,
     WAIT,
+    Machine,
     git,
     machine,  # noqa: F401 (a fixture)
     plan_body,
@@ -399,5 +411,112 @@ def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_fr
         (bad,) = [e for e in machine.commands() if e["run"] == review]
         assert bad["exit"] == 1 and "is a review run, whose agent does not talk in chats" in bad["stderr"]
         assert len(hub.chat_calls) == 3
+
+    with_daemon(machine, body)
+
+
+def opened_repos(hub) -> list[tuple[int, str]]:
+    return [(c["run_id"], c["repo"]) for c in hub.chat_calls if c["route"] == "chat/repos"]
+
+
+def test_a_chat_runs_agent_opens_the_repo_it_needs_and_the_session_goes_on_with_it_alone(machine, tmp_path):  # noqa: F811
+    three = Machine(tmp_path / "three", ("alpha", "beta", "gamma"))  # gamma: a checkout the project does not list
+    three.scenarios(
+        {
+            "chat": [
+                {"sh": "ls"},
+                {"cli": ["repo", "open", "beta"]},
+                {"cli": ["repo", "open", "beta"]},
+                {"cli": ["repo", "open", "delta"]},
+                {"cli": ["repo", "open", "gamma"]},
+                {"sh": "ls; git -C beta symbolic-ref --short HEAD"},
+                {"write": {"beta/b.txt": "two\n"}},
+                {"say": "Wrote b.txt in beta."},
+            ],
+            "chat/resume": [
+                {"sh": "ls; cat beta/b.txt"},
+                {"cli": ["repo", "open", "alpha"]},
+                {"say": "Read alpha too."},
+            ],
+        }
+    )
+    found = {}
+
+    async def body(hub, daemon):
+        hub.project_repos = ["alpha", "beta", "delta"]  # delta: a repo of the project this worker has no checkout of
+        first = hub.queue_chat_run([])
+        hub.runs[first]["spec"]["repos"] = None  # a project without a harness, as the hub hands it (SQL NULL)
+        assert await hub.wait_state(first, "done", "failed", timeout=WAIT) == "done", hub.texts(first)
+        assert runs.LAZY_CHAT_REPOS in hub.last_heartbeat["features"]
+        found.update(
+            first_repos=list(hub.runs[first]["spec"]["repos"]),
+            first_record=three.home.load_run(first),
+            first_asks=hub.credential_calls.count(("ask", first)),
+        )
+        session = three.home.load_run(first)["session_id"]
+        branch = f"chat/{first}"
+        names = [entry["repo"] for entry in hub.runs[first]["spec"]["repos"]]
+        later = hub.queue_chat_run(names, resume_of=first, session_id=session, branch=branch)
+        hub.thread_reply(later, "owner wrote in the thread (message #21):\nand alpha?")
+        assert await hub.wait_state(later, "done", "failed", timeout=WAIT) == "done", hub.texts(later)
+        found.update(hub=hub, first=first, later=later, branch=branch)
+
+    with_daemon(three, body)
+    hub, first, later, branch = found["hub"], found["first"], found["later"], found["branch"]
+    directory = three.directory(first)
+    empty, beta, again, delta, gamma, looked, *_ = [e for e in three.commands() if e["run"] == first]
+    assert empty["stdout"] == "", "the run started with no worktree"
+    assert beta["exit"] == 0 and beta["stdout"] == f"{directory / 'beta'}\n", beta
+    assert again["exit"] == 0 and again["stdout"] == beta["stdout"], "a repo open already: the same path"
+    assert delta["exit"] == 1 and delta["stdout"] == ""
+    no_checkout = f"worker mac has no checkout of delta of project {PROJECT}: the run cannot open it here"
+    assert delta["stderr"] == f"error: {no_checkout}\n"
+    assert gamma["exit"] == 1 and gamma["stdout"] == ""
+    assert gamma["stderr"] == f"error: project {PROJECT} has no repo gamma: its repos are alpha, beta, delta\n"
+    assert looked["stdout"].splitlines() == ["beta", branch], "the worktree of beta alone, on the session's branch"
+    assert opened_repos(hub)[:2] == [(first, "beta"), (first, "gamma")], "delta never reached the hub"
+    assert found["first_repos"] == [{"repo": "beta", "branch": branch}]
+    assert [item["repo"] for item in found["first_record"]["repos"]] == ["beta"]
+    assert found["first_asks"] == 2, "the leases were taken again once the hub added beta"
+    texts = hub.texts(first)
+    assert f"The agent opened beta: its worktree is {directory / 'beta'}, on {branch}." in texts
+    assert any(text.startswith("The agent asked to open delta, which the run did not: worker mac") for text in texts)
+    refused = f"The agent asked to open gamma, which the run did not: project {PROJECT} has no repo gamma"
+    assert any(text.startswith(refused) for text in texts), texts
+    # only beta was pushed, on the session's branch, and linked in the thread
+    head = three.origin_rev("beta", f"refs/heads/{branch}")
+    assert head is not None and three.origin("beta", "log", "--format=%s", "-1", branch).startswith(f"run #{first}: ")
+    assert three.origin_rev("alpha", f"refs/heads/{branch}") is None
+    assert three.origin_rev("gamma", f"refs/heads/{branch}") is None
+    assert [item for item in pulls(hub) if item[0] == first] == [(first, "beta", branch, head)]
+    # the next turn of the session: the worktree of beta alone, fetched, then alpha opened in the same directory
+    resumed, alpha = [e for e in three.commands() if e["run"] == later]
+    assert resumed["stdout"].splitlines() == ["beta", "two"]
+    assert alpha["exit"] == 0 and alpha["stdout"] == f"{directory / 'alpha'}\n", alpha
+    later_texts = hub.texts(later)
+    assert f"Goes on from run #{first} in {directory}, with its worktrees of beta." in later_texts
+    assert any(text == f"Fetching origin in {three.checkouts['beta']}." for text in later_texts)
+    assert any("1 left to their fetch" in text for text in later_texts), later_texts
+    assert opened_repos(hub)[2:] == [(later, "alpha")]
+    assert [item["repo"] for item in three.home.load_run(later)["repos"]] == ["beta", "alpha"]
+    assert [item for item in pulls(hub) if item[0] == later] == [], "nothing changed in the next turn"
+    assert git("symbolic-ref", "--short", "HEAD", cwd=directory / "alpha") == branch
+
+
+def test_repo_open_refuses_outside_a_chat_run_and_a_task_run_still_prepares_every_repo(machine, monkeypatch, capsys):  # noqa: F811
+    monkeypatch.delenv("EVO_RUN_ID", raising=False)
+    assert cli_main(["worker", "repo", "open", "beta"]) == 1
+    said = capsys.readouterr()
+    assert said.out == "" and "error: `evo-agents worker repo open` works only inside a run of this worker" in said.err
+    machine.scenarios({"task": [{"sh": "ls"}, {"cli": ["repo", "open", "beta"]}, {"say": "Looked."}]})
+
+    async def body(hub, daemon):
+        run_id = hub.queue_task_run(["alpha", "beta"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        listed, refused = [e for e in machine.commands() if e["run"] == run_id]
+        assert listed["stdout"].splitlines() == ["alpha", "beta"], "a task run prepares every repo it names"
+        assert refused["exit"] == 1 and refused["stdout"] == ""
+        assert refused["stderr"].startswith(f"error: run {run_id} is a task run: only the agent of a chat run opens")
+        assert opened_repos(hub) == []
 
     with_daemon(machine, body)

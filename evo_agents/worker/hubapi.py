@@ -214,7 +214,8 @@ class WorkerHub:
 
     async def in_chats(self, run_id: int, route: str, body: dict) -> dict:
         """What the agent of run ``run_id`` does in group chats (``evo_agents.hub.server.chat_agents``): ``route``
-        is chat/messages, chat/reactions, chat/mentions, chats, or chat/pulls for the daemon's push of a chat run."""
+        is chat/messages, chat/reactions, chat/mentions, chats, chat/pulls for the daemon's push of a chat run, or
+        chat/repos for a repo the daemon opens in a chat run for its agent."""
         return await self.call("POST", f"/v1/worker/runs/{int(run_id)}/{route}", body)
 
     async def step(self, run_id: int, key: str, body: dict) -> dict:

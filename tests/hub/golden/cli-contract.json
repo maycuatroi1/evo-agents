@@ -8090,6 +8090,19 @@
         "schema": "evo_agents__hub__server__plans__Written"
       }
     },
+    "worker repo open": {
+      "positionals": [
+        {
+          "name": "repo",
+          "metavar": "REPO",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
+    },
     "worker step": {
       "positionals": [
         {
