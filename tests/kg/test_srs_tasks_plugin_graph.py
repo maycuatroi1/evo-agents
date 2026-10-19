@@ -24,6 +24,9 @@ from types import SimpleNamespace
 import pytest
 import yaml
 
+# The plugins' sources and evo_agents.hub.kg_sources run in the hub and query its database through SQLAlchemy.
+pytest.importorskip("sqlalchemy", reason="the kg sources of srs and tasks need the hub-server extra")
+
 from evo_agents.core_plugins.srs import kg as srs_kg
 from evo_agents.core_plugins.srs import markdown
 from evo_agents.core_plugins.srs.store import DocumentRow, Snapshot, VersionRow

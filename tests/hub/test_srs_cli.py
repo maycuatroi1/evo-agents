@@ -3,7 +3,8 @@ against a hub that serves the core plugin srs: the commands and their ``--json``
 hub-cli-v1), an import prints its preview and the problems that refuse it, an export writes the Markdown imported, and
 approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins).
 
-The parsing runs without Postgres; everything that needs the hub skips without EVO_HUB_TEST_DSN."""
+The parsing runs without Postgres or the hub-server extra, as the client does; everything that needs the hub skips
+without EVO_HUB_TEST_DSN."""
 
 from __future__ import annotations
 
@@ -12,7 +13,6 @@ from types import SimpleNamespace
 
 import pytest
 
-from evo_agents.core_plugins.srs import markdown
 from evo_agents.hub.contract import commands
 from tests.hub import live, pg
 from tests.hub.contract_keys import assert_json_keys
@@ -44,9 +44,10 @@ def test_srs_import_takes_no_slug_or_title_with_doc(monkeypatch, capsys, tmp_pat
     assert result.code == 2 and "--doc imports the next version" in result.err
 
 
-if pg.DSN:
+if pg.DSN:  # the hub-server extra is installed (tests/hub/conftest.py)
     import httpx
 
+    from evo_agents.core_plugins.srs import markdown
     from evo_agents.hub.server.app import create_app
     from tests.hub.test_chats import OPEN_SINKS
     from tests.hub.test_plans import registration
