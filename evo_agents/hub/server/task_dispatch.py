@@ -17,6 +17,9 @@ agent types and tasks, 404 for any other.
 - GET /v1/plugin-api/projects/{p}/tasks/{task}: a task the plugin handed, by the id its dispatch answered: the latest
   attempt of its run, its state, branch and pull requests, ids and states only.
 
+``hand_own_task`` is the same dispatch for a core plugin's Python, in the caller's transaction, with no token and no
+``runs:dispatch`` grant: the image trusts the plugin, and the admin who enabled the type chose its run_as and its cap.
+
 POST /v1/worker/runs/{id}/task/pulls: the worker that holds a task run pushed the run's branch of a repo; the hub opens
 a draft pull request of it with the workers' App, or finds the one open, never merges it, keeps it in runs.pulls and
 says so in the run's log. A repo elsewhere, or a hub without the App, gets none.
@@ -245,6 +248,47 @@ async def _queue(conn: AsyncConnection, enabled, row, body: TaskIn, left: float)
     return run_id
 
 
+async def _audited(conn: AsyncConnection, enabled, row, run_id: int) -> None:
+    """Audit the dispatch of task run ``run_id`` of agent type ``row`` in the project of ``enabled``, by its run_as."""
+    target = f"{enabled.project}/plugin:{enabled.name} agent-type:{row.name} run:{run_id}"
+    await audit.record(
+        conn,
+        actor_id=row.run_as_id,
+        token_id=None,
+        action=audit.TASK_DISPATCH,
+        target=target,
+        project_id=enabled.project_id,
+    )
+
+
+async def hand_own_task(
+    conn: AsyncConnection, plugin: str, project_id: int, name: str, task: str, title: str | None = None
+) -> tuple[int | None, str | None]:
+    """A core plugin hands ``task`` to its own agent type ``name`` in project ``project_id``, in the caller's
+    transaction: (the task run, None), or (None, why it was not dispatched) for each refusal of the API's route but
+    the token's and the grant's. ``task`` is cut to MAX_TASK_BYTES."""
+    enabled = await plugin_calls.enabled_in(conn, plugin, project_id)
+    if enabled is None:
+        return None, f"plugin {plugin} is not enabled in the project, or it is turned off"
+    row = await enabled_type(conn, project_id, enabled.id, name, lock=True)  # one dispatch of a type at once
+    refusal = await _type_refusal(conn, enabled, row, name)
+    if refusal is not None:
+        return None, refusal[1]
+    spent = await type_spend(conn, row.id)
+    problem = task_runs.spent_problem(spent, row.daily_usd, name)
+    if problem is not None:
+        return None, problem
+    body = TaskIn(
+        task=runs.clip(task, task_runs.MAX_TASK_BYTES), title=(title or "")[: task_runs.MAX_TITLE_CHARS] or None
+    )
+    run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent)
+    await _audited(conn, enabled, row, run_id)
+    log.info(
+        "task dispatched", extra={"project_id": project_id, "plugin": plugin, "agent_type": name, "run_id": run_id}
+    )
+    return run_id, None
+
+
 @router.post(
     "/projects/{project}/agent-types/{name}/tasks", status_code=201, response_model=TaskQueued, responses=REFUSALS
 )
@@ -264,15 +308,7 @@ async def dispatch_task(request: Request, project: ProjectName, name: TypeName, 
         if problem is not None:
             raise HTTPException(429, problem)
         run_id = await _queue(conn, enabled, row, body, row.daily_usd - spent)
-        target = f"{project}/plugin:{enabled.name} agent-type:{name} run:{run_id}"
-        await audit.record(
-            conn,
-            actor_id=row.run_as_id,
-            token_id=None,
-            action=audit.TASK_DISPATCH,
-            target=target,
-            project_id=enabled.project_id,
-        )
+        await _audited(conn, enabled, row, run_id)
         found = (await conn.execute(_task_select().where(tables.runs.c.id == run_id))).one()
         budget = task_runs.run_budget(row.daily_usd - spent)
     log.info(

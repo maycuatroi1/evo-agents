@@ -70,6 +70,8 @@ git = "evo_agents.kg.connectors.git:run"
 [project.entry-points."evo_agents.plugins"]
 telegram = "evo_agents.core_plugins.telegram:MANIFEST"
 builder = "evo_agents.core_plugins.builder:MANIFEST"
+srs = "evo_agents.core_plugins.srs:MANIFEST"
+tasks = "evo_agents.core_plugins.tasks:MANIFEST"
 
 [tool.setuptools.dynamic]
 version = { attr = "evo_agents.__version__" }
@@ -228,6 +230,43 @@ A core plugin that evo-ak ships is a plugin like any other: the hub and the work
 evo_agents.plugins and import the Python its manifest names when they use it (evo_agents.hub.plugin_calls), so it \
 can leave the distribution without a change elsewhere. Reach it through its manifest, or move what the core needs \
 out of the plugin into evo_agents.hub. See docs/plugins.md, section Core plugins."""
+
+[[tool.importlinter.contracts]]
+id = "srs-plugin-own-package"
+name = "The core plugin srs imports no other core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.core_plugins.srs"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.tasks",
+    "evo_agents.core_plugins.telegram",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The core plugin srs is one package that leans on the hub alone (its tables, its access rules, its server's \
+dependencies). It imports no other core plugin, nor the worker or the command line: those reach it through its \
+manifest and its routes. Move what both need into evo_agents.hub, or call the route. See docs/plugins.md, \
+section Core plugins."""
+
+[[tool.importlinter.contracts]]
+id = "tasks-plugin-own-package"
+name = "The core plugin tasks imports no other core plugin, the worker or the CLI"
+type = "forbidden"
+source_modules = ["evo_agents.core_plugins.tasks"]
+forbidden_modules = [
+    "evo_agents.core_plugins.builder",
+    "evo_agents.core_plugins.srs",
+    "evo_agents.core_plugins.telegram",
+    "evo_agents.cli",
+    "evo_agents.worker",
+]
+broken_contract_guidance = """\
+The core plugin tasks is one package that leans on the hub alone (its tables, the tables of srs and plans it links \
+to, its access rules, its server's dependencies). It imports no other core plugin, the plugin srs included, nor the \
+worker or the command line: it reads srs items through evo_agents.hub.tables.srs and finds them by code with \
+evo_agents.hub.tables_srs.code_key. Move what both need into evo_agents.hub. See docs/plugins.md, section Core \
+plugins."""
 
 [[tool.importlinter.contracts]]
 id = "packages-acyclic"

@@ -40,6 +40,9 @@ plugin, the type's name, the agent profile the hub made for it, the member its r
 of that member's workers they may run on, the cap of their cost per day, who enabled it and when, and when it was
 turned off. runs.agent_type_id names the agent type of a task run, and runs.pulls the draft pull requests the hub opened
 of its branch.
+
+``core_plugin_tables`` adds the tables of the core plugins evo-ak ships that own any: srs (0046, ``tables_srs``) and
+tasks (0047, ``tables_tasks``), each as one attribute of ``evo_agents.hub.tables`` (``tables.srs``, ``tables.tasks``).
 """
 
 from __future__ import annotations
@@ -62,6 +65,9 @@ from sqlalchemy import (
     func,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB
+
+from evo_agents.hub.tables_srs import SrsTables, srs_tables
+from evo_agents.hub.tables_tasks import TasksTables, tasks_tables
 
 BACKEND_STATES = ("placing", "starting", "running", "backoff")  # plugin_backends.state (0036)
 ISOLATIONS = ("uid", "process")  # plugin_backends.isolation (0036), as evo_agents.plugins.environment names them
@@ -293,3 +299,8 @@ def _agent_types(metadata: MetaData, runs: Table) -> Table:
     typed = runs.c.agent_type_id.is_not(None)
     Index("runs_agent_type_idx", runs.c.agent_type_id, runs.c.queued_at, postgresql_where=typed)
     return agent_types
+
+
+def core_plugin_tables(metadata: MetaData) -> tuple[SrsTables, TasksTables]:
+    """The tables of the core plugins srs and tasks, added to ``metadata`` (tasks links to srs_items and runs)."""
+    return srs_tables(metadata), tasks_tables(metadata)

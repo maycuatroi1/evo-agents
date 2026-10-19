@@ -484,7 +484,9 @@ class HubMcp(MCPServer):
         if scope is not None and scope.kind == "judge" and name not in JUDGE_TOOLS:
             return _error(JUDGE_ONLY.format(tool=name))
         if plugin_tools.split(name) is not None:
-            return await plugin_tools.answer(self.hub.state, caller.user, caller.project, name, arguments)
+            return await plugin_tools.answer(
+                self.hub.state, caller.user, caller.project, name, arguments, sink=caller.sink
+            )
         try:
             await hub_settings.require_tool(
                 self.hub.state.engine, caller.user, name, arguments.get("project") or caller.project

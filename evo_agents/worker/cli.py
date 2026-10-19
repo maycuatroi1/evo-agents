@@ -1113,13 +1113,10 @@ def register(sub) -> None:
     status.add_argument("--json", action="store_true", help="machine-readable output")
     status.set_defaults(func=cmd_status)
 
-    from evo_agents.worker.doctor import add_parser as add_doctor  # `doctor [--json]`
+    from evo_agents.worker import doctor, selftest
 
-    add_doctor(wsub)
-
-    from evo_agents.worker.selftest import add_parser as add_selftest  # `selftest --runtime NAME`
-
-    add_selftest(wsub)
+    doctor.add_parser(wsub)  # `doctor [--json]`
+    selftest.add_parser(wsub)  # `selftest --runtime NAME`
 
     attach = wsub.add_parser(
         "attach", help="put this terminal on the tmux session of an interactive run (evo-run-N), as tmux attach does"
