@@ -6,9 +6,10 @@ POST /v1/worker/runs/{id}/findings and POST /v1/worker/runs/{id}/proposals take 
 worker holds records (404 for any other run, a plan run or a run of one step included), as the member who dispatched
 it, who must still hold writer on the project; each is stored with the project's default label. A finding has a lens of
 ``review.LENSES``, a severity, a title, a markdown body, and 1 to MAX_EVIDENCE pieces of evidence. The hub resolves
-each piece before it stores anything (422 naming the first it cannot find): a session digest of the project, and the
-entry of its list that ``field`` and ``index`` name; an event of a run of the project, of a plan the owner may read or
-a review run, whose ``seq`` the run has reached; a file of a repo of the project, which, when the project has a
+each piece before it stores anything (422 naming the first it cannot find): a session of the project, and the entry of
+the list that ``field`` and ``index`` name, in the session's facet when the hub made one (``evo_agents.hub.facet_job``),
+else in its digest; an event of a run of the project, of a plan the owner may read, a review run or a local run of the
+owner, whose ``seq`` the run has reached; a file of a repo of the project, which, when the project has a
 knowledge graph, the graph must have (``graph_view``). Each piece is kept with how the hub found it (``resolved``).
 
 A proposal names a lens, a kind of change (``tiers.CHANGE_KINDS``), a title, a markdown summary, the paths it would
@@ -63,7 +64,7 @@ from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, facet_figures
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -377,11 +378,29 @@ async def _project_repos(conn: AsyncConnection, project_id: int) -> set[str]:
     return set((await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id))).scalars())
 
 
+def _readable_run(row, plans: list[str], owner_id: int) -> bool:
+    """A review run, a run of a plan the owner may read, or the owner's own local run (the figures count its facet)."""
+    return row.kind == "review" or row.plan_id in plans or (row.kind == "local" and row.dispatched_by == owner_id)
+
+
+async def _session_evidence(conn: AsyncConnection, run: _ReviewRun, item: EvidenceIn, where: str) -> str:
+    """Where session evidence ``item`` is: its facet, else its digest (``facet_figures.lists_of``); 422 otherwise."""
+    held = await facet_figures.lists_of(conn, run.project_id, item.session_id)
+    if held is None:
+        raise _refused(where, f"project {run.project} has no digest of session {item.session_id}, nor a facet of it")
+    what, body = held
+    listed = body.get(item.field) if item.field is not None and isinstance(body, dict) else None
+    if item.field is not None and (not isinstance(listed, list) or item.index >= len(listed)):
+        size = len(listed) if isinstance(listed, list) else 0
+        raise _refused(where, f"the {what}'s {item.field} has {size} entries, so none at index {item.index}")
+    return what
+
+
 async def resolve(
     conn: AsyncConnection, request: Request, run: _ReviewRun, access: ProjectAccess, items: list[EvidenceIn]
 ) -> list[dict]:
     """Each piece of ``items`` as the hub found it, with ``resolved`` saying how; 422 for the first it cannot find."""
-    d, r = tables.session_digests, tables.runs
+    r = tables.runs
     plans = await visible_plans(conn, access, None)
     repos = await _project_repos(conn, run.project_id)
     code = [f"{item.repo}:{item.path}" for item in items if item.kind == "code"]
@@ -391,24 +410,13 @@ async def resolve(
         where = f"evidence {position} ({review.evidence_text(item.stored())})"
         stored = item.stored()
         if item.kind == "session":
-            query = select(d.c.id, d.c.body).where(d.c.project_id == run.project_id, d.c.session_id == item.session_id)
-            row = (await conn.execute(query)).one_or_none()
-            if row is None:
-                raise _refused(where, f"project {run.project} has no digest of session {item.session_id}")
-            if item.field is not None:
-                listed = row.body.get(item.field) if isinstance(row.body, dict) else None
-                if not isinstance(listed, list) or item.index >= len(listed):
-                    size = len(listed) if isinstance(listed, list) else 0
-                    raise _refused(
-                        where, f"the digest's {item.field} has {size} entries, so none at index {item.index}"
-                    )
-            found.append({**stored, "resolved": "digest"})
+            found.append({**stored, "resolved": await _session_evidence(conn, run, item, where)})
         elif item.kind == "run":
-            query = select(r.c.event_seq, r.c.kind, r.c.plan_id).where(
+            query = select(r.c.event_seq, r.c.kind, r.c.plan_id, r.c.dispatched_by).where(
                 r.c.id == item.run_id, r.c.project_id == run.project_id
             )
             row = (await conn.execute(query)).one_or_none()
-            if row is None or (row.kind != "review" and row.plan_id not in plans):
+            if row is None or not _readable_run(row, plans, run.owner.user_id):
                 raise _refused(where, f"project {run.project} has no run {item.run_id}")
             if item.seq > row.event_seq:
                 raise _refused(where, f"run {item.run_id} has {row.event_seq} events, so none with seq {item.seq}")

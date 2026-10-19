@@ -1,13 +1,15 @@
-"""The tables of what the evo-hub plugin sends about the sessions of members' machines, which ``evo_agents.hub.tables``
-adds to its metadata and exposes as its own attributes (``tables.session_digests``, ``tables.session_transcripts``,
-``tables.transcript_parts``): queries name them there.
+"""The tables of what the evo-hub plugin sends about the sessions of members' machines, and of what the hub makes of
+them, which ``evo_agents.hub.tables`` adds to its metadata and exposes as its own attributes
+(``tables.session_digests``, ``tables.session_transcripts``, ``tables.transcript_parts``, ``tables.session_facets``):
+queries name them there.
 
 session_digests (0013) holds the digest of each session of a project's directory (``evo_agents.hub.server.digests``).
 session_transcripts (0049) holds one row per transcript file of a session in a project, the session's own (``file`` main)
 and each subagent's (``subagents/...``): who uploaded it first, from which machine and runtime, the label it carries,
 how far into the file on the machine the hub holds it (``source_bytes``, ``lines``), its parts and their bytes, the
 chain of their hashes, and ``deleted_at`` once its content was deleted. transcript_parts holds the parts in order,
-each the blob of kind transcript that holds its lines (``evo_agents.hub.server.transcripts``).
+each the blob of kind transcript that holds its lines (``evo_agents.hub.server.transcripts``). session_facets (0051)
+holds the deterministic facet of each session and of each run that ended (``evo_agents.hub.facet_job``).
 """
 
 from __future__ import annotations
@@ -25,6 +27,7 @@ from sqlalchemy import (
     Table,
     Text,
     UniqueConstraint,
+    column,
     func,
 )
 from sqlalchemy.dialects.postgresql import JSONB
@@ -38,8 +41,8 @@ def _count(name: str, kind=BigInteger) -> Column:
     return Column(name, kind, nullable=False, server_default="0")
 
 
-def session_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
-    """(session_digests, session_transcripts, transcript_parts), added to ``metadata``."""
+def session_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
+    """(session_digests, session_transcripts, transcript_parts, session_facets), added to ``metadata``."""
     digests = Table(
         "session_digests",
         metadata,
@@ -120,4 +123,47 @@ def session_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         UniqueConstraint("transcript_id", "source_start", name="transcript_parts_start_key"),
         Index("transcript_parts_sha256_idx", "sha256"),
     )
-    return digests, transcripts, parts
+    return digests, transcripts, parts, facet_table(metadata)
+
+
+def facet_table(metadata: MetaData) -> Table:
+    """session_facets (0051), added to ``metadata``."""
+    return Table(
+        "session_facets",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("kind", Text, nullable=False),
+        Column("session_id", Text),
+        Column("run_id", BigInteger),
+        Column("source", Text),
+        Column("fingerprint", Text),
+        _count("version", Integer),
+        Column("user_id", BigInteger),
+        Column("runtime", Text),
+        Column("label", JSONB),
+        Column("at", DateTime(timezone=True)),
+        Column("summary", JSONB, nullable=False, server_default="{}"),
+        Column("body", JSONB),
+        Column("analyzed_at", DateTime(timezone=True)),
+        _count("attempts", Integer),
+        Column("error", Text),
+        Column("retry_at", DateTime(timezone=True)),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="session_facets_project_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="session_facets_run_id_fkey"),
+        ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="SET NULL", name="session_facets_user_id_fkey"),
+        PrimaryKeyConstraint("id", name="session_facets_pkey"),
+        Index(
+            "session_facets_session_key",
+            "project_id",
+            "session_id",
+            unique=True,
+            postgresql_where=column("kind") == "session",
+        ),
+        Index("session_facets_run_key", "run_id", unique=True, postgresql_where=column("kind") == "run"),
+        Index("session_facets_project_idx", "project_id", "at"),
+    )

@@ -111,6 +111,8 @@ TASKS_TABLES = frozenset(
 )
 # migration 0049: the transcripts of sessions and their parts
 TRANSCRIPT_TABLES = frozenset({"session_transcripts", "transcript_parts"})
+# migration 0051: the deterministic facets of sessions and runs
+FACET_TABLES = frozenset({"session_facets"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

@@ -72,6 +72,7 @@ HUB_TABLES |= pg.TRIAGE_TABLES  # migration 0044
 HUB_TABLES |= pg.SRS_TABLES  # migration 0046
 HUB_TABLES |= pg.TASKS_TABLES  # migration 0047
 HUB_TABLES |= pg.TRANSCRIPT_TABLES  # migration 0049
+HUB_TABLES |= pg.FACET_TABLES  # migration 0051
 
 
 @pytest.fixture

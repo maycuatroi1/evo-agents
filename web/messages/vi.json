@@ -4746,6 +4746,7 @@
       "opensElsewhere": "(mở trang mã nguồn ở thẻ mới)",
       "resolved": {
         "digest": "Tìm thấy trong digest của phiên",
+        "facet": "Tìm thấy trong facet của phiên",
         "run_event": "Tìm thấy trong log của run",
         "repo": "Một file trong repo của dự án",
         "graph": "Một file trong knowledge graph của dự án"

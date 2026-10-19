@@ -23,7 +23,6 @@
     "evo_agents/hub/server/app.py::create_app": {"statements": 96},
     "evo_agents/hub/server/blobs.py::commit_uploads": {"statements": 58},
     "evo_agents/hub/server/changes.py::_merge": {"complexity": 17, "statements": 77},
-    "evo_agents/hub/server/collect.py::_session_figures": {"complexity": 19},
     "evo_agents/hub/server/kg.py::push_run": {"statements": 59},
     "evo_agents/hub/server/run_state.py::write_step": {"complexity": 16},
     "evo_agents/kg/build.py::run_pipeline": {"complexity": 48, "statements": 155},

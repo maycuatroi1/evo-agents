@@ -12,18 +12,23 @@ it queues a plan run, so the review comes first in a night whichever job runs fi
 
 The figures are counted without any model, over the REVIEW_DAYS (the charter's ``review.days``) before the moment they
 are counted, from what the hub holds and the schedule's owner may read: per tool, the calls and failures of the runs
-that ended (run_tool_stats) and of the session digests pushed; per Bash program, those of the digests; the failures
-that come from the environment, from the digests' failed results, the failed tool calls of the runs and the errors of
-the runs, by cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker
-reported (runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again
-across sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt,
+that ended (run_tool_stats) and of the sessions; per Bash program, those of the sessions; the failures that come from
+the environment, from the sessions' failed results, the failed tool calls of the runs and the errors of the runs, by
+cause (``review.environment_cause``); the runs that failed or were lost, by cause: the one the worker reported
+(runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again across
+sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt,
 open_questions); the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the
 span; and what the worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that
-failed with its error. Each entry names evidence a finding can cite as it is (``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned
-skills waiting for review and the open items of reports live in files, not on the hub: the worker counts them in the
-review run's worktrees (``evo_agents.worker.run.ReviewRun``). A digest, a plan, and the runs of a plan, that the
-schedule's owner may not read through the project's hub sink are left out. The review run counts as one of the night's
-runs, and its cost as part of the night's.
+failed with its error. The sessions are their facets (``evo_agents.hub.server.facet_figures``): each session's whose
+transcripts or digest the owner may read, a digest the job hub.analyze_facets has not read yet as its facet would be,
+and a local run's only when its member is the schedule's owner. The night's figures add ``weekly``, the weekly series
+of every facet the owner may read, over the whole history, and ``facets``, how far the facets of the project are
+(``evo_agents.hub.facet_job.coverage``). Each entry names evidence a finding can cite as it is
+(``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned skills waiting for review and the open items of reports live in
+files, not on the hub: the worker counts them in the review run's worktrees (``evo_agents.worker.run.ReviewRun``). A
+session, a plan, and the runs of a plan, that the schedule's owner may not read through the project's hub sink are left
+out. The review run counts as one of the night's runs, and its cost as part of the night's. The same data counted again
+gives the same figures: every list is ordered by its counts and then by keys.
 
 The review run is a run of kind review, dispatched as the owner of the schedule (dispatched_via schedule), pinned to the
 worker on duty, which must say it runs review runs, over the repos of the project the worker has a checkout of, with the
@@ -35,8 +40,8 @@ over the night's figures and the lenses of the night, which the run's first even
 from __future__ import annotations
 
 import logging
-from collections import Counter, defaultdict
-from dataclasses import dataclass, field
+from collections import Counter
+from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 
 import psycopg
@@ -45,8 +50,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, review, runs, tables
-from evo_agents.hub.server import audit
+from evo_agents.hub import curator, facet_job, review, runs, tables
+from evo_agents.hub.server import audit, facet_figures
+from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import Pinned, insert_run, unfit
@@ -56,72 +62,17 @@ log = logging.getLogger(__name__)
 
 REVIEW = "curator.review"  # a schedule queued the night's review run: "<project> run:<id> night=<date> lenses=..."
 STUCK_DAYS = 3  # a step of an active plan that has not moved for this long is stuck
-MAX_DIGESTS = 1000  # session digests one count reads, the latest pushed first
 MAX_FAILED_EVENTS = 2000  # failed tool calls of runs one count reads
 TOP = 30  # entries of a list of figures
-SAMPLES = 5  # runs, sessions and evidence an entry names
-SAMPLE_CHARS = 200
+SAMPLES = facet_figures.SAMPLES  # runs, sessions and evidence an entry names
 OPEN_ITEMS = 50
 CLOSED = frozenset({"done", "fixed", "resolved", "answered", "closed", "wontfix", "dropped", "merged", "cancelled"})
 DEBT_SECTIONS = ("tech_debt", "debt", "open_questions")
 
 
-def _cut(text, limit: int = SAMPLE_CHARS) -> str:
-    line = " ".join(str(text or "").split())
-    return line if len(line) <= limit else line[: limit - 3].rstrip() + "..."
-
-
-def _rate(errors: int, calls: int) -> float:
-    return round(errors / calls, 4) if calls else 0.0
-
-
-# The figures
-
-
-@dataclass
-class _Cause:
-    """The failures of one environment cause: how many, and a few of the sessions, runs, evidence and texts."""
-
-    count: int = 0
-    sessions: list = field(default_factory=list)
-    runs: list = field(default_factory=list)
-    evidence: list = field(default_factory=list)
-    samples: list = field(default_factory=list)
-
-    def add(self, count: int, *, session: str | None = None, run: int | None = None, evidence: str, sample: str):
-        self.count += count
-        for listed, value in ((self.sessions, session), (self.runs, run), (self.evidence, evidence)):
-            if value is not None and value not in listed and len(listed) < SAMPLES:
-                listed.append(value)
-        if sample and sample not in self.samples and len(self.samples) < 3:
-            self.samples.append(sample)
-
-
-def _digests(project_id: int, since: datetime, until: datetime):
-    d = tables.session_digests
-    body = d.c.body
-    return (
-        select(
-            d.c.session_id,
-            d.c.label,
-            d.c.messages,
-            d.c.model,
-            body["tools"].label("tools"),
-            body["bash"].label("bash"),
-            body["errors"].label("errors"),
-            body["repeated_commands"].label("repeated_commands"),
-            body["commands"].label("commands"),
-            body["user_turns"].label("user_turns"),
-        )
-        .where(d.c.project_id == project_id, d.c.updated_at >= since, d.c.updated_at < until)
-        .order_by(d.c.updated_at.desc())
-        .limit(MAX_DIGESTS)
-    )
-
-
 def _ended_runs(project_id: int, plans: list[str], since: datetime, until: datetime):
     """The runs of the project that ended in the span, of a plan the owner may read or a review run; never a local run,
-    which a member's session is and the Curator leaves out."""
+    which a member's session is: the owner's own count among the sessions, by their facets (``facet_figures``)."""
     r = tables.runs
     return (
         r.c.project_id == project_id,
@@ -136,106 +87,7 @@ def _list(value) -> list:
     return value if isinstance(value, list) else []
 
 
-def _session_figures(rows) -> dict:
-    """tools, programs, environment (from the digests), repeated_commands, corrections and sessions, from the rows of
-    ``_digests``."""
-    tools, programs = defaultdict(Counter), defaultdict(Counter)
-    environment: dict[str, _Cause] = defaultdict(_Cause)
-    repeated: dict[str, dict] = {}
-    corrections, messages, models = [], 0, Counter()
-    for row in rows:
-        session = row.session_id
-        messages += row.messages or 0
-        if row.model:
-            models[row.model] += 1
-        for item in _list(row.tools):
-            if isinstance(item, dict) and item.get("gen_ai.tool.name"):
-                found = tools[item["gen_ai.tool.name"]]
-                found["calls"] += int(item.get("calls") or 0)
-                found["errors"] += int(item.get("errors") or 0)
-                found["sessions"] += 1
-        for item in _list(row.bash):
-            if isinstance(item, dict) and item.get("program"):
-                found = programs[item["program"]]
-                found["calls"] += int(item.get("calls") or 0)
-                found["errors"] += int(item.get("errors") or 0)
-        for index, item in enumerate(_list(row.errors)):
-            if not isinstance(item, dict):
-                continue
-            cause = review.environment_cause(str(item.get("text") or ""))
-            if cause is not None:
-                environment[cause].add(
-                    int(item.get("n") or 1),
-                    session=session,
-                    evidence=f"session:{session}:errors:{index}",
-                    sample=_cut(item.get("text")),
-                )
-        seen = set()
-        for index, item in enumerate(_list(row.repeated_commands)):
-            if isinstance(item, dict) and item.get("command"):
-                key = review.normalize_command(item["command"])
-                entry = repeated.setdefault(key, {"command": _cut(key), "times": 0, "sessions": 0, "evidence": []})
-                entry["times"] += int(item.get("n") or 0)
-                if key not in seen:
-                    entry["sessions"] += 1
-                    seen.add(key)
-                    if len(entry["evidence"]) < SAMPLES:
-                        entry["evidence"].append(f"session:{session}:repeated_commands:{index}")
-        for index, command in enumerate(_list(row.commands)):
-            key = review.normalize_command(str(command))
-            if key in seen or not key:
-                continue
-            seen.add(key)
-            entry = repeated.setdefault(key, {"command": _cut(key), "times": 0, "sessions": 0, "evidence": []})
-            entry["times"] += 1
-            entry["sessions"] += 1
-            if len(entry["evidence"]) < SAMPLES:
-                entry["evidence"].append(f"session:{session}:commands:{index}")
-        for index, turn in enumerate(_list(row.user_turns)):
-            if isinstance(turn, str) and review.is_correction(turn) and len(corrections) < TOP:
-                corrections.append(
-                    {"session": session, "text": _cut(turn), "evidence": f"session:{session}:user_turns:{index}"}
-                )
-    return {
-        "tools": [
-            {
-                "tool": name,
-                "source": "sessions",
-                "calls": found["calls"],
-                "errors": found["errors"],
-                "error_rate": _rate(found["errors"], found["calls"]),
-                "sessions": found["sessions"],
-            }
-            for name, found in tools.items()
-        ],
-        "programs": sorted(
-            (
-                {
-                    "program": name,
-                    "calls": found["calls"],
-                    "errors": found["errors"],
-                    "error_rate": _rate(found["errors"], found["calls"]),
-                }
-                for name, found in programs.items()
-                if found["errors"]
-            ),
-            key=lambda item: (-item["errors"], -item["calls"], item["program"]),
-        )[:TOP],
-        "environment": environment,
-        "repeated_commands": sorted(
-            (entry for entry in repeated.values() if entry["sessions"] >= 2 or entry["times"] >= 3),
-            key=lambda item: (-item["sessions"], -item["times"], item["command"]),
-        )[:TOP],
-        "corrections": corrections,
-        "sessions": {
-            "digests": len(rows),
-            "messages": messages,
-            "models": [{"model": name, "sessions": n} for name, n in models.most_common(5)],
-        },
-    }
-
-
-async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[str, _Cause]) -> dict:
+async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[str, Cause]) -> dict:
     """tools (from the runs), failed_runs and runs; adds the environment causes of the runs' failures to
     ``environment``."""
     r, s, e = tables.runs, tables.run_tool_stats, tables.run_events
@@ -250,6 +102,7 @@ async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[st
         .join_from(s, r, r.c.id == s.c.run_id)
         .where(*ended)
         .group_by(s.c.tool_name, r.c.runtime)
+        .order_by(s.c.tool_name, r.c.runtime)
     )
     tools = [
         {
@@ -258,14 +111,14 @@ async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[st
             "runtime": row.runtime,
             "calls": int(row.calls),
             "errors": int(row.errors),
-            "error_rate": _rate(int(row.errors), int(row.calls)),
+            "error_rate": rate(int(row.errors), int(row.calls)),
             "runs": row.runs,
         }
         for row in tool_rows
     ]
     usage_cost = curator.run_cost
     columns = (r.c.id, r.c.state, r.c.kind, r.c.error, r.c.failure_cause, r.c.usage)
-    rows = (await conn.execute(select(*columns).where(*ended))).all()
+    rows = (await conn.execute(select(*columns).where(*ended).order_by(r.c.id))).all()
     states, cost = Counter(row.state for row in rows), sum(usage_cost(row.usage) for row in rows)
     failed: dict[str, dict] = {}
     for row in rows:
@@ -276,10 +129,10 @@ async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[st
         entry[row.state] += 1
         if len(entry["runs"]) < SAMPLES * 2:
             entry["runs"].append(row.id)
-        entry["sample"] = entry["sample"] or (_cut(row.error) if row.error else None)
+        entry["sample"] = entry["sample"] or (cut(row.error) if row.error else None)
         found = review.environment_cause(row.error or "")
         if found is not None:
-            environment[found].add(1, run=row.id, evidence=f"run:{row.id}:1", sample=_cut(row.error))
+            environment[found].add(1, run=row.id, evidence=f"run:{row.id}:1", sample=cut(row.error))
     text = e.c.body["content"][0]["content"]["text"].astext
     failures = await conn.execute(
         select(e.c.run_id, e.c.seq, text.label("text"))
@@ -291,7 +144,7 @@ async def _run_figures(conn: AsyncConnection, ended: tuple, environment: dict[st
     for row in failures:
         found = review.environment_cause(row.text or "")
         if found is not None:
-            environment[found].add(1, run=row.run_id, evidence=f"run:{row.run_id}:{row.seq}", sample=_cut(row.text))
+            environment[found].add(1, run=row.run_id, evidence=f"run:{row.run_id}:{row.seq}", sample=cut(row.text))
     return {
         "tools": tools,
         "failed_runs": sorted(failed.values(), key=lambda item: (-(item["failed"] + item["lost"]), item["cause"])),
@@ -305,18 +158,20 @@ def _open(entry) -> bool:
 
 def _entry_text(entry) -> str:
     if not isinstance(entry, dict):
-        return _cut(entry)
+        return cut(entry)
     for key in ("title", "what", "question", "text", "item", "note"):
         if entry.get(key):
-            return _cut(entry[key])
-    return _cut(", ".join(f"{key}={value}" for key, value in entry.items()))
+            return cut(entry[key])
+    return cut(", ".join(f"{key}={value}" for key, value in entry.items()))
 
 
 async def _plan_figures(conn: AsyncConnection, access: ProjectAccess, now: datetime) -> dict:
     """open_items of the plans the owner may read and the stuck_steps of the active ones."""
     p = tables.plans
     rows = await conn.execute(
-        select(p.c.plan_id, p.c.area, p.c.label, p.c.body, p.c.updated_at).where(p.c.project_id == access.project_id)
+        select(p.c.plan_id, p.c.area, p.c.label, p.c.body, p.c.updated_at)
+        .where(p.c.project_id == access.project_id)
+        .order_by(p.c.plan_id)
     )
     through = access.rules.hub_sink.sink if access.rules.hub_sink else None
     open_items, stuck = [], []
@@ -344,7 +199,7 @@ async def _plan_figures(conn: AsyncConnection, access: ProjectAccess, now: datet
                         "plan_id": row.plan_id,
                         "step": str(step.get("id", index + 1)),
                         "status": step.get("status") or "pending",
-                        "title": _cut(step.get("title")),
+                        "title": cut(step.get("title")),
                         "days": idle,
                     }
                 )
@@ -367,23 +222,27 @@ async def _decision_figures(conn: AsyncConnection, project_id: int, plans: list[
     return {"by_state": dict(sorted(states.items())), "by_category": dict(sorted(categories.items()))}
 
 
-async def compute_figures(conn: AsyncConnection, access: ProjectAccess, since: datetime, until: datetime) -> dict:
-    """The figures of the project of ``access`` over [since, until), as its member reads it (see the module's
-    docstring): a JSON object of the keys of ``review.FIGURE_KEYS``."""
+def _tool_order(item: dict) -> tuple:
+    return (
+        -item["errors"],
+        -item["error_rate"],
+        -item["calls"],
+        item["tool"],
+        item["source"],
+        item.get("runtime") or "",
+    )
+
+
+async def _counted(
+    conn: AsyncConnection, access: ProjectAccess, since: datetime, until: datetime, owner_id: int | None
+) -> tuple[dict, list, list[str]]:
+    """(the figures of ``compute_figures``, the sessions they count, the plans the reader may read)."""
     plans = await visible_plans(conn, access, None)
-    through = access.rules.hub_sink.sink if access.rules.hub_sink else None
-    digest_rows = [
-        row
-        for row in (await conn.execute(_digests(access.project_id, since, until))).all()
-        if through is not None and access.visible(row.label, through)
-    ]
-    sessions = _session_figures(digest_rows)
-    environment: dict[str, _Cause] = sessions.pop("environment")
+    held = await facet_figures.sessions_of(conn, access, since, until, owner_id)
+    sessions = facet_figures.session_figures(held)
+    environment: dict[str, Cause] = sessions.pop("environment")
     ran = await _run_figures(conn, _ended_runs(access.project_id, plans, since, until), environment)
-    tools = sorted(
-        ran.pop("tools") + sessions.pop("tools"),
-        key=lambda item: (-item["errors"], -item["error_rate"], -item["calls"], item["tool"]),
-    )[:TOP]
+    tools = sorted(ran.pop("tools") + sessions.pop("tools"), key=_tool_order)[:TOP]
     causes = [
         {
             "cause": name,
@@ -396,7 +255,7 @@ async def compute_figures(conn: AsyncConnection, access: ProjectAccess, since: d
         for name, found in sorted(environment.items(), key=lambda item: (-item[1].count, item[0]))
     ]
     planned = await _plan_figures(conn, access, until)
-    return {
+    figures = {
         "tools": tools,
         "environment": causes,
         **sessions,
@@ -405,6 +264,17 @@ async def compute_figures(conn: AsyncConnection, access: ProjectAccess, since: d
         "learned_skills": None,  # in files of the worktrees: the review run's worker counts them
         "decisions": await _decision_figures(conn, access.project_id, plans, since),
     }
+    return figures, held, plans
+
+
+async def compute_figures(
+    conn: AsyncConnection, access: ProjectAccess, since: datetime, until: datetime, owner_id: int | None = None
+) -> dict:
+    """The figures of the project of ``access`` over [since, until), as its member ``owner_id`` (the owner of the
+    charter, whose local runs count) reads it (see the module's docstring): a JSON object of the keys of
+    ``review.FIGURE_KEYS`` but ``kg_sync``, ``weekly`` and ``facets``, which the night's figures add
+    (``ensure_figures``)."""
+    return (await _counted(conn, access, since, until, owner_id))[0]
 
 
 async def kg_sync_figures(conn: AsyncConnection, worker_id: int, project: str) -> dict | None:
@@ -446,7 +316,8 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
     days = int(settings.get("days") or review.REVIEW_DAYS)
     until = (await conn.execute(select(func.now()))).scalar_one()
     since = until - timedelta(days=days)
-    figures = await compute_figures(conn, access, since, until)
+    figures, held, plans = await _counted(conn, access, since, until, due.owner_id)
+    waiting = [session for session in held if session.numbers is not None]
     figures = {
         "project": due.project,
         "night": night.isoformat(),
@@ -455,6 +326,8 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
         "until": until.isoformat(),
         **figures,
         "kg_sync": await kg_sync_figures(conn, due.worker_id, due.project),
+        "weekly": await facet_figures.weekly(conn, access, plans, until, due.owner_id, waiting),
+        "facets": await facet_job.coverage(conn, access.project_id),
     }
     cf = tables.curator_figures
     values = {"project_id": due.project_id, "schedule_id": due.id, "night": night, "since": since, "until": until}

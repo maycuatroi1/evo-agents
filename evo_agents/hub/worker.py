@@ -43,6 +43,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
   EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
+- ``hub.analyze_facets``, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
+  or digest came, and of each run that ended, made once and again when its content or the facet's version changed
+  (``evo_agents.hub.facet_job``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 - ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
@@ -309,6 +312,15 @@ async def prune_transcripts(context: JobContext, timestamp: int | None = None) -
 
     found = hub(context)
     return await prune(found.engine, found.blobs, found.config.transcript_days)
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.ANALYZE_FACETS, pass_context=True, lock=jobs.ANALYZE_FACETS, queueing_lock=jobs.ANALYZE_FACETS)
+async def analyze_facets(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.facet_job import analyze_facets as analyze
+
+    found = hub(context)
+    return await analyze(found.engine, found.blobs, scratch=found.data_dir / "facets")
 
 
 @queue.periodic(cron="43 3 * * *")

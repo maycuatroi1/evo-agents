@@ -15,10 +15,10 @@ through the hub's MCP tools, its project alone.
 Each night the run looks through LENSES_PER_NIGHT of LENSES (the charter's ``review.lenses``), taken in turn from the
 night's date (``lenses_for``), so every lens comes round within a few nights and a night costs what a few lenses cost.
 
-Evidence is one of EVIDENCE_KINDS, written ``session:ID[:FIELD:INDEX]`` (a session digest of the project, and an entry
-of one of its lists), ``run:ID:SEQ`` (an event of a run of the project) or ``code:REPO:PATH[:LINE]`` (a line of a file
-of a repo of the project) on the command line (``parse_evidence``), and as an object in the API. The hub refuses a
-finding or a proposal whose evidence it cannot find.
+Evidence is one of EVIDENCE_KINDS, written ``session:ID[:FIELD:INDEX]`` (a session of the project, and an entry of
+one of the lists of its facet, else of its digest), ``run:ID:SEQ`` (an event of a run of the project) or
+``code:REPO:PATH[:LINE]`` (a line of a file of a repo of the project) on the command line (``parse_evidence``), and as
+an object in the API. The hub refuses a finding or a proposal whose evidence it cannot find.
 """
 
 from __future__ import annotations
@@ -86,6 +86,8 @@ FIGURE_KEYS = (
     "sessions",
     "decisions",
     "kg_sync",
+    "facets",
+    "weekly",
 )
 
 # The causes of the failures the figures count, in the order a text is tried against them: the first that matches.
@@ -296,10 +298,11 @@ def _rules(project: str) -> list[str]:
         "- Record what you find with `evo-agents worker finding --lens LENS --title TEXT --evidence SPEC "
         "--severity medium --body-file FILE`, --evidence once for each piece (at least one), --body-file optional "
         "(markdown, at most 16 KiB). It prints the finding's id.",
-        "- Evidence is what the hub can find: `session:ID` or `session:ID:FIELD:INDEX` (a session digest of the "
-        f"project, and the entry INDEX, from 0, of its list FIELD: {', '.join(DIGEST_FIELDS)}), `run:ID:SEQ` (the "
-        "event SEQ of a run of the project), or `code:REPO:PATH:LINE` (a line of a file in your worktree of REPO). "
-        "The hub refuses a finding or a proposal whose evidence it cannot find.",
+        "- Evidence is what the hub can find: `session:ID` or `session:ID:FIELD:INDEX` (a session of the project, "
+        f"and the entry INDEX, from 0, of the list FIELD of its facet, the one the figures cite, else of its digest: "
+        f"{', '.join(DIGEST_FIELDS)}), `run:ID:SEQ` (the event SEQ of a run of the project), or `code:REPO:PATH:LINE` "
+        "(a line of a file in your worktree of REPO). The hub refuses a finding or a proposal whose evidence it "
+        "cannot find.",
         "- Propose a change with `evo-agents worker propose --lens LENS --kind KIND --title TEXT --path REPO:PATH "
         "--finding ID --evidence SPEC --plan-file FILE --summary-file FILE`: --path once for each file the change "
         "would edit, --finding and --evidence for what supports it (at least one of the two), --summary-file "

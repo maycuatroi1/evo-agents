@@ -1188,4 +1188,4 @@ plugin_tokens, plugin_backends, plugin_deliveries, project_agent_types = tables_
 hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0037, 0043
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)
-session_digests, session_transcripts, transcript_parts = tables_sessions.session_tables(metadata)  # 0013, 0049
+session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)

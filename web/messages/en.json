@@ -4746,6 +4746,7 @@
       "opensElsewhere": "(opens the forge in a new tab)",
       "resolved": {
         "digest": "Found in the session's digest",
+        "facet": "Found in the session's facet",
         "run_event": "Found in the run's log",
         "repo": "A file of the project's repo",
         "graph": "A file of the project's knowledge graph"

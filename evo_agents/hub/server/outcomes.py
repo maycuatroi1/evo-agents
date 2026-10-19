@@ -134,7 +134,7 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
         return "owner"
     proposal = (await conn.execute(select(p).where(p.c.id == change.proposal_id))).one()
     trigger = await _trigger(conn, proposal)
-    after = await compute_figures(conn, access, change.merged_at, until)
+    after = await compute_figures(conn, access, change.merged_at, until, owner.owner_id)
     found = ledger.outcome_of(trigger, after, since=change.merged_at.isoformat(), until=until.isoformat())
     revert_id = None
     if found["result"] == "revert":

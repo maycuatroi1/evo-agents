@@ -248,7 +248,14 @@ def test_kg_api_the_night_figures_name_the_sync_that_failed(hub):
     beat(client, hub.duty, features=[runs.KG_SYNC], kg_sync=REPORT)
     schedule_id = live.sql(hub.db, select(tables.schedules.c.id))[0][0]
     owner = Principal(user_id=hub.owner_id, login=OWNER, admin=False, token_id=0, kind=MACHINE, token_hash="")
-    due = SimpleNamespace(id=schedule_id, project_id=hub.project_id, project=PROJECT, worker_id=hub.duty["id"], body={})
+    due = SimpleNamespace(
+        id=schedule_id,
+        project_id=hub.project_id,
+        project=PROJECT,
+        worker_id=hub.duty["id"],
+        body={},
+        owner_id=hub.owner_id,
+    )
 
     async def counted():
         async with client.app.state.engine.begin() as conn:
