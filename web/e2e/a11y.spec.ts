@@ -2,7 +2,7 @@ import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { agentPath, agentsPath, createAgentByApi, putAvatarByApi } from "./support/agents";
-import { agentAnswers, chatPath, chatWorker, claimChatRun, createChatByApi, reactByApi, sendByApi, signedInPerson } from "./support/chats";
+import { agentAnswers, chatPath, chatSession, chatWorker, claimChatRun, createChatByApi, reactByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { seedCurator } from "./support/curator";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -211,6 +211,14 @@ async function seedChat(me: Member) {
   await claimChatRun(live, runId);
   await agentAnswers(live, runId, "Fixed the wait. Draft PR: https://github.com/example-org/api/pull/7");
   return { chat, root, asked };
+}
+
+/** A session of the default agent of the first project of `me` in three turns, the last one running: the runs' ids. */
+async function seedChatSession(me: Member): Promise<number[]> {
+  const project = me.projects[0];
+  const live = await chatWorker(me, project, uniqueName("a11y-session"));
+  const { runs } = await chatSession(me, project, live, ["please fix the flaky wait test", "one more thing: the retries", "and the docs?"]);
+  return runs;
 }
 
 async function seedSkill(me: Member) {
@@ -721,6 +729,23 @@ const PAGES: Entry[] = [
       await open(page, `/p/${me.projects[0]}/runs`);
       await expect(page.locator("#main").getByTestId("runs-table").locator("tbody tr")).toHaveCount(2);
       await expect(page.locator("#main").getByTestId("runs-summary")).toBeVisible();
+    },
+  },
+  {
+    name: "runs list with a chat session open into its turns",
+    open: async ({ page, me }) => {
+      await seedChatSession(me);
+      await open(page, `/p/${me.projects[0]}/runs`);
+      await page.locator("#main").getByTestId("runs-session-toggle").click();
+      await expect(page.locator("#main").getByTestId("session-turn")).toHaveCount(3);
+    },
+  },
+  {
+    name: "a turn of a chat session with its session's title and the other turns",
+    open: async ({ page, me }) => {
+      const [, second] = await seedChatSession(me);
+      await open(page, runPath(me.projects[0], second));
+      await expect(page.locator("#main").getByTestId("run-turn-link")).toHaveCount(3);
     },
   },
   {

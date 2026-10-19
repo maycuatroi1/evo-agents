@@ -124,3 +124,33 @@ export async function chatsOf(account: Account) {
 export function chatPath(id: number, message?: number): string {
   return message ? `/chats/${id}?message=${message}` : `/chats/${id}`;
 }
+
+/** The agent takes every message of the run's inbox, as the daemon hands them over: none wakes the session again. */
+export async function takeInbox(live: LiveWorker, runId: number): Promise<void> {
+  const { messages } = (await workerPost(live, `/v1/worker/runs/${runId}/inbox`, {})) as { messages: { id: number }[] };
+  const last = messages.at(-1);
+  if (last) await workerPost(live, `/v1/worker/runs/${runId}/inbox`, { ack: last.id });
+}
+
+/**
+ * A session of @`handle` for `account` in a new chat, "Release talk" (docs/hub.md, Group chats): the mention of the
+ * first of `asks`, then each other one as a reply in its thread, which goes on in the session as a new run once the
+ * one before ended done. Every turn is claimed by `live` and takes its inbox; every one but the last answers and ends
+ * done, the last runs on. The chat, and the runs' ids oldest first.
+ */
+export async function chatSession(account: Account, handle: string, live: LiveWorker, asks: string[]): Promise<{ chat: Chat; runs: number[] }> {
+  const chat = await createChatByApi(account, { title: "Release talk", agents: [handle] });
+  const runs: number[] = [];
+  let root: number | null = null;
+  for (const [index, ask] of asks.entries()) {
+    const sent = await sendByApi(account, chat.id, `@${handle} ${ask}`, root);
+    root ??= sent.id;
+    const runId = sent.mentions[0]?.run_id;
+    if (!runId) throw new Error(`the mention made no run: ${JSON.stringify(sent.mentions)}`);
+    await claimChatRun(live, runId);
+    await takeInbox(live, runId);
+    if (index < asks.length - 1) await agentAnswers(live, runId, `Done: ${ask}`);
+    runs.push(runId);
+  }
+  return { chat, runs };
+}

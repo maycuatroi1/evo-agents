@@ -2,7 +2,9 @@ import type { Locator, Page } from "@playwright/test";
 
 import { call } from "../src/lib/api/client";
 
+import { createAgentByApi } from "./support/agents";
 import { signOut } from "./support/auth";
+import { agentAnswers, chatHeartbeat, chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { bearerClient, machineToken, newAccount, uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -49,8 +51,8 @@ import { toast } from "./support/toast";
  * events, messages and diff the way the daemon does (docs/workers.md). The page follows the run's stream, so a line the
  * worker sends shows within 2 seconds; a stream that drops comes back with Last-Event-ID and repeats no line; a stream
  * that cannot be used gives way to reading events. The owner approves, cancels, takes over, hands back and messages
- * the agent; anyone else reads only. The owner alone sees the credentials the run got, never a value. Pages render in
- * English.
+ * the agent; anyone else reads only. The owner alone sees the credentials the run got, never a value. A turn of a chat
+ * session heads its page with the session's title, which turn it is and a link to each turn. Pages render in English.
  */
 test.skip(isDeployed, "runs a fake worker against the local stack");
 
@@ -977,6 +979,48 @@ test("from 1280 px the session and the side column scroll on their own, as tall 
   expect(await top("run-side")).toBeLessThan(await top("run-log"));
   await expect(aside).not.toHaveAttribute("tabindex");
   expect(await aside.evaluate((element) => element.scrollHeight - element.clientHeight)).toBe(0);
+});
+
+test("a turn of a chat session heads its page with the session's title, which turn it is and a link to each turn", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer" });
+  const live = await chatWorker(me, project, uniqueName("mini"));
+  const asks = ["please fix the flaky wait test", "one more thing: the retries"];
+  const {
+    runs: [first, second],
+  } = await chatSession(me, handle, live, asks);
+  const session = `@${handle} in Release talk: @${handle} ${asks[0]}`;
+
+  // The latest turn: the session's title on top, "Turn 2 of 2" with its own words, and both turns by number.
+  await open(page, runPath(project, second));
+  const head = main(page).getByTestId("run-session");
+  await expect(head.getByTestId("run-session-title")).toHaveText(session);
+  await expect(head.getByTestId("run-turn")).toHaveText("Turn 2 of 2");
+  await expect(head.getByTestId("run-turn-text")).toHaveText(`@${handle} ${asks[1]}`);
+  const nav = head.getByRole("navigation", { name: "Turns of this session" });
+  const links = nav.getByTestId("run-turn-link");
+  await expect(links).toHaveText(["1", "2"]);
+  await expect(links.nth(1)).toHaveAttribute("aria-current", "page");
+  await expect(links.nth(0)).toHaveAccessibleName(`Turn 1: @${handle} ${asks[0]}`);
+
+  // The first turn, one link away: its words are the session's, so the head says only which turn it is.
+  await links.nth(0).click();
+  await page.waitForURL(`**${runPath(project, first)}`);
+  await expect(head.getByTestId("run-turn")).toHaveText("Turn 1 of 2");
+  await expect(head.getByTestId("run-turn-text")).toHaveCount(0);
+  await expect(links.nth(0)).toHaveAttribute("aria-current", "page");
+
+  // A session of one turn heads its page with its title alone.
+  await agentAnswers(live, second, "Done.");
+  await chatHeartbeat(live);
+  const {
+    runs: [alone],
+  } = await chatSession(me, handle, live, ["a new thread"]);
+  await open(page, runPath(project, alone));
+  await expect(head.getByTestId("run-session-title")).toHaveText(`@${handle} in Release talk: @${handle} a new thread`);
+  await expect(head.getByRole("navigation")).toHaveCount(0);
 });
 
 test.describe("in Vietnamese", () => {

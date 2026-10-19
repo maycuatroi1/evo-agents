@@ -3989,6 +3989,22 @@
       "line": "A turn of @{agent} in a group chat",
       "lineProject": "{project}: a turn of @{agent} in a group chat"
     },
+    "session": {
+      "turns": "{count, plural, one {# turn} other {# turns}}",
+      "line": "Session of {person} with @{agent} in a group chat",
+      "mobileLine": "{count, plural, one {# turn} other {# turns}}, session of {person} with @{agent}",
+      "turnsLabel": "Turns of the session {title}",
+      "turn": "Turn {turn}",
+      "turnOf": "Turn {turn} of {turns}",
+      "turnLink": "Turn {turn}: {title}",
+      "navLabel": "Turns of this session",
+      "navError": "The other turns could not be read.",
+      "loading": "Reading the turns",
+      "error": "The turns of this session could not be read.",
+      "retry": "Try again",
+      "more": "The latest {shown} of {total} turns",
+      "untitled": "Untitled turn"
+    },
     "taskRun": {
       "kind": "Task run",
       "line": "A task a plugin handed to @{agent}, on branch {branch}",

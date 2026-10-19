@@ -107,6 +107,8 @@ export type RunQuery = {
   /** Only runs of this kind, and only local runs of this Claude account (email). */
   kind?: RunKind | null;
   account?: string | null;
+  /** The turns of one chat session (`session_run_id`); `group: "session"` lists each chat session once, its latest turn. */
+  sessionRunId?: number | null; group?: "session" | null;
   q?: string;
   limit?: number;
   offset?: number;
@@ -120,6 +122,7 @@ function apiQuery(query: RunQuery) {
     ...(query.workerId ? { worker_id: query.workerId } : {}),
     ...(query.kind ? { kind: query.kind } : {}),
     ...(query.account ? { account: query.account } : {}),
+    ...(query.sessionRunId ? { session_run_id: query.sessionRunId } : {}), ...(query.group ? { group: query.group } : {}),
     ...(query.q ? { q: query.q } : {}),
     limit: query.limit ?? RUNS_PAGE,
     offset: query.offset ?? 0,
@@ -133,7 +136,7 @@ function keyOf(query: RunQuery) {
     planId: query.planId ?? null,
     step: query.step ?? null,
     workerId: query.workerId ?? null,
-    kind: query.kind ?? null, account: query.account ?? null,
+    kind: query.kind ?? null, account: query.account ?? null, sessionRunId: query.sessionRunId ?? null, group: query.group ?? null,
     q: query.q ?? "",
     limit: query.limit ?? RUNS_PAGE,
     offset: query.offset ?? 0,
@@ -167,12 +170,7 @@ export const runsSummaryQuery = (api: ApiSource, project: string) =>
   queryOptions({
     queryKey: runKeys.summary(project),
     queryFn: ({ signal }) =>
-      call(
-        api().GET("/v1/projects/{project}/runs", {
-          params: { path: { project }, query: apiQuery({ states: ACTIVE_STATES, limit: SUMMARY_LIMIT }) },
-          signal,
-        }),
-      ),
+      call(api().GET("/v1/projects/{project}/runs", { params: { path: { project }, query: apiQuery({ states: ACTIVE_STATES, limit: SUMMARY_LIMIT }) }, signal })),
     refetchInterval: refreshInterval,
   });
 
