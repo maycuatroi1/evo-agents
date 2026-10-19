@@ -7,6 +7,7 @@ import { InboxBell } from "@/components/inbox/inbox-bell";
 import { SidebarProvider } from "@/components/ui/sidebar";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { createApiClient } from "@/lib/api/client";
+import { queryKeys } from "@/lib/queries";
 import { renderVi } from "@/test/render";
 
 import { AppSidebar } from "./app-sidebar";
@@ -65,8 +66,10 @@ function baseAnswers(): Answers {
   };
 }
 
+let client: QueryClient;
+
 function setup() {
-  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return renderVi(
     <QueryClientProvider client={client}>
       <TooltipProvider>
@@ -84,6 +87,7 @@ beforeEach(() => {
   api.fail = new Set();
   nav.pathname = "/p/demo/runs";
   nav.project = "demo";
+  window.localStorage.clear();
   window.matchMedia ??= ((query: string) => ({
     matches: false,
     media: query,
@@ -251,7 +255,7 @@ describe("AppSidebar", () => {
     expect(screen.queryByTestId("nav-monitor-count")).toBeNull();
   });
 
-  it("hides a count at zero, and the project's group outside a project", async () => {
+  it("hides a count at zero, and outside a project shows the group of the project the switcher stands in with", async () => {
     api.answers["/v1/me/notifications/count"] = { unread: 0, open_decisions: 0 };
     nav.pathname = "/inbox";
     nav.project = undefined;
@@ -259,8 +263,18 @@ describe("AppSidebar", () => {
     await waitFor(() => expect(screen.getByTestId("inbox-bell")).toHaveAttribute("data-unread", "0"));
     expect(screen.queryByTestId("nav-inbox-count")).toBeNull();
     expect(screen.getByTestId("nav-inbox")).toHaveAccessibleName("Inbox");
-    expect(screen.queryByTestId("nav-runs")).toBeNull();
     expect(screen.getByTestId("nav-inbox")).toHaveAttribute("aria-current", "page");
+    expect(await screen.findByTestId("nav-runs")).toHaveAttribute("href", "/p/demo/runs");
+    expect(screen.getByTestId("nav-runs")).not.toHaveAttribute("aria-current");
+  });
+
+  it("shows no project's group outside a project when the visitor can open none", async () => {
+    api.answers["/v1/projects"] = [];
+    nav.pathname = "/inbox";
+    nav.project = undefined;
+    setup();
+    await waitFor(() => expect(client.getQueryState(queryKeys.projects)?.status).toBe("success"));
+    expect(screen.queryByTestId("nav-runs")).toBeNull();
   });
 
   it("shows the fleet line from the workers list, linked to the Workers page", async () => {
