@@ -742,6 +742,12 @@ async def _listing(
     return listing, await project_harness(conn, profile.project_id)
 
 
+async def run_clearers(conn: AsyncConnection, run_id: int) -> list[int] | None:
+    """The people what chat run ``run_id`` reads must be cleared for, as its prompt is; None for another kind of run."""
+    found = await chat_run(conn, run_id)
+    return None if found is None else _clearers(found)
+
+
 async def chat_prompt(
     conn: AsyncConnection, run_id: int, branch: str | None, repos: list, features: tuple[str, ...] = ()
 ) -> str:

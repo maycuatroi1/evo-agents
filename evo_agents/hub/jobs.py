@@ -64,6 +64,13 @@ class JobQueue:
         await connector.open_async(pool=pool)  # an external pool: closing the connector leaves it open
         return cls(JobManager(connector))
 
+    @classmethod
+    def in_transaction(cls) -> JobQueue:
+        """A queue with no pool, which defers only on the caller's connection (``connection=``): for code handed a
+        transaction and nothing else, such as a chat message that queues builds of the graphs holding it, wherever it
+        is sent from. Deferring through it without a connection fails."""
+        return cls(JobManager(PsycopgConnector()))
+
     async def defer(
         self,
         task: str,

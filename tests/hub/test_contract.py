@@ -178,6 +178,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker chat mention",
         "worker chat post",
         "worker chat react",
+        "worker chat read",
         "worker finding",
         "worker notify",
         "worker plan",
@@ -218,6 +219,9 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert notify["--kind"]["choices"] == ["push_default_branch", "merge_default_branch"]
     assert printed["worker plan"]["json"]["schema"] == "Plan"
     assert all(printed[f"worker {name}"]["json"] is None for name in ("step", "ask", "notify"))
+    read = printed["worker chat read"]
+    assert [p["name"] for p in read["positionals"]] == ["message"] and read["json"] is None
+    assert [o["flags"] for o in read["options"]] == [["--thread"]]
 
 
 def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():

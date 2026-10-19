@@ -9,8 +9,8 @@ A build of project P (job ``hub.kg_build``, under the lock ``kg:P``) runs in the
   latest graph.sqlite.
 
 The sources of the core plugins the project enables (``evo_agents.hub.kg_sources``) are read from the hub's database
-first: the config written into the cache names them and their identifiers, and their items in the corpus become those
-they give now, written only when something changed. Each run in ``kg_ingests`` that corpus.sqlite does not list yet
+first: the config written into the cache names them and their identifiers, and their items and cursors in the corpus
+become those they give now, written only when something changed. Each run in ``kg_ingests`` that corpus.sqlite does not list yet
 is fetched (its log, checked against its SHA-256), merged with the corpus's own merge, and listed; the merge is
 order-independent, so the runs of several machines in any order give one state; the cursor a run ended with is kept
 unless a later run's is, so a git source's coverage names the commit its newest run read (``evo_agents.kg.freshness``).

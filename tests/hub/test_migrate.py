@@ -1090,6 +1090,24 @@ def test_0048_holds_every_worker_unlocked_checks_the_commit_and_the_report_and_g
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0048") :]
 
 
+def test_0049_gives_every_run_an_empty_seen_audience_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0048")
+    runs = hub_tables.runs
+    with live.connect(hub_db) as conn:
+        run_id = one(conn, _author_run(seed(conn)))
+    move_to(hub_db, "0049")
+    assert "seen_audience" in columns(hub_db, "runs")
+    assert query(hub_db, select(runs.c.seen_audience).where(runs.c.id == run_id)) == [([],)]
+    with live.connect(hub_db) as conn:
+        conn.execute(update(runs).values(seen_audience=["chat:5", "grant:demo:internal"]).where(runs.c.id == run_id))
+    assert query(hub_db, select(runs.c.seen_audience).where(runs.c.id == run_id)) == [
+        (["chat:5", "grant:demo:internal"],)
+    ]
+    move_to(hub_db, "0048", down=True)
+    assert "seen_audience" not in columns(hub_db, "runs")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0049") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

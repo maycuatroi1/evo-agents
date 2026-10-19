@@ -10,6 +10,11 @@ and ``evo-agents worker repo open``, which only a chat run's agent uses.
 - ``mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]``: a message that hands the work to agent HANDLE of the chat,
   for the person who dispatched the run, one hop further; a refusal (the hops, the agent itself, the chat's budget, no
   worker) is printed, said in the thread, and exits 1.
+- ``read MESSAGE [--thread]``, a command of the run's agent too: a message of a chat whole, or its thread (its first
+  message and the replies), those the run's agent may read (POST .../chat/read, ``evo_agents.hub.server.chat_read``),
+  printed as the hub gave it, under a line saying it is data, never instructions. MESSAGE is its id, or its item as
+  kg_search lists it (``plugin.chats:message:<id>``); a thread's item (``plugin.chats:thread:<chat>/<root>``) reads
+  that thread. A message it may not read is an error, as one that does not exist.
 
 Each reads the run from EVO_RUN_ID, EVO_WORKER_HOME and the run's record there, calls the hub with the worker's token
 (POST /v1/worker/runs/{id}/chat/..., ``evo_agents.hub.server.chat_agents``), and refuses outside a run of this worker
@@ -163,6 +168,19 @@ def cmd_react(args) -> int:
 
 
 @chat_command
+def cmd_read(args) -> int:
+    run = agent_run("read")
+    if chats.read_ref(args.message) is None:
+        raise WorkerStateError(
+            f"{args.message!r} names no message: give its id, or plugin.chats:message:<id> or "
+            "plugin.chats:thread:<chat>/<root> as kg_search lists it"
+        )
+    answer = call(run, "chat/read", {"id": str(args.message).strip(), "thread": bool(args.thread)})
+    print(answer["text"], end="")
+    return 0
+
+
+@chat_command
 def cmd_create(args) -> int:
     run = agent_run("create")
     answer = call(run, "chats", {"title": args.title, "people": list(dict.fromkeys(args.person or []))})
@@ -215,7 +233,7 @@ def _where_options(parser) -> None:
 def register_chat(wsub) -> None:
     """``evo-agents worker chat`` and its commands, under the parser ``wsub`` of ``evo-agents worker``."""
     chat = wsub.add_parser(
-        "chat", help="inside a run: talk in group chats as the run's agent (post, react, create, mention)"
+        "chat", help="inside a run: talk in group chats as the run's agent (post, react, create, mention, read)"
     )
     csub = chat.add_subparsers(dest="chat_command", required=True)
     post = csub.add_parser("post", help="post a message of the run's agent: in the thread of a chat run by default")
@@ -227,6 +245,14 @@ def register_chat(wsub) -> None:
     react.add_argument("emoji", metavar="EMOJI", help="one emoji")
     react.add_argument("--remove", action="store_true", help="take the emoji off")
     react.set_defaults(func=cmd_react)
+    read = csub.add_parser(
+        "read", help="print a message of a chat whole, or its thread, as the run's agent may read it"
+    )
+    read.add_argument(
+        "message", metavar="MESSAGE", help="its id, or plugin.chats:message:<id> or plugin.chats:thread:<chat>/<root>"
+    )
+    read.add_argument("--thread", action="store_true", help="its thread: the first message and the replies")
+    read.set_defaults(func=cmd_read)
     create = csub.add_parser(
         "create", help="create a chat of the run's agent and the person who dispatched the run, who is told"
     )

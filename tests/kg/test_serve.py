@@ -586,6 +586,26 @@ def test_text_lines_carry_no_uri_and_print_a_shared_label_once(tmp_path, kg_env)
     assert any(f", {other})" in line for line in node_lines) and not any(f", {common})" in line for line in node_lines)
 
 
+def test_a_chat_message_line_names_its_chat_and_thread_and_never_its_text(tmp_path, kg_env):
+    session = Session(built(tmp_path, kg_env), "agent")
+    said = {
+        "id": "plugin.chats:message:41",
+        "kind": "ChatMessage",
+        "name": "#7 alice 2026-10-19T08:00:00Z",
+        "status": "parsed",
+        "label": (1, 0, "U", frozenset({"chat:5"})),
+        "props": {"chat": 5, "thread": 40, "seq": 7, "author_kind": "person", "author": "alice", "run": None},
+    }
+    # its id, its author and time (its name), its chat and its thread; its text is in no prop, and the others stay out
+    assert session._line(said) == (
+        "[plugin.chats:message:41] ChatMessage '#7 alice 2026-10-19T08:00:00Z' (parsed, internal,U audience chat:5) "
+        "chat=5 thread=40"
+    )
+    # a node of any other kind that has such props prints them not: an item without an audience reads as before
+    other = {**said, "id": "docs:doc:minutes", "kind": "Document", "name": "minutes", "label": (1, 0, "U")}
+    assert session._line(other) == "[docs:doc:minutes] Document (parsed, internal,U)"  # the id ends with its name
+
+
 def test_search_follows_a_step_or_a_section_to_the_code_it_mentions(tmp_path, kg_env):
     session = Session(built(tmp_path, kg_env), "agent")
     result = session.call("kg_search", {"query": "Wire the server to search", "limit": 5})

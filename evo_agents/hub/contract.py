@@ -41,7 +41,7 @@ EXIT_USAGE = 2
 # `evo-agents worker ...` that the agent of a run runs: a plan run's, a review run's, an author run's, then those of
 # group chats, which a chat run's agent runs and a step, plan or author run's too
 AGENT_COMMANDS = ("step", "ask", "notify", "plan", "finding", "propose", "put")
-AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention")
+AGENT_COMMANDS += ("chat post", "chat react", "chat create", "chat mention", "chat read")
 AGENT_COMMANDS += ("triage rerun", "triage plan", "triage invite")
 AGENT_COMMANDS += ("repo open",)  # a chat run's agent opens a repo of its project
 _FIRST_WORDS = "|".join(dict.fromkeys(name.split()[0] for name in AGENT_COMMANDS))

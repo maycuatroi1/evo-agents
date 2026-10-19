@@ -26,6 +26,9 @@ HUB_KINDS = {
     "UseCase": "a use case code",
     "Ticket": "a ticket or issue",
     "Person": "a person",
+    "Chat": "a group chat of the hub",
+    "ChatThread": "a thread of a group chat: its first message and the replies to it",
+    "ChatMessage": "a message of a group chat, named by the hub, whose text only search reads",
 }
 
 HUB_RELATIONS = {
@@ -65,6 +68,9 @@ ITEM_KIND_TO_NODE = {
     "commit": "Commit",
     "pr": "PullRequest",
     "ticket": "Ticket",
+    "chat": "Chat",
+    "thread": "ChatThread",
+    "message": "ChatMessage",
 }
 
 FORBIDDEN_ONTOLOGY_KEYS = {"same_as", "equivalent", "equals", "identify"}

@@ -1,12 +1,15 @@
 """``evo-agents kg serve``: an MCP server over stdio, bound to one project for its whole life.
 
 Every tool reads the latest ready build and only the visible set V_o: elements whose label flows to the
-session's sink. The store is opened read-only. When the highest label of the build (``Store.top_label``) flows to
-the sink, V_o is the whole build and no label is compared. Results carry ids, labels, status and evidence; free
+session's sink and whose audience is within the session's (``Session.audience``: none for kg serve, so an element with
+an audience never shows here). The store is opened read-only and reads as that audience (``Store.reader``), so hidden
+elements fill no limit, count or page. When the highest label of the build (``Store.top_label``) flows to the sink and
+its audiences (``Store.top_audience``) are within the session's, V_o is the whole build and no label is compared.
+Results carry ids, labels, status and evidence; free
 text from sources (integrity U) is never returned by these tools. Each result stays under about 9,000 tokens; the
-rest waits behind a handle for ``kg_more``. The structured result of a call that reveals elements names the project
-and the join of their labels, and so does the ``_meta`` of its text block (READ_META), which the PostToolUse hook
-adds to the session label (sessions.py).
+rest waits behind a handle for ``kg_more``, for a reader whose audience still holds what the result revealed. The
+structured result of a call that reveals elements names the project and the join of their labels, and so does the
+``_meta`` of its text block (READ_META), which the PostToolUse hook adds to the session label (sessions.py).
 
 The text is written to be read: a node is named by its readable id (``refs.readable``: ``repo:path``,
 ``repo:path::Symbol``, ``repo:path#section``) and its name only when the id does not already end with it;
@@ -42,7 +45,7 @@ from evo_agents.kg.budget import (
 )
 from evo_agents.kg.freshness import Links
 from evo_agents.kg.impact import Impact, coverage_line, diff_lines, path_candidates, seed_coverage
-from evo_agents.kg.policy import Label
+from evo_agents.kg.policy import Label, audience_below
 from evo_agents.kg.project import Project, ProjectError, resolve_project
 from evo_agents.kg.refs import UnknownArgument, arguments, named_by, path_like, readable, stored
 from evo_agents.kg.search import with_mentions
@@ -55,6 +58,7 @@ SUPPORTED_VERSIONS = ["2024-11-05", "2025-03-26", "2025-06-18", "2025-11-25", "2
 CAP_CHARS = 25_000  # about 9,000 tokens even for Vietnamese text, under Claude Code's 10,000 warning
 DATA_META = "evo-agents/data"  # true in a tools/call's params._meta: the result keeps its structuredContent
 HANDLE_TTL = 1800
+KIND_PROPS = {"ChatMessage": ("chat", "thread")}  # the props a line of that kind names too; never a text
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 HUB_DEGREE = 150
 IMPACT_RELS = (
@@ -88,11 +92,12 @@ class Session:
         self.project = project
         self.sink = sink
         self.error = error
-        self.handles: dict[str, tuple[float, deque]] = {}
+        self.handles: dict[str, tuple] = {}  # handle: (made, chunks left, audience its result revealed)
         self.policy = project.policy if project else None
         self.clearance = None
         self.sees_all = False  # this call's build holds no label above the clearance (``_store``)
         self.read: Label | None = None  # join of the labels the current call reveals
+        self.audience: frozenset[str] = frozenset()  # principals the reader is (evo_agents.kg.policy)
         if project is not None and error is None:
             if sink == "cli" and "cli" not in self.policy.sinks:
                 # The local operator already holds the corpus; the cli sink sees everything unless declared.
@@ -107,26 +112,32 @@ class Session:
     # -- visibility -----------------------------------------------------------------------------
 
     def visible(self, label: tuple) -> bool:
+        """Whether an element labelled ``label`` (level, location, integrity and, from the store, audience) shows."""
         if self.sees_all:
             return True
-        level, location, _integrity = label
-        return level <= self.clearance[0] and location <= self.clearance[1]
+        level, location, *_rest = label
+        audience = label[3] if len(label) > 3 else frozenset()
+        return level <= self.clearance[0] and location <= self.clearance[1] and audience_below(audience, self.audience)
 
     def describe(self, label: tuple) -> str:
         lvl = self.policy.level_name(label[0])
         loc = self.policy.location_name(label[1])
-        return f"{lvl}{'' if loc == 'any' else '/' + loc},{label[2]}"
+        audience = " audience " + " ".join(sorted(label[3])) if len(label) > 3 and label[3] else ""
+        return f"{lvl}{'' if loc == 'any' else '/' + loc},{label[2]}{audience}"
 
     def _saw(self, label: tuple) -> None:
-        seen = Label(label[0], label[1], label[2], frozenset({self.project.name}))
+        seen = Label.of(label, {self.project.name})
         self.read = seen if self.read is None else self.read.join(seen)
 
     def _store(self) -> tuple[Store, int]:
-        """The graph this call reads and its latest ready build. When the highest label of that build is within the
-        clearance, every element is visible, and ``visible`` answers so without comparing labels."""
+        """The graph this call reads, as the session's audience reads it, and its latest ready build. When the highest
+        label of that build is within the clearance and its audiences within the session's, every element is
+        visible, and ``visible`` answers so without comparing labels."""
         store, b = self._graph()
+        store.reader = self.audience
         top = store.top_label(b)
-        self.sees_all = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
+        within = top is not None and top[0] <= self.clearance[0] and top[1] <= self.clearance[1]
+        self.sees_all = within and audience_below(store.top_audience(b), self.audience)
         return store, b
 
     def _graph(self) -> tuple[Store, int]:
@@ -177,7 +188,7 @@ class Session:
         handle = uuid.uuid4().hex[:12]
         size = max(CAP_CHARS - 100, 1)  # room for kg_more's own note, or each chunk would be cut again
         chunks = deque(rest[i : i + size] for i in range(0, len(rest), size))
-        self.handles[handle] = (time.monotonic(), chunks)
+        self.handles[handle] = (time.monotonic(), chunks, self.read.audience if self.read else frozenset())
         note = f"\n[truncated: {len(rest)} more characters; call kg_more with handle {handle}]"
         return {
             "content": [{"type": "text", "text": head + note, **read}],
@@ -194,12 +205,13 @@ class Session:
     def _line(self, n: dict, shared: str | None = None) -> str:
         """One node as the text shows it: its readable id, its kind, its name unless the id ends with it, its status,
         its label unless it is ``shared`` (the one the result prints once), and the path when the id does not hold
-        it, the line of a symbol, the status and number of a plan step. Never its URI: kg_node gives that."""
+        it, the line of a symbol, the status and number of a plan step, the chat and thread of a chat message
+        (KIND_PROPS). Never its URI: kg_node gives that."""
         ref, props = readable(n["id"]), n["props"]
         head = f"[{ref}] {n['kind']}" + ("" if named_by(ref, n["name"]) else f" {n['name']!r}")
         extra = [
             f"{key}={props[key]}"
-            for key in ("path", "status", "number", "line")
+            for key in ("path", "status", "number", "line", *KIND_PROPS.get(n["kind"], ()))
             if props.get(key) not in (None, "") and not (key == "path" and str(props[key]) in ref)
         ]
         label = self.describe(n["label"])
@@ -218,11 +230,7 @@ class Session:
 
     def _node_json(self, n: dict) -> dict:
         self._saw(n["label"])  # every node in a structured result is revealed
-        label = {
-            "level": self.policy.level_name(n["label"][0]),
-            "location": self.policy.location_name(n["label"][1]),
-            "integrity": n["label"][2],
-        }
+        label = self.policy.describe(Label.of(n["label"]))  # level, location, integrity; audience when it has one
         return {
             "id": n["id"],
             "kind": n["kind"],
@@ -889,11 +897,14 @@ class Session:
 
     def tool_kg_more(self, handle: str) -> tuple[str, dict]:
         now = time.monotonic()
-        for h in [h for h, (t, _) in self.handles.items() if now - t > HANDLE_TTL]:
+        for h in [h for h, (t, *_) in self.handles.items() if now - t > HANDLE_TTL]:
             del self.handles[h]
         if handle not in self.handles:
             raise ToolError(f"unknown or expired handle {handle!r}")
-        _, chunks = self.handles[handle]
+        _, chunks, audience = self.handles[handle]
+        if not audience_below(audience, self.audience):  # the reader left a chat the result named since
+            del self.handles[handle]
+            raise ToolError(f"handle {handle!r} continues a result you may no longer read: call its tool again")
         text = chunks.popleft()
         if chunks:
             text += f"\n[more: call kg_more with handle {handle} again]"
