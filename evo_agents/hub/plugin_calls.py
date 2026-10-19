@@ -162,7 +162,8 @@ def load(ref: str):
 class CoreContext:
     """What a core plugin's Python gets beside the params: the plugin, the hub's engine (for its own tables) and
     config, the project the call is for (None for a job, which names its projects in the params), and for a tool the
-    agent of a run calls, that run (``X-Evo-Run`` on /mcp; None for any other caller)."""
+    agent of a run calls, that run (``X-Evo-Run`` on /mcp; None for any other caller). A tool also gets the sink of
+    the caller's session on /mcp (``X-Evo-Sink``), which its reads go through, and the hub's job queue."""
 
     plugin: str
     engine: AsyncEngine | None
@@ -170,6 +171,8 @@ class CoreContext:
     project: str | None = None
     project_id: int | None = None
     run_id: int | None = None
+    sink: str | None = None
+    jobs: object | None = None
 
 
 # Plugins in projects

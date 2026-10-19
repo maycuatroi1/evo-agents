@@ -91,6 +91,24 @@ AGENT_TYPE_TABLES = frozenset({"project_agent_types"})
 BUILDER_TABLES = frozenset({"builder_proposals"})
 # migration 0044: the chat of a plan's failures and the triage thread of each failed run
 TRIAGE_TABLES = frozenset({"triage_chats", "run_triage"})
+# migration 0046: the BA documents of the core plugin srs, their versions, items, codes, reviews and comments
+SRS_TABLES = frozenset(
+    {
+        "srs_documents",
+        "srs_versions",
+        "srs_texts",
+        "srs_items",
+        "srs_codes",
+        "srs_item_versions",
+        "srs_refs",
+        "srs_reviews",
+        "srs_comments",
+    }
+)
+# migration 0047: the tasks of the core plugin tasks, their sprints, people, links, history and comments
+TASKS_TABLES = frozenset(
+    {"tasks_sprints", "tasks_items", "tasks_people", "tasks_links", "tasks_events", "tasks_comments"}
+)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

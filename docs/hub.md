@@ -99,6 +99,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
+| srs | `/v1/x/srs/{project}/documents`, `.../documents/{slug}` with `/versions`, `/versions/{number}`, `/items/{ref}`, `/diff`, `/export`, `/comments`; `POST .../import`, `POST .../documents/{slug}/versions`, `.../versions/{number}/submit` and `/reviews`, `.../comments/{id}/resolve`: a project's BA documents (`docs/srs-plugin.md`) |
+| tasks | `/v1/x/tasks/{project}/settings`, `GET` and `POST .../tasks`, `GET` and `PATCH .../tasks/{ref}`, `POST .../tasks/{ref}/comments`, `GET` and `POST .../sprints`, `PATCH .../sprints/{name}`, `GET .../people`, `POST .../import`: a project's tasks (`docs/tasks-plugin.md`) |
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
@@ -449,7 +451,9 @@ Chat runs), at most three agents a message, the fourth and on refused in the thr
 on its project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile
 allows, online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs,
 the one with a checkout of more of the project's repos first; the person must be a writer on the profile's project. No
-such worker, and the hub answers in the thread why, worker by worker, with no run. The mention keeps the run it made
+such worker, and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that
+declares `chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project
+enabled the type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention keeps the run it made
 (`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the agent in its thread goes
 to the run of the session that is queued or held, in its inbox, and once that run ended done it wakes the session as a
 new run that goes on in it (`resume_of_run_id`), on the same worker and branch. Another person's mention starts a
@@ -1353,6 +1357,30 @@ The core plugin builder (`docs/plugins.md`, Builder) keeps what its agent propos
 proposed at, the run, chat and thread it came from, and once decided its state, `applied_version`, `error` or
 `rollback_version`) and the notice kind `builder_proposal`. Going back to 0042 deletes those notices and drops the
 table.
+
+The core plugins srs and tasks keep a project's BA documents and its tasks (`docs/srs-plugin.md`,
+`docs/tasks-plugin.md`). Schema 0046 adds the nine tables `srs_*` and schema 0047 the six tables `tasks_*`, and going
+back to 0045 drops them. Their commands are clients of their routes under `/v1/x/srs/` and `/v1/x/tasks/`:
+
+```sh
+evo-agents hub plugin enable srs --project evo-agents
+evo-agents hub srs import order-srs.md --project evo-agents --dry-run   # the preview: items, codes, problems
+evo-agents hub srs import order-srs.md --project evo-agents --slug orders
+evo-agents hub srs list --project evo-agents
+evo-agents hub srs show orders --project evo-agents --item "UC ORD-1"
+evo-agents hub srs submit orders 1 --project evo-agents
+evo-agents hub srs approve orders 1 --project evo-agents                # by a writer who wrote no version since
+evo-agents hub srs export orders --project evo-agents --output orders.md
+evo-agents hub plugin enable tasks --project evo-agents                 # asks for plans:read
+evo-agents hub task import tasks.json --project evo-agents --dry-run    # evo-tasks/1 JSON, once
+evo-agents hub task create --project evo-agents --title "Place an order" --use-case "UC ORD-1" --step rollout#2
+evo-agents hub task list --project evo-agents --mine
+evo-agents hub task edit T-1 --project evo-agents --status done
+evo-agents hub task show T-1 --project evo-agents
+```
+
+The agent type `ba` of srs adds @ba, which drafts and reviews documents for the project's writers on the workers of
+the member the project enabled it under (`docs/srs-plugin.md`, @ba).
 
 A plugin's config is checked against the JSON Schema of its installed version and comes in layers, lowest first: the
 schema's defaults, the hub's own layer (instance, written by hub admins), the project's, an agent profile's of the

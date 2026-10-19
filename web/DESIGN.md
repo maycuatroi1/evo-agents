@@ -258,6 +258,9 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
 | Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
 | A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
+| SRS, a project's BA documents; Import Markdown; a version's review; a document's comments; an item's page | `FileText`; `Upload`; `ClipboardCheck`; `MessageSquareText`; `ArrowUpRight` |
+| An SRS item's kind: section, use case, business rule, screen, NFR, common rule, glossary, approval page, revision history | `Heading`, `Route`, `Scale`, `AppWindow`, `Gauge`, `BookCheck`, `BookA`, `Signature`, `History` |
+| An SRS version: draft, in review, approved, superseded; an item added, changed, removed, moved | `CircleDashed`, `Eye`, `CircleCheck`, `CircleMinus`; `Plus`, `PencilLine`, `Minus`, `MoveRight` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
@@ -1304,6 +1307,77 @@ Shared pieces built on them:
     session and `X-Evo-Plugin: <plugin>`, which the hub checks against the plugin's grant too, and refuses the rest with
     `not_granted` before the hub is asked; a read that finds the plugin off takes its page away. It posts the viewer's
     theme, so a page can follow light and dark. A plugin's page draws itself: this file binds the frame around it, not what it holds.
+- `components/srs`, the native pages of the core plugin srs (plan srs-tasks-plugins; docs/plugins.md, Core plugins), under
+  `app/(app)/p/[project]/x/srs/` with a layout that calls `requirePlugin("srs", project, "documents")`, so a project
+  that has not enabled it has neither the SRS menu item (its manifest's page `documents`) nor the pages, as the API
+  answers 404. Its words are the `srs` namespace of both message files. The documents (`/documents`) are one `DataCard`
+  table: title over slug, kind, the approved and the latest version as a `v8` chip beside its state, who created it;
+  the tabs Documents and Import (writers) sit under the head, with Settings (the plugin's page in the project) and
+  Import Markdown in the actions. A document's pages share `DocumentHead`: the title, the slug as a chip, the kind, one
+  line with template, visibility and the approved, in-review and latest versions, Compare and Export (a `.md` the
+  browser saves), then the tabs Read, Versions, Review vN and Comments with the open threads counted. Read
+  (`/documents/{slug}?v=&s=&edit=`) shows the approved version unless a version is picked (a menu of links, not a
+  select), its headings as a tree in a 240 px column from lg (a dot in `review-solid` marks what changed since the
+  approved version; a disclosure on narrower screens), the open item in a card drawn by its kind (a use case as facts,
+  its Activity flow as a table whose codes link, its business rules and screens; a table row as its cells), and the
+  version, its checks and the open threads in an 18 rem column from xl. A writer edits an item of the latest version in
+  place, which saves the next version as a draft; a 409 keeps the editor open with the other writer's text above it,
+  to merge by hand and save on the newer version. A draft carries a banner with Submit for review, which says the
+  problems that refuse it. An item's page (`/items/{code}`) heads with the code as a chip before the h1, the kind and
+  the version's state, a `review` banner when a newer version changes it, its threads, and the Traceability card read
+  from the knowledge graph (tasks, plan steps, commits and pull requests, tests; the build it read, or why there is
+  none). The review (`/versions/{n}`) shows the approval slots of the policy in the effective config, the reviewer's
+  form (Approve or Request changes, which needs a note) or why the visitor cannot review (a reader, an author of a
+  version since the approved one, admins too), what approving approves, the checks and the review history. Compare
+  (`/compare?from=&to=`) counts the items that changed in one `MetricStrip` and draws each item's lines as a plan's
+  diff does, unified or side by side from md. Import (`/x/srs/import`, a page without a menu item) previews the hub's
+  dry run (counts, problems with their lines, what a next version adds, changes and drops, the outline) before Import,
+  which a problem in a code refuses. Readers see a note that they only read, and no control that writes.
+  An item's page offers Create task (a writer, while the project shows the plugin tasks), which opens the form of a new
+  task with the item's code as its link, and the Traceability card opens each task's page (the graph's Ticket node
+  while tasks is off). The tabs (`data/tab-nav.tsx`) and the banners (`feedback/banner.tsx`) are shared parts, since
+  the Tasks pages draw the same.
+- `components/tasks`, the native pages of the core plugin tasks (plan srs-tasks-plugins; docs/plugins.md, Core plugins),
+  under `app/(app)/p/[project]/x/tasks/` with a layout that calls `requirePlugin("tasks", project, "board")`: Tasks in
+  the menu (`Kanban`) is the manifest's page `board`; `backlog`, `mine` and `import` have no menu item and are the tabs
+  Board, Backlog, My work and Import (writers) under each head. Its words are the `tasks` namespace of both message
+  files; what the SRS and Tasks pages link across lives in `lib/core-plugin-links.ts`, since neither feature folder
+  imports the other. A status is drawn by its group whatever the project names it (`badges.tsx`): to do neutral
+  (`CircleDashed`), doing cobalt (`CircleDot`, as a plan step at work, without the pulse), in review violet (`Eye`), done
+  green, cancelled outline, a status the config no longer lists a question mark; priority is a tag (urgent in
+  `attention`, the one that asks for a person now; high, medium and low neutral with an arrow); a sprint's state is a
+  pill (active green `Play`, planned neutral, closed outline). The board (`/board`, `?sprint=` or `?backlog=1`; the
+  active sprint, else the next planned one, else the tasks of no sprint) heads with the sprint's name, its state, its
+  days and goal; the Sprint picker (active first, planned by start, closed newest first, No sprint) navigates, and Role,
+  SRS item (the codes the tasks link) and Only mine filter in place (`ToolbarFilters`, the phone's sheet), with the
+  count said in a polite live region. The columns are the config's statuses but the cancelled ones (counted under the
+  board, with a link to the backlog), in a focusable region that scrolls sideways on its own, columns of at least
+  13.5 rem, 85 % wide and snapping on a phone; a column shows 12 cards (6 on a phone) before Show all. A card is the
+  ref in mono, the type's icon, the priority tag and the assignees' initials, its title linking to its page (three lines
+  at most), the codes it implements (three, then `+2`), its plan steps done (`1/2`, green once all are), its BA, QA and
+  Dev and its due date (red with Overdue once passed on an open task); a writer's card has its Status and Assignee
+  menus, which are the way by keyboard and touch, and drags to another column (the column takes `surface-selected` in a
+  `brand` edge while it would take the drop). Either moves the card at once in every list, asks the hub, says what
+  moved in a toast, and puts it back with the hub's reason when refused (`useTaskEdit`). The backlog (`/backlog`) is a
+  section per sprint (active, planned by start), No sprint, then the closed sprints folded in a disclosure, each a
+  `DataTable` (ref and title, status, priority, assignees, links, due, and a writer's Sprint menu; a list of rows under
+  768 px) with its state, days, count and Open its board; New sprint (a dialog: name, goal, days, Start it now while none
+  is active), Start sprint on a planned one while none is active and Close sprint on the active one (a dialog that
+  moves its unfinished tasks to a planned sprint or out of every sprint). My work (`/mine`) is the visitor's tasks,
+  open, then done or cancelled, with a My part column. A task's page (`/board/{ref}`) heads with its ref chip before
+  the h1, its status, type and priority, a line with who made it and when, its sprint and parent as links and the
+  source an import took it from, and a writer's Status menu; then Description (Markdown, edited with the title in
+  place), Links (use cases and requirements opening their SRS page, Retired once dropped; plan steps with their status
+  in the plan and latest runs; runs with their state; pull requests by `owner/repo#88`, opening the forge; a link to
+  what the visitor may not read says only that it is there; a writer removes each and adds several in one line:
+  codes, `plan#step`, `#431`, URLs), Activity (who changed what, the hub for a plan step turning done with its cause)
+  and Comments, and from lg a 20 rem Details card (type, priority, sprint, due date, parent, the assignees and the BA,
+  QA and Dev as chips with remove buttons and an Add someone menu of the project's members, visibility), each saved as
+  it changes. A new task (`/board/new`, `?link=` from an SRS item, `?sprint=` from the board) is one form: title, type,
+  status, priority, sprint, due date, assignee, description and links. Import (`/import`) reads evo-tasks/1 JSON
+  (pasted or from a file), says when it is not JSON, previews the hub's dry run (counts, the tasks imported before and
+  skipped, problems with their task's key) and imports once no error stands, then opens the backlog. Readers see a note
+  that they only read, and no control that writes; a card does not drag for them.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are

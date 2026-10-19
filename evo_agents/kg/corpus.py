@@ -286,6 +286,12 @@ class Corpus:
             query += " WHERE " + " AND ".join(clauses)
         return [self._row(r) for r in self.db.execute(query + " ORDER BY item_id", params)]
 
+    def sources(self) -> list[str]:
+        """The sources that hold at least one live item, by id."""
+        return [
+            row[0] for row in self.db.execute("SELECT DISTINCT source FROM items WHERE deleted = 0 ORDER BY source")
+        ]
+
     def alive_in_scope(self, scope: str) -> list[ItemRecord]:
         source = source_of(scope)
         return [r for r in self.items(source) if r.item_id.startswith(scope)]

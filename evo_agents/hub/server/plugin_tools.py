@@ -104,8 +104,11 @@ def _error(message: str) -> dict:
     return {"content": [{"type": "text", "text": f"error: {message}"}], "isError": True}
 
 
-async def answer(state, user: Principal, project: str | None, name: str, arguments: dict) -> dict:
-    """The result of a call to the plugin's tool ``name``, as MCP's tools/call gives it."""
+async def answer(
+    state, user: Principal, project: str | None, name: str, arguments: dict, sink: str | None = None
+) -> dict:
+    """The result of a call to the plugin's tool ``name``, as MCP's tools/call gives it; ``sink`` is the session's,
+    which a core plugin's tool reads through (``CoreContext.sink``)."""
     plugin, tool = split(name)
     role, found = await visible(state, user, project)
     hit = next(((row, item) for row, item in found if row.name == plugin and item["name"] == tool), None)
@@ -126,7 +129,8 @@ async def answer(state, user: Principal, project: str | None, name: str, argumen
         return _error(f"bad arguments for {name}: {shown}")
     params = {"tool": tool, "arguments": arguments, "caller": {"login": user.login, "project": project, "role": role}}
     run_id = user.scope.run_id if user.scope is not None else None
-    context = CoreContext(plugin, state.engine, state.config, project, row.project_id, run_id)
+    jobs = getattr(state, "jobs", None)
+    context = CoreContext(plugin, state.engine, state.config, project, row.project_id, run_id, sink, jobs)
     try:
         result = await call(state.plugin_host, plugin, row.tier, "mcp_tools", item, params, context, TOOL_TIMEOUT)
     except PluginHostUnavailable as exc:

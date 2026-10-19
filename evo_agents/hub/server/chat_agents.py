@@ -151,7 +151,7 @@ class AgentRun:
     kind: str
     project_id: int
     profile: Profile
-    principal: Principal  # the dispatcher, with the worker's token
+    principal: Principal  # the dispatcher (a chat run: the origin of the chain), with the worker's token
     via: str
     hop: int
     branch: str | None
@@ -190,7 +190,11 @@ async def agent_run(conn: AsyncConnection, user: Principal, run_id: int) -> Agen
         raise HTTPException(
             409, f"run {run_id} runs under an agent of another project, whose chats do not take this project's work"
         )
-    principal = Principal(row.dispatched_by, row.login, False, user.token_id, user.kind, "")
+    person, login = row.dispatched_by, row.login
+    found = await chat_run(conn, run_id) if row.kind == "chat" else None
+    if found is not None:  # the origin of the chain, also when the run went to the workers of its type's run_as
+        person, login = found.dispatcher_id, found.dispatcher
+    principal = Principal(person, login, False, user.token_id, user.kind, "")
     return AgentRun(
         run_id,
         row.kind,
