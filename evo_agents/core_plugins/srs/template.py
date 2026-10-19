@@ -16,6 +16,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 
 from evo_agents.core_plugins.srs import CODED_KINDS, TEMPLATES
+from evo_agents.hub.tables_srs import code_key
 
 CODE_PATTERNS = {
     "use_case": r"^UC [A-Z]+-\d+$",
@@ -46,11 +47,6 @@ UNNUMBERED = re.compile(r"^\d+(?:\.\d+)*\.?\s+")
 
 class TemplateError(ValueError):
     """A template or a pattern of the config the hub cannot use."""
-
-
-def code_key(code: str) -> str:
-    """The form two codes are compared in: whitespace runs as one space, case folded."""
-    return " ".join(code.split()).casefold()
 
 
 def tidy(code: str) -> str:

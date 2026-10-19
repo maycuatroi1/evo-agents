@@ -6917,6 +6917,583 @@
         "schema": "SrsVersion"
       }
     },
+    "hub task create": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--type"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        {
+          "flags": [
+            "--due"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--sprint"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--parent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--assignee"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--role"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--use-case"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--pull"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "ref",
+          "type",
+          "title",
+          "status",
+          "status_group",
+          "priority",
+          "due_on",
+          "sprint",
+          "parent",
+          "assignees",
+          "roles",
+          "steps_done",
+          "steps_total",
+          "label",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "description_md",
+          "external_ref",
+          "links",
+          "events",
+          "comments"
+        ],
+        "schema": "TasksItemDetail"
+      }
+    },
+    "hub task edit": {
+      "positionals": [
+        {
+          "name": "ref",
+          "metavar": "REF",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--description"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--type"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--priority"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "urgent",
+            "high",
+            "medium",
+            "low"
+          ]
+        },
+        {
+          "flags": [
+            "--due"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--sprint"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--parent"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--assignee"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--role"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--use-case"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--step"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--run"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--pull"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--no-due"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-sprint"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-parent"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-assignee"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--unlink"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "ref",
+          "type",
+          "title",
+          "status",
+          "status_group",
+          "priority",
+          "due_on",
+          "sprint",
+          "parent",
+          "assignees",
+          "roles",
+          "steps_done",
+          "steps_total",
+          "label",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "description_md",
+          "external_ref",
+          "links",
+          "events",
+          "comments"
+        ],
+        "schema": "TasksItemDetail"
+      }
+    },
+    "hub task import": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "dry_run",
+          "tasks",
+          "sprints",
+          "links",
+          "created",
+          "skipped",
+          "problems"
+        ],
+        "schema": "TasksImportResult"
+      }
+    },
+    "hub task list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--mine"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--sprint"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--backlog"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--status"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--assignee"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "number",
+          "ref",
+          "type",
+          "title",
+          "status",
+          "status_group",
+          "priority",
+          "due_on",
+          "sprint",
+          "parent",
+          "assignees",
+          "roles",
+          "steps_done",
+          "steps_total",
+          "label",
+          "created_by",
+          "created_at",
+          "updated_at"
+        ],
+        "schema": "TasksItem"
+      }
+    },
+    "hub task show": {
+      "positionals": [
+        {
+          "name": "ref",
+          "metavar": "REF",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "ref",
+          "type",
+          "title",
+          "status",
+          "status_group",
+          "priority",
+          "due_on",
+          "sprint",
+          "parent",
+          "assignees",
+          "roles",
+          "steps_done",
+          "steps_total",
+          "label",
+          "created_by",
+          "created_at",
+          "updated_at",
+          "description_md",
+          "external_ref",
+          "links",
+          "events",
+          "comments"
+        ],
+        "schema": "TasksItemDetail"
+      }
+    },
     "hub token list": {
       "positionals": [],
       "options": [
@@ -24653,6 +25230,1247 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SrsComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/settings": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Settings",
+          "description": "The plugin's config in the project: the prefix, the statuses with their groups, the types.",
+          "operationId": "show_settings_v1_x_tasks__project__settings_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksSettings"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/tasks": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Tasks",
+          "description": "The tasks of the project the caller sees, by number, that the filters keep.",
+          "operationId": "list_tasks_v1_x_tasks__project__tasks_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "status",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 40
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a status key",
+                "title": "Status"
+              },
+              "description": "a status key"
+            },
+            {
+              "name": "sprint",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a sprint's name",
+                "title": "Sprint"
+              },
+              "description": "a sprint's name"
+            },
+            {
+              "name": "backlog",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "the tasks of no sprint",
+                "default": false,
+                "title": "Backlog"
+              },
+              "description": "the tasks of no sprint"
+            },
+            {
+              "name": "mine",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "the tasks the caller stands in a slot of",
+                "default": false,
+                "title": "Mine"
+              },
+              "description": "the tasks the caller stands in a slot of"
+            },
+            {
+              "name": "assignee",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 100
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "an assignee's login",
+                "title": "Assignee"
+              },
+              "description": "an assignee's login"
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 2000,
+                "minimum": 1,
+                "default": 500,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TasksItem"
+                    },
+                    "title": "Response List Tasks V1 X Tasks  Project  Tasks Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Create Task",
+          "description": "A new task, with its people and links.",
+          "operationId": "create_task_v1_x_tasks__project__tasks_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksItemIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksItemDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/tasks/{ref}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Task",
+          "description": "A task whole: its links as they are now (a plan step's status read from the plan), history and comments.",
+          "operationId": "show_task_v1_x_tasks__project__tasks__ref__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the task's number, as T-42 or 42",
+                "title": "Ref"
+              },
+              "description": "the task's number, as T-42 or 42"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksItemDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "patch": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Edit Task",
+          "description": "Change a task: its fields, its people, its links.",
+          "operationId": "edit_task_v1_x_tasks__project__tasks__ref__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the task's number, as T-42 or 42",
+                "title": "Ref"
+              },
+              "description": "the task's number, as T-42 or 42"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksItemEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksItemDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/sprints": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Sprints",
+          "description": "The sprints of the project, the newest first.",
+          "operationId": "list_sprints_v1_x_tasks__project__sprints_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TasksSprint"
+                    },
+                    "title": "Response List Sprints V1 X Tasks  Project  Sprints Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Create Sprint",
+          "description": "A new sprint, planned or active (one sprint of a project is active at a time).",
+          "operationId": "create_sprint_v1_x_tasks__project__sprints_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksSprintIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksSprint"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/tasks/{ref}/comments": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Comment",
+          "description": "Comment on a task.",
+          "operationId": "add_comment_v1_x_tasks__project__tasks__ref__comments_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 20,
+                "description": "the task's number, as T-42 or 42",
+                "title": "Ref"
+              },
+              "description": "the task's number, as T-42 or 42"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksCommentIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/sprints/{name}": {
+        "patch": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Edit Sprint",
+          "description": "Change a sprint; closing it moves its unfinished tasks to ``move_to``, or to no sprint.",
+          "operationId": "edit_sprint_v1_x_tasks__project__sprints__name__patch",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "name",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "title": "Name"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksSprintEdit"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksSprint"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/import": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Import Tasks",
+          "description": "Import evo-tasks/1 JSON once: its sprints and tasks, linked to SRS items by code, to plan steps and pull\nrequests; ``dry_run`` reads it against the project and imports nothing.",
+          "operationId": "import_tasks_v1_x_tasks__project__import_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TasksImport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/TasksImportResult"
                   }
                 }
               }
@@ -54335,6 +56153,1893 @@
             "daily_usd"
           ],
           "title": "TaskQueued"
+        },
+        "TasksComment": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "author",
+            "body",
+            "created_at"
+          ],
+          "title": "TasksComment"
+        },
+        "TasksCommentIn": {
+          "properties": {
+            "body": {
+              "type": "string",
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Body"
+            }
+          },
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "title": "TasksCommentIn"
+        },
+        "TasksEvent": {
+          "properties": {
+            "actor": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Actor",
+              "description": "who changed it; None for the hub"
+            },
+            "field": {
+              "type": "string",
+              "title": "Field"
+            },
+            "from_value": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "From Value"
+            },
+            "to_value": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Value"
+            },
+            "cause": {
+              "type": "string",
+              "title": "Cause"
+            },
+            "at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "actor",
+            "field",
+            "from_value",
+            "to_value",
+            "cause",
+            "at"
+          ],
+          "title": "TasksEvent"
+        },
+        "TasksFile": {
+          "properties": {
+            "format": {
+              "type": "string",
+              "const": "evo-tasks/1",
+              "title": "Format"
+            },
+            "people": {
+              "items": {
+                "$ref": "#/components/schemas/TasksFilePerson"
+              },
+              "type": "array",
+              "maxItems": 5000,
+              "title": "People"
+            },
+            "status_map": {
+              "additionalProperties": {
+                "type": "string"
+              },
+              "type": "object",
+              "title": "Status Map",
+              "description": "a status of the source -> a status key"
+            },
+            "sprints": {
+              "items": {
+                "$ref": "#/components/schemas/TasksFileSprint"
+              },
+              "type": "array",
+              "maxItems": 500,
+              "title": "Sprints"
+            },
+            "tasks": {
+              "items": {
+                "$ref": "#/components/schemas/TasksFileTask"
+              },
+              "type": "array",
+              "maxItems": 5000,
+              "title": "Tasks"
+            }
+          },
+          "type": "object",
+          "required": [
+            "format",
+            "tasks"
+          ],
+          "title": "TasksFile",
+          "description": "Tasks to import once, in the format evo-tasks/1."
+        },
+        "TasksFileExternal": {
+          "properties": {
+            "system": {
+              "type": "string",
+              "maxLength": 50,
+              "minLength": 1,
+              "title": "System"
+            },
+            "id": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Id"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url"
+            }
+          },
+          "type": "object",
+          "required": [
+            "system",
+            "id"
+          ],
+          "title": "TasksFileExternal"
+        },
+        "TasksFilePerson": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Key"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 200,
+              "title": "Name",
+              "default": ""
+            },
+            "github": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Github",
+              "description": "the GitHub login; none leaves the person's slots empty"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key"
+          ],
+          "title": "TasksFilePerson"
+        },
+        "TasksFileRoles": {
+          "properties": {
+            "ba": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Ba"
+            },
+            "qa": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Qa"
+            },
+            "dev": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Dev"
+            }
+          },
+          "type": "object",
+          "title": "TasksFileRoles"
+        },
+        "TasksFileSprint": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Key"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Name"
+            },
+            "goal": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Goal",
+              "default": ""
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "planned",
+                "active",
+                "closed"
+              ],
+              "title": "State",
+              "default": "planned"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "name"
+          ],
+          "title": "TasksFileSprint"
+        },
+        "TasksFileStep": {
+          "properties": {
+            "plan": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Plan"
+            },
+            "step": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Step"
+            }
+          },
+          "type": "object",
+          "required": [
+            "plan",
+            "step"
+          ],
+          "title": "TasksFileStep"
+        },
+        "TasksFileTask": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Key"
+            },
+            "external": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/TasksFileExternal"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type",
+              "description": "one of the project's types; its first when left out"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "description_md": {
+              "type": "string",
+              "maxLength": 100000,
+              "title": "Description Md",
+              "default": ""
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status",
+              "description": "a status of the source, mapped by status_map"
+            },
+            "priority": {
+              "type": "string",
+              "maxLength": 20,
+              "title": "Priority",
+              "default": "medium"
+            },
+            "due_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due On"
+            },
+            "done_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Done On"
+            },
+            "sprint": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sprint",
+              "description": "the key of a sprint of the file"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the key of another task of the file"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Assignees",
+              "description": "keys of people of the file"
+            },
+            "roles": {
+              "$ref": "#/components/schemas/TasksFileRoles"
+            },
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Use Cases",
+              "description": "codes of SRS items"
+            },
+            "plan_steps": {
+              "items": {
+                "$ref": "#/components/schemas/TasksFileStep"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Plan Steps"
+            },
+            "pulls": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Pulls"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "title"
+          ],
+          "title": "TasksFileTask"
+        },
+        "TasksImport": {
+          "properties": {
+            "data": {
+              "$ref": "#/components/schemas/TasksFile",
+              "description": "the file, in the format evo-tasks/1"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "description": "read the file against the project and import nothing",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "data"
+          ],
+          "title": "TasksImport"
+        },
+        "TasksImportProblem": {
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "error",
+                "warning"
+              ],
+              "title": "Level",
+              "description": "an error stops the import; a warning says what it leaves out"
+            },
+            "task": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Task",
+              "description": "the key of the file's task it is about"
+            },
+            "message": {
+              "type": "string",
+              "title": "Message"
+            }
+          },
+          "type": "object",
+          "required": [
+            "level",
+            "task",
+            "message"
+          ],
+          "title": "TasksImportProblem"
+        },
+        "TasksImportResult": {
+          "properties": {
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run"
+            },
+            "tasks": {
+              "type": "integer",
+              "title": "Tasks",
+              "description": "how many tasks it makes, or would make"
+            },
+            "sprints": {
+              "type": "integer",
+              "title": "Sprints",
+              "description": "how many sprints it makes, or would make"
+            },
+            "links": {
+              "type": "integer",
+              "title": "Links",
+              "description": "how many links it makes, or would make"
+            },
+            "created": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Created",
+              "description": "the refs of the tasks made; none for a dry run"
+            },
+            "skipped": {
+              "items": {
+                "$ref": "#/components/schemas/TasksImportSkip"
+              },
+              "type": "array",
+              "title": "Skipped"
+            },
+            "problems": {
+              "items": {
+                "$ref": "#/components/schemas/TasksImportProblem"
+              },
+              "type": "array",
+              "title": "Problems"
+            }
+          },
+          "type": "object",
+          "required": [
+            "dry_run",
+            "tasks",
+            "sprints",
+            "links",
+            "created",
+            "skipped",
+            "problems"
+          ],
+          "title": "TasksImportResult"
+        },
+        "TasksImportSkip": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "task": {
+              "type": "string",
+              "title": "Task",
+              "description": "the ref of the task imported before from the same source"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "task"
+          ],
+          "title": "TasksImportSkip"
+        },
+        "TasksItem": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "the number as shown, after the config's prefix: T-42"
+            },
+            "type": {
+              "type": "string",
+              "title": "Type"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "status_group": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "todo",
+                    "doing",
+                    "review",
+                    "done",
+                    "cancelled"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Group",
+              "description": "None for a status the config no longer lists"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority"
+            },
+            "due_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due On"
+            },
+            "sprint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sprint"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the ref of the task it belongs to"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assignees"
+            },
+            "roles": {
+              "$ref": "#/components/schemas/TasksRoles"
+            },
+            "steps_done": {
+              "type": "integer",
+              "title": "Steps Done",
+              "description": "how many of the plan steps it links are done"
+            },
+            "steps_total": {
+              "type": "integer",
+              "title": "Steps Total",
+              "description": "how many plan steps it links that the caller sees"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label",
+              "description": "the label the task carries"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "ref",
+            "type",
+            "title",
+            "status",
+            "status_group",
+            "priority",
+            "due_on",
+            "sprint",
+            "parent",
+            "assignees",
+            "roles",
+            "steps_done",
+            "steps_total",
+            "label",
+            "created_by",
+            "created_at",
+            "updated_at"
+          ],
+          "title": "TasksItem",
+          "description": "A task of a project, as a list or a board shows it."
+        },
+        "TasksItemDetail": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "ref": {
+              "type": "string",
+              "title": "Ref",
+              "description": "the number as shown, after the config's prefix: T-42"
+            },
+            "type": {
+              "type": "string",
+              "title": "Type"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "status": {
+              "type": "string",
+              "title": "Status"
+            },
+            "status_group": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "todo",
+                    "doing",
+                    "review",
+                    "done",
+                    "cancelled"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status Group",
+              "description": "None for a status the config no longer lists"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority"
+            },
+            "due_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due On"
+            },
+            "sprint": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sprint"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the ref of the task it belongs to"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Assignees"
+            },
+            "roles": {
+              "$ref": "#/components/schemas/TasksRoles"
+            },
+            "steps_done": {
+              "type": "integer",
+              "title": "Steps Done",
+              "description": "how many of the plan steps it links are done"
+            },
+            "steps_total": {
+              "type": "integer",
+              "title": "Steps Total",
+              "description": "how many plan steps it links that the caller sees"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label",
+              "description": "the label the task carries"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "updated_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Updated At"
+            },
+            "description_md": {
+              "type": "string",
+              "title": "Description Md"
+            },
+            "external_ref": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "External Ref",
+              "description": "where an import took it from, and what it named it could not link"
+            },
+            "links": {
+              "items": {
+                "$ref": "#/components/schemas/TasksLink"
+              },
+              "type": "array",
+              "title": "Links"
+            },
+            "events": {
+              "items": {
+                "$ref": "#/components/schemas/TasksEvent"
+              },
+              "type": "array",
+              "title": "Events"
+            },
+            "comments": {
+              "items": {
+                "$ref": "#/components/schemas/TasksComment"
+              },
+              "type": "array",
+              "title": "Comments"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "ref",
+            "type",
+            "title",
+            "status",
+            "status_group",
+            "priority",
+            "due_on",
+            "sprint",
+            "parent",
+            "assignees",
+            "roles",
+            "steps_done",
+            "steps_total",
+            "label",
+            "created_by",
+            "created_at",
+            "updated_at",
+            "description_md",
+            "external_ref",
+            "links",
+            "events",
+            "comments"
+          ],
+          "title": "TasksItemDetail",
+          "description": "A task whole: its description, links, history and comments."
+        },
+        "TasksItemEdit": {
+          "properties": {
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "description_md": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description Md"
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "priority": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "urgent",
+                    "high",
+                    "medium",
+                    "low"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Priority"
+            },
+            "due_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due On"
+            },
+            "sprint": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sprint"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent"
+            },
+            "assignees": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Assignees"
+            },
+            "roles": {
+              "$ref": "#/components/schemas/TasksRolesIn"
+            },
+            "links": {
+              "$ref": "#/components/schemas/TasksLinksIn"
+            },
+            "unlink": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Unlink",
+              "description": "ids of links to drop"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "TasksItemEdit",
+          "description": "A change of a task: the fields given (null clears due_on, sprint and parent), the assignees when given (the\nwhole list), the roles given, links to add and link ids to drop."
+        },
+        "TasksItemIn": {
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 300,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "description_md": {
+              "type": "string",
+              "maxLength": 100000,
+              "title": "Description Md",
+              "default": ""
+            },
+            "type": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Type"
+            },
+            "status": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 40
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Status"
+            },
+            "priority": {
+              "type": "string",
+              "enum": [
+                "urgent",
+                "high",
+                "medium",
+                "low"
+              ],
+              "title": "Priority",
+              "default": "medium"
+            },
+            "due_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Due On"
+            },
+            "sprint": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sprint"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the ref of the task it belongs to"
+            },
+            "assignees": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Assignees"
+            },
+            "roles": {
+              "$ref": "#/components/schemas/TasksRolesIn"
+            },
+            "links": {
+              "$ref": "#/components/schemas/TasksLinksIn"
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LabelIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a label above the project's default; an admin's to give"
+            }
+          },
+          "type": "object",
+          "required": [
+            "title"
+          ],
+          "title": "TasksItemIn",
+          "description": "A new task; its type and status are the config's first when left out."
+        },
+        "TasksLink": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "srs_item",
+                "plan_step",
+                "run",
+                "pull"
+              ],
+              "title": "Kind"
+            },
+            "hidden": {
+              "type": "boolean",
+              "title": "Hidden",
+              "description": "its target is above what the caller may read: nothing of it is shown"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code",
+              "description": "srs_item: the item's code now"
+            },
+            "item_kind": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Kind",
+              "description": "srs_item: use_case, business_rule, screen, nfr or cbr"
+            },
+            "item_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Title",
+              "description": "srs_item: its title in the latest version that has it"
+            },
+            "document": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document",
+              "description": "srs_item: the slug of its document"
+            },
+            "retired": {
+              "type": "boolean",
+              "title": "Retired",
+              "description": "srs_item: dropped from its document since"
+            },
+            "plan_id": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Plan Id"
+            },
+            "step": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step"
+            },
+            "step_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Title"
+            },
+            "step_status": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Step Status",
+              "description": "plan_step: the step's status in the plan now"
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/TasksRun"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "plan_step: its latest runs, the newest first"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "run_kind": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Kind"
+            },
+            "run_state": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run State"
+            },
+            "url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Url",
+              "description": "pull: the pull or merge request"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "kind",
+            "hidden",
+            "code",
+            "item_kind",
+            "item_title",
+            "document",
+            "retired",
+            "plan_id",
+            "step",
+            "step_title",
+            "step_status",
+            "runs",
+            "run_id",
+            "run_kind",
+            "run_state",
+            "url",
+            "created_by",
+            "created_at"
+          ],
+          "title": "TasksLink",
+          "description": "What a task links to, as it is now; only the fields of its kind are set."
+        },
+        "TasksLinksIn": {
+          "properties": {
+            "use_cases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Use Cases",
+              "description": "codes of SRS items"
+            },
+            "steps": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Steps",
+              "description": "plan#step, as order-cancel#2"
+            },
+            "runs": {
+              "items": {
+                "type": "integer"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Runs"
+            },
+            "pulls": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "maxItems": 100,
+              "title": "Pulls",
+              "description": "URLs of pull or merge requests"
+            }
+          },
+          "type": "object",
+          "title": "TasksLinksIn",
+          "description": "Links to add."
+        },
+        "TasksRoles": {
+          "properties": {
+            "ba": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Ba"
+            },
+            "qa": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Qa"
+            },
+            "dev": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Dev"
+            }
+          },
+          "type": "object",
+          "required": [
+            "ba",
+            "qa",
+            "dev"
+          ],
+          "title": "TasksRoles"
+        },
+        "TasksRolesIn": {
+          "properties": {
+            "ba": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ba"
+            },
+            "qa": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Qa"
+            },
+            "dev": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Dev"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "TasksRolesIn",
+          "description": "The people of each role given, each list whole; a role left out stays as it is."
+        },
+        "TasksRun": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "state"
+          ],
+          "title": "TasksRun"
+        },
+        "TasksSettings": {
+          "properties": {
+            "prefix": {
+              "type": "string",
+              "title": "Prefix",
+              "description": "what a task's number is shown after, as T in T-42"
+            },
+            "statuses": {
+              "items": {
+                "$ref": "#/components/schemas/TasksStatus"
+              },
+              "type": "array",
+              "title": "Statuses",
+              "description": "in the order of the board; a new task takes the first"
+            },
+            "types": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Types",
+              "description": "a new task takes the first"
+            },
+            "on_steps_done": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "On Steps Done",
+              "description": "the status a task moves to once every plan step it links is done"
+            },
+            "srs": {
+              "type": "boolean",
+              "title": "Srs",
+              "description": "the project enables the plugin srs, so a task links to its items"
+            }
+          },
+          "type": "object",
+          "required": [
+            "prefix",
+            "statuses",
+            "types",
+            "on_steps_done",
+            "srs"
+          ],
+          "title": "TasksSettings",
+          "description": "The plugin's config in the project, as a task is written against it."
+        },
+        "TasksSprint": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "goal": {
+              "type": "string",
+              "title": "Goal"
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "planned",
+                "active",
+                "closed"
+              ],
+              "title": "State"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "closed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Closed At"
+            },
+            "tasks": {
+              "type": "integer",
+              "title": "Tasks",
+              "description": "how many tasks it holds"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name",
+            "goal",
+            "starts_on",
+            "ends_on",
+            "state",
+            "created_by",
+            "created_at",
+            "closed_at",
+            "tasks"
+          ],
+          "title": "TasksSprint"
+        },
+        "TasksSprintEdit": {
+          "properties": {
+            "name": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Name"
+            },
+            "goal": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Goal"
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "planned",
+                    "active",
+                    "closed"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "State"
+            },
+            "move_to": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Move To",
+              "description": "closing: the sprint to move to"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "TasksSprintEdit",
+          "description": "A change of a sprint; closing it moves its unfinished tasks to ``move_to``, or to no sprint."
+        },
+        "TasksSprintIn": {
+          "properties": {
+            "name": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "Name"
+            },
+            "goal": {
+              "type": "string",
+              "maxLength": 2000,
+              "title": "Goal",
+              "default": ""
+            },
+            "starts_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Starts On"
+            },
+            "ends_on": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ends On"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "planned",
+                "active"
+              ],
+              "title": "State",
+              "default": "planned"
+            }
+          },
+          "type": "object",
+          "required": [
+            "name"
+          ],
+          "title": "TasksSprintIn"
+        },
+        "TasksStatus": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "group": {
+              "type": "string",
+              "enum": [
+                "todo",
+                "doing",
+                "review",
+                "done",
+                "cancelled"
+              ],
+              "title": "Group",
+              "description": "what the status means, whatever the project names it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "name",
+            "group"
+          ],
+          "title": "TasksStatus"
         },
         "TelegramLink": {
           "properties": {

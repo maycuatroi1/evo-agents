@@ -70,6 +70,7 @@ HUB_TABLES |= pg.AGENT_TYPE_TABLES  # migration 0042
 HUB_TABLES |= pg.BUILDER_TABLES  # migration 0043
 HUB_TABLES |= pg.TRIAGE_TABLES  # migration 0044
 HUB_TABLES |= pg.SRS_TABLES  # migration 0046
+HUB_TABLES |= pg.TASKS_TABLES  # migration 0047
 
 
 @pytest.fixture

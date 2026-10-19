@@ -88,6 +88,7 @@ TABLES |= pg.AGENT_TYPE_TABLES  # migration 0042
 TABLES |= pg.BUILDER_TABLES  # migration 0043
 TABLES |= pg.TRIAGE_TABLES  # migration 0044
 TABLES |= pg.SRS_TABLES  # migration 0046
+TABLES |= pg.TASKS_TABLES  # migration 0047
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -162,8 +163,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_eighty_two_tables(hub_db):
-    assert len(TABLES) == 82  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_eighty_eight_tables(hub_db):
+    assert len(TABLES) == 88  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1034,6 +1035,27 @@ def test_0045_lets_a_decision_be_of_category_triage_and_going_back_deletes_those
     move_to(hub_db, "0044", down=True)
     assert query(hub_db, select(hub_tables.decisions.c.id)) == [(kept,)]
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0045") :]
+
+
+def test_0047_keeps_tasks_one_active_sprint_and_links_of_one_kind_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0047")
+    k = hub_tables.tasks
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        sprint = {"project_id": ids["project"], "created_by": ids["user"], "state": "active"}
+        conn.execute(insert(k.sprints).values(name="Sprint 1", **sprint))
+        with pytest.raises(errors.UniqueViolation):  # one active sprint per project
+            conn.execute(insert(k.sprints).values(name="Sprint 2", **sprint))
+    with live.connect(hub_db) as conn:
+        values = {"project_id": ids["project"], "number": 1, "title": "Cancel", "status": "todo", "label": {}}
+        task = one(conn, insert(k.items).values(**values, created_by=ids["user"]).returning(k.items.c.id))
+        link = {"task_id": task, "created_by": ids["user"]}
+        conn.execute(insert(k.links).values(kind="pull", url="https://example.invalid/pull/1", **link))
+        with pytest.raises(errors.CheckViolation):  # a plan step link names no URL
+            conn.execute(insert(k.links).values(kind="plan_step", plan_id="p", step_id="1", url="https://x", **link))
+    move_to(hub_db, "0046", down=True)
+    assert not pg.TASKS_TABLES & tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0047") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

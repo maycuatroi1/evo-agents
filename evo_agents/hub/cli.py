@@ -9,9 +9,9 @@ traceback, secrets removed, rather than a bare traceback from the interpreter.
 The client commands (``login``, ``logout``, ``whoami``, ``token``, ``admin``, ``project``, ``registry``, ``plan``,
 ``run``, ``decision``, ``notifications``, ``memory``, ``skills``, ``secret``, ``kg``, ``mcp``, ``hook``) are
 registered by ``cli_client``, ``agent`` by ``cli_agents``, ``chat`` by ``cli_chats``, ``plugin`` by
-``cli_plugins`` and ``srs`` by ``cli_srs``; they need nothing beyond the core package, so they work on a core
-install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the extra for the API document;
-``hub contract check`` does not.
+``cli_plugins``, ``srs`` by ``cli_srs`` and ``task`` by ``cli_tasks``; they need nothing beyond the core package,
+so they work on a core install. ``hub openapi`` (``openapi``) and ``hub contract print`` (``contract``) need the
+extra for the API document; ``hub contract check`` does not.
 """
 
 from __future__ import annotations
@@ -232,6 +232,10 @@ def register(sub) -> None:
     from evo_agents.hub.cli_srs import register_srs
 
     register_srs(hsub)
+
+    from evo_agents.hub.cli_tasks import register_tasks
+
+    register_tasks(hsub)
 
     from evo_agents.hub.openapi import register as register_openapi
 
