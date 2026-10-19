@@ -34,6 +34,7 @@ CHAT_KEYS = (
     "last_read_seq",
     "budget_usd",
     "kind",
+    "image_url",
 )
 SUMMARY_KEYS = (
     "id",
@@ -46,6 +47,10 @@ SUMMARY_KEYS = (
     "people",
     "agents",
     "kind",
+    "image_url",
+    "direct_agent",
+    "faces",
+    "last_message",
 )
 MESSAGE_KEYS = (
     "id",

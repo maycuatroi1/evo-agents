@@ -22,10 +22,7 @@ import asyncio
 import base64
 import binascii
 import hashlib
-import io
 import logging
-import tempfile
-from pathlib import Path as FilePath
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -34,9 +31,9 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, branding, tables
-from evo_agents.hub.blobs import BlobStoreUnavailable, blob_key
+from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server.agent_profiles import media_type
-from evo_agents.hub.server.blobs import blob_store
+from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.hub_settings import (
     BRANDING,
@@ -139,14 +136,6 @@ async def show_branding(request: Request) -> Branding:
     return view({}, 0) if held is None else view(held.plain, held.version)
 
 
-def _fetch(store, sha256: str) -> bytes | None:
-    sink = io.BytesIO()
-    found = store.fetch(blob_key(sha256), sink, MAX_IMAGE_BYTES)
-    if found is None or found[0] != sha256:
-        return None
-    return sink.getvalue()
-
-
 @router.get(
     "/{asset}",
     response_class=Response,
@@ -163,7 +152,7 @@ async def branding_image(request: Request, asset: Asset) -> Response:
     data = _images.get(sha256)
     if data is None:
         try:
-            data = await asyncio.to_thread(_fetch, blob_store(request), sha256)
+            data = await asyncio.to_thread(fetch_bytes, blob_store(request), sha256, MAX_IMAGE_BYTES)
         except BlobStoreUnavailable:
             raise HTTPException(503, "the blob store did not answer; try again shortly") from None
         if data is None:
@@ -224,18 +213,11 @@ def _image(asset: str, body: BrandingImage) -> tuple[bytes, str, str]:
     return data, hashlib.sha256(data).hexdigest(), kind
 
 
-def _put(store, sha256: str, data: bytes, *, replace: bool = False) -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        path = FilePath(directory) / "image"
-        path.write_bytes(data)
-        store.put_file(sha256, path, replace=replace)
-
-
 async def _hold(conn: AsyncConnection, store, user_id: int, sha256: str, data: bytes) -> None:
     """Record that the hub holds blob ``sha256``, put back first if a deletion was pending for it."""
     await blob_gc.lock_shared(conn)
     if await blob_gc.revive(conn, [sha256]):
-        await asyncio.to_thread(_put, store, sha256, data, replace=True)
+        await asyncio.to_thread(put_bytes, store, sha256, data, replace=True)
     b = tables.blobs
     await conn.execute(
         pg_insert(b)
@@ -250,7 +232,7 @@ async def put_branding_image(request: Request, asset: Asset, body: BrandingImage
     data, sha256, kind = _image(asset, body)
     store = blob_store(request)
     try:
-        await asyncio.to_thread(_put, store, sha256, data)
+        await asyncio.to_thread(put_bytes, store, sha256, data)
         async with request.app.state.engine.begin() as conn:
             await _hold(conn, store, user.user_id, sha256, data)
             image = {"sha256": sha256, "type": kind, "size": len(data)}

@@ -2,9 +2,10 @@
 /v1/chats/{id}/stream.
 
 Each change of a chat is an event numbered by the chat (``chat_store``): a message, a reaction put or taken off, a
-member added or removed. A message event carries the message as it reads now (``chat_views.GroupMessage``); a reaction
-event the emoji, who put it or took it off and how many put it after the change; a member event who was added or
-removed and by whom. A member reads the events of messages whose label they clear, and the reaction events of those
+member added or removed, its image set or taken off. A message event carries the message as it reads now
+(``chat_views.GroupMessage``); a reaction event the emoji, who put it or took it off and how many put it after the
+change; a member event who was added or removed and by whom; an image event the image's URL now and who changed it. A
+person in an event shows with their GitHub avatar as the hub knows it when the event is read. A member reads the events of messages whose label they clear, and the reaction events of those
 messages; the others are left out, and the numbers go on past them.
 
 The stream is server-sent events, as a run's is (``run_events``): each event has its seq as id, a reconnecting
@@ -30,20 +31,23 @@ from fastapi.sse import EventSourceResponse, ServerSentEvent
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import tables
+from evo_agents.hub import chats, tables
 from evo_agents.hub.server.chat_access import ChatAccess, chat_access, label_reader
 from evo_agents.hub.server.chat_members import REFUSALS, ChatId
 from evo_agents.hub.server.chat_progress import by_message, chat_progress
 from evo_agents.hub.server.chat_store import CHANNEL
 from evo_agents.hub.server.chat_views import (
+    ChatAuthor,
     ChatEvent,
     ChatEvents,
+    ChatImageChange,
     ChatMemberChange,
     ChatProgress,
     ChatProgressNow,
     ChatReactionChange,
     message_rows,
     messages_view,
+    person_avatars,
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.listen import Listener
@@ -56,6 +60,7 @@ STREAM_BATCH = 200  # events a stream reads at a time
 MAX_EVENTS_PAGE = 500
 MESSAGE_EVENTS = ("message",)
 REACTION_EVENTS = ("reaction_added", "reaction_removed")
+MEMBER_EVENTS = ("member_added", "member_removed")
 PROGRESS_PARAM = "also the progress of the agents' runs on their way under the messages they took (ChatProgress)"
 
 router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
@@ -74,14 +79,33 @@ class ChatStreams(RunStreams):
         super().__init__(listener, CHANNEL)
 
 
-def _event(row, messages: dict) -> ChatEvent:
+def _people(rows) -> set[str]:
+    """The logins of the people the reaction and member events of ``rows`` name."""
+    found = set()
+    for row in rows:
+        named = row.body.get("by") if row.kind in REACTION_EVENTS else row.body.get("member")
+        if row.kind in REACTION_EVENTS + MEMBER_EVENTS and isinstance(named, dict) and named.get("kind") == "person":
+            found.add(named["login"])
+    return found
+
+
+def _faced(author: ChatAuthor, avatars: dict[str, str | None]) -> None:
+    if author.kind == "person" and author.login is not None:
+        author.avatar_url = avatars.get(author.login.lower())
+
+
+def _event(row, chat_id: int, messages: dict, avatars: dict[str, str | None]) -> ChatEvent:
     event = ChatEvent(seq=row.seq, kind=row.kind, created_at=row.created_at)
     if row.kind in MESSAGE_EVENTS:
         event.message = messages[row.body["message_id"]]
     elif row.kind in REACTION_EVENTS:
         event.reaction = ChatReactionChange.model_validate(row.body)
+        _faced(event.reaction.by, avatars)
+    elif row.kind == chats.IMAGE_CHANGED:
+        event.image = ChatImageChange(image_url=chats.image_url(chat_id, row.body["sha256"]), by=row.body["by"])
     else:
         event.member = ChatMemberChange.model_validate(row.body)
+        _faced(event.member.member, avatars)
     return event
 
 
@@ -107,8 +131,9 @@ async def events_after(
     progress = await chat_progress(conn, user, chat.chat_id) if new else None
     viewed = await messages_view(conn, new, reader, by_message(progress or []))
     messages = {message.id: message for message in viewed}
+    avatars = await person_avatars(conn, _people(rows))
     events = [
-        _event(row, messages)
+        _event(row, chat.chat_id, messages, avatars)
         for row in rows
         if row.kind not in MESSAGE_EVENTS + REACTION_EVENTS or row.body["message_id"] in shown
     ]

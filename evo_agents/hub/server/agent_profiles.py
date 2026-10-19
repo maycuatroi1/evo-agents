@@ -28,11 +28,8 @@ import asyncio
 import base64
 import binascii
 import hashlib
-import io
 import logging
-import tempfile
 from datetime import datetime
-from pathlib import Path as FilePath
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
@@ -43,11 +40,11 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import blob_gc, profiles, tables
 from evo_agents.hub.access import has_role
-from evo_agents.hub.blobs import BlobStoreUnavailable, blob_key
+from evo_agents.hub.blobs import BlobStoreUnavailable
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.agent_packs import PinnedPack, Pins, pinned, pinned_view
-from evo_agents.hub.server.blobs import blob_store
+from evo_agents.hub.server.blobs import blob_store, fetch_bytes, put_bytes
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.profile_store import Profile, profile_of, profile_select, write_version
 from evo_agents.hub.server.projects import PRINTABLE, ProjectAccess, project_access
@@ -483,18 +480,11 @@ def _image(body: AvatarUpload) -> tuple[bytes, str]:
     return data, hashlib.sha256(data).hexdigest()
 
 
-def _put(store, sha256: str, data: bytes, *, replace: bool = False) -> None:
-    with tempfile.TemporaryDirectory() as directory:
-        path = FilePath(directory) / "avatar"
-        path.write_bytes(data)
-        store.put_file(sha256, path, replace=replace)
-
-
 async def _hold_avatar(conn: AsyncConnection, store, access: ProjectAccess, user_id: int, sha256: str, data: bytes):
     """Record that the project holds blob ``sha256``, put back first if a deletion was pending for it."""
     await blob_gc.lock_shared(conn)
     if await blob_gc.revive(conn, [sha256]):
-        await asyncio.to_thread(_put, store, sha256, data, replace=True)
+        await asyncio.to_thread(put_bytes, store, sha256, data, replace=True)
     b = tables.blobs
     await conn.execute(
         pg_insert(b)
@@ -507,7 +497,7 @@ async def _set_avatar(request: Request, project: str, handle: str, user, sha256:
     store = blob_store(request) if sha256 is not None else None
     if store is not None:
         try:
-            await asyncio.to_thread(_put, store, sha256, data)
+            await asyncio.to_thread(put_bytes, store, sha256, data)
         except BlobStoreUnavailable:
             raise HTTPException(503, UNAVAILABLE) from None
     async with request.app.state.engine.begin() as conn:
@@ -562,7 +552,7 @@ async def get_avatar(request: Request, project: ProjectName, handle: Handle, use
         raise HTTPException(404, f"@{handle} has no avatar: the web draws its initial on its colour")
     store = blob_store(request)
     try:
-        data = await asyncio.to_thread(_fetch, store, profile.avatar_sha256)
+        data = await asyncio.to_thread(fetch_bytes, store, profile.avatar_sha256, AVATAR_MAX_BYTES)
     except BlobStoreUnavailable:
         raise HTTPException(503, "the blob store did not answer; try again shortly") from None
     kind = media_type(data or b"")
@@ -575,11 +565,3 @@ async def get_avatar(request: Request, project: ProjectName, handle: Handle, use
         "Content-Security-Policy": "default-src 'none'",
     }
     return Response(content=data, media_type=kind, headers=headers)
-
-
-def _fetch(store, sha256: str) -> bytes | None:
-    sink = io.BytesIO()
-    found = store.fetch(blob_key(sha256), sink, AVATAR_MAX_BYTES)
-    if found is None or found[0] != sha256:
-        return None
-    return sink.getvalue()

@@ -95,7 +95,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| chats | `GET` and `POST /v1/chats`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
@@ -529,6 +529,27 @@ reaches no one and the hub says to start a group chat. The prompt of its run sho
 thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
 within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
 
+**Images and faces.** Any member of a group chat sets its image or takes it off (`PUT .../image` with `data`, a PNG,
+JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
+422 for another format; `DELETE .../image`), audited as `chat.image` and sent to the chat's stream as `image_changed`,
+so the other members see it without reloading. A direct chat takes none (409): its face is its agent's avatar. The
+hub stores the image in the blob store and the chat's row refers to it (`evo_agents/hub/server/chat_images.py`): the
+collection of unreferenced blobs leaves it, and an image replaced or taken off is recorded for deletion once no chat
+shows it, in a transaction that holds the blob lock exclusively, as the retention of graphs does. `GET .../image`
+serves it to the chat's members alone (anyone else gets the 404 of the chat), with its SHA-256 as ETag (304 for an
+`If-None-Match` that matches) and `Cache-Control: private, max-age=86400`; `image_url` in Chat and ChatSummary carries
+a part of that SHA-256, so a browser keeps the image until it changes, and is null without one. A person shows with
+the avatar of their GitHub account, `https://avatars.githubusercontent.com/u/<github_id>?s=96&v=4` (`avatar_url` in a
+chat's people, a message's author, a reaction's or a member change's author), null for a login that never signed in;
+the hub reads the account's id when the answer is made, never keeps the image, and the web loads it from that origin
+alone. Besides its old fields, each chat of `GET /v1/chats` carries what the list draws (`chat_summaries.py`): `kind`,
+`image_url`, `direct_agent` (a direct chat's agent, deleted or not, with its colour and avatar), `faces` (at most three
+members other than the reader, in the order they were added, which the web composes for a group chat without an
+image) and `last_message`: the latest message of the chat's main line (of a group chat the latest that starts no
+thread, of a direct chat the latest of all, since its answers show under the message they answer), with its author
+and its text as one line without markdown, at most 140 characters; a reader who does not clear that message's label
+gets its author and time, `hidden` true and no text. The list takes at most six queries, however many chats it holds.
+
 **Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
 rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
 and counts 0, under a time cap instead). A mention once that is spent is refused, saying so in the thread; each run gets
@@ -551,7 +572,7 @@ and the check mark or the cross takes the eyes off. A lost run tried again keeps
 reaction chips only (`web/DESIGN.md`).
 
 **Events.** Each change is an event of the chat, numbered by it: a message, a reaction put or taken off, a member added
-or removed. A message is numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read,
+or removed, the image set or taken off (`image_changed`, with the image's URL now and who changed it). A message is numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read,
 which the unread count of the list starts from (their own message reads up to it). `GET .../events?after=SEQ` pages
 them, and `GET .../stream` sends them as server-sent events, as a run's stream does: the seq as id, Last-Event-ID or
 `after` to go on, a ping after 15 idle seconds, woken by `pg_notify` on channel `evo_chat_events` on the api process's
@@ -586,15 +607,17 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `GET /v1/chats/{id}` | | a member |
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
+| `PUT .../image` (`data`, base64), `DELETE .../image`, `GET .../image`: a group chat's image | | a member |
 | `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
 | `POST .../read`, `GET .../events`, `GET .../stream` (`progress=true`: the progress under the messages too) | | a member |
 | `PATCH /v1/chats/{id}` (`budget_usd`) | | its creator |
 
-Creating a chat, adding and removing a member, sending a message and changing the budget are audited (`chat.create`,
-`chat.add`, `chat.remove`, `chat.message`, `chat.budget`; an agent's in its project; an agent's message and chat as the
-run's dispatcher, naming the run), naming `chat:<id>` and the person, agent or message, never a title or a text. For
+Creating a chat, adding and removing a member, sending a message, changing the budget and the image are audited
+(`chat.create`, `chat.add`, `chat.remove`, `chat.message`, `chat.budget`, `chat.image`; an agent's in its project; an
+agent's message and chat as the run's dispatcher, naming the run), naming `chat:<id>` and the person, agent, message
+or image (`image:<the first 16 of its SHA-256>`, or `image:none`), never a title, a text or an image's bytes. For
 example:
 
 ```sh
@@ -616,7 +639,11 @@ that may go on from an earlier run of its session (`resume_of_run_id`), with `ru
 columns. Schema 0050 adds `chats.kind` (`group` for every chat there is and by default, or `direct`), and for a direct
 chat its person and agent (`chats.direct_user_id`, `chats.direct_profile_id`, both set for a direct chat and neither
 for a group), one direct chat per pair (`chats_direct_key`), and the `via` direct of a mention. Going back to 0049 makes
-every direct chat a group chat of the same person and agent, and a mention `via` direct reads as `via` thread.
+every direct chat a group chat of the same person and agent, and a mention `via` direct reads as `via` thread. Schema
+0051 adds a group chat's image, `chats.image_sha256` and `chats.image_size` (both set or neither, never on a direct
+chat), which the collection of blobs counts as a reference through the partial index `chats_image_sha256_idx`, and the
+event `image_changed`. Going back to 0050 deletes those events and drops the columns: the chats lose their images,
+whose objects stay in the bucket with nothing referring to them.
 
 ### What a triage agent may do on its own
 

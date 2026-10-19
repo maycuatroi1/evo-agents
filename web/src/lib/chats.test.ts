@@ -31,7 +31,7 @@ function agent(handle: string, overrides: Partial<ChatAgent> = {}): ChatAgent {
   };
 }
 
-const person = (login: string) => ({ login, added_by: "octo", added_at: "2026-10-14T08:00:00Z" });
+const person = (login: string) => ({ login, added_by: "octo", added_at: "2026-10-14T08:00:00Z", avatar_url: null });
 
 const CHAT = {
   agents: [agent("reviewer", { name: "Code reviewer" }), agent("demo", { name: "Demo", is_default: true }), agent("gone", { deleted: true })],
