@@ -33,7 +33,7 @@ function sourceOf(task: TaskDetail): { system: string; id: string; url: string |
 function TaskSub({ project, task }: { project: string; task: TaskDetail }) {
   const t = useTranslations("tasks.page");
   const source = sourceOf(task);
-  const link = "text-brand underline-offset-4 hover:text-brand-hover hover:underline";
+  const link = "text-brand underline underline-offset-4 hover:text-brand-hover";
   return (
     <>
       {t("created", { login: task.created_by })} <When value={task.created_at} />.{" "}
