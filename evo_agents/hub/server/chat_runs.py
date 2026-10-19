@@ -668,6 +668,12 @@ def _clearers(found: ChatRun) -> list[int]:
     return list(dict.fromkeys([found.dispatcher_id, found.dispatched_by]))
 
 
+async def run_clearers(conn: AsyncConnection, run_id: int) -> list[int] | None:
+    """The people what chat run ``run_id`` reads must be cleared for, as its prompt is; None for another kind of run."""
+    found = await chat_run(conn, run_id)
+    return None if found is None else _clearers(found)
+
+
 async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, repos: list) -> str:
     """The prompt of chat run ``run_id`` as its worker claims it (``chat_runs.build_chat_prompt``): the snapshot holds
     the messages its dispatcher clears the label of, and the member whose worker runs it too."""

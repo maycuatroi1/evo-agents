@@ -59,7 +59,10 @@ SNAPSHOT_MESSAGE_BYTES = 4 * 1024  # one message in the snapshot
 BRANCH_PREFIX = "chat/"
 BRANCH = re.compile(r"^chat/[1-9][0-9]{0,18}$")
 DRAFT_TITLE = "[Draft]"  # what the title of a chat run's pull request starts with on a repo that takes no draft
-CUT_MARK = "[{left} older message(s) of the chat are left out of this prompt]"
+CUT_MARK = (  # and how to find them again: in the knowledge graph, then read whole
+    '[{left} older message(s) of the chat are left out of this prompt: kg_search with kinds ["ChatMessage"] finds '
+    "them, and chat_message or chat_thread (`evo-agents worker chat read MESSAGE [--thread]`) reads one or its thread]"
+)
 INBOX_TEXT = "{author} wrote in the thread (message #{id}):\n{body}"
 REPOS_BYTES = 3 * 1024
 
@@ -67,7 +70,7 @@ POST_COMMAND = "evo-agents worker chat post"
 REACT_COMMAND = "evo-agents worker chat react"
 MENTION_COMMAND = "evo-agents worker chat mention"
 CREATE_COMMAND = "evo-agents worker chat create"
-COMMANDS = ("post", "react", "create", "mention")  # under `evo-agents worker chat`
+COMMANDS = ("post", "react", "create", "mention", "read")  # under `evo-agents worker chat`
 COMMAND_KINDS = ("step", "plan", "author", "chat")  # the kinds of run whose agent uses them
 
 # What the agent is told when people wrote to it in the thread while its turn was on: their messages follow.

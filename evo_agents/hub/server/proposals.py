@@ -341,7 +341,8 @@ class GraphView:
 
 async def graph_view(request: Request, owner: Principal, access: ProjectAccess, targets: list[str]) -> GraphView | None:
     """``kg_impact`` of ``targets`` (``repo:path`` each) in the project's latest graph, read as ``owner`` through the
-    project's hub sink; None when there is no target, or the project has no graph or it cannot be read now."""
+    project's hub sink with no audience, as every member of the project reads what the review keeps; None when there
+    is no target, or the project has no graph or it cannot be read now."""
     if not targets:
         return None
     from evo_agents.hub.server import kg  # its routes import the plans and runs modules
@@ -349,7 +350,9 @@ async def graph_view(request: Request, owner: Principal, access: ProjectAccess, 
     sink = access.rules.hub_sink.sink if access.rules.hub_sink else kg.CLI_SINK
     arguments = {"paths": targets, "depth": GRAPH_DEPTH}
     try:
-        result = await kg.tool_result(request.app.state, owner, access.name, "kg_impact", arguments, sink)
+        result = await kg.tool_result(
+            request.app.state, owner, access.name, "kg_impact", arguments, sink, audience=frozenset()
+        )
     except HTTPException as exc:
         log.info("no knowledge graph for the review", extra={"project": access.name, "status": exc.status_code})
         return None

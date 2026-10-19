@@ -910,10 +910,11 @@ def test_graph_view_reads_kg_impact_as_the_hub_answers_it(monkeypatch):
     from evo_agents.hub.server import kg
     from evo_agents.hub.server import proposals as proposal_routes
 
-    answers = []
+    answers, audiences = [], []
 
-    async def tool_result(state, user, project, tool, arguments, sink):
+    async def tool_result(state, user, project, tool, arguments, sink, *, audience=None):
         answers.append((project, tool, arguments, sink))
+        audiences.append(audience)
         if project == "no-graph":
             return {"content": [{"type": "text", "text": "error: no graph"}], "isError": True}
         if project == "down":
@@ -940,5 +941,6 @@ def test_graph_view_reads_kg_impact_as_the_hub_answers_it(monkeypatch):
         {"paths": ["evo-agents:b.py", "evo-agents:gone.py"], "depth": 2},
         "hub",
     )
+    assert audiences[-1] == frozenset()  # what the review keeps every member reads: no chat of the owner's
     assert view("no-graph", ["evo-agents:b.py"]) is None and view("down", ["evo-agents:b.py"]) is None
     assert view("evo-agents", []) is None and len(answers) == 3  # nothing to ask about: kg is not asked

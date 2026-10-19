@@ -99,3 +99,26 @@ def status_reaction(state: str) -> tuple[str, tuple[str, ...]] | None:
 def chat_link(chat_id: int, message_id: int | None = None) -> str:
     """The web page of a chat, as a notice links to it, at one message when given."""
     return f"/chats/{chat_id}" if message_id is None else f"/chats/{chat_id}?message={message_id}"
+
+
+# What names a message to read it whole (the tools chat_message and chat_thread, `evo-agents worker chat read`): its
+# id, or its item in the knowledge graph (``evo_agents.core_plugins.chats.kg``), or a thread's item for its thread.
+MAX_ID = 2**63 - 1  # a message's id, within bigint
+_ID = "[1-9][0-9]{0,18}"
+READ_REF = rf"^(?:(?:plugin\.chats:message:)?{_ID}|plugin\.chats:thread:{_ID}/{_ID})$"
+_READ = re.compile(rf"(?:plugin\.chats:message:)?({_ID})|plugin\.chats:thread:({_ID})/({_ID})")
+
+
+def read_ref(value) -> tuple[int, int | None, bool] | None:
+    """(the message ``value`` names, the chat a thread's item names or None, whether it names a thread) for an id, as
+    an int or its digits, or an item of READ_REF; None for anything else, or an id past MAX_ID."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    found = _READ.fullmatch(str(value).strip())
+    if found is None:
+        return None
+    if found.group(1):
+        named = int(found.group(1)), None, False
+    else:
+        named = int(found.group(3)), int(found.group(2)), True
+    return named if max(named[0], named[1] or 0) <= MAX_ID else None

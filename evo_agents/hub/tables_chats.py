@@ -15,7 +15,8 @@ member added or removed.
 Revision 0032 gives chats ``budget_usd``, what its chat runs may cost in 24 hours, and runs the columns of a chat
 run (``evo_agents.hub.chat_runs``): ``chat_id``, ``chat_message_id`` (the message that started it) and ``hop``;
 ``chat_tables`` adds them, their foreign keys and the index of a chat's runs to the runs table it is given, so that
-``evo_agents.hub.tables`` describes runs whole.
+``evo_agents.hub.tables`` describes runs whole. Revision 0049 gives runs ``seen_audience``, the principals of what the
+hub returned to the run's agent with an audience (``evo_agents.hub.server.run_audience``), which ``chat_tables`` adds too.
 """
 
 from __future__ import annotations
@@ -36,7 +37,7 @@ from sqlalchemy import (
     UniqueConstraint,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 
 def _stamp(name: str) -> Column:
@@ -171,10 +172,12 @@ def _reactions(metadata: MetaData) -> tuple[Table, Table]:
 
 
 def _chat_runs(runs: Table) -> None:
-    """The columns of a chat run (0032) added to ``runs``: its chat, the message that started it and its hop."""
+    """The columns of a chat run (0032) added to ``runs``: its chat, the message that started it and its hop; and the
+    audience the agent of any run was shown (0049)."""
     runs.append_column(Column("chat_id", BigInteger))
     runs.append_column(Column("chat_message_id", BigInteger))
     runs.append_column(Column("hop", SmallInteger))
+    runs.append_column(Column("seen_audience", ARRAY(Text), nullable=False, server_default="{}"))  # 0049
     runs.append_constraint(_fk("runs", "chat_id", "chats.id", ondelete="RESTRICT"))
     # chat_messages.run_id points back at runs: this key is made apart from the tables, so that they sort
     runs.append_constraint(_fk("runs", "chat_message_id", "chat_messages.id", ondelete="RESTRICT", use_alter=True))

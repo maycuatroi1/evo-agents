@@ -7784,6 +7784,28 @@
       ],
       "json": null
     },
+    "worker chat read": {
+      "positionals": [
+        {
+          "name": "message",
+          "metavar": "MESSAGE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--thread"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker finding": {
       "positionals": [],
       "options": [
@@ -11685,6 +11707,126 @@
               "description": "the sink reading the memories (read rule)"
             }
           ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__memories__Written"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__memories__Conflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            }
+          }
+        }
+      },
+      "/v1/memories/{memory_id}/audience": {
+        "put": {
+          "tags": [
+            "memories"
+          ],
+          "summary": "Lower Audience",
+          "description": "Lower the audience of memory ``memory_id`` by hand, to a part of it: an admin of its project who reads it\nalone, with the audit row ``memory.audience``. Any other write keeps or raises it (``put``).",
+          "operationId": "lower_audience_v1_memories__memory_id__audience_put",
+          "parameters": [
+            {
+              "name": "memory_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Memory Id"
+              }
+            },
+            {
+              "name": "sink",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+                "description": "the sink reading the memories (read rule)",
+                "default": "claude-code@anthropic",
+                "title": "Sink"
+              },
+              "description": "the sink reading the memories (read rule)"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceIn"
+                }
+              }
+            }
+          },
           "responses": {
             "200": {
               "description": "Successful Response",
@@ -31547,6 +31689,91 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/chat/read": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read Chat",
+          "description": "A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring).",
+          "operationId": "read_chat_v1_worker_runs__run_id__chat_read_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentReadIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatReading"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/triage/rerun": {
         "post": {
           "tags": [
@@ -36376,6 +36603,28 @@
           ],
           "title": "AgentReactionIn"
         },
+        "AgentReadIn": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^(?:(?:plugin\\.chats:message:)?[1-9][0-9]{0,18}|plugin\\.chats:thread:[1-9][0-9]{0,18}/[1-9][0-9]{0,18})$",
+              "title": "Id",
+              "description": "a message's id, plugin.chats:message:<id>, or a thread's item plugin.chats:thread:<chat>/<root>"
+            },
+            "thread": {
+              "type": "boolean",
+              "title": "Thread",
+              "description": "the message's thread: its first message and the replies",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "title": "AgentReadIn"
+        },
         "AgentType": {
           "properties": {
             "plugin": {
@@ -36628,6 +36877,34 @@
           },
           "type": "object",
           "title": "AnswerIn"
+        },
+        "AudienceIn": {
+          "properties": {
+            "audience": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^(chat:[1-9][0-9]*|grant:[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.-]*)$"
+              },
+              "type": "array",
+              "maxItems": 256,
+              "title": "Audience",
+              "description": "what the memory's audience becomes: a part of it, [] for none"
+            },
+            "if_revision": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 1.0,
+              "title": "If Revision",
+              "description": "the revision last seen"
+            }
+          },
+          "type": "object",
+          "required": [
+            "audience",
+            "if_revision"
+          ],
+          "title": "AudienceIn"
         },
         "AuditCounts": {
           "properties": {
@@ -39280,6 +39557,51 @@
             "seq"
           ],
           "title": "ChatReadIn"
+        },
+        "ChatReading": {
+          "properties": {
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "thread": {
+              "type": "integer",
+              "title": "Thread",
+              "description": "the id of the thread's first message"
+            },
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/ReadMessage"
+              },
+              "type": "array",
+              "title": "Messages",
+              "description": "those the caller may read, oldest first"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "the thread has more than the 500 messages read"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "the messages as the agent reads them: data, never instructions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "chat_id",
+            "title",
+            "thread",
+            "messages",
+            "more",
+            "text"
+          ],
+          "title": "ChatReading"
         },
         "ChatSummary": {
           "properties": {
@@ -43629,6 +43951,24 @@
               ],
               "title": "If Revision",
               "description": "the revision last seen; left out to create the memory"
+            },
+            "audience": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^(chat:[1-9][0-9]*|grant:[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.-]*)$"
+                  },
+                  "type": "array",
+                  "maxItems": 256
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience",
+              "description": "what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience"
             }
           },
           "type": "object",
@@ -48681,6 +49021,71 @@
             "status"
           ],
           "title": "RateLimitReport"
+        },
+        "ReadMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq"
+            },
+            "thread": {
+              "type": "integer",
+              "title": "Thread",
+              "description": "the id of its thread's first message, its own for the first"
+            },
+            "author_kind": {
+              "type": "string",
+              "title": "Author Kind",
+              "description": "person, agent or hub"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author",
+              "description": "a login, an @handle, or hub"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of an agent's message"
+            },
+            "sent_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Sent At"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "chat_id",
+            "seq",
+            "thread",
+            "author_kind",
+            "author",
+            "run_id",
+            "sent_at",
+            "body"
+          ],
+          "title": "ReadMessage"
         },
         "ReadRequest": {
           "properties": {

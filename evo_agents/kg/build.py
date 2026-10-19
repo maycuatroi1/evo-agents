@@ -47,11 +47,11 @@ from evo_agents.kg.pipeline.stages import (
     missing_graphify,
     structure_item,
 )
-from evo_agents.kg.policy import Label, Policy, join_all, meet_all
+from evo_agents.kg.policy import Label, Policy, any_of, join_all
 from evo_agents.kg.project import Project, ProjectError
 from evo_agents.kg.protocol import canonical_json, sha256
 from evo_agents.kg.schema import known_kinds
-from evo_agents.kg.store import Graph, StaleSchema, Store, edge_id, key_conflicts
+from evo_agents.kg.store import Graph, StaleSchema, Store, edge_id, key_conflicts, label_columns
 
 STATUS_RANK = {"declared": 5, "parsed": 4, "introspected": 3, "resolved": 2, "proposed": 1}
 # config: the aliases of tsconfig.json; commit and pr: the files a commit changed, the commit a pull request merged as
@@ -158,14 +158,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     for rec in records:
         r = rec.record
         label = policy.source_label(rec.source, r.get("label"))
-        base = {
-            "item_id": rec.item_id,
-            "rev": r.get("rev"),
-            "source": rec.source,
-            "label_lvl": label.level,
-            "label_loc": label.location,
-            "label_int": label.integrity,
-        }
+        base = {"item_id": rec.item_id, "rev": r.get("rev"), "source": rec.source, **label_columns(label)}
         graph.units[item_unit(rec.item_id)] = {**base, "anchor": "", "hash": r.get("hash"), "span": None}
         unit_labels[item_unit(rec.item_id)] = label
         for f in r.get("fragments", []):
@@ -317,10 +310,11 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             continue
         edge_derivs[key] = ds
 
-    # Labels: meet over derivations of the join over what each derivation uses.
+    # Labels: the meet over derivations (any_of: an audience a reader sees one of whole) of the join over what each
+    # derivation uses.
     node_label: dict[str, Label] = {}
     for nid in merged_nodes:
-        node_label[nid] = meet_all(_deriv_label(d, unit_labels, node_label) for d in _dedupe(derivs[nid]))
+        node_label[nid] = any_of(_deriv_label(d, unit_labels, node_label) for d in _dedupe(derivs[nid]))
     for nid, n in merged_nodes.items():
         graph.nodes[nid] = {**n, "label": node_label[nid], "aliases": sorted(aliases.get(nid, []))}
         graph.derivations[nid] = _dedupe(derivs[nid])
@@ -328,7 +322,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
     for (src, rel, dst), e in merged_edges.items():
         eid = edge_id(src, rel, dst)
         ds = _dedupe(edge_derivs[(src, rel, dst)])
-        label = meet_all(_deriv_label(d, unit_labels, node_label) for d in ds)
+        label = any_of(_deriv_label(d, unit_labels, node_label) for d in ds)
         graph.edges[eid] = {"src": src, "rel": rel, "dst": dst, **e, "label": label}
         graph.derivations[eid] = ds
         graph.where[eid] = sorted(edge_where[(src, rel, dst)])
