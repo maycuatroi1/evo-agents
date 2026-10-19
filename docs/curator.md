@@ -241,6 +241,24 @@ graph says of them (read as the owner of the night shift) and what the pull requ
 opens the pull request and again before a merge, and from the paths the Judge's worker read in the diff: a proposal of
 docs whose pull request changes code is tier 1 from then on, and a sign of score hacking makes it tier 3.
 
+**A harness whose replays won** (`tiers.replay_tier`). One rule lowers the tier a change merges with, never its
+proposal's: a change of kind `docs`, `skill` or `global_config` whose pull request edits a harness alone (the files of
+one skill directory, `.../skills/<skill>/`, its SKILL.md, documents and scripts, and AGENTS.md and CLAUDE.md files,
+nothing else) is tier 0 once its replays on the holdout tasks won (`replay.verdict`, below), unless a rule made it
+tier 3 (a protected path, `HARD_PATHS`, a top kind, a sign of score hacking). So a skill's script, which is code, or a
+global skill, whose kind is tier 2, merges as tier 0 then. The Judge and CI must pass as for any tier 0 change, and the
+hub merges it only when `auto_merge` holds `0`. Without replays that won (none, too few, or lost), or with any other
+file in the diff, the change keeps the tier these rules give, and the reason it is left open says what its replays came
+to. The proposal shows the tier its rules gave; the change shows 0.
+
+| What the change's replays came to (holdout tasks with both arms at the pull request's head) | Tier it merges with |
+| --- | --- |
+| fewer than 6 such tasks (`replay.MIN_HOLDOUT`) | the rules' |
+| arm b passed fewer tasks than arm a | the rules' |
+| arm b passed more tasks than arm a | 0 |
+| as many passed, and arm b's mean cost or mean turns at least 10% lower (`replay.MIN_SAVING`) | 0 |
+| as many passed, neither mean 10% lower | the rules' |
+
 A proposal like one the owner rejected in the last 30 days (the same kind and paths, or the same kind and title when
 it names no path) is dropped, unless its evidence counts at least twice the rejected one's.
 
@@ -305,9 +323,11 @@ worker's machine that reads the worker token neither reads a hidden check nor wr
 **Signs of score hacking** (`judge.hack_signs`): an assertion removed, a skip or xfail added, a threshold of a test
 changed, an expected value changed, a golden or snapshot file changed, an assertion's failure caught, a plan's verify
 or a file it runs changed, CI or the configuration of lint, types and tests changed, a lint warning silenced, `__eq__`
-overloaded, an exit from a test, a protected path touched, a binary file where tests, CI or configuration live, and a
-diff too long to read whole. `docs/hub.md`, "The Curator's changes", lists them all. One sign fails the change and
-puts its proposal at tier 3.
+overloaded, an exit from a test, a protected path touched, an instruction of a skill, an AGENTS.md or a CLAUDE.md to
+test or verify weakened (`instruction_weakened`: a line added that lets an agent skip the tests, the verify, lint or CI,
+unless it forbids skipping them, or more lines about them removed than added), a binary file where tests, CI,
+configuration or a harness live, and a diff too long to read whole. `docs/hub.md`, "The Curator's changes", lists them
+all. One sign fails the change and puts its proposal at tier 3.
 
 **The watchdog.** After each heartbeat the daemon compares what changed in the worktrees of a run of the Curator with
 the charter's protected paths, and the run's agent time and cost with its caps. A protected file changed, or a cap
@@ -341,8 +361,31 @@ arm's work as code it does not trust, as the Judge runs its checks, and posts wh
 key: passed or not, cost, turns, tool calls and failed ones, the largest context, the agent's time.
 
 **What it decides.** Each change's replays are kept with it (`curator_replays`, schema 0053) and read with
-`evo-agents hub curator replay show CHANGE`, `GET .../curator/changes/{id}/replay` and the MCP tool `curator_replay`.
-The Judge never reads them, and a replay changes nothing of a change's tier or its merge.
+`evo-agents hub curator replay show CHANGE`, `GET .../curator/changes/{id}/replay` and the MCP tool `curator_replay`,
+with their verdict at the head of the change's pull request (`replay.verdict`). The Judge never reads them. The verdict
+counts the replays of the holdout split whose arm b ran at that head: with at least 6 of them, the replays won when arm
+b passed more tasks than arm a, or as many with a mean cost or a mean number of turns at least 10% lower, each mean
+over the tasks where both arms report it. Those numbers are constants in `evo_agents/hub/replay.py`
+(`MIN_HOLDOUT`, `MIN_SAVING`), so a charter that wants a change judged by its replays sets `replay.tasks` to 6 or more.
+A change of a harness alone whose replays won merges as tier 0 (Tiers, above). A change the Judge passed and the hub
+left open goes back to `judged` the moment its replays win, and the next pass of `curator.changes` reads its pull
+request again and merges it when everything else still holds.
+
+**A global skill's release.** When the hub merges such a change, and the one skill directory its replays ran with is a
+global skill of the hub whose latest version came from the change's repo (published with `--source-repo` naming that
+repo), the merge's ledger line names the skill, and the same pass of `curator.changes` publishes it: it reads the
+directory at the merge commit with the workers' App (`contents: read`), packs it as `evo-agents hub skills publish`
+does, puts the bundle in the blob store as the hub's own, and records the next version of the global skill, from the
+change's repo at the merge commit, published by the owner of the night shift. The version before it stays. A skill of
+a project, or a global skill published from another repo, is not released. The ledger line `skill_release` says which
+version the hub made and which came before, or why it made none (a symbolic link or a submodule in the directory, a
+file GitHub does not hand whole, no night shift).
+
+**Counted again.** `outcome_days` after the merge, `curator.outcomes` counts the lens's figures again as for any merged
+change and keeps the replays' verdict with them. When they got worse, the hub proposes the revert as it does for any
+change and, for a global skill it released, publishes the version before the hub's again at once, as a new version
+holding that version's bundle, unless a version newer than the hub's came since, which it leaves as it is. Either way
+a line `skill_release` says what it did.
 
 ```sh
 evo-agents hub curator replay tasks --project demo            # the suite, select and holdout
@@ -432,7 +475,9 @@ the figures that set it off, the Judge's verdict, the pull request and its merge
 job `curator.outcomes` counts the same figures again: `keep` when none got worse, `revert` when one got worse and none
 better, `unclear` otherwise or when there was too little to count. A `revert` makes the hub propose the revert
 itself, a tier 1 proposal of kind `revert` whose plan reverts the merge commit, which reaches the Inbox and Telegram
-whatever room the day has left.
+whatever room the day has left. The hub's merge of a change whose replays won keeps their verdict under the line's
+`details.replay`, and a global skill it releases under `details.release`; the line `skill_release` (schema 0055) is the
+version it published from the merge, or the one before published again after a revert.
 
 **The circuit breaker** pauses every schedule of the project once `circuit_breaker.max_failed_in_a_row` jobs of one
 night in a row failed or were reverted, cancels what they queued, and sends the owner the notice `curator_paused`. A run
@@ -465,6 +510,7 @@ evo-agents hub kg health --project demo
 | 0052 | `kg_builds.coverage`, `kg_source_files`, `kg_health`: the health of a project's graph; the lens `kg_health` |
 | 0053 | runs of kind `replay`, `replay_tasks`, `curator_replays`: the suite of replay tasks and the replays of the changes |
 | 0054 | the kind `kg_source`, `curator_changes.knowledge`: what a pull request does to knowledge.yaml, key by key |
+| 0055 | the ledger line `skill_release`: a global skill the hub published from a merge whose replays won, or published again |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and
@@ -474,8 +520,9 @@ evo-agents hub kg health --project demo
 
 - It never pushes to, or merges into, a default branch with its own credentials, and it merges nothing above tier 0.
 - It merges nothing on GitLab, and nothing for a project whose charter leaves `auto_merge` empty.
-- It does not turn a product goal into plans on its own, and its replays decide nothing: they measure a change of a
-  skill, an AGENTS.md or a CLAUDE.md on past steps of the project, and leave its tier and its merge as they are.
+- It does not turn a product goal into plans on its own. Its replays decide one thing alone: a change of a harness
+  alone whose replays won merges as tier 0; any other change keeps its tier whatever its replays came to.
+- It publishes no skill of a project, and no global skill it did not merge or that came from another repo.
 - It does not push whole transcripts to the hub: only digests, with secrets replaced on the machine.
 - It does not deploy, run a migration on real data or publish a release: those stay decisions of a person, and the
   kind `operation` is tier 2.

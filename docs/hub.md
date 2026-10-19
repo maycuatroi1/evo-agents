@@ -682,7 +682,9 @@ the change it measures, which only the night shift queues and of which a project
 `replay_tasks` and `curator_replays` (The Curator's replays, below); going back to 0052 deletes the replay runs and
 drops the two tables. Schema 0054 adds the kind of change `kg_source` and `curator_changes.knowledge`, what a pull
 request of such a change does to knowledge.yaml (The Curator's changes, below); going back to 0053 deletes the
-proposals of kind `kg_source`, their changes with them, and drops the column.
+proposals of kind `kg_source`, their changes with them, and drops the column. Schema 0055 adds the ledger's line
+`skill_release` (The Curator's replays, below); going back to 0054 deletes those lines and leaves the skill versions
+the hub published.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -980,16 +982,20 @@ assertion compared with its own file's lines alone (moved to another file, or un
 removed), an expected value changed on a line of its own, a golden, snapshot or data file of the tests changed, an
 assertion's failure caught, a skip aliased or imported on its own, an exit through `getattr(os, "_exit")` and the like,
 the configuration of tests and types (`norecursedirs`, mypy's `ignore_errors`, `tsconfig.json`), the Makefile,
-justfile, noxfile or package script a verify command runs, and a binary or unknown file where tests, CI or
-configuration live. A list of files GitHub cuts short (more than it lists, or fewer than the pull request says it
-changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The files also give the proposal its
-tier again (`change_tiers.retier`: `tiers.tier_of` over the paths the pull request really changes, what the graph says
+justfile, noxfile or package script a verify command runs, an instruction of a skill, an AGENTS.md or a CLAUDE.md to
+test or verify weakened (`instruction_weakened`, `judge.weakened`: a line added that lets an agent skip the tests, the
+verify, lint or CI unless it forbids that, or more lines about them removed than added), and a binary or unknown file
+where tests, CI, configuration or a harness live. A list of files GitHub cuts short (more than it lists, or fewer
+than the pull request says it changes) is a sign too. A sign fails the change and puts its proposal at tier 3. The
+files also give the proposal its tier again (`change_tiers.retier`: `tiers.tier_of` over the paths the pull request really changes, what the graph says
 they reach and cannot tell, read as the night shift's owner, and for kind `kg_source` what it does to each
 knowledge.yaml at a repo's root, read with `contents: read` at the merge base and the head and compared key by key,
 which only ever raises it), at the pull request and again before a merge, so a proposal of docs whose pull request
 changes code is tier 1 and stays open; a `kg_source` change that edits only the `ref`, `fetch`, `refresh`, `include`,
 `exclude` or `allow` of git and harness sources the file has stays tier 0, and what the hub read of the file stays
-with the change (`curator_changes.knowledge`).
+with the change (`curator_changes.knowledge`). A change of kind `docs`, `skill` or `global_config` whose diff edits a
+harness alone (the files of one skill directory, AGENTS.md and CLAUDE.md files) merges as tier 0 once its replays won
+(The Curator's replays, below; `tiers.replay_tier`), its proposal keeping the tier its rules gave.
 Otherwise the night shift queues its judge run, which reads the proposal, the diff, the plan's verify and the
 project's hidden checks (`docs/workers.md`, A judge run on the machine), never the Builder's transcript, on Codex when
 the project's policy declares a sink for Codex (an id `codex@...`) that clears the change's label and the worker has
@@ -1009,7 +1015,9 @@ requires no check, or a head commit whose message asks CI to skip it (`[skip ci]
 `[skip actions]`, `[actions skip]`, `skip-checks: true`), leaves the pull request open. It waits while CI runs, up to 6
 hours, and while the project's night shift is paused (by a member or its circuit breaker) it merges nothing: a judged
 change waits for it. Any other change, tier 1, a GitLab merge request, or a refusal, stays open for its owner with the
-reason; the morning brief lists it with the runs that wait in review.
+reason, which for a change of a harness says what its replays came to; the morning brief lists it with the runs that
+wait in review. Each pass also releases the global skill of a merge whose replays won (`skill_release.release`, The
+Curator's replays, below).
 
 ```sh
 evo-agents hub curator changes                        # what each accepted proposal became: plan, branch, PR, verdict
@@ -1068,8 +1076,33 @@ commit of the harness, the files of the change it ran with, the verify's exit co
 failed ones, the largest context and the agent's time; and `arms`, both arms added up (`replay.compare`). Both are for
 readers of the project, through its hub sink by the plan's label (the proposal's for the change). The MCP tool
 `curator_replay` answers both, and lists the agent of a run (the Reviewer, a Builder) the select split alone, so the
-holdout split a change is measured on stays out of what shapes it. The Judge reads none of it: neither its prompt nor its tools hold a replay, and a
-replay decides nothing of a change's tier or merge.
+holdout split a change is measured on stays out of what shapes it. The Judge reads none of it: neither its prompt nor
+its tools hold a replay. The change's replays also come with `verdict` (`replay.verdict`) at the head of its pull
+request: `won`, `reason`, `tasks` (the holdout tasks with both arms at that head), each arm's tasks passed and mean
+cost and turns, `saving` (arm b's share lower) and the harness `paths` arm b ran with.
+
+**What the replays decide.** They won when at least `replay.MIN_HOLDOUT` (6) such tasks are in, and arm b passed more
+of them than arm a, or as many with a mean cost or turns at least `replay.MIN_SAVING` (10%) lower. A change of kind
+`docs`, `skill` or `global_config` whose pull request edits a harness alone and whose replays won merges as tier 0 when
+the Judge and CI pass and the charter's `auto_merge` holds 0 (`change_tiers.merge_tier`, `retier`); one with too few
+replays, replays that lost, or another file keeps its tier, and the reason it stays open names its replays' verdict.
+A replay done that makes the replays of a change the Judge passed and the hub left open win puts the change back to
+`judged`, and the next pass reads its pull request again.
+
+**A global skill's release.** The hub's merge of such a change names, on its ledger line `merged`, the verdict
+(`details.replay`) and, when the one skill directory arm b ran with is a global skill of the hub whose latest version
+names the change's repo as `source_repo`, the skill (`details.release`, `skill_release.wanted`). The next part of the
+same pass of `curator.changes` (`skill_release.release`, at most 10 a pass) reads that directory at the merge commit
+with the workers' App, `contents: read` (`GET .../git/trees/{sha}?recursive=1`, then `GET .../git/blobs/{sha}` of each
+file; a tree GitHub cuts, a symbolic link or a submodule, more than 10,000 files or 128 MiB is refused), packs it as
+`evo-agents hub skills publish` does, puts the bundle in the blob store as a blob of no project (kind `skill-bundle`,
+under the blob lock shared), and adds the next version of the global skill with `source_repo` the change's repo,
+`source_commit` the merge commit, published by the owner of the project's night shift, audited as skill.publish. The
+version before stays. Its ledger line `skill_release` (`details`: `kind` publish, `skill`, `version`, `previous`,
+`sha256`, `published`, and `why` when it published nothing) is written once per change; GitHub or the blob store
+failing leaves the release to the next pass. When `curator.outcomes` finds the figures of such a change worse and
+proposes its revert, it also adds a version holding the bundle of the version before the hub's (`kind` republish,
+`skill_release.republish`), unless the skill's latest version is no longer the hub's, which it leaves as it is.
 
 ```sh
 evo-agents hub curator replay tasks --split holdout   # the project's suite of replay tasks
@@ -1088,7 +1121,9 @@ that wrote it (environment failures, tool failures, failed runs, corrections, op
 the entries its evidence and its findings' evidence point at (an environment cause, a cause of failed runs, a command
 run again and again), with the sessions and runs the night counted. Then come the owner's answer, the plan it became,
 its Builder (`built`, or `build_failed`), the pull request the hub opened, the Judge's verdict (or the hub's own when
-the diff showed signs of score hacking), the merge by the hub or by hand, a change left open with why, and its outcome.
+the diff showed signs of score hacking), the merge by the hub or by hand, a change left open with why, the global
+skill the hub published from its merge (`skill_release`, schema 0055), and its outcome, which for a change with
+replays keeps their verdict under `figures.replay`.
 The job `curator.changes` reads a pull request left open for its owner again every hour, so a merge or a close by
 hand reaches the ledger too.
 
@@ -1765,12 +1800,14 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   proposals, and the last heartbeat of the worker on duty (`evo_agents.hub.server.brief`).
 - `curator.changes`, every minute: the Curator's changes move on: their pull requests opened and read for signs of
   score hacking, the Judge's check runs written, the tier 0 ones merged when everything allows it and the others left
-  open for their owner, read again hourly for a merge or a close by hand; and the rulesets checked: the one a planned
+  open for their owner, read again hourly for a merge or a close by hand; the global skills of merges whose replays
+  won published from the merge commit; and the rulesets checked: the one a planned
   change waits for at the next pass and hourly while it does not pass, every other once a day (The Curator's changes,
   above).
 - `curator.outcomes`, every 10 minutes: the figures of each change of the Curator merged the charter's `outcome_days`
   ago counted again, its outcome (keep, revert or unclear) added to its proposal's ledger, and a revert proposed when
-  they got worse (The Curator's ledger, outcomes and circuit breaker, above).
+  they got worse, with the version before of a global skill the hub released from it published again (The Curator's
+  ledger, outcomes and circuit breaker, above).
 - `hub.prune_digests`, daily at 04:23: deletes the session digests not pushed for 90 days.
 - `hub.prune_transcripts`, daily at 04:53: deletes the content of the session transcripts that got no part for
   `EVO_HUB_TRANSCRIPT_DAYS` days, keeping their rows marked deleted, and the blobs of kind `transcript` no part names

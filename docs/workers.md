@@ -2067,7 +2067,7 @@ fetches anything and before its agent starts (`evo_agents.worker.preflight`):
 - each program a verify command of the run calls is on the run's PATH: the step's verify for a run of one step (from
   its claim), the verify of every step not done for a plan run (from its plan), the plan's verify and the project's
   hidden checks for a judge run (from what it reads first), with the PATH those commands run with. The daemon reads
-  the programs of a command line as the shell runs them (`evo_agents.hub.judge.programs`): the first word of each
+  the programs of a command line as the shell runs them (`evo_agents.hub.verify_words.programs`): the first word of each
   simple command, past assignments, keywords such as `if` and `!`, and wrappers that run another program (`env`,
   `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c` argument; not the shell's builtins, a word the
   shell expands, a relative path (a file of the worktree, not there yet), or what `python -m` and `uv run` run. After a
