@@ -8,8 +8,10 @@
 - ``peers``: the daemons that run from one install (two workers of one machine may share it) know each other's state
   through a directory of their own under ``~/.evo/installs``, and two file locks keep a claim and an update apart.
 - ``installer``: where the tag points (``git ls-remote``, else the GitHub API), and the update itself: ``uv tool
-  install`` into a staging directory first, then over the install, each checked to start and to carry the commit, the
-  old one put back when the new one does not start.
+  install`` into a staging directory first, then over the install, each checked to start and to carry the commit, and
+  a copy of the old install put back when the new one does not start.
+- ``backup``: that copy of the install and its commands, made before uv goes over the install, since some uv releases
+  delete the environment first.
 - ``updater``: ``SelfUpdate``, the decisions of each turn of the daemon and what its heartbeats say of them.
 
 Standard library only.
