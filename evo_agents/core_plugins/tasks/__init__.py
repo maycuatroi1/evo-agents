@@ -19,12 +19,17 @@ JSON once, linking its tasks to use cases by code. The tables are the hub's
 is a Ticket of the project's knowledge graph (``kg``), which implements the use cases and requirements it links to and
 is implemented by the plan steps it links to.
 
+The tool ``tasks__create`` of the hub's /mcp (``agent``) makes a task for the member an agent works for: the agent
+of a chat run, such as @ba of the plugin srs making a task of a use case, for the member who mentioned it, while that
+member holds writer.
+
 The hub imports this package for the manifest only: ``settings`` reads the config, ``store`` reads tasks, ``links``
 resolves and shows what they link to, ``writes`` keeps them, ``imports`` reads a file, ``events`` takes the plan
-steps, ``models`` and ``server`` are the API, ``kg`` gives the knowledge graph the tasks.
+steps, ``models`` and ``server`` are the API, ``kg`` gives the knowledge graph the tasks, ``agent`` is the tool.
 """
 
 SERVER = "evo_agents.core_plugins.tasks.server"
+AGENT = "evo_agents.core_plugins.tasks.agent"
 EVENTS = "evo_agents.core_plugins.tasks.events"
 KG = "evo_agents.core_plugins.tasks.kg"
 GROUPS = ("todo", "doing", "review", "done", "cancelled")  # what a status means, whatever a project names it
@@ -90,6 +95,31 @@ CONFIG = {
     },
 }
 
+_LOGINS = {"type": "array", "items": {"type": "string", "minLength": 1, "maxLength": 100}, "maxItems": 50}
+CREATE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["title"],
+    "properties": {
+        "title": {"type": "string", "minLength": 1, "maxLength": 300},
+        "description_md": {"type": "string", "maxLength": 100_000, "description": "Markdown"},
+        "links": {
+            "type": "array",
+            "items": {"type": "string", "minLength": 1, "maxLength": 100},
+            "maxItems": 100,
+            "description": "codes of the SRS items it implements, such as a use case's",
+        },
+        "type": {"type": "string", "pattern": KEY, "description": "one of the project's types; its first if not"},
+        "status": {"type": "string", "pattern": KEY, "description": "one of the project's statuses; its first if not"},
+        "priority": {"enum": list(PRIORITIES)},
+        "sprint": {"type": "string", "minLength": 1, "maxLength": 100, "description": "a sprint's name"},
+        "assignees": {**_LOGINS, "description": "members named by the person who asked, by login"},
+        "ba": _LOGINS,
+        "qa": _LOGINS,
+        "dev": _LOGINS,
+    },
+}
+
 TABLES = (
     ("tasks_sprints", "A project's sprints, at most one of them active"),
     ("tasks_items", "The tasks of a project and the label each carries"),
@@ -122,6 +152,17 @@ MANIFEST = {
     "config": CONFIG,
     "contributes": {
         "routes": [{"name": "tasks", "title": "The tasks of a project", "python": f"{SERVER}:router"}],
+        "mcp_tools": [
+            {
+                "name": "create",
+                "title": "Create a task",
+                "description": "Create a task of the project for the member the agent works for (the person who "
+                "mentioned it in a chat), linked to the SRS items it names by code. That member must be a writer of "
+                "the project; name assignees only when they asked for them.",
+                "python": f"{AGENT}:create",
+                "input_schema": CREATE_SCHEMA,
+            }
+        ],
         "events": [{"name": "steps", "on": ["plan.step"], "python": f"{EVENTS}:on_plan_step"}],
         "kg_sources": [{"name": "backlog", "title": "The tasks of a project", "python": f"{KG}:kg_source"}],
         "tables": [{"name": name, "title": title} for name, title in TABLES],

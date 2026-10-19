@@ -9,6 +9,7 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from evo_agents.core_plugins.srs import edits
 from evo_agents.core_plugins.srs.diff import ItemChange
 from evo_agents.core_plugins.srs.doc import Document, Item, Problem
 from evo_agents.core_plugins.srs.imports import MAX_MARKDOWN_BYTES, Preview
@@ -272,6 +273,20 @@ class SrsCommentIn(BaseModel):
     version: int | None = Field(None, ge=1)
     item: str | None = Field(None, min_length=1, max_length=100, description="the code or key of the item")
     parent_id: int | None = Field(None, ge=1, description="the comment it answers")
+
+
+def edit_changes(changes: list[SrsChange]) -> list[edits.Change]:
+    """The changes of a save as ``edits`` applies them."""
+    found = []
+    for change in changes:
+        new = None
+        if change.new is not None:
+            values = change.new.model_dump()
+            level = values.pop("heading_level")
+            new = edits.NewItem(**values, level=level)
+        refs = [(ref.rel, ref.to) for ref in change.refs] if change.refs is not None else None
+        found.append(edits.Change(change.key, change.title, change.body, change.steps, refs, change.retire, new))
+    return found
 
 
 # From the plugin's rows to answers
