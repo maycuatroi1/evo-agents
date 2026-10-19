@@ -140,6 +140,14 @@ def _documents_query(project_id: int):
     )
 
 
+async def approved_documents(conn: AsyncConnection, project_id: int) -> list[DocumentRow]:
+    """Every document of the project that has an approved version and is not archived, by slug, whoever reads: the
+    knowledge graph reads them all and labels each by its row (``kg``)."""
+    d = tables.srs.documents
+    query = _documents_query(project_id).where(d.c.approved_version.is_not(None), d.c.archived_at.is_(None))
+    return [DocumentRow(**row._mapping) for row in await conn.execute(query.order_by(d.c.slug))]
+
+
 async def documents(conn: AsyncConnection, access: ProjectAccess, sink: str | None) -> list[DocumentRow]:
     """The documents of the project the member sees, by slug."""
     reader(access)
@@ -328,18 +336,21 @@ async def snapshot(conn: AsyncConnection, row: VersionRow) -> Snapshot:
 
 async def settings(conn: AsyncConnection, access: ProjectAccess) -> Settings:
     """The plugin's effective config in the project; 409 when its code patterns do not compile."""
-    row = await enabled_in(conn, PLUGIN, access.project_id)
+    return await project_settings(conn, access.project_id, access.name)
+
+
+async def project_settings(conn: AsyncConnection, project_id: int, project: str) -> Settings:
+    """``settings`` of project ``project_id`` named ``project``, for a caller that is no member: the kg source."""
+    row = await enabled_in(conn, PLUGIN, project_id)
     if row is None:
-        raise SrsError(
-            404, f"plugin {PLUGIN} is not enabled in project {access.name}: an admin of the project enables it"
-        )
-    stacks = await stored_stacks(conn, [row.id], access.project_id, None)
+        raise SrsError(404, f"plugin {PLUGIN} is not enabled in project {project}: an admin of the project enables it")
+    stacks = await stored_stacks(conn, [row.id], project_id, None)
     merged = plugin_config.merge(row.manifest.get("config"), stacks.get(row.id, []))
     values = {name: item.value for name, item in merged.fields.items() if not item.secret}
     try:
         template = template_of(values.get("template"), values.get("code_patterns"))
     except TemplateError as exc:
-        raise SrsError(409, f"the config of plugin {PLUGIN} in project {access.name}: {exc}") from None
+        raise SrsError(409, f"the config of plugin {PLUGIN} in project {project}: {exc}") from None
     return Settings(template, dict(values.get("roles") or {}), dict(values.get("approval_policy") or {}))
 
 
@@ -351,9 +362,11 @@ __all__ = [
     "Settings",
     "Snapshot",
     "VersionRow",
+    "approved_documents",
     "document",
     "documents",
     "missing",
+    "project_settings",
     "reader",
     "settings",
     "sink_of",

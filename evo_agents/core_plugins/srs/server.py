@@ -4,7 +4,7 @@
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
 between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them,
 review them (never one they wrote a version of since the one approved last) and comment; dropping a coded item takes
-an admin. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error
+an admin. Approving a version queues a build of the project's knowledge graph, which reads the approved versions. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error
 body, with the problems that refused it (or a conflict's two texts) in ``detail``.
 """
 
@@ -44,6 +44,7 @@ from evo_agents.core_plugins.srs.models import (
 from evo_agents.core_plugins.srs.template import code_key
 from evo_agents.core_plugins.srs.writes import Writer, give_screen_codes, write_version
 from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -310,7 +311,10 @@ async def review_version(
         doc = await store.document(conn, access, slug, sink, lock=True)
         settings = await store.settings(conn, access)
         asked = reviews.ReviewRequest(body.decision, body.role, body.body)
-        return version_model(await reviews.review(conn, access, user, doc, number, asked, settings))
+        decided = await reviews.review(conn, access, user, doc, number, asked, settings)
+        if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)
+            await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
+        return version_model(decided)
 
     return await _answer(request, work)
 

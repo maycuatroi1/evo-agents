@@ -5,7 +5,8 @@ Readers read: the config as tasks are written against it, the tasks (by status, 
 assignee's), a task whole with its links as they are now, its history and comments, the sprints. Writers create and
 change tasks, link and unlink them, set their people, comment, keep sprints and import ``evo-tasks/1`` JSON once.
 Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with an
-import's problems in ``detail``.
+import's problems in ``detail``. Creating, changing or importing tasks queues a build of the project's knowledge graph,
+whose tickets they are.
 """
 
 from __future__ import annotations
@@ -39,6 +40,7 @@ from evo_agents.core_plugins.tasks.models import (
 )
 from evo_agents.core_plugins.tasks.settings import Settings, TasksError, number_of, settings, srs_enabled
 from evo_agents.hub.access import has_role
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -63,6 +65,11 @@ async def _answer(request: Request, work):
         return error_response(request, exc.status, exc.message, detail=exc.detail)
     except IntegrityError:
         return error_response(request, 409, RACE)
+
+
+async def _graph_changed(request: Request, conn: AsyncConnection, access: ProjectAccess) -> None:
+    """Queue a build of the project's knowledge graph, whose tickets are the tasks (``kg``)."""
+    await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
 
 
 async def _opened(conn: AsyncConnection, user, project: str) -> tuple[ProjectAccess, Settings]:
@@ -171,6 +178,7 @@ async def create_task(request: Request, project: ProjectName, body: TasksItemIn,
             label=body.label.model_dump(exclude_none=True) if body.label else None,
         )
         number = await writes.create(conn, writer, task)
+        await _graph_changed(request, conn, access)
         return await _detail(conn, access, config, number, sink)
 
     return await _answer(request, work)
@@ -194,6 +202,7 @@ async def edit_task(
             unlink=body.unlink,
         )
         await writes.edit(conn, writer, row, changes)
+        await _graph_changed(request, conn, access)
         return await _detail(conn, access, config, row.number, sink)
 
     return await _answer(request, work)
@@ -253,6 +262,8 @@ async def import_tasks(request: Request, project: ProjectName, body: TasksImport
         writer = _writer(access, user, sink, config, "importing tasks")
         found = await imports.plan(conn, writer, body.data)
         made = [] if body.dry_run else await imports.apply(conn, writer, found)
+        if made:
+            await _graph_changed(request, conn, access)
         return import_model(config, found, body.dry_run, made)
 
     return await _answer(request, work)
