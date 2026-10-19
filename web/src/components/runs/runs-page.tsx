@@ -224,7 +224,7 @@ function RunList({ project }: { project: string }) {
             list.runs.length === 0 ? (
               <NoResults title={t("noResults.title")} filters={inUse} onClear={() => setFilters(NO_FILTERS)} />
             ) : (
-              <RunsTable runs={list.runs} caption={caption} viewer={viewer} />
+              <RunsTable runs={list.runs} caption={caption} viewer={viewer} grouped />
             )
           }
         </QueryView>

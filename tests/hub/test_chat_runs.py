@@ -18,6 +18,8 @@ three hops, within the chat's budget a day, which its creator changes; a refusal
 
 from __future__ import annotations
 
+from datetime import UTC, datetime
+
 import pytest
 
 from tests.hub import pg
@@ -26,7 +28,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 
 from evo_agents.hub import chat_runs, chats, runs, tables
 from evo_agents.hub.server.app import create_app
@@ -42,6 +44,8 @@ OWNER, OTHER, STRANGER = credentials_api.OWNER, credentials_api.OTHER, "stranger
 CHECKOUTS = credentials_api.CHECKOUTS  # evo-agents, lumen-identity, lumen-kb-docs and notes
 ONE_REPO = {f"{PROJECT}/evo-agents": {"path": "/src/evo-agents", "branch": "main"}}
 ADMIN_GRANT = {"role": "admin", "max_level": "internal"}
+# the features of a daemon whose chat run starts with every repo it has a checkout of, as one before LAZY_CHAT_REPOS
+EAGER = tuple(feature for feature in runs.WORKER_FEATURES if feature != runs.LAZY_CHAT_REPOS)
 EYES, CHECK, CROSS = chats.EYES, chats.CHECK, chats.CROSS
 WORKERS_APP = {"contents": "write", "metadata": "read", "pull_requests": "write"}
 
@@ -82,9 +86,13 @@ def agent(client, headers, handle: str, **body) -> dict:
     return response.json()
 
 
-def chat_worker(client, headers, name: str, *, checkouts=CHECKOUTS, kinds=runs.RUN_KINDS, slots: int = 1) -> dict:
-    """A worker of ``headers``' member whose daemon says it runs ``kinds`` and applies agent profiles."""
+def chat_worker(
+    client, headers, name: str, *, checkouts=CHECKOUTS, kinds=runs.RUN_KINDS, slots: int = 1, features=EAGER
+) -> dict:
+    """A worker of ``headers``' member whose daemon says it runs ``kinds`` and does ``features``: it applies agent
+    profiles, and its chat runs start with every repo it has a checkout of unless they name LAZY_CHAT_REPOS."""
     worker = add_worker(client, headers, name, slots=slots, checkouts=checkouts)
+    worker["features"] = list(features)
     beat(client, worker, kinds=kinds)
     return worker
 
@@ -96,7 +104,7 @@ def beat(client, worker: dict, held=(), kinds=runs.RUN_KINDS) -> dict:
         "free_slots": 1,
         "runs": list(held),
         "run_kinds": list(kinds),
-        "features": list(runs.WORKER_FEATURES),
+        "features": worker.get("features", list(EAGER)),
     }
     response = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
     assert response.status_code == 200, response.text
@@ -356,6 +364,85 @@ def test_a_chat_run_done_with_messages_untaken_resumes_its_session_with_them(cli
     assert (state, resume_of) == ("queued", spec["id"])
     held = sql(hub_db, select(tables.run_inbox.c.run_id).where(tables.run_inbox.c.delivered_at.is_(None)))
     assert held == [(next_id,)]
+
+
+DECLINED = (
+    "git push of evo-agents to chat/{id} failed: git push failed (1): remote: no write access error: failed to push "
+    "some refs to 'https://github.com/maycuatroi1/evo-agents.git' (origin declined it: pre-receive hook declined)"
+)
+
+
+def test_a_chat_run_whose_push_origin_declined_goes_on_in_its_session_and_another_failure_starts_a_new_one(
+    client, hub, hub_db
+):
+    """Criterion a2 of chat-runs-start-fast: the commits of a run whose push the remote declined wait on chat/<first
+    run> in its worktree, so the next message of the session goes on in it, on its worker, for that run to push them;
+    a run that failed of any other cause leaves the next message a new session."""
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    mention, spec = started(client, hub, worker, chat)
+    first = spec["id"]
+    error = DECLINED.format(id=first)
+    moved(
+        client,
+        worker,
+        first,
+        "verifying",
+        "failed",
+        error=error,
+        failure_cause="push_declined",
+        usage={"total_cost_usd": 0.4},
+    )
+    assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(CROSS, ["reviewer"])]
+    said = thread(client, hub["owner"], chat["id"], mention["id"])[-1]
+    assert (said["author"]["kind"], said["body"]) == ("hub", f"Run #{first} of @reviewer failed: {error}")
+    assert len(chat_runs_of(hub_db)) == 1, "a failed run wakes nothing by itself"
+
+    # the next message goes on in the session, on its worker and branch, the session key unchanged
+    again = sent(client, hub["owner"], chat["id"], "@reviewer push it again, please", mention["id"])
+    ((_, _, _, _, owner_id), (second, state, resume_of, hop, by)) = chat_runs_of(hub_db)
+    assert (again["mentions"][0]["run_id"], state, resume_of, hop, by) == (second, "queued", first, 1, owner_id)
+    run = run_of(client, hub["owner"], second)
+    assert (run["pinned_worker_id"], run["session_id"], run["branch"], run["chat_message_id"]) == (
+        worker["id"],
+        "sess-1",
+        f"chat/{first}",
+        again["id"],
+    )
+    assert {entry["branch"] for entry in run["repos"]} == {f"chat/{first}"}
+    assert run["budget"]["max_usd"] == pytest.approx(5.0 - 0.4 + 0.4)  # what is left, plus the session's cost
+    goes_on = claim(client, worker)
+    assert (goes_on["id"], goes_on["resume_of_run_id"], goes_on["session_id"]) == (second, first, "sess-1")
+    assert goes_on["budget"]["spent_usd"] == pytest.approx(0.4)
+    held = client.post(f"/v1/worker/runs/{second}/inbox", json={}, headers=worker["headers"]).json()["messages"]
+    assert [item["text"].splitlines()[-1] for item in held] == ["@reviewer push it again, please"]
+
+    # another person's mention in the thread still starts a session of their own
+    theirs = chat_worker(client, hub["other"], "laptop")
+    other = sent(client, hub["other"], chat["id"], "@reviewer and mine", mention["id"])
+    mine = run_of(client, hub["other"], other["mentions"][0]["run_id"])
+    assert (mine["dispatched_by"], mine["pinned_worker_id"], mine["resume_of_run_id"]) == (OTHER, theirs["id"], None)
+
+    # a run of the session that fails of another cause leaves the next message a new session
+    moved(client, worker, second, "running", session_id="sess-1")
+    moved(client, worker, second, "failed", error="claude-code stopped at the run's time cap", failure_cause="time_cap")
+    fresh = sent(client, hub["owner"], chat["id"], "@reviewer once more", mention["id"])
+    run = run_of(client, hub["owner"], fresh["mentions"][0]["run_id"])
+    assert (run["resume_of_run_id"], run["session_id"], run["pinned_worker_id"]) == (None, None, worker["id"])
+    assert run["branch"] == f"chat/{run['id']}"
+
+
+def test_a_chat_run_that_failed_without_a_declined_push_starts_a_new_session(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"])
+    for cause in (None, "credentials", "checkout"):
+        mention, spec = started(client, hub, worker, chat)
+        report_body = {"error": "git push of evo-agents to chat/1 failed: no luck"}
+        moved(client, worker, spec["id"], "failed", **report_body, **({"failure_cause": cause} if cause else {}))
+        later = sent(client, hub["owner"], chat["id"], "@reviewer again", mention["id"])
+        run = run_of(client, hub["owner"], later["mentions"][0]["run_id"])
+        assert (run["resume_of_run_id"], run["branch"]) == (None, f"chat/{run['id']}"), cause
+        moved(client, worker, claim(client, worker)["id"], "running", "failed", error="stop here")
 
 
 def test_a_chat_reply_without_a_mention_wakes_the_session_in_a_chat_of_one_person_only(client, hub, hub_db):
@@ -645,3 +732,455 @@ def test_a_lost_chat_run_is_tried_again_with_its_chat_columns(client, hub, hub_d
     assert retry == [(chat["id"], mention["id"], 1, f"chat/{spec['id']}", spec["id"])]
     assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(EYES, ["reviewer"])]  # the eyes stay
     assert report(client, worker, spec["id"], "running").status_code == 404
+
+
+# The repos of a chat run on a daemon of LAZY_CHAT_REPOS (criterion a3 of chat-runs-start-fast)
+
+HARNESS = "evo-agents-harness"  # the harness test_plans registers the project with, which it does not list as a repo
+WITH_HARNESS = {**CHECKOUTS, f"{PROJECT}/{HARNESS}": {"path": f"/src/{HARNESS}", "branch": "main"}}
+NO_NOTES = {name: held for name, held in WITH_HARNESS.items() if name != f"{PROJECT}/notes"}
+OPEN = chat_runs.OPEN_COMMAND
+
+
+def repos_of(run: dict) -> list[str] | None:
+    return None if run["repos"] is None else [entry["repo"] for entry in run["repos"]]
+
+
+def opened(client, worker: dict, run_id: int, repo: str):
+    return in_chats(client, worker, run_id, "chat/repos", {"repo": repo})
+
+
+def listed(prompt: str) -> list[str]:
+    """The lines of the repos a chat run's prompt lists."""
+    lines = prompt.split("\n")
+    start = next(i for i, line in enumerate(lines) if line.startswith("Repositories of ")) + 1
+    return lines[start : lines.index("", start)]
+
+
+def test_a_lazy_daemons_chat_run_starts_with_the_harness_alone_and_another_with_every_checkout(client, hub, hub_db):
+    studio = chat_worker(client, hub["owner"], "studio", checkouts=WITH_HARNESS, slots=3, features=runs.WORKER_FEATURES)
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=WITH_HARNESS)
+    chat = created(client, hub["owner"], people=[OTHER])
+    mine = run_of(
+        client, hub["owner"], sent(client, hub["owner"], chat["id"], "@reviewer fix it")["mentions"][0]["run_id"]
+    )
+    assert mine["pinned_worker_id"] == studio["id"]
+    assert mine["repos"] == [{"repo": HARNESS, "branch": f"chat/{mine['id']}"}]
+    # a daemon that does not say LAZY_CHAT_REPOS gets every repo of the project it has a checkout of, as before
+    said = sent(client, hub["other"], chat["id"], "@reviewer and mine")
+    theirs = run_of(client, hub["other"], said["mentions"][0]["run_id"])
+    assert theirs["pinned_worker_id"] == laptop["id"]
+    assert repos_of(theirs) == [HARNESS, "evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]
+    # no checkout of the harness, or a project registered without one: the run starts with no repo
+    studio["checkouts"] = CHECKOUTS
+    beat(client, studio)
+    bare = run_of(
+        client, hub["owner"], sent(client, hub["owner"], chat["id"], "@reviewer again")["mentions"][0]["run_id"]
+    )
+    assert (bare["pinned_worker_id"], bare["repos"]) == (studio["id"], None)
+    studio["checkouts"] = WITH_HARNESS
+    beat(client, studio)
+    unregistered = update(tables.projects).values(cluster=None, workspace=None, harness_path=None)
+    sql(hub_db, unregistered.where(tables.projects.c.name == PROJECT))
+    none = run_of(
+        client, hub["owner"], sent(client, hub["owner"], chat["id"], "@reviewer last")["mentions"][0]["run_id"]
+    )
+    assert (none["pinned_worker_id"], none["repos"]) == (studio["id"], None)
+
+
+def test_a_lazy_chat_runs_prompt_lists_every_repo_open_and_named_first_with_the_command_that_opens_it(
+    client, hub, hub_db
+):
+    studio = chat_worker(client, hub["owner"], "studio", checkouts=NO_NOTES, features=runs.WORKER_FEATURES)
+    chat = created(client, hub["owner"], people=[OTHER])
+    sent(client, hub["other"], chat["id"], "lumen-identity looks fine to me.")  # before the thread: it names nothing
+    root = sent(client, hub["owner"], chat["id"], "The LUMEN-KB-DOCS build is red since Tuesday.")
+    sent(client, hub["owner"], chat["id"], "@reviewer look at evo-agents too, please", root["id"])
+    spec = claim(client, studio)
+    prompt = spec["prompt"]
+    branch = f"chat/{spec['id']}"
+    assert listed(prompt) == [
+        f"- {HARNESS}: open, checked out on this worker: its worktree is {HARNESS}/, and `{OPEN} {HARNESS}` prints its "
+        "path",
+        f"- evo-agents: not open, checked out on this worker, named in the chat: `{OPEN} evo-agents` opens it",
+        f"- lumen-kb-docs: not open, checked out on this worker, named in the chat: `{OPEN} lumen-kb-docs` opens it",
+        f"- lumen-identity: not open, checked out on this worker: `{OPEN} lumen-identity` opens it",
+        f"- notes: not open, no checkout on this worker: `{OPEN} notes` refuses it",
+    ]
+    assert "Repositories of the project, those open in this run first, then those the chat names:" in prompt
+    assert (
+        f"Open a repo with `{OPEN} REPO` before you read or change its code: the worker makes its worktree on the "
+        f"branch {branch} under the current directory"
+    ) in prompt
+    assert f"The harness.yaml of {HARNESS} says what each repo of the project is for." in prompt
+    assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
+    # the prompt of another daemon's chat run lists the run's repos as before, and no command that opens one
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=NO_NOTES)
+    sent(client, hub["other"], chat["id"], "@reviewer and mine")
+    other = claim(client, laptop)
+    assert listed(other["prompt"]) == [
+        f"- {name}: {name}/" for name in (HARNESS, "evo-agents", "lumen-identity", "lumen-kb-docs")
+    ]
+    assert OPEN not in other["prompt"]
+    assert (
+        f"You may change code in the repos below, each a worktree on the branch chat/{other['id']}" in other["prompt"]
+    )
+
+
+def test_a_lazy_chat_run_opens_a_repo_its_leases_pulls_and_next_turn_take(client, hub, hub_db, github):
+    credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
+    github.add_repo(MINE, "evo-agents")
+    studio = chat_worker(client, hub["owner"], "studio", checkouts=NO_NOTES, features=runs.WORKER_FEATURES)
+    chat = created(client, hub["owner"])
+    mention, spec = started(client, hub, studio, chat)
+    first, branch = spec["id"], f"chat/{spec['id']}"
+    assert spec["repos"] == [{"repo": HARNESS, "branch": branch}]
+    leases = credentials_api.leased(client, studio, first)
+    assert (credentials_api.by_name(leases), set(credentials_api.missing(leases))) == ({}, {HARNESS})
+    pull = {"repo": "evo-agents", "branch": branch, "head": "1" * 40}
+    refused = in_chats(client, studio, first, "chat/pulls", pull)
+    assert refused.status_code == 422 and "does not work in evo-agents" in refused.json()["message"]
+
+    answer = opened(client, studio, first, "evo-agents")
+    assert answer.status_code == 200, answer.text
+    both = [{"repo": HARNESS, "branch": branch}, {"repo": "evo-agents", "branch": branch}]
+    assert answer.json() == {"repo": "evo-agents", "branch": branch, "added": True, "repos": both}
+    again = opened(client, studio, first, "evo-agents")
+    assert again.status_code == 200 and again.json() == {**answer.json(), "added": False}
+    assert run_of(client, hub["owner"], first)["repos"] == both
+    audited = select(tables.audit.c.action, tables.audit.c.target, tables.audit.c.project_id)
+    rows = sql(hub_db, audited.where(tables.audit.c.action == "run.open_repo"))
+    project_id = sql(hub_db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    assert rows == [("run.open_repo", f"{PROJECT}/chat run:{first} repo=evo-agents", project_id)]
+    # the run's leases take the repo it opened, and so does its pull request
+    leases = credentials_api.leased(client, studio, first)
+    assert set(credentials_api.by_name(leases)) == {f"github-app:{MINE}"}
+    assert set(credentials_api.missing(leases)) == {HARNESS}
+    github.push(MINE, "evo-agents", branch, "1" * 40)
+    made = in_chats(client, studio, first, "chat/pulls", pull)
+    assert made.status_code == 201 and made.json()["number"] == 1, made.text
+
+    # a repo the project does not list, or one the worker has no checkout of, is refused, and nothing changes
+    unknown = opened(client, studio, first, "nope")
+    assert unknown.status_code == 422
+    assert unknown.json()["message"] == (
+        f"project {PROJECT} has no repo nope: its repos are {HARNESS}, evo-agents, lumen-identity, lumen-kb-docs, notes"
+    )
+    unheld = opened(client, studio, first, "notes")
+    assert unheld.status_code == 409
+    assert unheld.json()["message"] == (
+        f"worker studio has no checkout of notes of project {PROJECT}: the run cannot open it here"
+    )
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=NO_NOTES, features=runs.WORKER_FEATURES)
+    assert opened(client, laptop, first, "lumen-identity").status_code == 404  # not its run
+    assert run_of(client, hub["owner"], first)["repos"] == both
+
+    # the next turn of the session starts with the repos the run opened, listed open first
+    ended(client, studio, first)
+    assert opened(client, studio, first, "lumen-identity").status_code == 404  # the run ended
+    later = sent(client, hub["owner"], chat["id"], "@reviewer and the docs?", mention["id"])
+    second = later["mentions"][0]["run_id"]
+    assert run_of(client, hub["owner"], second)["repos"] == both
+    goes_on = claim(client, studio)
+    assert (goes_on["id"], goes_on["resume_of_run_id"], goes_on["repos"]) == (second, first, both)
+    assert [line.split(":")[:2] for line in listed(goes_on["prompt"])[:2]] == [
+        [f"- {HARNESS}", " open, checked out on this worker"],
+        ["- evo-agents", " open, checked out on this worker"],
+    ]
+    moved(client, studio, second, "running")
+    taken = client.post(f"/v1/worker/runs/{second}/inbox", json={}, headers=studio["headers"]).json()["messages"]
+    client.post(f"/v1/worker/runs/{second}/inbox", json={"ack": taken[-1]["id"]}, headers=studio["headers"])
+    ended(client, studio, second)
+
+    # a run of another kind opens no repo here
+    plan = {"body": credentials_api.plan_body()}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}", json=plan, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    body = {"plan_id": credentials_api.PLAN, "steps": [1]}
+    assert client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"]).status_code == 201
+    step = claim(client, studio)
+    assert step["kind"] == "step"
+    refused = opened(client, studio, step["id"], "evo-agents")
+    assert refused.status_code == 404 and "only a chat run's agent opens a repo here" in refused.json()["message"]
+
+
+# The turns of a session (criteria a5 and a6 of chat-runs-start-fast)
+
+FIRST_ASK = "@reviewer please fix the flaky wait test"
+
+
+def runs_listed(client, headers, **params) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/runs", params=params, headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def turn_of(run: dict) -> tuple:
+    return (run["title"], run["session_run_id"], run["session_turn"], run["session_turns"], run["session_title"])
+
+
+def taken_and_ended(client, worker: dict, run_id: int) -> None:
+    """The agent of running chat run ``run_id`` takes the messages of its inbox, and its turn ends done."""
+    taken = client.post(f"/v1/worker/runs/{run_id}/inbox", json={}, headers=worker["headers"]).json()["messages"]
+    client.post(f"/v1/worker/runs/{run_id}/inbox", json={"ack": taken[-1]["id"]}, headers=worker["headers"])
+    ended(client, worker, run_id)
+
+
+def three_turns(client, hub, worker: dict, chat: dict) -> tuple:
+    """A session of @reviewer in ``chat`` that ``worker`` runs: its first run woken by the mention, its second by a
+    message left in the first one's inbox, its third by a message in the thread once the second ended; the third
+    claimed and running. (mention, the ids of the three runs)."""
+    mention, spec = started(client, hub, worker, chat, FIRST_ASK)
+    first = spec["id"]
+    sent(client, hub["owner"], chat["id"], "@reviewer one more thing: the retries", mention["id"])  # in its inbox
+    ended(client, worker, first)
+    second = claim(client, worker)["id"]
+    moved(client, worker, second, "running")
+    taken_and_ended(client, worker, second)
+    later = sent(client, hub["owner"], chat["id"], "@reviewer and the docs?", mention["id"])
+    third = later["mentions"][0]["run_id"]
+    assert claim(client, worker)["id"] == third
+    moved(client, worker, third, "running")
+    return mention, (first, second, third)
+
+
+def test_each_turn_of_a_chat_session_is_titled_by_its_message_and_the_pull_request_by_the_session(
+    client, hub, hub_db, github
+):
+    """Criterion a5: a run that goes on in a session is titled by the message that woke it, the person's or the first
+    one the run before left in its inbox, not by the session's first run; the API says of each chat run the first run
+    of its session and its turn; the pull request of the session's branch keeps the first run's title."""
+    credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
+    github.add_repo(MINE, "evo-agents")
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    _, (first, second, third) = three_turns(client, hub, worker, chat)
+    session = f"@reviewer in Release talk: {FIRST_ASK}"
+    assert [turn_of(run_of(client, hub["owner"], run_id)) for run_id in (first, second, third)] == [
+        (session, first, 1, 3, session),
+        ("@reviewer in Release talk: @reviewer one more thing: the retries", first, 2, 3, session),
+        ("@reviewer in Release talk: @reviewer and the docs?", first, 3, 3, session),
+    ]
+    # the third turn pushes the session's branch: its pull request has the session's title, not the turn's
+    branch = f"chat/{first}"
+    github.push(MINE, "evo-agents", branch, "1" * 40)
+    body = {"repo": "evo-agents", "branch": branch, "head": "1" * 40}
+    assert in_chats(client, worker, third, "chat/pulls", body).status_code == 201
+    assert github.pull_of(MINE, "evo-agents", branch).title == session
+    # a run of another kind, and a chat session of one run, say so
+    chat_worker(client, hub["other"], "laptop")
+    other = sent(client, hub["other"], chat["id"], "@reviewer what about mine?")
+    alone = run_of(client, hub["other"], other["mentions"][0]["run_id"])
+    assert turn_of(alone)[1:] == (alone["id"], 1, 1, alone["title"])
+
+
+def test_the_runs_list_groups_a_chat_sessions_turns_as_its_latest_and_counts_and_pages_them(client, hub, hub_db):
+    """Criterion a6 on the API's side: with group=session the list holds a chat session once, as its latest turn, its
+    state that turn's for the state filter, the counts and the total; a search that finds any turn lists the session;
+    session_run_id lists the turns of one session. Without group, every run is listed as before."""
+    worker = chat_worker(client, hub["owner"], "studio", slots=2)
+    chat = created(client, hub["owner"], people=[OTHER])
+    _, (first, second, third) = three_turns(client, hub, worker, chat)
+    taken_and_ended(client, worker, third)
+    fourth = sent(client, hub["owner"], chat["id"], "@reviewer last one, the changelog")["mentions"][0]["run_id"]
+    assert run_of(client, hub["owner"], fourth)["session_turn"] == 1  # a new thread: a new session
+    plan = {"body": credentials_api.plan_body()}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}", json=plan, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    body = {"plan_id": credentials_api.PLAN, "steps": [1]}
+    (step,) = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"]).json()
+    assert turn_of(run_of(client, hub["owner"], step["id"]))[1:] == (None, None, None, None)
+
+    every = runs_listed(client, hub["owner"])
+    assert [run["id"] for run in every["runs"]] == [step["id"], fourth, third, second, first]
+    assert (every["total"], every["counts"]["done"], every["counts"]["queued"]) == (5, 3, 2)
+
+    grouped = runs_listed(client, hub["owner"], group="session")
+    assert [run["id"] for run in grouped["runs"]] == [step["id"], fourth, third]
+    assert (grouped["total"], grouped["counts"]["done"], grouped["counts"]["queued"]) == (3, 1, 2)
+    assert [run["session_turns"] for run in grouped["runs"]] == [None, 1, 3]
+    done = runs_listed(client, hub["owner"], group="session", state="done")
+    assert ([run["id"] for run in done["runs"]], done["total"]) == ([third], 1)
+    paged = runs_listed(client, hub["owner"], group="session", limit=2, offset=2)
+    assert ([run["id"] for run in paged["runs"]], paged["total"]) == ([third], 3)
+
+    # the search finds the session by an earlier turn, and lists it as its latest
+    found = runs_listed(client, hub["owner"], group="session", q="one more thing")
+    assert ([run["id"] for run in found["runs"]], found["total"], found["counts"]["done"]) == ([third], 1, 1)
+    by_number = runs_listed(client, hub["owner"], group="session", q=f"#{first}")
+    assert [run["id"] for run in by_number["runs"]] == [third]
+    assert runs_listed(client, hub["owner"], q="one more thing")["total"] == 1  # ungrouped: the turn alone
+
+    turns = runs_listed(client, hub["owner"], session_run_id=first)
+    assert ([run["id"] for run in turns["runs"]], turns["total"]) == ([third, second, first], 3)
+    assert runs_listed(client, hub["owner"], session_run_id=step["id"])["total"] == 0
+    refused = client.get(f"/v1/projects/{PROJECT}/runs", params={"group": "plan"}, headers=hub["owner"])
+    assert refused.status_code == 422
+
+
+# How far a run is, under the message it took (criterion a7 of the plan chat-runs-start-fast)
+
+
+def noted(client, worker: dict, run_id: int, *bodies: dict, first: int = 1) -> None:
+    """The worker's notes (system events) of run ``run_id``, numbered from ``first``, as its spool sends them."""
+    at = datetime.now(UTC).isoformat()
+    events = [{"seq": first + n, "at": at, "kind": "system", "body": body} for n, body in enumerate(bodies)]
+    response = client.post(f"/v1/worker/runs/{run_id}/events", json={"events": events}, headers=worker["headers"])
+    assert response.status_code == 200, response.text
+
+
+def progress_of(client, headers, chat_id: int, message_id: int) -> list[tuple]:
+    """The progress under message ``message_id`` as ``headers``' member reads the chat: (run, step, worker, repo)."""
+    shown = message(client, headers, chat_id, message_id)["progress"]
+    assert all(item["message_id"] == message_id and item["handle"] == "reviewer" for item in shown), shown
+    return [(item["run_id"], item["step"], item["worker"], item["repo"]) for item in shown]
+
+
+def written(db, chat_id: int) -> tuple:
+    """What a chat holds that a step of a run must not add: its messages, its events, and every notice."""
+    cm, ce, n = tables.chat_messages, tables.chat_events, tables.notifications
+    count = select(func.count())
+    return (
+        sql(db, count.select_from(cm).where(cm.c.chat_id == chat_id)),
+        sql(db, count.select_from(ce).where(ce.c.chat_id == chat_id)),
+        sql(db, count.select_from(n)),
+    )
+
+
+SETUP = [  # what a daemon notes as it gets a chat run ready, and the step the thread shows after each
+    ({"text": "Run claimed by worker studio.", "setup": "claimed"}, "claimed", None),
+    ({"text": "Checking access of the run: 1 repo(s): evo-agents.", "setup": "checking"}, "checking", None),
+    (
+        {"text": "Fetching origin in /src/evo-agents.", "repo": "evo-agents", "setup": "opening"},
+        "opening",
+        "evo-agents",
+    ),
+    ({"text": "Worktree /w/evo-agents of evo-agents.", "repo": "evo-agents"}, "opening", "evo-agents"),
+    ({"text": "Fetching origin in /src/notes.", "repo": "notes", "setup": "opening"}, "opening", "notes"),
+    ({"text": "The run's worktrees are ready: starting claude-code.", "setup": "starting"}, "starting", None),
+]
+
+
+def test_a_chat_runs_progress_shows_under_its_message_by_rule_until_its_agent_answers(client, hub, hub_db):
+    """The answer to the mention already says the agent took it and the worker its run waits for. Each step of the
+    run's setup its worker notes then replaces the one before under the message (a note that names none keeps it),
+    working once the agent runs, opening again for a repo the agent asks for; the agent's reply ends it. No step writes
+    a chat message, a chat event or a notice, and the reactions follow the run as before."""
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    mention = sent(client, hub["owner"], chat["id"], "@reviewer please fix the flaky wait test")
+    run_id = mention["mentions"][0]["run_id"]
+    (ack,) = mention["progress"]
+    assert (ack["message_id"], ack["run_id"], ack["handle"], ack["step"], ack["worker"], ack["repo"]) == (
+        mention["id"],
+        run_id,
+        "reviewer",
+        "waiting",
+        "studio",
+        None,
+    )
+    assert progress_of(client, hub["other"], chat["id"], mention["id"]) == [(run_id, "waiting", "studio", None)]
+    assert claim(client, worker)["id"] == run_id
+    assert progress_of(client, hub["other"], chat["id"], mention["id"]) == [(run_id, "claimed", "studio", None)]
+    before = written(hub_db, chat["id"])
+    for seq, (body, step, repo) in enumerate(SETUP, start=1):
+        noted(client, worker, run_id, body, first=seq)
+        assert progress_of(client, hub["other"], chat["id"], mention["id"]) == [(run_id, step, "studio", repo)], body
+    moved(client, worker, run_id, "running", session_id="sess-1")
+    assert progress_of(client, hub["other"], chat["id"], mention["id"]) == [(run_id, "working", "studio", None)]
+    seq = len(SETUP) + 1
+    noted(
+        client,
+        worker,
+        run_id,
+        {"text": "The agent asks to open lumen-identity.", "repo": "lumen-identity", "setup": "opening"},
+        first=seq,
+    )
+    assert progress_of(client, hub["other"], chat["id"], mention["id"]) == [
+        (run_id, "opening", "studio", "lumen-identity")
+    ]
+    noted(
+        client,
+        worker,
+        run_id,
+        {"text": "The agent opened lumen-identity.", "repo": "lumen-identity", "setup": "working"},
+        first=seq + 1,
+    )
+    assert progress_of(client, hub["other"], chat["id"], mention["id"]) == [(run_id, "working", "studio", None)]
+    assert written(hub_db, chat["id"]) == before, "the steps write no message, chat event or notice"
+    assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(EYES, ["reviewer"])]
+
+    reply(client, worker, run_id, "Replaced the sleep with a poll.")
+    assert progress_of(client, hub["other"], chat["id"], mention["id"]) == []
+    ended(client, worker, run_id)
+    assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(CHECK, ["reviewer"])]
+    assert all(not item["progress"] for item in thread(client, hub["owner"], chat["id"], mention["id"]))
+
+
+def test_a_message_to_a_working_run_waits_in_its_inbox_until_the_agent_takes_it_and_answers(client, hub, hub_db):
+    """A message that reaches the inbox of the turn that runs says so at once, and keeps saying it while the agent
+    answers what it had before; once the worker hands it to the agent the run works on it, until the next answer."""
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    mention, spec = started(client, hub, worker, chat)
+    later = sent(client, hub["owner"], chat["id"], "@reviewer also look at retries", mention["id"])
+    assert [(item["run_id"], item["step"], item["worker"]) for item in later["progress"]] == [
+        (spec["id"], "inbox", "studio")
+    ]
+    assert progress_of(client, hub["owner"], chat["id"], mention["id"]) == [(spec["id"], "working", "studio", None)]
+    reply(client, worker, spec["id"], "The wait test polls now.")  # the answer of the turn that had not taken it
+    assert progress_of(client, hub["owner"], chat["id"], mention["id"]) == []
+    assert progress_of(client, hub["owner"], chat["id"], later["id"]) == [(spec["id"], "inbox", "studio", None)]
+    inbox = client.post(f"/v1/worker/runs/{spec['id']}/inbox", json={}, headers=worker["headers"]).json()["messages"]
+    client.post(f"/v1/worker/runs/{spec['id']}/inbox", json={"ack": inbox[0]["id"]}, headers=worker["headers"])
+    assert progress_of(client, hub["owner"], chat["id"], later["id"]) == [(spec["id"], "working", "studio", None)]
+    reply(client, worker, spec["id"], "Retries are bounded too.")
+    assert progress_of(client, hub["owner"], chat["id"], later["id"]) == []
+
+
+def test_a_message_its_run_left_untaken_shows_the_run_that_goes_on_with_it(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"])
+    mention, spec = started(client, hub, worker, chat)
+    reply(client, worker, spec["id"], "Done.")
+    later = sent(client, hub["owner"], chat["id"], "one more thing", mention["id"])  # one person: no @ in the thread
+    ended(client, worker, spec["id"])
+    (_, (next_id, state, resume_of, _, _)) = chat_runs_of(hub_db)
+    assert (state, resume_of) == ("queued", spec["id"])
+    assert progress_of(client, hub["owner"], chat["id"], later["id"]) == [(next_id, "waiting", "studio", None)]
+    assert progress_of(client, hub["owner"], chat["id"], mention["id"]) == [], "its session answered it"
+    assert claim(client, worker)["id"] == next_id
+    assert progress_of(client, hub["owner"], chat["id"], later["id"]) == [(next_id, "claimed", "studio", None)]
+
+
+def test_a_failed_chat_runs_progress_ends_and_the_thread_says_why(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"])
+    mention, spec = started(client, hub, worker, chat)
+    assert progress_of(client, hub["owner"], chat["id"], mention["id"]) == [(spec["id"], "working", "studio", None)]
+    moved(client, worker, spec["id"], "failed", error="git fetch in /src/evo-agents failed", failure_cause="checkout")
+    assert progress_of(client, hub["owner"], chat["id"], mention["id"]) == []
+    answer = thread(client, hub["owner"], chat["id"], mention["id"])[-1]
+    assert answer["body"] == f"Run #{spec['id']} of @reviewer failed: git fetch in /src/evo-agents failed"
+    assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(CROSS, ["reviewer"])]
+
+
+def test_who_may_not_read_a_chat_run_sees_nothing_more_of_it_in_the_thread(client, hub, hub_db):
+    """Progress names a worker and repos: it shows to a member who may read the run (a grant on its project, its
+    default label through the project's hub sink), and to nobody else, who reads the chat as before."""
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    mention = sent(client, hub["owner"], chat["id"], "@reviewer please fix the flaky wait test")
+    run_id = mention["mentions"][0]["run_id"]
+    assert claim(client, worker)["id"] == run_id
+    assert progress_of(client, hub["other"], chat["id"], mention["id"]) == [(run_id, "claimed", "studio", None)]
+    # the hub's sink no longer carries the project's default label: the runs of no plan read as none on the hub
+    closed = [{**sink, "clearance": {"level": "public", "location": "any"}} for sink in OPEN_SINKS]
+    body = {**credentials_api.registration(credentials_api.DISPATCHED), "sinks": closed}
+    assert client.put(f"/v1/projects/{PROJECT}", json=body, headers=hub["admin"]).status_code == 200
+    assert client.get(f"/v1/projects/{PROJECT}/runs/{run_id}", headers=hub["other"]).status_code == 404
+    seen = message(client, hub["other"], chat["id"], mention["id"])
+    assert seen["progress"] == [] and seen["mentions"][0]["run_id"] == run_id
+    events = client.get(f"/v1/chats/{chat['id']}/events", params={"progress": True}, headers=hub["other"]).json()
+    assert events["progress"] == []
+    assert next(e for e in events["events"] if e["kind"] == "message")["message"]["progress"] == []

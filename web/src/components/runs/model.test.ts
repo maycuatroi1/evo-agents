@@ -142,8 +142,9 @@ describe("filters", () => {
     expect(filtersSearch({ facet: null, kind: "local", account: "a@b.c", q: "", page: 1 })).toBe("?kind=local&account=a%40b.c");
   });
 
-  it("asks the API for the states of the facet, one page at a time", () => {
+  it("asks the API for the states of the facet, one page at a time, each chat session once", () => {
     expect(listQuery({ facet: "ended", kind: "local", account: "a@b.c", q: "x", page: 3 })).toEqual({
+      group: "session",
       states: ["failed", "lost", "cancelled", "ended"],
       kind: "local",
       account: "a@b.c",

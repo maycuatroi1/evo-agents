@@ -11,6 +11,8 @@ import { percent, stepLabel } from "@/lib/plans";
 import { useRuntimeName } from "@/lib/runtimes";
 import { cn } from "@/lib/utils";
 
+import { isSessionTurn } from "./chat-session";
+import { ChatSessionHead } from "./chat-session-turns";
 import { runTiming } from "./model";
 import { isActiveState, type Run } from "./queries";
 import { usePlanProgress } from "./run-plan-steps";
@@ -45,7 +47,7 @@ export function useStatusLine(run: Run): string {
  * the status line when the state is not the usual one ("Waiting for an answer for 6m", "Failed after 1h 12m"; a run
  * that is running or verifying says it to screen readers only), 16 px apart, wrapping as the width needs; at its
  * end the Details toggle, the owner's one or two controls and the menu of the others. "Run #80" is the page's heading for screen readers only: the top bar's
- * breadcrumb shows it.
+ * breadcrumb shows it. A turn of a chat session has its session's title above that line, and the session's other turns.
  */
 export function RunHeader({
   run,
@@ -76,6 +78,7 @@ export function RunHeader({
       <h1 className="sr-only">
         {tRun("title")} #{run.id}
       </h1>
+      {isSessionTurn(run) ? <ChatSessionHead run={run} /> : null}
       <div className="flex min-h-8 min-w-0 flex-1 basis-60 flex-wrap items-center gap-x-4 gap-y-1 text-[13px] leading-5 text-muted-foreground">
         {plan ? (
           <span className="inline-flex max-w-full min-w-0 items-center gap-1 max-md:items-start">

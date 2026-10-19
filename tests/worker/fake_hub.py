@@ -51,8 +51,10 @@ class FakeHub:
         self.verdicts: list[dict] = []  # what the judge runs posted, with the run's id
         # what the agent of a run did in group chats and what the daemon of a chat run or a task run told of its
         # pushes: each with the run's id and the route (chat/messages, chat/reactions, chat/mentions, chats,
-        # chat/pulls, task/pulls)
+        # chat/pulls, chat/repos, task/pulls)
         self.chat_calls: list[dict] = []
+        # the repos of the project, which a chat run's daemon may open in the run (chat/repos); None: any repo
+        self.project_repos: list[str] | None = None
         self.judge_inputs: dict[int, dict] = {}  # run id -> what GET .../judge answers it
         self.judge_reads: list[int] = []  # the judge runs that read their inputs, in order
         self.judge_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon, which its routes take
@@ -689,9 +691,31 @@ class FakeHub:
         elif route == "chat/pulls":
             url = f"https://github.example/demo/{body['repo']}/pull/{number}"
             answer = {**body, "url": url, "number": number, "opened": True, "message_id": 1000 + number}
+        elif route == "chat/repos":
+            return self._open_repo(run_id, run, body)
         else:
             answer = message
         return web.json_response(answer, status=200 if route in ("chat/reactions", "chat/read") else 201)
+
+    def _open_repo(self, run_id: int, run: dict, body: dict) -> web.Response:
+        """A repo a chat run's daemon opened for its agent, answered as ``chat_agents.open_repo`` does: added to the run's
+        repos on its branch, so the leases and the run that goes on in the session take it; 404 for a run that is not a
+        chat run, 422 for a repo the project does not list (``project_repos``), 409 for one the worker's last heartbeat
+        names no checkout of."""
+        spec, name = run["spec"], body.get("repo")
+        if spec["kind"] != "chat":
+            raise _refusal(404, f"run {run_id} is a {spec['kind']} run: only a chat run's agent opens a repo here")
+        if self.project_repos is not None and name not in self.project_repos:
+            listed = ", ".join(self.project_repos) or "none"
+            raise _refusal(422, f"project {self.project} has no repo {name}: its repos are {listed}")
+        if f"{self.project}/{name}" not in ((self.last_heartbeat or {}).get("checkouts") or {}):
+            return _error(409, "conflict", f"worker mac has no checkout of {name} of project {self.project}")
+        repos = spec["repos"] = list(spec.get("repos") or [])  # NULL for a run that started with no repo
+        added = name not in [entry["repo"] for entry in repos]
+        if added:
+            repos.append({"repo": name, "branch": spec["branch"]})
+        answer = {"repo": name, "branch": spec["branch"], "added": added, "repos": copy.deepcopy(repos)}
+        return web.json_response(answer)
 
     async def _in_triage(self, request: web.Request) -> web.Response:
         """What the agent of a chat run does for a failed run: recorded in ``chat_calls`` under triage/rerun or

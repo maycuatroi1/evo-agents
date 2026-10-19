@@ -1170,7 +1170,8 @@
           "mentions",
           "reactions",
           "label",
-          "created_at"
+          "created_at",
+          "progress"
         ],
         "schema": "GroupMessage"
       }
@@ -1232,7 +1233,8 @@
           "mentions",
           "reactions",
           "label",
-          "created_at"
+          "created_at",
+          "progress"
         ],
         "schema": "GroupMessage"
       }
@@ -4667,7 +4669,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -4834,7 +4840,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -4934,7 +4944,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5251,7 +5265,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5351,7 +5369,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5451,7 +5473,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5842,7 +5868,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5958,7 +5988,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6107,7 +6141,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6207,7 +6245,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -8113,6 +8155,19 @@
         ],
         "schema": "evo_agents__hub__server__plans__Written"
       }
+    },
+    "worker repo open": {
+      "positionals": [
+        {
+          "name": "repo",
+          "metavar": "REPO",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
     },
     "worker step": {
       "positionals": [
@@ -15965,6 +16020,45 @@
                 "default": 0,
                 "title": "Offset"
               }
+            },
+            {
+              "name": "session_run_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the runs of the chat session this run started (Run.session_run_id)",
+                "title": "Session Run Id"
+              },
+              "description": "only the runs of the chat session this run started (Run.session_run_id)"
+            },
+            {
+              "name": "group",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "session",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "session: each chat session once, as its latest run, listed when any of its runs matches the search; the state filter, the counts and the total read that run's state. Every other run as it is",
+                "title": "Group"
+              },
+              "description": "session: each chat session once, as its latest run, listed when any of its runs matches the search; the state filter, the counts and the total read that run's state. Every other run as it is"
             },
             {
               "name": "X-Evo-Sink",
@@ -31133,7 +31227,7 @@
             "chats"
           ],
           "summary": "List Events",
-          "description": "The chat's events after ``after``, oldest first; ``more`` when there are later ones.",
+          "description": "The chat's events after ``after``, oldest first; ``more`` when there are later ones. With ``progress``, the\nprogress of the agents' runs on their way under the messages they took, as the reader may read them.",
           "operationId": "list_events_v1_chats__chat_id__events_get",
           "parameters": [
             {
@@ -31172,6 +31266,18 @@
                 "default": 500,
                 "title": "Limit"
               }
+            },
+            {
+              "name": "progress",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)",
+                "default": false,
+                "title": "Progress"
+              },
+              "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)"
             }
           ],
           "responses": {
@@ -31244,7 +31350,7 @@
             "chats"
           ],
           "summary": "Stream",
-          "description": "The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no\nlonger read the chat. A ``: ping`` comment keeps an idle stream open.",
+          "description": "The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no\nlonger read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too\n(``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages\nchanged.",
           "operationId": "stream_v1_chats__chat_id__stream_get",
           "parameters": [
             {
@@ -31271,6 +31377,18 @@
                 "title": "After"
               },
               "description": "where a first connection starts"
+            },
+            {
+              "name": "progress",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)",
+                "default": false,
+                "title": "Progress"
+              },
+              "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)"
             },
             {
               "name": "Last-Event-ID",
@@ -31740,6 +31858,91 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/ChatPull"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat/repos": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Open Repo",
+          "description": "The worker opened repo ``repo`` of the project in the chat run, as its agent asked: the hub adds it to the run's\nrepos on the run's branch (see the module's docstring).",
+          "operationId": "open_repo_v1_worker_runs__run_id__chat_repos_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatRepoIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatRepo"
                   }
                 }
               }
@@ -39164,6 +39367,21 @@
             "more": {
               "type": "boolean",
               "title": "More"
+            },
+            "progress": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatProgress"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progress",
+              "description": "with progress=true: the progress of every message of the chat whose run is on its way now"
             }
           },
           "type": "object",
@@ -39461,6 +39679,79 @@
           ],
           "title": "ChatPosted"
         },
+        "ChatProgress": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the message the run took: it started the run, or waits in its inbox"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "handle": {
+              "type": "string",
+              "title": "Handle",
+              "description": "the agent's, @ left out"
+            },
+            "step": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "claimed",
+                "checking",
+                "opening",
+                "starting",
+                "working",
+                "inbox"
+              ],
+              "title": "Step",
+              "description": "waiting: for its worker; claimed: by its worker; checking: access to the run's repos; opening: a repo; starting: the agent; working: the agent; inbox: the message waits for the agent's next turn"
+            },
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "the worker the run waits for or runs on"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "the repo it opens, at step opening"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since",
+              "description": "when the step began"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "run_id",
+            "handle",
+            "step",
+            "worker",
+            "since"
+          ],
+          "title": "ChatProgress",
+          "description": "How far the run of an agent that took a message is, said by rule from the run's state and its worker's notes\n(``chat_progress``): shown while the run is on its way and its session has not answered after the message."
+        },
         "ChatPull": {
           "properties": {
             "repo": {
@@ -39711,6 +40002,57 @@
             "text"
           ],
           "title": "ChatReading"
+        },
+        "ChatRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch",
+              "description": "the run's branch, chat/<id of its session's first run>, the repo's worktree is on"
+            },
+            "added": {
+              "type": "boolean",
+              "title": "Added",
+              "description": "the hub added the repo to the run now; false when the run worked in it already"
+            },
+            "repos": {
+              "items": {
+                "$ref": "#/components/schemas/RunRepo"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "the run's repos now: those it started with, then those opened, in order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "added",
+            "repos"
+          ],
+          "title": "ChatRepo"
+        },
+        "ChatRepoIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo",
+              "description": "a repo of the run's project, as the project names it, that the worker has a checkout of"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "ChatRepoIn"
         },
         "ChatSummary": {
           "properties": {
@@ -42540,6 +42882,14 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "progress": {
+              "items": {
+                "$ref": "#/components/schemas/ChatProgress"
+              },
+              "type": "array",
+              "title": "Progress",
+              "description": "the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer"
             }
           },
           "type": "object",
@@ -50836,6 +51186,54 @@
               ],
               "title": "Hop",
               "description": "a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most 3); null for any other run"
+            },
+            "session_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Run Id",
+              "description": "a chat run's session: the id of its first run, which its branch chat/<id> names (the run's own id for the first); null for any other run"
+            },
+            "session_turn": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Turn",
+              "description": "a chat run's turn in its session: 1 for its first run, one more for each after it; null for any other run"
+            },
+            "session_turns": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Turns",
+              "description": "the runs of a chat run's session so far; null for another run"
+            },
+            "session_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Title",
+              "description": "the title of a chat run's session, its first run's, which the pull requests of its branch take; each run after it is titled by the message that woke it. Null for any other run"
             },
             "machine": {
               "anyOf": [

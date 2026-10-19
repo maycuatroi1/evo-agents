@@ -2,7 +2,9 @@
 author run.
 
 The directory is ``~/.evo/worker/worktrees/<project>-<run>``, the agent's working directory, each repo's worktree in
-a folder named as the repo (``gitops.folder_name``). A review run and an author run read only: their worktrees are
+a folder named as the repo (``gitops.folder_name``). The worktrees are made several at a time (``make_each``,
+``parallel``), each repo's fetch and worktree under the lock of its checkout, and noted in the run's record in the
+run's order of its repos. A review run and an author run read only: their worktrees are
 detached at the commit origin's default branch has (``RunDirectory.prepare_detached``), so nothing is committed or
 pushed (``gitops.check_push`` refuses both kinds). Once the run is over, each worktree on its plan's branch leaves it,
 so the owner can check it out elsewhere; a parked run keeps its worktrees as they are, for the run that resumes it.
@@ -12,13 +14,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import runs
 from evo_agents.worker import gitops
 from evo_agents.worker.checkouts import default_branch_of
-from evo_agents.worker.runner import origin
+from evo_agents.worker.runner import origin, parallel
 from evo_agents.worker.runner.common import RunFailed
 
 if TYPE_CHECKING:
@@ -59,15 +62,42 @@ class RunDirectory:
         """``- <repo>: <folder>/`` for each worktree whose folder is not named as its repo."""
         return [f"- {name}: {ws.worktree.name}/" for name, ws in self.workspaces.items() if ws.worktree.name != name]
 
+    async def make_each(self, names: list[str], make: Callable[[str, str], Awaitable[gitops.Workspace]]) -> None:
+        """A worktree of each repo of ``names`` the directory holds none of yet, ``await make(repo, folder)``, several
+        at a time (``parallel.each``; ``make`` fetches and adds the worktree under the lock of the repo's checkout).
+        Each is in the run's record once made, after the worktrees the directory held already and in the order of
+        ``names``, whatever order they were made in."""
+        held = dict(self.workspaces)
+        taken = {workspace.worktree.name for workspace in held.values()}
+        folders: dict[str, str] = {}
+        for name in names:
+            if name not in held and name not in folders:
+                folders[name] = gitops.folder_name(name, taken)
+                taken.add(folders[name])
+        made: dict[str, gitops.Workspace] = {}
+
+        async def one(name: str) -> None:
+            made[name] = await make(name, folders[name])
+            ordered = {**held, **{repo: made[repo] for repo in folders if repo in made}}
+            self.workspaces.clear()
+            self.workspaces.update(ordered)
+            self.save()
+
+        if len(folders) > 1:
+            at_once = min(parallel.GIT_AT_ONCE, len(folders))
+            self.run.note(f"Making the worktrees of {len(folders)} repos, {at_once} at a time.")
+        await parallel.each(self.run, list(folders), one)
+
     # The review's worktrees, which an author run reads too
 
     async def prepare_detached(self, repos: list[dict]) -> None:
         """The run's directory, with a worktree of each repo detached at origin's default branch (else the default
-        branch the hub names, else the checkout's HEAD), and .evo-run/ for the agent's result."""
+        branch the hub names, else the checkout's HEAD), made several at a time, and .evo-run/ for the agent's
+        result. A repo without a name or a checkout here fails the run before any worktree is made."""
         run = self.run
         self.claim("queue the review again")
         self.enter()
-        taken: set[str] = set()
+        checkouts: dict[str, Path] = {}
         for entry in repos:
             name = entry.get("repo")
             if not isinstance(name, str) or not name:
@@ -75,10 +105,8 @@ class RunDirectory:
             checkout = run.daemon.checkout_for(run.project, name)
             if checkout is None:
                 raise RunFailed(f"this worker has no checkout of {run.project}/{name}")
-            folder = gitops.folder_name(name, taken)
-            taken.add(folder)
-            self.workspaces[name] = await self.detached(name, checkout, folder)
-            self.save()
+            checkouts[name] = checkout
+        await self.make_each(list(checkouts), lambda name, folder: self.detached(name, checkouts[name], folder))
         (self.path / runs.RESULT_DIR).mkdir(mode=0o700, exist_ok=True)
         self.save()
 
@@ -89,7 +117,7 @@ class RunDirectory:
         async with run.daemon.repo_lock(checkout):
             if not await gitops.has_remote(checkout):
                 raise RunFailed(f"the checkout at {checkout} has no remote named origin to fetch from")
-            await origin.fetch(run, checkout)
+            await origin.fetch(run, checkout, repo=name)
             remote_head = await gitops.remote_default_branch(checkout)
             hub_default = default_branch_of(run.daemon.config, run.project, name)
             refs = [f"refs/remotes/origin/{branch}" for branch in (remote_head, hub_default) if branch]
@@ -100,7 +128,9 @@ class RunDirectory:
                 await gitops.add_detached_worktree(checkout, path, base)
             except gitops.GitError as exc:
                 raise RunFailed(f"cannot make the worktree {path}: {exc}") from None
-        run.note(f"Worktree {path} of {name}, detached at {base[:12]} ({start}), read-only.", worktree=str(path))
+        run.note(
+            f"Worktree {path} of {name}, detached at {base[:12]} ({start}), read-only.", worktree=str(path), repo=name
+        )
         return gitops.Workspace(
             repo=name,
             branch=remote_head or hub_default or "HEAD",

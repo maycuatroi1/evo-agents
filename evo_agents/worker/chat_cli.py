@@ -1,5 +1,6 @@
 """``evo-agents worker chat post|react|create|mention``: the commands of a run's agent in group chats
-(``evo_agents.hub.chat_runs``), which the agent of a chat run uses, and the agent of a step, plan or author run too.
+(``evo_agents.hub.chat_runs``), which the agent of a chat run uses, and the agent of a step, plan or author run too;
+and ``evo-agents worker repo open``, which only a chat run's agent uses.
 
 - ``post TEXT [--chat ID] [--reply-to MESSAGE]``: a message of the run's agent, in the thread of a chat run, else in a
   chat its agent is in (``--chat``), in the thread of ``--reply-to`` when given. An @ of an agent in it hands no work.
@@ -21,6 +22,13 @@ of a kind of ``chat_runs.COMMAND_KINDS``. TEXT ``-`` reads stdin. Each prints on
 no ``--json``, since this module may not import the hub's contract (the worker reaches no ``hub.server`` module, which
 the contract's modules import). A failure is one ``error:`` line on stderr and exit status 1; without the worker
 extra, status 2.
+
+``repo open REPO`` (``chat_runs.OPEN_COMMAND``) asks the daemon, on the run's socket (``credentials.ask_open``), to open
+repo REPO of the project in a chat run of this worker: the daemon asks the hub to add it to the run, takes the leases
+that cover it, fetches its checkout and makes its worktree on the run's branch in the run's directory
+(``runner.chat``). It prints the worktree's path alone, the same path for a repo open already. It holds no token and
+calls no hub itself, so it needs the core package only; a repo this worker has no checkout of, one the project does not
+list, or a run that is not a chat run of this worker is one ``error:`` line and exit status 1.
 """
 
 from __future__ import annotations
@@ -33,6 +41,7 @@ from dataclasses import dataclass
 
 from evo_agents.hub import chat_runs, chats
 from evo_agents.hub.client import HubError
+from evo_agents.worker import credentials
 from evo_agents.worker.home import WorkerConfig, WorkerHome, WorkerStateError
 
 EXIT_FAILED = 1
@@ -72,12 +81,13 @@ class AgentRun:
     token: str
 
 
-def agent_run(command: str) -> AgentRun:
-    """The run of EVO_RUN_ID on this worker, of a kind whose agent talks in chats; WorkerStateError otherwise."""
+def running_run(command: str) -> tuple[int, WorkerHome, dict]:
+    """The id, worker state and record of the run of EVO_RUN_ID while it runs on this worker, for ``evo-agents worker
+    COMMAND``; WorkerStateError outside one."""
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
         raise WorkerStateError(
-            f"`evo-agents worker chat {command}` works only inside a run of this worker: {RUN_VARIABLE} is not set. "
+            f"`evo-agents worker {command}` works only inside a run of this worker: {RUN_VARIABLE} is not set. "
             "The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
         )
     run_id = int(raw)
@@ -86,8 +96,14 @@ def agent_run(command: str) -> AgentRun:
     if record is None or record.get("finished_at"):
         raise WorkerStateError(
             f"run {run_id} is not running on this worker (its state is under {home.root}): "
-            f"`evo-agents worker chat {command}` works only inside it"
+            f"`evo-agents worker {command}` works only inside it"
         )
+    return run_id, home, record
+
+
+def agent_run(command: str) -> AgentRun:
+    """The run of EVO_RUN_ID on this worker, of a kind whose agent talks in chats; WorkerStateError otherwise."""
+    run_id, home, record = running_run(f"chat {command}")
     kind = record.get("kind") or "step"
     if kind not in chat_runs.COMMAND_KINDS:
         raise WorkerStateError(
@@ -187,6 +203,24 @@ def cmd_mention(args) -> int:
     return 0
 
 
+@chat_command
+def cmd_repo_open(args) -> int:
+    run_id, home, record = running_run("repo open")
+    kind = record.get("kind") or "step"
+    if kind != "chat":
+        article = "an" if kind[:1] in "aeiou" else "a"
+        raise WorkerStateError(
+            f"run {run_id} is {article} {kind} run: only the agent of a chat run opens a repo with `evo-agents worker "
+            f"repo open`; {article} {kind} run works in the repos it was given"
+        )
+    answer = credentials.ask_open(home, run_id, args.repo)
+    path = answer.get("path")
+    if answer.get("error") or not isinstance(path, str) or not path:
+        raise WorkerStateError(str(answer.get("error") or f"the daemon did not say where {args.repo} is"))
+    print(path)
+    return 0
+
+
 def _where_options(parser) -> None:
     parser.add_argument(
         "--chat", type=int, metavar="ID", help="a chat the run's agent is in; default: the chat of a chat run"
@@ -234,3 +268,16 @@ def register_chat(wsub) -> None:
     mention.add_argument("text", metavar="TEXT", help="what the agent is to do (- for stdin)")
     _where_options(mention)
     mention.set_defaults(func=cmd_mention)
+
+
+def register_repo(wsub) -> None:
+    """``evo-agents worker repo open``, under the parser ``wsub`` of ``evo-agents worker``."""
+    repo = wsub.add_parser("repo", help="inside a chat run: open a repo of its project, which the worker prepares")
+    rsub = repo.add_subparsers(dest="repo_command", required=True)
+    opened = rsub.add_parser(
+        "open",
+        help="have the worker add a repo of the project to the chat run and make its worktree; prints the worktree's "
+        "path, the same path for a repo open already",
+    )
+    opened.add_argument("repo", metavar="REPO", help="the repo, as the project names it")
+    opened.set_defaults(func=cmd_repo_open)

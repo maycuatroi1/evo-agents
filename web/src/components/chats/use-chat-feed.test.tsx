@@ -5,7 +5,7 @@ import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { createApiClient } from "@/lib/api/client";
-import type { Chat, ChatAuthor, ChatEvent, ChatPage, GroupMessage } from "@/lib/chats";
+import type { Chat, ChatAuthor, ChatEvent, ChatPage, ChatProgress, GroupMessage } from "@/lib/chats";
 
 import { mainMessages, replyCount } from "./feed-model";
 import { POLL_MS, useChatFeed } from "./use-chat-feed";
@@ -57,6 +57,9 @@ class FakeSource {
     this.readyState = readyState;
     this.onerror?.(new Event("error"));
   }
+  progress(progress: ChatProgress[]) {
+    for (const listener of this.listeners.get("progress") ?? []) listener(new MessageEvent("progress", { data: JSON.stringify({ progress }) }));
+  }
   end(reason: string) {
     for (const listener of this.listeners.get("end") ?? []) listener(new MessageEvent("end", { data: JSON.stringify({ reason, last_seq: 4 }) }));
   }
@@ -92,7 +95,7 @@ describe("useChatFeed", () => {
   it("follows the stream from the chat's last event, applies what it sends once, and tells the hub what was read", async () => {
     const { result, onMembers } = setup();
     const [source] = FakeSource.made;
-    expect(source.url).toBe("/v1/chats/3/stream?after=4");
+    expect(source.url).toBe("/v1/chats/3/stream?after=4&progress=true");
     expect(result.current.status).toBe("connecting");
     act(() => source.open());
     expect(result.current.status).toBe("live");
@@ -122,7 +125,7 @@ describe("useChatFeed", () => {
       await vi.advanceTimersByTimeAsync(10);
     });
     expect(result.current.status).toBe("polling");
-    expect(api.seen.some((call) => call.url.includes("/v1/chats/3/events?after=4"))).toBe(true);
+    expect(api.seen.some((call) => call.url.includes("/v1/chats/3/events?after=4&progress=true"))).toBe(true);
     expect(mainMessages(result.current.feed).map((item) => item.id)).toEqual([1, 2, 8]);
     expect(result.current.signal).toMatchObject({ degraded: true, pollMs: POLL_MS });
     // 30 seconds on, the stream is tried again, from the last event read.
@@ -130,7 +133,7 @@ describe("useChatFeed", () => {
       await vi.advanceTimersByTimeAsync(30_000);
     });
     const retried = FakeSource.made.at(-1)!;
-    expect(retried.url).toBe("/v1/chats/3/stream?after=5");
+    expect(retried.url).toBe("/v1/chats/3/stream?after=5&progress=true");
     act(() => retried.open());
     expect(result.current.status).toBe("live");
     act(() => retried.end("you are not in chat 3"));
@@ -138,5 +141,29 @@ describe("useChatFeed", () => {
     expect(result.current.ended).toBe("you are not in chat 3");
     expect(result.current.signal).toBeNull();
     expect(retried.closed).toBe(true);
+  });
+
+  it("applies the stream's progress after the events that came before it, and a poll's with its events", async () => {
+    const { result } = setup();
+    const [source] = FakeSource.made;
+    act(() => source.open());
+    const working: ChatProgress = { message_id: 9, run_id: 21, handle: "reviewer", step: "waiting", worker: "studio", repo: null, since: "2026-10-14T08:01:00Z" };
+    act(() => {
+      source.send({ seq: 5, kind: "message", created_at: "2026-10-14T08:01:00Z", message: message(9, 5) } as ChatEvent);
+      source.progress([working]);
+      vi.advanceTimersByTime(60);
+    });
+    expect(result.current.feed.entries.get(9)?.message.progress).toEqual([working]);
+    act(() => {
+      source.progress([]);
+      vi.advanceTimersByTime(60);
+    });
+    expect(result.current.feed.entries.get(9)?.message.progress).toEqual([]);
+    api.events.push({ events: [], last_seq: 5, more: false, progress: [{ ...working, step: "opening", repo: "evo-agents" }] });
+    await act(async () => {
+      source.fail(2);
+      await vi.advanceTimersByTimeAsync(10);
+    });
+    expect(result.current.feed.entries.get(9)?.message.progress?.map((item) => item.repo)).toEqual(["evo-agents"]);
   });
 });

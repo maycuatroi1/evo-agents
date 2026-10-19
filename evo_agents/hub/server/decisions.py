@@ -567,23 +567,27 @@ def answer_target(
     return f"{where} decision:{decision_id} run:{run_id} option={option or '-'}"
 
 
-async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decision_id: int) -> int:
+async def _resume(conn: AsyncConnection, user: Principal, parked_id: int, decision_id: int, text: str) -> int:
     """Queue the run that resumes parked run ``parked_id``, in the caller's transaction under the plan's lock, as
-    ``user`` answered decision ``decision_id``; the new run's id (``resume_parked``)."""
-    return await resume_parked(conn, user, parked_id, f"as {user.login} answered decision #{decision_id}")
+    ``user`` answered decision ``decision_id`` with the inbox message ``text``; the new run's id (``resume_parked``)."""
+    why = f"as {user.login} answered decision #{decision_id}"
+    return await resume_parked(conn, user, parked_id, why, woken_by=text)
 
 
-async def resume_parked(conn: AsyncConnection, user: Principal, parked_id: int, why: str) -> int:
+async def resume_parked(
+    conn: AsyncConnection, user: Principal, parked_id: int, why: str, *, woken_by: str | None = None
+) -> int:
     """Queue the run that resumes parked run ``parked_id``, whose row the caller holds locked (for a plan run, under
     the plan's lock), and end the parked one done; the new run's id. ``why`` ends the new run's first event, such as
     "as owner answered decision #3". The parked run's decisions still open go to the new run, and for an author run,
     the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
-    parked, which its agent reads in the new run's first turn."""
+    parked, which its agent reads in the new run's first turn. ``woken_by``, the answer or the message that resumes
+    it, titles the new run of a chat run (``chat_runs.go_on_parked``); any other keeps the parked run's title."""
     kind = (await conn.execute(select(tables.runs.c.kind).where(tables.runs.c.id == parked_id))).scalar_one()
     if kind == "chat":  # a chat run goes on in its thread's session: the run is made as chat_runs makes one
         from evo_agents.hub.server.chat_runs import go_on_parked  # it queues runs through the routes that import this
 
-        return await go_on_parked(conn, parked_id, why, token_id=user.token_id)
+        return await go_on_parked(conn, parked_id, why, woken_by=woken_by, token_id=user.token_id)
     reserved = select(func.nextval(func.pg_get_serial_sequence("runs", "id")))
     new_id = (await conn.execute(reserved)).scalar_one()
     # The parked run leaves the active states first: a plan has one active plan run at a time.
@@ -711,8 +715,8 @@ async def answer_decision(
         if (await conn.execute(still_open)).scalar_one() == 0:
             await conn.execute(update(r).values(state="running", waiting_since=None).where(r.c.id == run_id))
     resumes = await _resumes(conn, run_id, run_state, kind)
-    inbox_run = await _resume(conn, user, run_id, decision_id) if resumes else run_id
     text = answer_message(decision_id, category, question, chosen, body.text)
+    inbox_run = await _resume(conn, user, run_id, decision_id, text) if resumes else run_id
     i = tables.run_inbox
     left = (
         insert(i).values(run_id=inbox_run, sent_by=user.user_id, body=text, decision_id=decision_id).returning(i.c.id)

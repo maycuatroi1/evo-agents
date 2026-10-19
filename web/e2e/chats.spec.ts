@@ -4,15 +4,20 @@ import { createAgentByApi } from "./support/agents";
 import {
   agentAnswers,
   agentAsks,
+  agentSays,
+  agentStarts,
   chatPageOf,
   chatPath,
   chatsOf,
   chatWorker,
   claimChatRun,
+  claimOnly,
   createChatByApi,
   reactByApi,
   sendByApi,
+  setupNote,
   signedInPerson,
+  takeInbox,
 } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
@@ -42,6 +47,69 @@ function main(page: Page) {
 function messageOf(page: Page, text: string) {
   return main(page).getByTestId("chat-log").getByTestId("chat-message").filter({ has: page.getByTestId("message-body").filter({ hasText: text }) });
 }
+
+test("under a mention the thread says at once that the agent got it, then each step of its run's setup, until its reply", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
+  const workerName = uniqueName("mini");
+  const live = await chatWorker(me, project, workerName);
+  const chat = await createChatByApi(me, { title: "Setup talk", agents: [handle] });
+  await open(page, chatPath(chat.id));
+
+  // The answer to the message already says the agent got it and the worker its run waits for: a still, neutral dot.
+  const box = main(page).getByTestId("chat-composer-text");
+  await box.fill(`@${handle} is the wait test flaky?`);
+  await box.press("Control+Enter");
+  const asked = messageOf(page, "is the wait test flaky?");
+  const line = asked.getByTestId("message-progress-step");
+  await expect(line).toHaveText(`@${handle} got it, waiting for worker ${workerName}`);
+  await expect(line).toHaveAttribute("data-step", "waiting");
+  await expect(line).toHaveRole("status");
+  await expect(line.locator(".animate-live-ping")).toHaveCount(0);
+  const runId = Number(await line.getAttribute("data-run-id"));
+  await expect(asked.getByTestId("mention-run-link")).toHaveAttribute("data-run-id", String(runId));
+
+  // Each step its worker notes replaces the one before, live, with the running dot; no message comes with them.
+  await claimOnly(live, runId);
+  await expect(line).toHaveText(`@${handle}: worker ${workerName} claimed the run`);
+  await expect(line.locator(".animate-live-ping")).toHaveCount(1);
+  const steps: [string, string | undefined, string][] = [
+    ["checking", undefined, `@${handle} is checking access to the repos`],
+    ["opening", "evo-agents-harness", `@${handle} is opening evo-agents-harness`],
+    ["starting", undefined, `@${handle} is starting up`],
+  ];
+  for (const [index, [setup, repo, said]] of steps.entries()) {
+    await setupNote(live, runId, index + 1, setup, repo);
+    await expect(line).toHaveText(said);
+    await expect(asked.getByTestId("message-progress-step")).toHaveCount(1);
+  }
+  await agentStarts(live, runId);
+  await expect(line).toHaveText(`@${handle} is working on it`);
+  await expect(main(page).getByTestId("chat-log").getByTestId("chat-message")).toHaveCount(1);
+
+  // A message in the thread while the agent works waits in the inbox of that turn, until the agent takes it.
+  await asked.hover(); // React and Reply in thread show while the pointer is over the message
+  await asked.getByTestId("message-reply").click();
+  const thread = page.getByTestId("chat-thread");
+  await expect(thread).toHaveAttribute("data-state", "ready");
+  await thread.getByTestId("thread-composer-text").fill(`@${handle} and the retries?`);
+  await thread.getByTestId("thread-composer-text").press("Control+Enter");
+  const more = thread.getByTestId("chat-message").filter({ hasText: "and the retries?" }).getByTestId("message-progress-step");
+  await expect(more).toHaveText(`@${handle} got it, in the inbox of the running turn`);
+  await expect(more.locator(".animate-live-ping")).toHaveCount(0);
+
+  // The agent's reply ends the line under the first message; the one it took next works until its own answer.
+  await agentSays(live, runId, "Not flaky: it waits on the clock.");
+  await expect(asked.getByTestId("message-progress")).toHaveCount(0);
+  await expect(more).toHaveText(`@${handle} got it, in the inbox of the running turn`);
+  await takeInbox(live, runId);
+  await expect(more).toHaveText(`@${handle} is working on it`);
+  await agentAnswers(live, runId, "Retries are bounded too.");
+  await expect(thread.getByTestId("message-progress")).toHaveCount(0);
+  await expect(asked.locator(`[data-testid="reaction-chip"][data-emoji="${CHECK}"]`)).toHaveAccessibleName(`Check mark: 1, by @${handle}`);
+});
 
 test("a member makes a chat, mentions its agent through the suggestions and follows its run live to the reply and the check mark", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
