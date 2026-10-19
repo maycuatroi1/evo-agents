@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
+import { taskHref, ticketRef } from "@/lib/core-plugin-links";
 import { kgGraphQuery, kgNeighbourhoodQuery, kgNodeQuery } from "@/lib/kg/queries";
 import { kgHref, nodeHref } from "@/lib/kg/routes";
 
@@ -59,7 +60,13 @@ function StepLine({ project, step }: { project: string; step: TraceRef }) {
   );
 }
 
-function TraceBody({ project, focus }: { project: string; focus: string }) {
+/** A task's page when the project shows the plugin tasks, else the Ticket's node in the knowledge graph. */
+function ticketHref(project: string, id: string, tasksOn: boolean) {
+  const ref = tasksOn ? ticketRef(id) : null;
+  return ref ? taskHref(project, ref) : nodeHref(project, id);
+}
+
+function TraceBody({ project, focus, tasksOn }: { project: string; focus: string; tasksOn: boolean }) {
   const t = useTranslations("srs.trace");
   const hood = useQuery({ ...kgNeighbourhoodQuery(browserApi, project, focus, 2), retry: false });
   const first = hood.data ? traceOf(hood.data) : null;
@@ -86,7 +93,7 @@ function TraceBody({ project, focus }: { project: string; focus: string }) {
       <Group icon={Ticket} title={t("tasks")} empty={t("noTasks")} count={trace.tickets.length}>
         {trace.tickets.map((ticket) => (
           <li key={ticket.id} className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-[13px]" data-node={ticket.id}>
-            <Link href={nodeHref(project, ticket.id)} className={`${NAME_LINK} min-w-0 [overflow-wrap:anywhere]`}>
+            <Link href={ticketHref(project, ticket.id, tasksOn)} className={`${NAME_LINK} min-w-0 [overflow-wrap:anywhere]`} data-testid="srs-trace-task">
               {ticket.name ?? ticket.id}
             </Link>
             {ticket.status ? <Tag>{ticket.status}</Tag> : null}
@@ -128,9 +135,10 @@ function TraceBody({ project, focus }: { project: string; focus: string }) {
 /**
  * The trace of a use case or a requirement as the project's knowledge graph holds it (plan srs-tasks-plugins, step 4):
  * its tasks, their plan steps, the commits and pull requests those name, and its tests. The graph reads approved
- * versions only, at its next build; the card says which build it read, and so when it has none or lacks the item.
+ * versions only, at its next build; the card says which build it read, and so when it has none or lacks the item. A
+ * task opens its page while the project shows the plugin tasks (`tasksOn`), its node in the graph otherwise.
  */
-export function TraceCard({ project, item }: { project: string; item: SrsItem }) {
+export function TraceCard({ project, item, tasksOn }: { project: string; item: SrsItem; tasksOn: boolean }) {
   const t = useTranslations("srs.trace");
   const focus = kgNodeId(item);
   const graph = useQuery({ ...kgGraphQuery(browserApi, project), retry: false });
@@ -147,7 +155,7 @@ export function TraceCard({ project, item }: { project: string; item: SrsItem })
         </Link>
       </p>
     );
-  } else body = <TraceBody project={project} focus={focus} />;
+  } else body = <TraceBody project={project} focus={focus} tasksOn={tasksOn} />;
   return (
     <Card size="sm" data-testid="srs-trace">
       <CardHeader>

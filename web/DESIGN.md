@@ -1333,6 +1333,51 @@ Shared pieces built on them:
   diff does, unified or side by side from md. Import (`/x/srs/import`, a page without a menu item) previews the hub's
   dry run (counts, problems with their lines, what a next version adds, changes and drops, the outline) before Import,
   which a problem in a code refuses. Readers see a note that they only read, and no control that writes.
+  An item's page offers Create task (a writer, while the project shows the plugin tasks), which opens the form of a new
+  task with the item's code as its link, and the Traceability card opens each task's page (the graph's Ticket node
+  while tasks is off). The tabs (`data/tab-nav.tsx`) and the banners (`feedback/banner.tsx`) are shared parts, since
+  the Tasks pages draw the same.
+- `components/tasks`, the native pages of the core plugin tasks (plan srs-tasks-plugins; docs/plugins.md, Core plugins),
+  under `app/(app)/p/[project]/x/tasks/` with a layout that calls `requirePlugin("tasks", project, "board")`: Tasks in
+  the menu (`Kanban`) is the manifest's page `board`; `backlog`, `mine` and `import` have no menu item and are the tabs
+  Board, Backlog, My work and Import (writers) under each head. Its words are the `tasks` namespace of both message
+  files; what the SRS and Tasks pages link across lives in `lib/core-plugin-links.ts`, since neither feature folder
+  imports the other. A status is drawn by its group whatever the project names it (`badges.tsx`): to do neutral
+  (`CircleDashed`), doing cobalt (`CircleDot`, as a plan step at work, without the pulse), in review violet (`Eye`), done
+  green, cancelled outline, a status the config no longer lists a question mark; priority is a tag (urgent in
+  `attention`, the one that asks for a person now; high, medium and low neutral with an arrow); a sprint's state is a
+  pill (active green `Play`, planned neutral, closed outline). The board (`/board`, `?sprint=` or `?backlog=1`; the
+  active sprint, else the next planned one, else the tasks of no sprint) heads with the sprint's name, its state, its
+  days and goal; the Sprint picker (active first, planned by start, closed newest first, No sprint) navigates, and Role,
+  SRS item (the codes the tasks link) and Only mine filter in place (`ToolbarFilters`, the phone's sheet), with the
+  count said in a polite live region. The columns are the config's statuses but the cancelled ones (counted under the
+  board, with a link to the backlog), in a focusable region that scrolls sideways on its own, columns of at least
+  13.5 rem, 85 % wide and snapping on a phone; a column shows 12 cards (6 on a phone) before Show all. A card is the
+  ref in mono, the type's icon, the priority tag and the assignees' initials, its title linking to its page (three lines
+  at most), the codes it implements (three, then `+2`), its plan steps done (`1/2`, green once all are), its BA, QA and
+  Dev and its due date (red with Overdue once passed on an open task); a writer's card has its Status and Assignee
+  menus, which are the way by keyboard and touch, and drags to another column (the column takes `surface-selected` in a
+  `brand` edge while it would take the drop). Either moves the card at once in every list, asks the hub, says what
+  moved in a toast, and puts it back with the hub's reason when refused (`useTaskEdit`). The backlog (`/backlog`) is a
+  section per sprint (active, planned by start), No sprint, then the closed sprints folded in a disclosure, each a
+  `DataTable` (ref and title, status, priority, assignees, links, due, and a writer's Sprint menu; a list of rows under
+  768 px) with its state, days, count and Open its board; New sprint (a dialog: name, goal, days, Start it now while none
+  is active), Start sprint on a planned one while none is active and Close sprint on the active one (a dialog that
+  moves its unfinished tasks to a planned sprint or out of every sprint). My work (`/mine`) is the visitor's tasks,
+  open, then done or cancelled, with a My part column. A task's page (`/board/{ref}`) heads with its ref chip before
+  the h1, its status, type and priority, a line with who made it and when, its sprint and parent as links and the
+  source an import took it from, and a writer's Status menu; then Description (Markdown, edited with the title in
+  place), Links (use cases and requirements opening their SRS page, Retired once dropped; plan steps with their status
+  in the plan and latest runs; runs with their state; pull requests by `owner/repo#88`, opening the forge; a link to
+  what the visitor may not read says only that it is there; a writer removes each and adds several in one line:
+  codes, `plan#step`, `#431`, URLs), Activity (who changed what, the hub for a plan step turning done with its cause)
+  and Comments, and from lg a 20 rem Details card (type, priority, sprint, due date, parent, the assignees and the BA,
+  QA and Dev as chips with remove buttons and an Add someone menu of the project's members, visibility), each saved as
+  it changes. A new task (`/board/new`, `?link=` from an SRS item, `?sprint=` from the board) is one form: title, type,
+  status, priority, sprint, due date, assignee, description and links. Import (`/import`) reads evo-tasks/1 JSON
+  (pasted or from a file), says when it is not JSON, previews the hub's dry run (counts, the tasks imported before and
+  skipped, problems with their task's key) and imports once no error stands, then opens the backlog. Readers see a note
+  that they only read, and no control that writes; a card does not drag for them.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are

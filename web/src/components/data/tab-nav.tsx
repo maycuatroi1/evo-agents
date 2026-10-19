@@ -11,9 +11,22 @@ export type TabLink = { id: string; label: string; href: Route; icon: LucideIcon
 
 /**
  * Tabs under a page head, as a plan's (plans/plan-header.tsx): links in a labelled nav, the current one underlined in
- * `brand` and named by aria-current, 44 px tall, scrolling sideways inside their own row when they do not fit.
+ * `brand` and named by aria-current, 44 px tall, scrolling sideways inside their own row when they do not fit. Each
+ * tab's test id is `<tabTestId>-<id>`; the core plugins' pages share it (components/srs, components/tasks).
  */
-export function TabNav({ label, tabs, current, testId }: { label: string; tabs: TabLink[]; current: string | null; testId?: string }) {
+export function TabNav({
+  label,
+  tabs,
+  current,
+  testId,
+  tabTestId = "tab",
+}: {
+  label: string;
+  tabs: TabLink[];
+  current: string | null;
+  testId?: string;
+  tabTestId?: string;
+}) {
   return (
     <nav aria-label={label} className="-mb-px flex gap-1 overflow-x-auto border-b" data-testid={testId}>
       {tabs.map((tab) => {
@@ -23,7 +36,7 @@ export function TabNav({ label, tabs, current, testId }: { label: string; tabs: 
             key={tab.id}
             href={tab.href}
             aria-current={active ? "page" : undefined}
-            data-testid={`srs-tab-${tab.id}`}
+            data-testid={`${tabTestId}-${tab.id}`}
             className={cn(
               "inline-flex min-h-11 items-center gap-2 border-b-2 px-3 text-sm font-medium whitespace-nowrap transition-colors",
               active ? "border-brand text-foreground" : "border-transparent text-muted-foreground hover:border-input hover:text-foreground",

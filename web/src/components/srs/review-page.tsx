@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 
 import { When } from "@/components/data/when";
+import { Banner } from "@/components/feedback/banner";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { ListSkeleton, NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
@@ -15,7 +16,6 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { type SrsDocument, type SrsVersion, srsConfigQuery, srsDiffQuery, srsDocumentQuery } from "./api";
 import { ChangeBadge, CodeChip, VersionBadge } from "./badges";
-import { Banner } from "./banner";
 import { DocumentHead } from "./document-head";
 import { useSrsViewer } from "./hooks";
 import { compareHref, documentHref, itemHref } from "./links";
