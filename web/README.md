@@ -77,10 +77,11 @@ production build of its own; a failed shard uploads its report as `playwright-re
 touches neither `web/` nor the Python package skips them, and one that touches only `web/` skips the Python tests.
 
 `E2E_SCREENSHOT_DIR=<dir>` turns on `e2e/screenshots.spec.ts`, `e2e/memories-skills-screenshots.spec.ts`,
-`e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts` and `e2e/insights-screenshots.spec.ts`, which write review
-screenshots of the shell, the memories, skills, knowledge graph, runs and Insights pages (a run's page and its diff, the
-Run plan dialog, a plan run's banner and page included) in light and dark (the memories, skills, runs and Insights ones
-also at 375 px).
+`e2e/kg-screenshots.spec.ts`, `e2e/runs-screenshots.spec.ts`, `e2e/insights-screenshots.spec.ts` and
+`e2e/workers-screenshots.spec.ts`, which write review screenshots of the shell, the memories, skills, knowledge graph,
+runs, Insights and workers pages (a run's page and its diff, the Run plan dialog, a plan run's banner and page, a
+worker's Version card and its update notes included) in light and dark (the memories, skills, runs, Insights and workers
+ones also at 375 px).
 
 The runs specs are the worker themselves: they claim runs, report states and send events, messages and diffs with a
 worker token, as the daemon does (`e2e/support/runs.ts`), and `e2e/run-detail.spec.ts` checks the run page's live log

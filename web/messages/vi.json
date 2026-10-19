@@ -1894,6 +1894,64 @@
       "failed": "Không lưu được cài đặt của {name}",
       "revoked": "Worker đã bị thu hồi nên không đổi cài đặt được nữa. Trang vừa được tải lại.",
       "requestId": "Mã request: {id}"
+    },
+    "version": {
+      "title": "Phiên bản",
+      "description": "Bản evo-agents daemon đang chạy, theo heartbeat gần nhất.",
+      "release": "Bản phát hành",
+      "commit": "Commit",
+      "noCommit": "Chưa báo",
+      "noCommitWhy": "Daemon cũ, hoặc daemon cài từ PyPI hay từ checkout local, không báo commit.",
+      "commitLink": "{commit} trên GitHub (mở trong tab mới)",
+      "copyCommit": "Sao chép commit",
+      "updatesLabel": "Cập nhật",
+      "updates": {
+        "none": "Hiện sau heartbeat đầu tiên.",
+        "locked": "Đã khoá: worker đứng yên ở bản này cho tới khi bạn mở khoá trong Cài đặt.",
+        "lockedBy": "{owner} đã khoá: worker đứng yên ở bản này.",
+        "unlocking": "Đã mở khoá: worker theo nightly lại từ heartbeat kế tiếp.",
+        "unreported": "Chưa báo: daemon này không tự cập nhật, nên phải cập nhật bằng tay.",
+        "current": "Đang chạy đúng commit của nightly.",
+        "checked": "Đã kiểm",
+        "waiting": "Đang chờ lúc rảnh để cập nhật lên nightly.",
+        "waitingTo": "Đang chờ lúc rảnh để cài",
+        "updating": "Đang cài nightly, rồi khởi động lại trên bản đó.",
+        "updatingTo": "Đang cài",
+        "since": "Từ {time}",
+        "unsupported": "Không tự cập nhật."
+      }
+    },
+    "versionLock": {
+      "label": "Khoá phiên bản",
+      "hint": "Bật: worker đứng yên ở bản evo-agents đang chạy và không tự cập nhật. Tắt: worker tự cập nhật lên tag nightly mỗi khi không giữ run nào. Worker nhận thay đổi ở heartbeat kế tiếp.",
+      "locked": "{name} đứng yên ở bản hiện tại",
+      "lockedText": "Từ heartbeat kế tiếp, worker không tự cập nhật lên nightly nữa.",
+      "unlocked": "{name} lại tự cập nhật",
+      "unlockedText": "Từ heartbeat kế tiếp, worker cài nightly mỗi khi không giữ run nào.",
+      "lockFailed": "Không khoá được phiên bản của {name}",
+      "unlockFailed": "Không mở khoá được phiên bản của {name}"
+    },
+    "update": {
+      "badge": {
+        "failed": "Cập nhật lỗi",
+        "unsupported": "Không tự cập nhật được",
+        "waiting": "Chờ cập nhật"
+      },
+      "tip": {
+        "failed": "Lần cập nhật lên nightly gần nhất bị lỗi; trang của worker nói lý do.",
+        "unsupported": "Worker không tự cập nhật lên nightly được; trang của worker nói lý do.",
+        "waiting": "Worker đã chờ lúc rảnh hơn 12 giờ để cập nhật lên nightly."
+      },
+      "note": {
+        "failed": "Lần cập nhật lên nightly gần nhất bị lỗi.",
+        "failedAt": "Lần cập nhật lên nightly gần nhất bị lỗi lúc {time}.",
+        "failedNext": "Worker vẫn chạy bản đang có và sẽ thử lại sau.",
+        "unsupported": "Worker không tự cập nhật lên nightly được.",
+        "unsupportedNext": "Cho tới khi sửa được, hãy cập nhật bằng tay, hoặc khoá phiên bản nếu muốn worker đứng yên.",
+        "waiting": "Đang chờ lúc rảnh để cập nhật lên nightly từ {time}.",
+        "waitingNext": "Worker chỉ cập nhật khi không daemon nào của cùng bản cài giữ run.",
+        "waitingOwner": "Worker chỉ cập nhật khi không daemon nào của cùng bản cài giữ run. Muốn cập nhật sớm hơn, cho worker ngừng nhận việc, rồi cho nhận việc lại khi trang hiện commit mới."
+      }
     }
   },
   "secrets": {
