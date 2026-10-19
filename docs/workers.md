@@ -1826,14 +1826,18 @@ has (the remote's HEAD, else the default branch the hub names, else the checkout
 lives in files rather than on the hub, without any model, into `.evo-run/worktree-figures.json`: the open items of the
 reports under a `reports` directory (unchecked boxes, and the items under a heading of open work such as "Việc còn
 mở"), and the learned skills waiting for review under `skills/_pending`, each with its repo, path and line; the run's
-log says how many. The agent starts in the directory with `EVO_RUN_KIND=review` and records what it finds with two
+log says how many. The agent starts in the directory with `EVO_RUN_KIND=review` and records what it finds with three
 commands, which refuse to run outside a review run of the worker:
 
 - `evo-agents worker finding --lens LENS --title TEXT --evidence SPEC [--severity S] [--body-file FILE]`;
 - `evo-agents worker propose --lens LENS --kind KIND --title TEXT --plan-file FILE [--path REPO:PATH]
-  [--finding ID] [--evidence SPEC] [--summary-file FILE]`, which prints the tier the hub computed and why.
+  [--finding ID] [--evidence SPEC] [--summary-file FILE]`, which prints the tier the hub computed and why;
+- `evo-agents worker playbook add --text TEXT --evidence SPEC [--lens LENS]`, `playbook helpful|harmful ID
+  [--evidence SPEC] [--note TEXT]` and `playbook retire ID --note TEXT`: one delta of the project's playbook each,
+  which prints the entry and its counters.
 
-Evidence is `session:ID[:FIELD:INDEX]`, `run:ID:SEQ` or `code:REPO:PATH[:LINE]`; the command checks code evidence
+Evidence is `session:ID[:FIELD:INDEX]`, `transcript:ID[:FILE]:LINE`, `run:ID:SEQ` or `code:REPO:PATH[:LINE]`; the
+command checks code evidence
 against the run's worktree of REPO (the file, and the line) and sends the commit the worktree is at; the hub checks the
 rest. `evo-agents worker step`, `ask` and `notify` refuse inside a review run. When the agent's turns are over, the
 daemon reports `verifying` and `done` with the agent's summary from `.evo-run/result.json`: it commits and pushes
@@ -2002,6 +2006,18 @@ subscription login alone (plan decision 14): `ANTHROPIC_API_KEY`, the daemon's o
 agent's environment, and a machine where Claude Code has no subscription login (`CLAUDE_CODE_OAUTH_TOKEN` in the run's
 environment, `~/.claude/.credentials.json`, or the macOS keychain item `Claude Code-credentials`) fails the run before
 its agent starts, saying so.
+
+The agent of a review run, a judge run or a Builder gets the hub's MCP server from its runtime's adapter, so it has the
+hub's tools its prompt names on a worker without the evo-hub plugin (`evo_agents/worker/runtimes/hub_tools.py`):
+Claude Code's `mcp_servers` and the `mcp_servers` of a Codex thread gain `evo-hub`, the stdio proxy
+`evo-agents hub mcp` of the daemon's own install (its interpreter with `-I`, so a checkout of evo_agents in the
+worktree is never imported), with the run's `EVO_RUN_ID`, `EVO_WORKER_HOME` and `EVO_RUN_PROJECT`, so it speaks with
+the worker's token and `X-Evo-Run` and needs no `hub login`. It is left out when the session would have one already
+(the evo-hub plugin on and installed in Claude Code's settings, or a server `evo-hub` in `.claude.json` or the codex
+config), when the run's agent profile allows no such server, for a replay run and a history run, whose agents call none
+of the hub's tools, and where the agent runs in a container. The agent of a review run changes the project's playbook
+of the Curator with `evo-agents worker playbook add|helpful|harmful|retire` (`docs/hub.md`, "The Curator's memory"),
+which refuses outside a review run of this worker.
 
 ### Interactive runs
 

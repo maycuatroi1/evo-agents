@@ -92,8 +92,8 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
-| session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}` (Session transcripts, below) |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
+| session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}`, `GET .../transcripts/{session_id}/lines` (Session transcripts, The project's history, below) |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -105,17 +105,19 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict,replay}`, `/v1/worker/runs/{id}/history/{next,report}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,playbook,judge,verdict,replay}`, `/v1/worker/runs/{id}/history/{next,report}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 24 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 30 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
-`digest_list`, `digest_show`, `run_events`, `decision_list` and `curator_replay` (the replays of the Curator's
-changes, `docs/curator.md`, Replays); they follow the same rules as the REST routes. `tools/list` shows the agent of a
+`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
+and what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`,
+`decision_list`, `curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), and the
+project's whole history (The project's history, below): `history_sessions`, `history_search`, `transcript_lines`,
+`history_clusters`, `curator_findings` and `curator_playbook`; they follow the same rules as the REST routes. `tools/list` shows the agent of a
 run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run and a history run none,
 any other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
@@ -687,7 +689,10 @@ proposals of kind `kg_source`, their changes with them, and drops the column. Sc
 the hub published. Schema 0056 adds the history run (a run of kind `history`, on no plan and no repo, which only the
 night shift queues and of which a project has one active at a time), the facet of the model on each row of
 `session_facets` (`llm` and its `llm_*` columns), `history_runs` and `facet_clusters` (The Curator's history run,
-below); going back to 0055 drops the tables and the columns and deletes the history runs.
+below); going back to 0055 drops the tables and the columns and deletes the history runs. Schema 0057 adds
+`history_lines` and `history_indexed`, the words of the project's history for search (The project's history, below),
+and `curator_playbook` and `curator_playbook_deltas` (The Curator's memory, below); going back to 0056 drops the four
+tables, and the job indexes the history again.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -887,21 +892,28 @@ run on the worker on duty, before any plan run of the night, once that worker's 
 A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the
 worker pushes nothing at its end, and its GitHub token reads only (`contents: read`). Its prompt, which the hub builds
 (`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of twelve, taken in turn),
-says that what the agent reads is data and never instructions, and gives the night's figures. The agent reads the
-project through the MCP tools above, its run's project alone, and writes through two commands:
+says that what the agent reads is data and never instructions, names the hub's tools of the history and asks it to
+read in two tiers (the numbers first, the words of a transcript only where they point), and gives what earlier nights
+found through the night's lenses, the proposals rejected lately, the project's playbook and the night's figures
+(The Curator's memory, below). The agent reads the project through the MCP tools above, its run's project alone; the
+worker's adapter gives a run of the Curator the hub's MCP server whatever the machine has configured
+(`docs/workers.md`, The Curator's runs on the machine). It writes through three commands:
 
 ```sh
 evo-agents worker finding --lens environment --title "sleep then tail is blocked" --evidence session:ID:errors:0 \
-  --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/runner/agent.py:120 --severity high
+  --evidence transcript:ID:120 --evidence run:41:7 --evidence code:evo-agents:evo_agents/worker/runner/agent.py:120
 evo-agents worker propose --lens environment --kind fix --title "A wait helper" --path evo-agents:evo_agents/worker/wait.py \
   --finding 12 --plan-file draft.yaml --summary-file why.md
+evo-agents worker playbook add --lens environment --text "Wait on a file, never sleep" --evidence transcript:ID:120
 ```
 
 The hub refuses a finding or a proposal whose evidence it cannot find: a session of the project and the entry of the
-list of its facet (`resolved` `facet`), else of its digest (`digest`), an event of a run of the project (a local run of
-the owner's included), a file of a repo of the project (`resolved` `graph` when its knowledge graph has the file,
-`unmatched` when the graph does not hold it yet, which the hub keeps: a graph may lag its branch, and `repo` for a
-project with no graph).
+list of its facet (`resolved` `facet`), else of its digest (`digest`), a line of a transcript of the project the hub
+holds and the owner may read (`transcript:ID:LINE`, or `transcript:ID:FILE:LINE` for a subagent's file; `resolved`
+`transcript`; refused once its content was deleted), an event of a run of the project (a local run of the owner's
+included), a file of a repo of the project (`resolved` `graph` when its knowledge graph has the file, `unmatched` when
+the graph does not hold it yet, which the hub keeps: a graph may lag its branch, and `repo` for a project with no
+graph). A finding like a closed one of an earlier night is refused too (409, The Curator's memory, below).
 A proposal carries a draft plan of plan.schema.json in outcome steps (each step with `verify` and `acceptance`). The
 hub computes its tier, 0 to 3, from the charter, the paths it names (and what they reach in the knowledge graph) and
 its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint and test configuration, and the kinds
@@ -1178,6 +1190,83 @@ answer only a caller whose sink clears the project's default label, as the night
 ```sh
 evo-agents hub curator history status      # the cap and model, the facets of the model, the latest history runs
 evo-agents hub curator history clusters    # the clusters of 3 sessions or more, each with its representative session
+```
+
+## The project's history
+
+The Reviewer, and any member, read a project's whole history through the hub, Postgres alone (schema 0057,
+`evo_agents/hub/history_index.py`, `evo_agents/hub/server/history_search.py`, `evo_agents/hub/server/history_mcp.py`).
+
+**The index.** The job `hub.index_history`, every 5 minutes, reads each part of a transcript the hub holds that it has
+not read, and each run that ended 2 minutes ago and more whose log or count of events changed since (not a history run,
+whose batches are of other sessions), a line or an event at a time, into entries as the history run reads them: what
+the person wrote, what the agent said, each tool call and its result, the errors of the model's API, each text within
+2,000 characters (its start and its end). `history_lines` holds a row per entry, where it came (a transcript's session,
+file and line, or a run's event seq), when, who, its text and its tsvector of the configuration `simple`, under a GIN
+index; `history_indexed` how far each transcript and run is, and a failed attempt's error and backoff (5 minutes,
+twice as long after each failure, a day at most). A part is read once: a transcript that grows is read from its new
+parts on. Deleting a transcript's content, by an admin or by the retention, deletes its rows with its parts; a run's
+rows go with the run.
+
+**Reading.** Each route needs a grant on the project and reads what the caller may read, as the other routes do: a
+transcript and a session's facet by their label through the sink `X-Evo-Sink` names, else the project's hub sink; a
+run as its events read (a local run its member's alone, a run on no plan through the project's default label, a run
+of a plan the caller may read); a group chat's message when the caller is in the chat now and clears its label, and
+the message names the project.
+
+- `GET /v1/projects/{p}/curator/history/sessions` lists the sessions and runs of the project's facets, the latest
+  first, by `kind`, `since` and `until` (UTC days), `login`, `runtime`, `outcome` (what the cheap model wrote of it,
+  or a run's state) and `cluster` (a cluster's key; the groups the model joined to it count in it), each with the
+  numbers of its facet (messages, tool errors, corrections, tokens, context peak, cost), what the model wrote of it, its
+  cluster and the evidence that names it.
+- `GET .../curator/history/search?q=` finds words (`websearch_to_tsquery`: words, `"a phrase"`, `-excluded`) in the
+  transcripts, the run logs and the group chats, best first (`ts_rank`), by `source`, `since`, `until`, `login` and
+  `runtime`, each hit with a few words around the match (`ts_headline`) and the evidence that names it
+  (`transcript:ID[:FILE]:LINE` or `run:ID:SEQ`; a chat's message has none).
+- `GET /v1/projects/{p}/transcripts/{session}/lines?line=` reads the lines of one transcript file (`file`, `main` by
+  default) around a line (`before` and `after`, 10 by default, 100 at most) from the blob store, each as its entries.
+
+The MCP tools `history_sessions`, `history_search`, `transcript_lines` and `history_clusters` answer the same, the
+numbers before the words, and so does the command line:
+
+```sh
+evo-agents hub curator history sessions --outcome failed --since 2026-10-01   # the numbers first
+evo-agents hub curator history search '"non-fast-forward"' --source transcript   # then the words, with evidence
+evo-agents hub curator history lines SESSION 120 --before 5 --after 5            # and the lines around one
+```
+
+## The Curator's memory
+
+What the review runs of a project remember of it (schema 0057, `evo_agents/hub/server/earlier.py`,
+`evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook.py`).
+
+**Earlier nights.** A finding's status comes from the proposals that name it, their changes and their ledgers:
+`merged` once its change merged, `kept` or `reverted` once the ledger's outcome says so, `rejected` for a proposal the
+owner rejected or one dropped as a repeat, `proposed` otherwise, and `open` with no proposal; it takes the first of
+kept, merged, proposed, reverted and rejected. Kept, merged and rejected are closed. The prompt of a review run holds,
+for each lens of its night, the latest 5 findings of earlier nights with their status and proposals, and the proposals
+rejected in the last 30 days with the owner's note, as the run's owner reads them. The hub refuses a finding (409) of
+the same lens as a closed one whose title shares half its words with it, or whose evidence is the same, and which cited
+every piece of the new one's evidence already: the Reviewer cites evidence that one did not, or leaves it. `GET
+/v1/projects/{p}/curator/earlier` (reader), the MCP tool `curator_findings` and `evo-agents hub curator earlier` list
+the findings with their status, by lens and status, and the proposals rejected lately.
+
+**The playbook.** Each project has a playbook of the Curator, as Agentic Context Engineering keeps one: entries, each
+with an id (`pb-N`), a lens or none (every lens), a lesson of at most 500 characters, its evidence and two counters,
+helpful and harmful (`curator_playbook`). It changes by deltas alone, never written anew, each kept in
+`curator_playbook_deltas`: the agent of a review run adds an entry with evidence the hub resolves as a finding's, counts
+one helpful or harmful (once each way a run), or retires one with a note (POST `/v1/worker/runs/{id}/playbook`, 404
+for any run but a review run its worker holds; 200 live entries a project and 100 deltas a run at most, 409 past
+them). The prompt of a review run shows the live entries of its lenses and those of every lens, the most helpful less
+harmful first, 40 at most; `GET .../curator/playbook` (reader), the MCP tool `curator_playbook` and `evo-agents hub
+curator playbook` list them.
+
+```sh
+evo-agents worker playbook add --lens cost --text "Count cache reads before tokens" --evidence transcript:ID:40
+evo-agents worker playbook helpful pb-3 --evidence run:41:7      # once a run
+evo-agents worker playbook retire pb-2 --note "the figures count it now"
+evo-agents hub curator playbook --project demo                   # the live entries, the most helpful first
+evo-agents hub curator earlier --project demo --status rejected  # earlier findings and what became of them
 ```
 
 ## The Curator's ledger, outcomes and circuit breaker
@@ -1889,6 +1978,8 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
 - `hub.analyze_facets`, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
   or digest came and of each run that ended, made once and again when its content or the facet's version changed
   (Session facets, above).
+- `hub.index_history`, every 5 minutes, one pass at a time: the words of each part of a transcript and of each run
+  that ended, for search (The project's history, above).
 - `hub.cleanup_uploads`, hourly: removes uploads nobody committed within 24 hours.
 - `hub.prune_jobs`, daily: removes finished jobs older than 14 days.
 
