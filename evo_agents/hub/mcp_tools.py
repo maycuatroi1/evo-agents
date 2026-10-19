@@ -22,9 +22,10 @@ from __future__ import annotations
 
 from evo_agents.hub.chats import READ_REF
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS, MAX_BUDGET_TOKENS, MIN_BUDGET_TOKENS
-from evo_agents.hub.memory import TYPES
+from evo_agents.hub.memory import MAX_AUDIENCE, TYPES
 from evo_agents.hub.plans import AREAS, STEP_STATUSES
 from evo_agents.hub.runs import DECISION_STATES, EVENT_KINDS, RUNTIMES
+from evo_agents.kg.protocol import PRINCIPAL
 from evo_agents.kg.serve import INSTRUCTIONS as KG_INSTRUCTIONS
 from evo_agents.kg.serve import TOOLS as KG_TOOLS
 
@@ -152,6 +153,12 @@ HUB_TOOLS = [
                     "required": ["level"],
                     "additionalProperties": False,
                     "description": "default: the memory's current label, else the project's",
+                },
+                "audience": {
+                    "type": "array",
+                    "items": {"type": "string", "pattern": PRINCIPAL},
+                    "maxItems": MAX_AUDIENCE,
+                    "description": "chats and grants the memory derives from; `evo-agents hub mcp` adds the session's",
                 },
             },
             "required": ["name", "body"],

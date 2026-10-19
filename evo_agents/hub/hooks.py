@@ -11,7 +11,10 @@ SessionStart (startup, resume, clear) does in one process what three commands do
 It prints one line for the session as ``additionalContext``: the hub, the project, the memories pulled, what the export
 did and the skills to sync. Stop does ``hub memory push`` for the directory, so another machine sees a new memory at its
 next session. Stop runs after every turn, so it asks the hub only when a memory file differs from what the last sync
-left in memory-state.json (``MemorySync.pending``): a turn that wrote no memory sends no memory.
+left in memory-state.json (``MemorySync.pending``): a turn that wrote no memory sends no memory. Each file it sends
+carries the audience of the session's label (``evo_agents.kg.sessions``), the chats whose messages the session read,
+which the hub adds to the memory's, whether or not that file came from them; when the label cannot be read, nothing is
+pushed and the files wait here.
 
 Stop also sends the hub the digest of the session (``evo_agents.hub.digest``) once its transcript holds 6 messages,
 and again after each turn that changed it: built from the transcript Claude Code names in the hook's input, redacted on
@@ -421,7 +424,7 @@ def stop(payload: dict, outcome: Outcome) -> None:
     hub = Hub(credentials.url, credentials.token, timeout=REQUEST_TIMEOUT)
     where = session_dir(payload)
     state = HookState(hub_dir())
-    _push_memories(hub, credentials.login, where, state, outcome)
+    _push_memories(hub, credentials.login, where, state, outcome, payload)
     _push_digests(hub, credentials.login, payload, where, state, outcome)
 
 
@@ -432,14 +435,16 @@ def _local_stop(payload: dict) -> None:
     local_sync.on_stop(payload)
 
 
-def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome: Outcome) -> None:
+def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome: Outcome, payload: dict) -> None:
     from evo_agents.hub.memory import MemorySync
+    from evo_agents.kg.sessions import current_session_id, session_audience
 
     sync = MemorySync(hub, login, lock_timeout=LOCK_WAIT)
     try:
         if not sync.pending(where):
             return
-    except HubError as exc:  # memory-state.json cannot be read
+        sync.audience = session_audience(current_session_id(payload))  # what the session read: each file carries it
+    except (HubError, ValueError) as exc:  # memory-state.json or the session's label cannot be read
         outcome.say(f"evo-hub: memories not pushed: {exc}")
         return
     since = state.down_since(hub.url, _now())

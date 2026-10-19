@@ -36,7 +36,8 @@ call (``evo_agents.hub.server.kg_audience``). The sink defaults to Claude Code's
 declares no such sink, reads through the hub sink, as the local ``cli`` sink reads everything on the machine. The answer
 is the MCP tool result, an error included; a graph that cannot be fetched is 503, and one whose bytes are not those the
 build recorded is 502 and is never opened. The kg_* tools of /mcp (``evo_agents.hub.server.mcp``) answer through the
-same ``tool_result``, so the REST route and MCP read and filter alike.
+same ``tool_result``, so the REST route and MCP read and filter alike; for the agent of a run, the audience a result
+reveals is noted as what the run was shown before the result goes back (``run_audience``).
 """
 
 from __future__ import annotations
@@ -82,7 +83,7 @@ from evo_agents.hub.kg_ingest import (
 )
 from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, run_audience
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
@@ -764,7 +765,7 @@ async def tool_result(
     rules = access.rules
     ceiling = rules.ceiling(access.max_level, _read_sink(access, sink), audience)
     try:
-        return await asyncio.to_thread(
+        result = await asyncio.to_thread(
             answer,
             state.kg_graphs,
             state.blobs,
@@ -786,6 +787,11 @@ async def tool_result(
     except ArtifactMismatch as exc:
         log.error("kg graph artifact refused", extra={"project": project, "build_id": graphs[0].build_id})
         raise HTTPException(502, str(exc)) from None
+    shown = run_audience.revealed(result) if user.scope is not None else frozenset()
+    if shown:  # noted before the result goes back, so a memory the agent writes after reading it carries it
+        async with state.engine.begin() as conn:
+            await run_audience.note(conn, user.scope.run_id, shown)
+    return result
 
 
 @router.post("/{project}/tools/{tool}", response_model=ToolResult, responses=REFUSALS | {502: {"model": ErrorBody}})
