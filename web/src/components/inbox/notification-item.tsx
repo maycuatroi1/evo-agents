@@ -107,8 +107,16 @@ function BranchFacts({ notification }: { notification: Notification }) {
   );
 }
 
+/** The triage thread a `run_failed` notice links to (the hub's /chats/ID?message=ID), or null: the run's page is its target. */
+function triageThread(notification: Notification): Route | null {
+  const link = notification.link ?? "";
+  return notification.notice_kind === "run_failed" && link.startsWith("/chats/") ? (link as Route) : null;
+}
+
 /** Where a notice leads: the run's page, or the hub page its link names (never another site). */
 function noticeHref(notification: Notification): Route | null {
+  const thread = triageThread(notification);
+  if (thread) return thread;
   if (notification.project && notification.run_id !== null) return runHref(notification.project, notification.run_id);
   const link = notification.link ?? "";
   return link.startsWith("/") && !link.startsWith("//") ? (link as Route) : null;
@@ -270,7 +278,7 @@ export function NotificationItem({
               className="inline-flex min-h-7 items-center gap-1 text-sm font-medium text-brand underline-offset-4 hover:underline"
               data-testid="notification-run-link"
             >
-              {t("openRun", { id: notification.run_id })}
+              {triageThread(notification) ? t("openTriage") : t("openRun", { id: notification.run_id })}
               <ArrowRight className="size-3.5" aria-hidden="true" />
             </Link>
           ) : null}

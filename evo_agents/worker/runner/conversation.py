@@ -9,7 +9,9 @@ the same session (``running`` again): for a plan run the first answer, for an au
 its agent asked that are open at the end of its turn, or a reply in its chat (``transitions.author_wakes``). A run the
 hub parks (no answer within a day) stops at the end of its turn, keeps its session and worktrees, and frees its slot;
 the run that resumes it, claimed with ``resume_of_run_id``, goes on in them (``Conversation.adopt``). A chat run waits
-for nobody: the run that goes on in its session after it ended done adopts them the same way.
+for no reply, only for the answer to a decision of its agent, as a plan run does (``wait_for_owner``); the hub parks it
+sooner (``runs.CHAT_DECISION_WAIT_SECONDS``). One that asked none ends done with its turn, and the run that goes on in
+its session adopts them the same way.
 """
 
 from __future__ import annotations
@@ -133,7 +135,8 @@ class Conversation:
         if resumable:
             self._adopt_decisions(record, old_id)
         directory = Path(record["dir"]) if resumable and record.get("dir") else None
-        before = "parked run" if record is None or record.get("kind") in runs.RESUME_KINDS else "run"
+        parked = record is None or record.get("kind") in ("plan", "author") or record.get("state") == "parked"
+        before = "parked run" if parked else "run"
         if directory is None or not directory.is_dir():
             run.note(
                 f"The worktrees of {before} #{old_id} are not on this worker any more: the run makes new ones from "
@@ -243,7 +246,13 @@ class Conversation:
         if unread:
             run.note(f"{len(unread)} message(s) of the owner came while the agent worked: a new turn takes them.")
             return unread
-        asked = self.open_asked()
+        return await self.wait_for_owner(self.open_asked())
+
+    async def wait_for_owner(self, asked: set[int], wakes: Callable[[list[dict]], bool] = bool) -> list[dict]:
+        """Wait for the owner while a decision the agent ``asked`` is open, or the hub counts one of the run open: the
+        run reports ``waiting`` and the messages that ``wakes`` the agent come back; none when the run waits for nothing
+        or the hub takes no wait of it."""
+        run = self.run
         if not waits_for_owner(asked, run.open_decisions):
             return []
         await self.ensure_running()
@@ -261,7 +270,7 @@ class Conversation:
             f"The agent's turn ended with decision {shown} open: the run waits for its owner's answer, and the time it "
             "waits does not count toward its timeout."
         )
-        return await self.wait_for_answer()
+        return await self.wait_for_answer(wakes)
 
     async def wait_for_answer(self, wakes: Callable[[list[dict]], bool] = bool) -> list[dict]:
         """Wait for the owner's messages, the answer to a decision among them, without the agent: the worker keeps the

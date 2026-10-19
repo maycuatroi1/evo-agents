@@ -11,8 +11,11 @@ the messages people wrote to it in the thread while it worked start another turn
 (``chat_runs.REPLY_PROMPT``). When no message is left, the run ends: the daemon commits what the agent left in each
 worktree and pushes the run's branch of each repo whose commits the branch lacks on origin, never a default branch and
 never forced (``gitops.check_push``, kind ``chat``), tells the hub (POST /v1/worker/runs/{id}/chat/pulls), which opens
-the draft pull request and links it in the thread, and reports ``done``. It never waits: the next turn of the session is
-another run. The worktrees stay on their branch for it, until the cleanup of old runs.
+the draft pull request and links it in the thread, and reports ``done``. Its agent may ask the owner decisions
+(``evo-agents worker ask``, category ``triage``); a turn that ends with one open leaves the run ``waiting`` for the
+answers or a message in the thread, as an author run does, and a run the hub parks keeps its session and worktrees for
+the run that resumes it. A run that asked none ends with its turn: the next turn of the session is another run. The
+worktrees stay on their branch for it, until the cleanup of old runs.
 """
 
 from __future__ import annotations
@@ -21,9 +24,9 @@ from pathlib import Path
 from typing import TYPE_CHECKING
 
 from evo_agents.hub import chat_runs, runs
-from evo_agents.worker.runner import access, verify
+from evo_agents.worker.runner import access, transitions, verify
 from evo_agents.worker.runner.branch_work import CHAT, BranchWork
-from evo_agents.worker.runner.common import RunFailed, cut
+from evo_agents.worker.runner.common import Parked, RunFailed, cut
 from evo_agents.worker.runner.conversation import Conversation, post_last_message
 from evo_agents.worker.runner.directory import RunDirectory
 from evo_agents.worker.runner.transitions import MAX_SUMMARY_CHARS
@@ -37,7 +40,7 @@ class ChatRun:
     the agent answering in the thread turn after turn while people write to it, and the branch of each repo it changed
     pushed at its end, with the hub told so for the draft pull request."""
 
-    parks = False
+    parks = True
     chat = False
 
     def __init__(self, run: Run):
@@ -56,6 +59,12 @@ class ChatRun:
         self.last_said: str | None = None  # the agent's last reply in the thread
 
     async def steps(self) -> None:
+        try:
+            await self._work()
+        except Parked:
+            await self.conversation.park()
+
+    async def _work(self) -> None:
         run, spec = self.run, self.run.spec
         repos = [entry for entry in spec.get("repos") or [] if isinstance(entry, dict)]
         resume_of = self.conversation.resume_of
@@ -94,16 +103,19 @@ class ChatRun:
     # The turns
 
     async def after_turn(self) -> list[dict]:
-        """After each turn: the agent's reply in the thread, then the messages people wrote to it meanwhile, which
-        start its next turn; none ends the run."""
+        """After each turn: the agent's reply in the thread, then what starts its next turn: the messages people wrote to
+        it meanwhile (``transitions.author_wakes``: one of the thread, or the answers to every decision the agent
+        asked that is open); else, while a decision is open, the run waits for them; none ends the run."""
         run = self.run
         said = await post_last_message(run)
         if said is not None:
             self.last_said = said
+        asked = self.conversation.open_asked()
         unread = await run.inbox.unread()
-        if unread:
+        if transitions.author_wakes(unread, asked):
             run.note(f"{len(unread)} message(s) came in the thread while the agent worked: a new turn takes them.")
-        return unread
+            return unread
+        return await self.conversation.wait_for_owner(asked, lambda found: transitions.author_wakes(found, asked))
 
     def prompt(self) -> str:
         """The run's prompt, with where each repo's worktree is when a folder is not named as its repo, and the repos

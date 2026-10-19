@@ -66,6 +66,26 @@ export async function agentAnswers(live: LiveWorker, runId: number, text: string
   await workerPost(live, `/v1/worker/runs/${runId}/state`, { state: "done" });
 }
 
+/**
+ * A chat run that asks its owner a decision (category triage, docs/workers.md, Failure triage): its message in the
+ * thread, the decision, then the turn ends with the decision open and the run goes waiting.
+ */
+export async function agentAsks(live: LiveWorker, runId: number, text: string, question: string): Promise<number> {
+  await workerPost(live, `/v1/worker/runs/${runId}/chat`, { text });
+  const asked = (await workerPost(live, `/v1/worker/runs/${runId}/decisions`, {
+    category: "triage",
+    question,
+    context: "The failure is timing related.",
+    options: [
+      { key: "retry", label: "Retry the flaky test" },
+      { key: "skip", label: "Skip it" },
+    ],
+    recommended: "retry",
+  })) as { id: number };
+  await workerPost(live, `/v1/worker/runs/${runId}/state`, { state: "waiting" });
+  return asked.id;
+}
+
 /** Someone who signed in to the hub once (so a chat can add them), with a grant on each of `projects`. */
 export async function signedInPerson(prefix: string, projects: string[], maxLevel = "internal"): Promise<Account> {
   const account = newAccount(prefix);

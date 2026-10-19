@@ -257,6 +257,11 @@ RUN_16 = (
         ("verify command `rg -q x` exited 127; nothing was pushed", "missing_tool"),
         ("verify command `pnpm test` calls pnpm, which is not on this worker's PATH", "missing_tool"),
         ("git fetch in /src/evo-agents failed: could not resolve host", "checkout"),
+        (
+            "the worktree is on refs/heads/other, not refs/heads/feat/x: the agent switched branches, and the worker "
+            "does not push it",
+            "branch_mismatch",
+        ),
         ("the agent's account failed to authenticate (Failed to authenticate. API Error: 401 ...)", "account_auth"),
     ],
 )

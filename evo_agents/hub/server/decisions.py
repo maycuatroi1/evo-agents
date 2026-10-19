@@ -2,9 +2,9 @@
 ``docs/notifications.md`` (Decisions) is the design, ``runs`` holds the categories, states and limits, and
 ``run_state`` moves the runs.
 
-POST /v1/worker/runs/{id}/decisions takes a decision from the worker holding a plan run or an author run (404 for any
-other run: a run of one step, a review run, a judge run): a category of ``runs.DECISION_CATEGORIES`` (422 for any
-other), a question, a context in markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the
+POST /v1/worker/runs/{id}/decisions takes a decision from the worker holding a plan run, an author run or a chat run
+(404 for any other run: a run of one step, a review run, a judge run): a category of ``runs.DECISION_CATEGORIES`` (a
+chat run's is ``triage`` alone, and ``triage`` is no other run's; 422 for any other), a question, a context in markdown of at most 16 KiB, 2 to 6 options with unique keys, the key of the option the
 agent recommends, and the step it is about, which must be a step of the run's plan (422 for an author run that has put
 no plan yet, which has no steps). The decision keeps the plan the run has when its agent asks, none (``plan_id`` null)
 for an author run that has put no plan yet. It answers 201 with the decision, whose id the agent waits for, leaves a
@@ -98,7 +98,7 @@ class OptionIn(BaseModel):
 
 
 class DecisionAsk(BaseModel):
-    category: Literal[runs.DECISION_CATEGORIES] = Field(description="the agent asks only about these")
+    category: Literal[runs.ASKED_DECISION_CATEGORIES] = Field(description="the agent asks only about these")
     question: str = Field(min_length=1, max_length=runs.MAX_QUESTION_CHARS)
     context: str | None = Field(
         None, min_length=1, max_length=runs.MAX_DECISION_CONTEXT_BYTES, description="markdown, at most 16 KiB of UTF-8"
@@ -152,7 +152,7 @@ class Decision(BaseModel):
         description="the run's plan when its agent asked; null for an author run that had put no plan yet"
     )
     step_key: str | None = Field(description="the step it is about, when the agent named one")
-    category: Literal[runs.LOCAL_DECISION_CATEGORIES]
+    category: Literal[runs.SHOWN_DECISION_CATEGORIES]
     question: str
     context: str | None = Field(description="markdown")
     options: list[DecisionOption]
@@ -460,6 +460,19 @@ async def store_decision(conn: AsyncConnection, run_id: int, row, body: Decision
     return await decision_view(conn, decision_id)
 
 
+def _in_its_category(run_id: int, kind: str, category: str) -> None:
+    """422 unless ``category`` is one the agent of a run of ``kind`` asks in: a chat run asks only
+    ``runs.CHAT_DECISION_CATEGORY``, the other kinds those of ``runs.DECISION_CATEGORIES``."""
+    if (kind == "chat") != (category == runs.CHAT_DECISION_CATEGORY):
+        if kind == "chat":
+            allowed = f"only {runs.CHAT_DECISION_CATEGORY!r}"
+        else:
+            allowed = ", ".join(runs.DECISION_CATEGORIES)
+        raise HTTPException(
+            422, f"run {run_id} is a {kind} run: its agent asks decisions of {allowed}, not {category!r}"
+        )
+
+
 @worker_router.post(
     "/runs/{run_id}/decisions",
     status_code=201,
@@ -467,9 +480,10 @@ async def store_decision(conn: AsyncConnection, run_id: int, row, body: Decision
     responses={**REFUSALS, 422: {"model": ErrorBody}},
 )
 async def ask(request: Request, run_id: RunId, body: DecisionAsk, user: CurrentUser) -> Decision:
-    """Ask the owner of a plan run or an author run this worker holds a decision, and notify them."""
+    """Ask the owner of a plan run, an author run or a chat run this worker holds a decision, and notify them."""
     async with request.app.state.engine.begin() as conn:
-        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=("plan", "author"))
+        _, row = await held_plan_run(conn, user, run_id, lock=True, kinds=runs.RESUME_KINDS)
+        _in_its_category(run_id, row.kind, body.category)
         view = await store_decision(conn, run_id, row, body)
     log.info("decision asked", extra={"run_id": run_id, "decision_id": view.id, "category": body.category})
     return view
@@ -565,6 +579,11 @@ async def resume_parked(conn: AsyncConnection, user: Principal, parked_id: int, 
     "as owner answered decision #3". The parked run's decisions still open go to the new run, and for an author run,
     the messages of its inbox the worker has not handed to an agent too: the answers its owner gave while it was
     parked, which its agent reads in the new run's first turn."""
+    kind = (await conn.execute(select(tables.runs.c.kind).where(tables.runs.c.id == parked_id))).scalar_one()
+    if kind == "chat":  # a chat run goes on in its thread's session: the run is made as chat_runs makes one
+        from evo_agents.hub.server.chat_runs import go_on_parked  # it queues runs through the routes that import this
+
+        return await go_on_parked(conn, parked_id, why, token_id=user.token_id)
     reserved = select(func.nextval(func.pg_get_serial_sequence("runs", "id")))
     new_id = (await conn.execute(reserved)).scalar_one()
     # The parked run leaves the active states first: a plan has one active plan run at a time.
@@ -579,9 +598,8 @@ async def resume_parked(conn: AsyncConnection, user: Principal, parked_id: int, 
         decisions=None,
     )
     await conn.execute(_resume_run(new_id, parked_id))
-    d, r, i = tables.decisions, tables.runs, tables.run_inbox
+    d, i = tables.decisions, tables.run_inbox
     await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
-    kind = (await conn.execute(select(r.c.kind).where(r.c.id == parked_id))).scalar_one()
     if kind == "author":
         undelivered = (i.c.run_id == parked_id, i.c.delivered_at.is_(None))
         await conn.execute(update(i).values(run_id=new_id).where(*undelivered))
@@ -612,10 +630,10 @@ async def _lock_run_of(conn: AsyncConnection, project_id: int, plan_id: str | No
 
 async def _resumes(conn: AsyncConnection, run_id: int, run_state: str, kind: str) -> bool:
     """Whether the answer just recorded resumes run ``run_id``: a parked plan run at its first answer, a parked
-    author run once none of its decisions is open."""
+    author run or a parked chat run once none of its decisions is open."""
     if run_state != "parked":
         return False
-    if kind != "author":
+    if kind not in ("author", "chat"):
         return True
     d = tables.decisions
     still_open = select(func.count()).select_from(d).where(d.c.run_id == run_id, d.c.state == "open")
