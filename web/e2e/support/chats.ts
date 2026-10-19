@@ -119,6 +119,18 @@ export async function signedInPerson(prefix: string, projects: string[], maxLeve
   return account;
 }
 
+/** `account`'s direct chat with agent `handle`, the one there is or a new one, as the web opens it. */
+export async function openDirectByApi(account: Account, handle: string): Promise<Chat> {
+  const api = await apiOf(account);
+  return call(api.PUT("/v1/chats/direct/{handle}", { params: { path: { handle } } }));
+}
+
+/** Set a group chat's image, as a member does from its head. */
+export async function putChatImageByApi(account: Account, chatId: number, image: Buffer): Promise<Chat> {
+  const api = await apiOf(account);
+  return call(api.PUT("/v1/chats/{chat_id}/image", { params: { path: { chat_id: chatId } }, body: { data: image.toString("base64") } }));
+}
+
 export async function createChatByApi(account: Account, body: { title: string; people?: string[]; agents?: string[] }): Promise<Chat> {
   const api = await apiOf(account);
   return call(api.POST("/v1/chats", { body: { people: [], agents: [], ...body } }));

@@ -9,7 +9,8 @@ import { Button } from "@/components/ui/button";
 import type { Chat, ChatAuthor, GroupMessage } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
-import { AuthorAvatar, AuthorName } from "./author";
+import { AuthorName } from "./author";
+import { AuthorAvatar } from "./faces";
 import { MessageLinks } from "./message-links";
 import { MessageProgress } from "./message-progress";
 import { ReactionChips, ReactionPicker } from "./reactions";

@@ -2092,13 +2092,19 @@
         "limits": "Giới hạn",
         "version": "Phiên bản",
         "updated": "Lần sửa",
-        "deleted": "Lúc xoá"
+        "deleted": "Lúc xoá",
+        "actions": "Thao tác"
       },
       "version": "v{version}",
       "everyPermission": "Mọi quyền",
       "limitsLabel": "Giới hạn:",
       "onlyDefault": "Hiện dự án mới có agent mặc định. Bấm Agent mới để tạo một agent có tên, chỉ dẫn và quyền hẹp hơn.",
       "more": "+{count}"
+    },
+    "chat": {
+      "button": "Chat",
+      "label": "Chat với {name}",
+      "failed": "Không mở được chat với @{handle}"
     },
     "axes": {
       "credential": {
@@ -2407,9 +2413,24 @@
       "caption": "Chat của bạn",
       "rowLabelUnread": "{title}, {count, plural, other {# tin chưa đọc}}",
       "emptyTitle": "Chưa có chat nào",
-      "emptyBody": "Chat gom người và agent của các dự án vào một cuộc trò chuyện. Gõ @ tên agent để giao việc: agent trả lời trong thread dưới tin của bạn, và thay đổi code tới dưới dạng pull request nháp.",
+      "emptyBody": "Chat gom người và agent của các dự án vào một cuộc trò chuyện. Chọn một agent ở trên để chat riêng với agent đó, hoặc bấm Chat mới để tạo group chat, nơi gõ @ tên agent là giao việc cho agent.",
       "noneOpenTitle": "Mở một chat",
-      "noneOpenBody": "Chọn một chat trong danh sách, hoặc bấm Chat mới để bắt đầu."
+      "noneOpenBody": "Chọn một chat trong danh sách hay một agent ở trên danh sách, hoặc bấm Chat mới để tạo group chat.",
+      "you": "Bạn",
+      "hub": "Hub",
+      "lastMessage": "{author}: {text}",
+      "hiddenMessage": "tin mà grant của bạn không cho đọc",
+      "noMessages": "Chưa có tin nào"
+    },
+    "strip": {
+      "label": "Chat với một agent",
+      "open": "Chat với {name}, @{handle} của {project}",
+      "tooltip": "@{handle}, {project}",
+      "loading": "Đang tải các agent bạn chat được",
+      "empty": "Agent của các dự án bạn có quyền ghi hiện ở đây để chat riêng.",
+      "failed": "Không đọc được agent của {projects}.",
+      "retry": "Thử lại",
+      "openFailed": "Không mở được chat với @{handle}"
     },
     "view": {
       "reactFailed": "Không đổi được reaction",
@@ -2422,12 +2443,37 @@
       "threadSheet": "Thread",
       "threadSheetBody": "Một thread của {title}",
       "notFoundTitle": "Không có chat này",
-      "notFoundBody": "Địa chỉ của một chat là /chats rồi tới số của chat. Hãy mở chat từ danh sách chat của bạn."
+      "notFoundBody": "Địa chỉ của một chat là /chats rồi tới số của chat. Hãy mở chat từ danh sách chat của bạn.",
+      "directHint": "Mọi tin đều tới {name}, không cần @: agent trả lời ngay dưới tin của bạn.",
+      "directPlaceholder": "Nhắn cho {name}"
     },
     "header": {
       "back": "Về danh sách chat",
       "andMore": "{names} và {count} người khác",
-      "members": "{count, plural, other {# thành viên}}"
+      "members": "{count, plural, other {# thành viên}}",
+      "onlyYou": "Mới có bạn",
+      "direct": "Chat riêng",
+      "deleted": "Đã xoá",
+      "details": "Chi tiết",
+      "agentPage": "Mở trang của {name}",
+      "project": "Dự án"
+    },
+    "image": {
+      "menu": "Ảnh của chat: tải ảnh lên",
+      "menuWithImage": "Ảnh của chat: đổi hay bỏ ảnh",
+      "hint": "PNG, JPEG hoặc WebP, tối đa {max} KiB. Không có ảnh thì chat hiện ảnh các thành viên.",
+      "upload": "Tải ảnh lên",
+      "change": "Đổi ảnh",
+      "remove": "Bỏ ảnh",
+      "changed": "Đã đổi ảnh của chat",
+      "removed": "Đã bỏ ảnh của chat",
+      "type": "Hãy chọn ảnh PNG, JPEG hoặc WebP.",
+      "size": "Ảnh lớn hơn {max} KiB.",
+      "removeTitle": "Bỏ ảnh của {title}?",
+      "removeText": "Chat sẽ hiện lại ảnh các thành viên, với mọi người trong chat.",
+      "removeConfirm": "Bỏ ảnh",
+      "removing": "Đang bỏ…",
+      "cancel": "Huỷ"
     },
     "messages": {
       "log": "Tin nhắn của {title}",
@@ -2575,7 +2621,10 @@
       "saving": "Đang lưu",
       "save": "Lưu",
       "badBudget": "Một số lớn hơn 0, tối đa {max}.",
-      "budgetHint": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ, theo usage của run; vượt mức thì hub không giao việc nữa."
+      "budgetHint": "Các run của agent trong chat được tốn tối đa {amount} trong 24 giờ bất kỳ, theo usage của run; vượt mức thì hub không giao việc nữa.",
+      "detailsTitle": "Chi tiết",
+      "directDescription": "Chat riêng của bạn với {name}.",
+      "directNote": "Chat riêng chỉ có bạn và một agent, không đổi được. Muốn có thêm người hay agent khác, hãy bấm Chat mới để tạo group chat."
     },
     "create": {
       "title": "Chat mới",

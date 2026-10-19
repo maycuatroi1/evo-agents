@@ -1,7 +1,7 @@
 import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
-import { agentPath, agentsPath, createAgentByApi, putAvatarByApi } from "./support/agents";
+import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAvatarByApi } from "./support/agents";
 import {
   agentAnswers,
   chatPath,
@@ -10,6 +10,8 @@ import {
   claimChatRun,
   claimOnly,
   createChatByApi,
+  openDirectByApi,
+  putChatImageByApi,
   reactByApi,
   sendByApi,
   setupNote,
@@ -931,6 +933,34 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "members sheet");
       await page.getByTestId("chat-members").getByTestId("chat-leave").click();
       await expect(page.getByTestId("chat-leave-confirm")).toBeVisible();
+    },
+  },
+  {
+    name: "a direct chat with its agent's head, the row of agents marking its agent, then its details",
+    open: async ({ page, me }) => {
+      const chat = await openDirectByApi(me, me.projects[0]);
+      await sendByApi(me, chat.id, "Is the wait test flaky?");
+      await open(page, chatPath(chat.id));
+      await expect(page.locator("#main").getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
+      await expect(page.locator("#main").locator('[data-testid="agent-strip-agent"][aria-current="true"]')).toHaveCount(1);
+      await expectNoSeriousViolations(page, "a direct chat");
+      await page.locator("#main").getByTestId("chat-details-open").click();
+      await expect(page.getByTestId("chat-direct-note")).toBeVisible();
+    },
+  },
+  {
+    name: "a group chat with its image, a file its head refuses, then its image menu",
+    open: async ({ page, me }) => {
+      const { chat } = await seedChat(me);
+      await putChatImageByApi(me, chat.id, PIXEL_PNG);
+      await open(page, chatPath(chat.id));
+      const head = page.locator("#main").getByTestId("chat-head");
+      await expect(head.getByTestId("chat-image")).toBeVisible();
+      await head.getByTestId("chat-image-input").setInputFiles({ name: "face.gif", mimeType: "image/gif", buffer: Buffer.from("GIF89a") });
+      await expect(head.getByTestId("chat-image-problem")).toBeVisible();
+      await expectNoSeriousViolations(page, "a chat's image refused");
+      await head.getByTestId("chat-image-button").click();
+      await expect(page.getByTestId("chat-image-menu")).toBeVisible();
     },
   },
   {

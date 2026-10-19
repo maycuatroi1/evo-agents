@@ -18,8 +18,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useMediaQuery } from "@/hooks/use-media-query";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
-import { chatKeys, chatPageQuery, chatQuery, toggleReaction } from "@/lib/chat-queries";
-import { type ChatPage, chatsHref, type GroupMessage } from "@/lib/chats";
+import { chatKeys, chatPageQuery, chatQuery, COMPOSE_PARAM, toggleReaction } from "@/lib/chat-queries";
+import { type Chat, type ChatPage, chatsHref, type ChatSummary, type GroupMessage } from "@/lib/chats";
 
 import { ChatComposer } from "./composer";
 import { ChatHeader } from "./chat-header";
@@ -47,7 +47,8 @@ const useNothingUnder: UseUnder = () => undefined;
 /**
  * A chat's page (web/DESIGN.md, Chats): its head, its messages, live, and the composer; a thread beside it from 2xl
  * (beside the sidebar and the list, a third column needs that much) or in a sheet below; its members in a sheet. `?thread=ID` opens a thread, and `?message=ID` (where a notice links)
- * shows that message marked, in its thread when it is a reply.
+ * shows that message marked, in its thread when it is a reply. `?compose=1` (where an agent's avatar and its Chat
+ * button lead) focuses the composer, then leaves the address.
  */
 export function ChatView({ chatId, initialError, useUnder = useNothingUnder }: { chatId: number; initialError: ApiErrorInfo | null; useUnder?: UseUnder }) {
   const state = useHubQuery(chatPageQuery(browserApi, chatId), initialError);
@@ -80,7 +81,21 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   const chatId = page.chat.id;
   const { data: chat = page.chat } = useQuery({ ...chatQuery(browserApi, chatId), initialData: page.chat, staleTime: 30_000 });
   const onMembers = useCallback(() => void queryClient.invalidateQueries({ queryKey: chatKeys.one(chatId) }), [queryClient, chatId]);
-  const live = useChatFeed({ chatId, page, me, onMembers });
+  // Another member changed the chat's image: the head shows it now, and the list once it reads the chats again.
+  const onImage = useCallback(
+    (imageUrl: string | null) => {
+      queryClient.setQueryData<Chat>(chatKeys.one(chatId), (held) => (held ? { ...held, image_url: imageUrl } : held));
+      queryClient.setQueryData<ChatSummary[]>(chatKeys.list, (list) => list?.map((item) => (item.id === chatId ? { ...item, image_url: imageUrl } : item)));
+    },
+    [queryClient, chatId],
+  );
+  const live = useChatFeed({ chatId, page, me, onMembers, onImage });
+
+  // Opened to write (an agent's avatar or its Chat button): the composer takes the focus, and the address drops it.
+  const compose = params.get(COMPOSE_PARAM);
+  useEffect(() => {
+    if (compose !== null) urlWith({ [COMPOSE_PARAM]: null });
+  }, [compose]);
   useLiveSignal(live.signal);
 
   const wide = useMediaQuery(THREAD_COLUMN_QUERY);
@@ -151,7 +166,7 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
   return (
     <div className="flex h-full min-h-0 w-full gap-4" data-testid="chat-view" data-chat-id={chatId} data-stream={live.status}>
       <section aria-labelledby="chat-title" className={`${CARD} min-w-0 flex-1`}>
-        <ChatHeader chat={chat} onMembers={() => setMembers(true)} />
+        <ChatHeader chat={chat} me={me} onMembers={() => setMembers(true)} />
         <MessageList
           chat={chat}
           me={me}
@@ -182,9 +197,10 @@ function Conversation({ page, useUnder }: { page: ChatPage; useUnder: UseUnder }
               replyTo={null}
               onSent={live.sent}
               label={t("composerLabel", { title: chat.title })}
-              placeholder={t("placeholder")}
-              hint={t("hint")}
+              placeholder={chat.kind === "direct" ? t("directPlaceholder", { name: chat.agents[0]?.name ?? chat.title }) : t("placeholder")}
+              hint={chat.kind === "direct" ? t("directHint", { name: chat.agents[0]?.name ?? chat.title }) : t("hint")}
               testId="chat-composer"
+              focusKey={compose}
             />
           </div>
         )}

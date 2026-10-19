@@ -2,8 +2,7 @@
 
 import { MessagesSquare, Plus, Search } from "lucide-react";
 import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useFormatter, useTranslations } from "next-intl";
+import { useTranslations } from "next-intl";
 import { useState } from "react";
 
 import { InFrame } from "@/components/data/data-card";
@@ -16,21 +15,26 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { chatsQuery, LIST_LIVE_MS } from "@/lib/chat-queries";
-import { chatHref, type ChatSummary, filterChats, unreadTotal } from "@/lib/chats";
+import { type ChatSummary, filterChats, unreadTotal } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
+import { AgentStripSkeleton } from "./agent-strip-skeleton";
+import { ChatRow } from "./chat-row";
 import { useMe } from "./hooks";
 
 // The form loads when New chat is first pressed: the list carries only its button.
 const NewChatDialog = dynamic(() => import("./new-chat-dialog").then((module) => module.NewChatDialog), { ssr: false });
+// The row of agents loads beside the list: its agents are read in the browser anyway, and its rounds stand in meanwhile.
+const AgentStrip = dynamic(() => import("./agent-strip").then((module) => module.AgentStrip), { ssr: false, loading: () => <AgentStripSkeleton /> });
 
 /** A filter shows over the list once it holds more than this many chats. */
 const FILTER_FROM = 6;
 
 /**
- * The visitor's chats (web/DESIGN.md, Chats), the latest active first: each one's title, when its last message came,
- * who is in it and the messages of others not read yet, in an `attention` count. The chat shown is marked. Read every
- * 10 seconds while shown; a chat's own page keeps its count at zero while it is in view. New chat sits at the top.
+ * The visitor's chats (web/DESIGN.md, Chats): New chat at the top, the row of agents to chat with one to one under it
+ * (`AgentStrip`), then the chats, the latest active first, each with its face, name, last message and the messages of
+ * others not read yet (`ChatRow`). The chat shown is marked. Read every 10 seconds while shown; a chat's own page keeps
+ * its count at zero while it is in view.
  */
 export function ChatList({ activeId, initialError, className }: { activeId: number | null; initialError: ApiErrorInfo | null; className?: string }) {
   const t = useTranslations("chats.list");
@@ -40,6 +44,8 @@ export function ChatList({ activeId, initialError, className }: { activeId: numb
   const chats = state.status === "success" ? state.data : null;
   const Heading = activeId === null ? "h1" : "h2";
   const unread = chats ? unreadTotal(chats) : 0;
+  const shown = chats?.find((chat) => chat.id === activeId);
+  const current = shown?.kind === "direct" ? (shown.direct_agent?.handle ?? null) : null;
   return (
     <section
       aria-labelledby="chats-list-title"
@@ -60,6 +66,7 @@ export function ChatList({ activeId, initialError, className }: { activeId: numb
           {t("new")}
         </Button>
       </header>
+      <AgentStrip current={current} />
       {chats && chats.length > FILTER_FROM ? (
         <div className="relative border-b px-3 py-2">
           <Search className="pointer-events-none absolute top-1/2 left-5.5 size-4 -translate-y-1/2 text-fg-subtle" aria-hidden="true" />
@@ -99,67 +106,29 @@ export function ChatList({ activeId, initialError, className }: { activeId: numb
 
 function Rows({ chats, activeId, filter, onClear }: { chats: ChatSummary[]; activeId: number | null; filter: string; onClear: () => void }) {
   const t = useTranslations("chats.list");
-  const format = useFormatter();
-  const me = useMe()?.toLowerCase() ?? null;
+  const me = useMe();
   if (chats.length === 0) {
     return <NoResults title={t("noMatch")} filters={[{ label: t("filterChip"), value: filter }]} onClear={onClear} testId="chats-no-match" />;
   }
   return (
     <ul className="flex flex-col p-1.5" aria-label={t("caption")} data-testid="chats-rows">
-      {chats.map((chat) => {
-        const active = chat.id === activeId;
-        const when = chat.last_message_at ?? chat.created_at;
-        const members = [...chat.agents.map((handle) => `@${handle}`), ...chat.people.filter((login) => login.toLowerCase() !== me)];
-        const label = chat.unread > 0 ? t("rowLabelUnread", { title: chat.title, count: chat.unread }) : undefined;
-        return (
-          <li key={chat.id}>
-            <Link
-              href={chatHref(chat.id)}
-              aria-current={active ? "page" : undefined}
-              aria-label={label}
-              className={cn(
-                "flex min-h-14 flex-col gap-0.5 rounded-sm px-3 py-2 transition-colors",
-                active ? "bg-surface-selected" : "hover:bg-accent",
-              )}
-              data-testid="chat-row"
-              data-chat-id={chat.id}
-              data-unread={chat.unread}
-            >
-              <span className="flex min-w-0 items-center gap-2">
-                <span className={cn("min-w-0 flex-1 truncate text-sm", chat.unread > 0 ? "font-semibold text-foreground" : "font-medium text-foreground")}>
-                  {chat.title}
-                </span>
-                {chat.unread > 0 ? (
-                  <span
-                    aria-hidden="true"
-                    className="inline-flex h-4.5 min-w-4.5 shrink-0 items-center justify-center rounded-full bg-attention-soft px-1.25 text-[11px] leading-none font-medium text-attention tabular-nums"
-                    data-testid="chat-row-unread"
-                  >
-                    {chat.unread > 99 ? "99+" : chat.unread}
-                  </span>
-                ) : null}
-              </span>
-              <span className="flex min-w-0 items-center gap-2 text-xs text-muted-foreground">
-                <span className="min-w-0 flex-1 truncate">{members.join(", ")}</span>
-                <time dateTime={when} className="shrink-0 text-fg-subtle tabular-nums">
-                  {format.dateTime(new Date(when), { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                </time>
-              </span>
-            </Link>
-          </li>
-        );
-      })}
+      {chats.map((chat) => (
+        <ChatRow key={chat.id} chat={chat} active={chat.id === activeId} me={me} />
+      ))}
     </ul>
   );
 }
 
 function ListLoading() {
   return (
-    <div className="flex flex-col gap-2 p-3" data-testid="chats-loading">
+    <div className="flex flex-col gap-1 p-1.5" data-testid="chats-loading">
       {[0, 1, 2, 3].map((row) => (
-        <div key={row} className="flex flex-col gap-1.5 px-1 py-1.5">
-          <Skeleton className="h-4 w-2/3 rounded-xs" />
-          <Skeleton className="h-3 w-5/6 rounded-xs" />
+        <div key={row} className="flex min-h-16 items-center gap-3 px-2.5 py-2">
+          <Skeleton className="size-10 shrink-0 rounded-full" />
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5">
+            <Skeleton className="h-4 w-2/3 rounded-xs" />
+            <Skeleton className="h-3 w-5/6 rounded-xs" />
+          </div>
         </div>
       ))}
     </div>
