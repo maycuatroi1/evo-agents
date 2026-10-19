@@ -2,21 +2,24 @@
 
 The lookup asks ``git ls-remote`` of the repository (no API quota), then the GitHub API when git fails.
 
-``uv tool install`` was checked with uv 0.6.13 (2026-10-19) before the update leaned on it. It is not atomic: over an
-environment made from the same interpreter it replaces the changed packages in place, file by file; asked for another
-interpreter it deletes the environment first, and when the build then fails nothing is left, not even the command. A
-build or resolution that fails over the same interpreter leaves the old install as it was, and an install whose code
-does not import is put in place without a word. Hence the update:
+``uv tool install --force`` does not go over an install the same way in every uv release. uv 0.6.13 (checked
+2026-10-19 on a Mac) replaces the changed packages of an environment made from the same interpreter in place, file by
+file, and a build that fails over it leaves the install as it was; asked for another interpreter it deletes the
+environment first, and a build that then fails leaves nothing, not even the command. It also puts in place, without a
+word, an install whose code does not import. uv 0.12.24 (evo-worker-01, 2026-10-19) deletes the environment and builds
+it again on every such install, with the same interpreter and the same commit. Hence the update, which leans on
+neither:
 
 1. ``uv tool install`` of ``evo-ak[<extras>] @ git+<repo>@nightly`` into a staging directory, then the staged install
    started (``python -c 'import evo_agents.worker.daemon'`` and ``evo-agents --version``) and its commit read. A
    failure there leaves the install untouched.
-2. The same over the install, with ``--python`` its own interpreter, so uv replaces the packages in place and never
-   deletes the environment, and ``--reinstall-package``/``--refresh-package`` so a tag that moved is read again. The
-   install is then started and its commit checked against the staged one (or nightly read again, when the tag moved
-   between the two).
-3. When the install does not start or carries another commit, the old one is put back: ``@<commit>`` for an install
-   from git, ``==<version>`` for one from PyPI, and started again.
+2. A copy of the install and its commands (``backup``). When it cannot be made, the update stops there.
+3. The same install over the install, with ``--python`` its own interpreter and ``--reinstall-package``/
+   ``--refresh-package`` so a tag that moved is read again. The install is then started and its commit checked
+   against the staged one (or nightly read again, when the tag moved between the two).
+4. When that fails, the copy goes back in place of whatever uv left, and is started again. Only when the copy cannot
+   be put back is the old version installed again from its source: ``@<commit>`` for an install from git,
+   ``==<version>`` for one from PyPI. When that fails too, the copy, if whole, is kept for a person.
 
 The daemons of the install claim nothing meanwhile (``peers``), so no run's code changes under it.
 """
@@ -33,6 +36,7 @@ from collections.abc import Awaitable, Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from evo_agents.worker.selfupdate import backup
 from evo_agents.worker.selfupdate.install import (
     COMMAND,
     COMMIT,
@@ -158,6 +162,7 @@ class Installer:
         staging: Path,
         env: Mapping[str, str],
         *,
+        backup_dir: Path | None = None,
         runner=run_command,
         install_timeout: float = INSTALL_TIMEOUT,
         probe_timeout: float = PROBE_TIMEOUT,
@@ -165,6 +170,7 @@ class Installer:
         self.install = install
         self.uv = uv
         self.staging = Path(staging)
+        self.backup_dir = Path(backup_dir) if backup_dir is not None else self.staging.with_name("backup")
         self.env = {key: value for key, value in env.items() if key not in DROPPED}
         self.runner = runner
         self.install_timeout = install_timeout
@@ -216,39 +222,71 @@ class Installer:
 
     async def update(self, latest: Callable[[], Awaitable[str]]) -> Outcome:
         """Update the install to nightly; ``latest`` reads where nightly points again, for a tag that moved."""
+        if backup.kept(self.backup_dir) is not None:
+            why = f"the copy of the install that an earlier update could not put back is kept at {self.backup_dir}"
+            return Outcome(False, error=f"{why}; it waits for a person to put it back or remove it", broken=True)
         problem, staged = await self._stage()
         if problem:
             return Outcome(False, error=problem)
         install = self.install
+        try:
+            await asyncio.to_thread(backup.take, install.prefix, install.commands, self.backup_dir)
+        except OSError as exc:
+            return Outcome(False, error=f"the install was not copied before the update, which did not go on: {exc}")
+        try:
+            problem, commit = await self._over(staged, latest)
+            if problem is None:
+                return Outcome(True, commit=commit)
+            outcome = await self._put_back(problem)
+            if outcome.broken:
+                with contextlib.suppress(OSError):
+                    backup.keep(self.backup_dir, outcome.error or problem)
+            return outcome
+        finally:
+            await asyncio.to_thread(backup.drop, self.backup_dir)
+
+    async def _over(self, staged: str, latest: Callable[[], Awaitable[str]]) -> tuple[str | None, str | None]:
+        """Install nightly over the install and start it: what failed (None when it worked), and its commit."""
+        install = self.install
         done = await self._uv_install(install.prefix.parent, install.entrypoint.parent, self.requirement())
+        if done.code != 0:
+            return f"uv could not install {self.requirement()} over the install: {tail(done.output)}", None
         problem, found = await self.check(install.prefix, install.entrypoint)
-        if done.code == 0 and problem is None:
-            wanted = {staged}
-            if found.commit != staged:
-                with contextlib.suppress(LookupError):
-                    wanted.add(await latest())
-            if found.commit in wanted:
-                return Outcome(True, commit=found.commit)
-            problem = f"the install holds {found.commit}, not nightly {staged}"
-        elif done.code != 0:
-            problem = f"uv could not install {self.requirement()} over the install: {tail(done.output)}"
-        return await self._put_back(problem)
+        if problem is not None:
+            return problem, None
+        wanted = {staged}
+        if found.commit != staged:
+            with contextlib.suppress(LookupError):
+                wanted.add(await latest())
+        if found.commit not in wanted:
+            return f"the install holds {found.commit}, not nightly {staged}", None
+        return None, found.commit
 
     def _as_before(self, found: Identity) -> bool:
         return version_of(found) == self.install.version and found.commit == self.install.commit
 
     async def _put_back(self, why: str) -> Outcome:
-        """The update failed: when the install no longer is what it was, install that again."""
+        """The update over the install failed: put the copy back, else install the old version again."""
         install = self.install
-        problem, found = await self.check(install.prefix, install.entrypoint)
-        if problem is None and self._as_before(found):
-            return Outcome(False, error=f"{why}; the install is as it was")
+        try:
+            await asyncio.to_thread(backup.restore, self.backup_dir, install.prefix)
+        except (OSError, ValueError) as exc:
+            trouble = f"putting back the copy of the install failed: {exc}"
+        else:
+            problem, found = await self.check(install.prefix, install.entrypoint)
+            if problem is None and self._as_before(found):
+                return Outcome(False, error=f"{why}; put back the copy of the install")
+            trouble = (
+                f"the copy of the install put back does not start: {problem}"
+                if problem
+                else "the copy of the install put back holds another version"
+            )
         previous = self.previous()
         if previous is None:
-            return Outcome(False, error=f"{why}; nothing to put back", broken=True)
+            return Outcome(False, error=f"{why}; {trouble}; nothing else to put back", broken=True)
         done = await self._uv_install(install.prefix.parent, install.entrypoint.parent, previous)
         problem, found = await self.check(install.prefix, install.entrypoint)
         if done.code == 0 and problem is None and self._as_before(found):
-            return Outcome(False, error=f"{why}; put back {previous}")
-        trouble = problem or f"uv exited {done.code}: {tail(done.output)}"
-        return Outcome(False, error=f"{why}; putting back {previous} failed too: {trouble}", broken=True)
+            return Outcome(False, error=f"{why}; {trouble}; put back {previous}")
+        failed = problem or f"uv exited {done.code}: {tail(done.output)}"
+        return Outcome(False, error=f"{why}; {trouble}; putting back {previous} failed too: {failed}", broken=True)

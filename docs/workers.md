@@ -2178,19 +2178,34 @@ The update, once decided:
    the install, into `~/.evo/installs/<install>/staging`. The staged install must start (`python -c 'import
    evo_agents.cli, evo_agents.worker.daemon'` and `evo-agents --version`) and the daemon reads its commit. A failure
    here leaves the install as it was.
-2. The same over the install itself, with `--python` the interpreter the install was made from (so uv replaces the
-   changed packages in place and never deletes the environment), `--force`, `--reinstall-package evo-ak` and
-   `--refresh-package evo-ak`. The install must start the same way and carry the staged commit.
-3. When it does not, the old version goes back: `@<old commit>` for an install from git, `evo-ak[<extras>]==<old
-   version>` for one from PyPI, and it is started again. uv's receipt then names that commit instead of nightly
-   until the next update that works. An install from PyPI that updated is an install from git at nightly from then on.
+2. A copy of the install's environment and of its commands (the `evo-agents` symlink or file in `~/.local/bin`) into
+   `~/.evo/installs/<install>/backup`, symlinks kept as symlinks. When the copy cannot be made (a full disk), the update
+   stops here and the install stays as it was.
+3. The same `uv tool install` over the install itself, with `--python` the interpreter the install was made from,
+   `--force`, `--reinstall-package evo-ak` and `--refresh-package evo-ak`. The install must start the same way and
+   carry the staged commit.
+4. When uv fails there, or the install does not start or carries another commit, the copy goes back in place of
+   whatever uv left, the commands with it, and the install is started again. Putting the copy back needs neither uv nor the network, and uv's receipt is the one the copy holds, so it still
+   names nightly. Only when the copy cannot go back is the old version installed again from its source: `@<old commit>`
+   for an install from git, `evo-ak[<extras>]==<old version>` for one from PyPI; uv's receipt then names that commit
+   instead of nightly until the next update that works. When that fails too, the copy stays in `backup/` with a file
+   `KEPT`, and no update runs until a person removes `backup/`, after putting the copy back by hand if the install
+   does not start (`rm -rf <environment> && mv ~/.evo/installs/<install>/backup/env <environment>`). Otherwise the
+   copy is dropped once the update or the put-back is done.
 
-When the update worked, the daemon exits 75 (`home.EXIT_UPDATED`, EX_TEMPFAIL of sysexits.h): neither 0 nor the
-revoke status 3, so launchd and systemd start it again on the new version (10 seconds later under the service of
-`worker service install`), and its next heartbeat reports the new commit. When it failed, the daemon reports the `error`, goes on claiming runs on the version it runs,
-and tries that commit again an hour later. uv's behaviour here was checked with uv 0.6.13: without `--python` a uv
-tool install can recreate the environment on another interpreter, and a build that then fails leaves no install at
-all, which is why the update stages first and pins the interpreter.
+An install from PyPI that updated is an install from git at nightly from then on. When the update worked, the daemon
+exits 75 (`home.EXIT_UPDATED`, EX_TEMPFAIL of sysexits.h): neither 0 nor the revoke status 3, so launchd and systemd
+start it again on the new version (10 seconds later under the service of `worker service install`), and its next
+heartbeat reports the new commit. When it failed, the daemon reports the `error`, goes on claiming runs on the version
+it runs, and tries that commit again an hour later.
+
+uv does not go over an install the same way in every release, which is why the update leans on the copy rather than on
+uv. uv 0.6.13 replaces the changed packages of an environment made from the same interpreter in place, and a build that
+fails over it leaves the install as it was; asked for another interpreter it deletes the environment first. uv 0.12.24
+deletes the environment and builds it again on every `--force` install, even with the same interpreter and commit. In
+both cases a build that fails after the environment went, with no network to install the old version again, would
+leave no install at all. The copy takes as much disk as the environment while the update lasts: 709 MB for an install
+with the `graphify` and `worker` extras on a Mac, copied in about 2 seconds.
 
 **Daemons that share an install.** Two workers of one machine may run from one install, as two services with their
 own `EVO_WORKER_HOME`. An update changes the code of both, so they meet in `~/.evo/installs/<install>/` (0700), where
@@ -2202,12 +2217,14 @@ own `EVO_WORKER_HOME`. An update changes the code of both, so they meet in `~/.e
 | `busy.lock` | held shared by each daemon while it claims or holds runs |
 | `gate.lock` | held exclusive by the daemon that updates, from the moment it waits for the others until it exits; a daemon claims nothing while it is closed |
 | `staging/` | the new version, installed and started there first |
+| `backup/` | a copy of the install and its commands while uv goes over it; `backup/KEPT` when nothing could be put back |
 
 The updater closes the gate, then waits up to 75 seconds for `busy.lock` exclusive, and gives up when a claim brought a
-run meanwhile. A daemon whose install changed under it claims nothing more and, once its runs end, exits 75 to start
-again on the new code. A daemon of the install that may not update (locked, run by hand) goes on with the code it
-started with and logs that once; it also keeps every other daemon of the install from updating, so locking one worker
-of a shared install holds the install for all of them.
+run meanwhile. A daemon whose install changed under it claims nothing more and, once its runs end and the gate is open
+again, exits 75 to start again on the new code; while the gate is closed, uv may have deleted the environment and the
+updater may yet put its copy back. A daemon of the install that may not update (locked, run by hand) goes on with the
+code it started with and logs that once; it also keeps every other daemon of the install from updating, so locking one
+worker of a shared install holds the install for all of them.
 
 **The version lock.** The owner locks a worker with the Lock version switch on the worker's page, or with `PATCH
 /v1/workers/{id}` and `{"version_locked": true}`; `false` unlocks it. Every worker is unlocked until its owner locks

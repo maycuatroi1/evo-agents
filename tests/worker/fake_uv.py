@@ -8,12 +8,16 @@ It writes what uv writes of a tool install of evo-ak (``uv-receipt.toml``, the d
 ```
 {"nightly": "<sha>",    the commit @nightly resolves to
  "version": "0.23.0",   the version a git install gets
+ "recreates": false,    true: every call deletes the environment and the command first, as uv 0.12.24 does
  "steps": ["fail", "broken", "wipe", "ok"]}   one per call, in order; "ok" once they run out
 ```
 
-``fail`` exits 1 and touches nothing (a build that fails); ``broken`` installs a version whose python and command exit
-1; ``wipe`` deletes the environment and exits 1 (uv asked for another interpreter, then a failed build). Each call is
-appended to ``$FAKE_UV_LOG`` as one JSON line: its arguments, UV_TOOL_DIR and UV_TOOL_BIN_DIR.
+``fail`` exits 1 and touches nothing (a build that fails, with uv 0.6.13 over an environment of the same interpreter);
+``broken`` installs a version whose python and command exit 1; ``wipe`` deletes the environment and exits 1 (uv 0.6.13
+asked for another interpreter, then a failed build). With ``recreates`` each call deletes the environment and the
+command before its step, so ``fail`` leaves nothing either, and ``ok`` builds a new environment, without whatever else
+lay in the old one. Each call is appended to ``$FAKE_UV_LOG`` as one JSON line: its arguments, UV_TOOL_DIR and
+UV_TOOL_BIN_DIR.
 """
 
 from __future__ import annotations
@@ -46,9 +50,11 @@ def write_install(
     extras: tuple[str, ...] = ("worker",),
     revision: str | None = "nightly",
     starts: bool = True,
+    link: bool = True,
 ) -> Path:
     """The environment of a tool install of evo-ak as uv leaves it: from git at ``revision`` when ``commit`` is set,
-    else from PyPI. Returns the environment's path."""
+    else from PyPI. The command on the PATH is a symlink to the environment's, as uv makes it on Unix, or with
+    ``link=False`` a copy of it. Returns the environment's path."""
     prefix = Path(tool_dir) / "evo-ak"
     prefix.mkdir(parents=True, exist_ok=True)
     site = prefix / "lib" / "python3.12" / "site-packages"
@@ -72,10 +78,16 @@ def write_install(
     )
     if starts:
         _script(prefix / "bin" / "python", "exit 0")
-        _script(command, f'echo "evo-agents {version}"')
+        _script(prefix / "bin" / "evo-agents", f'echo "evo-agents {version}"')
     else:
         _script(prefix / "bin" / "python", "echo \"ModuleNotFoundError: No module named 'aiohttp'\" >&2; exit 1")
-        _script(command, 'echo "Traceback: ImportError" >&2; exit 1')
+        _script(prefix / "bin" / "evo-agents", 'echo "Traceback: ImportError" >&2; exit 1')
+    command.parent.mkdir(parents=True, exist_ok=True)
+    command.unlink(missing_ok=True)
+    if link:
+        command.symlink_to(prefix / "bin" / "evo-agents")
+    else:
+        shutil.copy2(prefix / "bin" / "evo-agents", command)
     return prefix
 
 
@@ -109,6 +121,9 @@ def main(argv: list[str]) -> int:
         return 2
     found = git or pypi
     extras = tuple(item for item in (found.group("extras") or "").split(",") if item)
+    if scenario.get("recreates"):
+        shutil.rmtree(tool_dir / "evo-ak", ignore_errors=True)
+        (bin_dir / "evo-agents").unlink(missing_ok=True)
     if step == "fail":
         print("error: Failed to build `evo-ak`: the build backend returned an error", file=sys.stderr)
         return 1
