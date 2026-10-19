@@ -1,6 +1,6 @@
 "use client";
 
-import { Save, TriangleAlert, Undo2 } from "lucide-react";
+import { Save, Undo2 } from "lucide-react";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
@@ -9,16 +9,14 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { type ApiClient, call } from "@/lib/api/client";
-import { csrfHeaders } from "@/lib/api/csrf";
 import { isApiError } from "@/lib/api/errors";
-import type { components } from "@/lib/api/schema";
 
+import { FormError } from "./form-error";
 import { useWorkerFailure, useWorkerWrite } from "./hooks";
 import { isWorkerName, parseLabels, workerView } from "./model";
 import { MAX_LABELS, MAX_SLOTS, MIN_SLOTS, type Worker } from "./queries";
-
-type WorkerUpdate = components["schemas"]["WorkerUpdate"];
+import { updateWorker, type WorkerUpdate } from "./update-worker";
+import { VersionLockSwitch } from "./version-lock";
 
 /** `manifest.PLUGIN_ID` and `runs.MAX_WORKER_PLUGINS` of the API: the plugins whose runtimes a worker takes, by id. */
 const PLUGIN_ID = /^[a-z][a-z0-9-]{0,62}$/;
@@ -29,16 +27,6 @@ export function parsePlugins(input: string): { plugins: string[]; invalid: strin
   const words = [...new Set(input.split(/[\s,]+/).map((word) => word.trim()).filter(Boolean))];
   const plugins = words.filter((word) => PLUGIN_ID.test(word));
   return { plugins, invalid: words.filter((word) => !PLUGIN_ID.test(word)), tooMany: plugins.length > MAX_PLUGINS };
-}
-
-/**
- * Change the worker's slots, labels, name or plugins: each field the body gives, at least one. Only its owner may; the daemon
- * takes the new values from the answer to its next heartbeat. It lives here, not in queries.ts, because queries.ts
- * sits in a chunk every route loads first, and this card loads on demand (next/dynamic in worker-detail.tsx).
- */
-async function updateWorker(api: ApiClient, id: number, body: WorkerUpdate): Promise<Worker> {
-  const headers = await csrfHeaders(api);
-  return call(api.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: id } }, body, headers }));
 }
 
 type Form = { name: string; slots: string; labels: string; plugins: string };
@@ -55,8 +43,8 @@ function sameLabels(a: string[], b: string[]): boolean {
 
 /**
  * The owner's settings of a worker: its name, slots, labels and the plugins whose runtimes it takes, saved with PATCH
- * /v1/workers/{id}. The fields show what
- * the hub holds until the owner types; a save sends only the fields that differ, and once the hub answers the page and
+ * /v1/workers/{id}, and under them the switch that locks its version, which saves as soon as it is flipped
+ * (version-lock.tsx). The fields show what the hub holds until the owner types; a save sends only the fields that differ, and once the hub answers the page and
  * the list read the worker again, so the header, the Scope card and the Slots line show the new values. What the hub
  * refuses (a name taken, a value out of range, the worker revoked meanwhile) stays at the form until the next try.
  * Another member never gets here, and a hub admin who is not the owner sees the values in Scope, without this form.
@@ -240,7 +228,7 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
               <FieldError id={`${ids}-plugins-error`} text={errors.plugins} />
             </div>
           </fieldset>
-          {error ? <FormError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}
+          {error ? <FormError text={error.text} detail={error.detail} requestId={error.requestId} testId="worker-settings-error" /> : null}
           {revoked ? null : (
             <div className="flex flex-wrap justify-end gap-2">
               {dirty ? (
@@ -267,6 +255,7 @@ export function WorkerSettings({ worker }: { worker: Worker }) {
             </div>
           )}
         </form>
+        {revoked ? null : <VersionLockSwitch worker={worker} />}
       </CardContent>
     </Card>
   );
@@ -278,24 +267,5 @@ function FieldError({ id, text }: { id: string; text?: string }) {
     <p id={id} className="text-xs font-medium text-danger">
       {text}
     </p>
-  );
-}
-
-/** What the hub refused, above the buttons: the same alert as a dialog's inline error. */
-function FormError({ text, detail, requestId }: { text: string; detail: string | null; requestId: string | null }) {
-  const t = useTranslations("workers.settings");
-  return (
-    <div
-      role="alert"
-      data-testid="worker-settings-error"
-      className="flex items-start gap-2.5 rounded-md border border-danger/30 bg-danger-soft px-3 py-2.5 text-sm text-danger"
-    >
-      <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <div className="flex min-w-0 flex-col gap-1">
-        <p className="font-medium text-pretty">{text}</p>
-        {detail ? <p className="text-xs break-words">{detail}</p> : null}
-        {requestId ? <p className="font-mono text-xs break-all">{t("requestId", { id: requestId })}</p> : null}
-      </div>
-    </div>
   );
 }

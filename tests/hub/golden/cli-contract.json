@@ -8299,7 +8299,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.21.0"
+      "version": "0.22.0"
     },
     "paths": {
       "/v1/health": {
@@ -14889,7 +14889,7 @@
             "workers"
           ],
           "summary": "Update Worker",
-          "description": "Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine\ntoken.",
+          "description": "Change the worker's slots, labels, name, plugins or version lock: its owner only, from a web session or with\ntheir machine token.",
           "operationId": "update_worker_v1_workers__worker_id__patch",
           "parameters": [
             {
@@ -42353,6 +42353,30 @@
               ],
               "title": "Features",
               "description": "what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run whose agent runs in a container of a plugin's environment. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out"
+            },
+            "agent_commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Commit",
+              "description": "the commit of evo-agents the daemon's install was built from; none for an install that names no commit (PyPI, a local checkout) and from an older daemon. Each heartbeat sets what the hub shows"
+            },
+            "self_update": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SelfUpdateReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the hub shows, so a daemon sends it every time once it has one"
             }
           },
           "type": "object",
@@ -52955,6 +52979,89 @@
           ],
           "title": "SecretWritten"
         },
+        "SelfUpdateReport": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,31}$",
+              "title": "State",
+              "description": "current, it runs the commit nightly points to; waiting, nightly points to another one and it waits until every daemon of its install is idle; updating, it is installing that commit and restarts on it; locked, its owner locked the worker's version; unsupported, it cannot update itself (reason says why). A state this hub does not know is kept as named (runs.SELF_UPDATE_STATES)"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why, with unsupported above all"
+            },
+            "nightly_commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Nightly Commit",
+              "description": "the commit nightly pointed to when the daemon last read it"
+            },
+            "checked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Checked At",
+              "description": "when the daemon last read where nightly points"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "the last attempt that failed: reading the tag, installing, or the new install not starting"
+            },
+            "error_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error At",
+              "description": "when that attempt failed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state"
+          ],
+          "title": "SelfUpdateReport",
+          "description": "What the daemon last found of updating itself to the tag nightly of evo-agents."
+        },
         "SessionDigest": {
           "properties": {
             "cwd": {
@@ -59666,6 +59773,18 @@
               "type": "string",
               "title": "Agent Version"
             },
+            "agent_commit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Agent Commit",
+              "description": "the commit of evo-agents its daemon's install was built from, as its last heartbeat said; null when that heartbeat named none: an older daemon, or an install from PyPI or a local checkout"
+            },
             "slots": {
               "type": "integer",
               "title": "Slots"
@@ -59684,6 +59803,22 @@
               "type": "array",
               "title": "Plugins",
               "description": "the plugins whose runtimes and environments it takes, as its owner set them"
+            },
+            "version_locked": {
+              "type": "boolean",
+              "title": "Version Locked",
+              "description": "its owner locked its version: its daemon stays on the evo-agents it runs and does not update itself to the tag nightly"
+            },
+            "self_update": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/WorkerSelfUpdate"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what its daemon last said of updating itself to the tag nightly; null when its last heartbeat said nothing of it, as an older daemon does"
             },
             "projects": {
               "items": {
@@ -59794,9 +59929,12 @@
             "os",
             "arch",
             "agent_version",
+            "agent_commit",
             "slots",
             "labels",
             "plugins",
+            "version_locked",
+            "self_update",
             "projects",
             "runtimes",
             "checkouts",
@@ -60046,6 +60184,103 @@
           ],
           "title": "WorkerRegistration"
         },
+        "WorkerSelfUpdate": {
+          "properties": {
+            "state": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,31}$",
+              "title": "State",
+              "description": "current, it runs the commit nightly points to; waiting, nightly points to another one and it waits until every daemon of its install is idle; updating, it is installing that commit and restarts on it; locked, its owner locked the worker's version; unsupported, it cannot update itself (reason says why). A state this hub does not know is kept as named (runs.SELF_UPDATE_STATES)"
+            },
+            "reason": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Reason",
+              "description": "why, with unsupported above all"
+            },
+            "nightly_commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Nightly Commit",
+              "description": "the commit nightly pointed to when the daemon last read it"
+            },
+            "checked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Checked At",
+              "description": "when the daemon last read where nightly points"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "the last attempt that failed: reading the tag, installing, or the new install not starting"
+            },
+            "error_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error At",
+              "description": "when that attempt failed"
+            },
+            "since": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Since",
+              "description": "when the hub first got this state, in an unbroken line of heartbeats that said it: how long the daemon has been waiting, for one"
+            }
+          },
+          "type": "object",
+          "required": [
+            "state",
+            "since"
+          ],
+          "title": "WorkerSelfUpdate",
+          "description": "What a worker's daemon last said of updating itself to the tag nightly, as the hub keeps it."
+        },
         "WorkerSettings": {
           "properties": {
             "slots": {
@@ -60073,13 +60308,19 @@
               "type": "array",
               "title": "Plugins",
               "description": "the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none"
+            },
+            "version_locked": {
+              "type": "boolean",
+              "title": "Version Locked",
+              "description": "its owner locked its version: the daemon stays on the evo-agents it runs and does not update itself; a hub before 0048 sends none, and a daemon that got none does not update itself either"
             }
           },
           "type": "object",
           "required": [
             "slots",
             "name",
-            "labels"
+            "labels",
+            "version_locked"
           ],
           "title": "WorkerSettings"
         },
@@ -60144,6 +60385,18 @@
               ],
               "title": "Plugins",
               "description": "the plugins whose runtimes and environments it takes; [] for none"
+            },
+            "version_locked": {
+              "anyOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version Locked",
+              "description": "true: its daemon stays on the evo-agents it runs; false: it updates itself to the tag nightly again, once idle"
             }
           },
           "type": "object",

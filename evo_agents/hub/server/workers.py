@@ -35,12 +35,16 @@ gets 403 whoever holds it, so a token that leaked cannot open the worker again, 
 worker gets 403, and anyone else 404. Setting the value it has changes nothing and is not audited.
 
 PATCH /v1/workers/{id} changes the worker's slots (1 to ``runs.MAX_SLOTS``), labels (as a pairing takes them), name
-(unique among the owner's workers that are not revoked, 409 otherwise) or plugins (the ids of at most
-``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes and environments it takes, ``docs/plugins.md``), each field optional
-but at least one given. Only its owner changes them, from a web session with its CSRF header or with their machine token: a hub admin
-who does not own the worker gets 403, anyone else 404, and a revoked worker 409. Giving the values it has changes
-nothing and is not audited. The daemon learns the new settings from the answer to its next heartbeat (``settings``),
-and the hub's claim counts the runs a worker holds against its slots as they are now.
+(unique among the owner's workers that are not revoked, 409 otherwise), plugins (the ids of at most
+``runs.MAX_WORKER_PLUGINS`` plugins whose runtimes and environments it takes, ``docs/plugins.md``) or version_locked
+(true: its daemon stays on the evo-agents it runs; false, every worker's default: it updates itself to the tag nightly
+once idle), each field optional but at least one given. Only its owner changes them, from a web session with its CSRF
+header or with their machine token: a hub admin who does not own the worker gets 403, anyone else 404, and a revoked
+worker 409. Giving the values it has changes nothing and is not audited. The daemon learns the new settings from the
+answer to its next heartbeat (``settings``), and the hub's claim counts the runs a worker holds against its slots as
+they are now. A worker shows what its last heartbeat said of its daemon's install: agent_commit, the commit of
+evo-agents it was built from, and self_update, what the daemon found of updating itself (``runs.SELF_UPDATE_STATES``),
+with since, when the hub first got that state.
 
 Every pairing, join, registration, drain, undrain, change of dispatch_from or of settings and revocation adds an audit
 row naming the pairing or worker, never the code or the token, and neither ever reaches a log line.
@@ -53,12 +57,11 @@ import math
 import secrets
 import time
 from collections import deque
-from datetime import datetime, timedelta
-from typing import Annotated, Literal
+from datetime import timedelta
+from typing import Annotated
 
 import psycopg
 from fastapi import APIRouter, HTTPException, Path, Query, Request, Response
-from pydantic import BaseModel, Field, model_validator
 from sqlalchemy import BigInteger, Text, any_, delete, exists, func, insert, literal, select, update
 from sqlalchemy import exc as sa_exc
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -67,9 +70,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.access import ROLES, has_role
-from evo_agents.hub.credentials import DISPATCH_FROM
 from evo_agents.hub.server import audit, credentials
-from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.paging import PAGED, WHOLE, Paging
@@ -85,7 +86,18 @@ from evo_agents.hub.server.security import (
     keyed_digest,
     same,
 )
-from evo_agents.plugins.manifest import PLUGIN_ID
+from evo_agents.hub.server.worker_models import (
+    DispatchFrom,
+    HostFacts,
+    JoinRequest,
+    Pairing,
+    PairingRequest,
+    PairingState,
+    Worker,
+    WorkerCredential,
+    WorkerRegistration,
+    WorkerUpdate,
+)
 
 log = logging.getLogger(__name__)
 
@@ -109,10 +121,6 @@ REFUSED_CODE = (
 )
 NO_WORKER = "you have no worker {id} on this hub: see GET /v1/workers"
 NO_SECRET = "pairing codes need EVO_HUB_SESSION_SECRET, which this hub does not have: ask its operator to set it"
-WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
-LABEL = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,39}$"
-LINE = r"^[^\x00-\x1f\x7f]+$"  # one line, without control characters
-MAX_LABELS = 16
 
 router = APIRouter(prefix="/v1/workers", tags=["workers"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"])
@@ -207,138 +215,6 @@ def client_address(request: Request) -> str:
     return request.client.host if request.client else "unknown"
 
 
-# Models
-
-
-class WorkerScope(BaseModel):
-    name: str = Field(pattern=WORKER_NAME, description="unique among the owner's workers that are not revoked")
-    projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
-        min_length=1, max_length=100, description="projects the worker takes runs of; the writer role on each"
-    )
-    slots: int = Field(1, ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
-    labels: list[Annotated[str, Field(pattern=LABEL)]] = Field(default_factory=list, max_length=MAX_LABELS)
-    allow_web_terminal: bool = Field(False, description="whether the owner may open a terminal on it from the web")
-
-
-class HostFacts(BaseModel):
-    hostname: str = Field(min_length=1, max_length=255, pattern=LINE)
-    os: str = Field(min_length=1, max_length=40, pattern=LINE)
-    arch: str = Field(min_length=1, max_length=40, pattern=LINE)
-    agent_version: str = Field(min_length=1, max_length=100, pattern=LINE, description="of the evo-agents daemon")
-
-
-class PairingRequest(WorkerScope):
-    pass
-
-
-class WorkerRegistration(WorkerScope, HostFacts):
-    pass
-
-
-class JoinRequest(HostFacts):
-    code: str = Field(min_length=1, max_length=32, description="the pairing code, XXXX-XXXX")
-
-
-class Pairing(BaseModel):
-    id: int
-    code: str = Field(description="XXXX-XXXX; shown once, the hub keeps only its hash and its first four characters")
-    expires_at: datetime
-    name: str
-    projects: list[str]
-    slots: int
-    labels: list[str]
-    allow_web_terminal: bool
-
-
-class PairingState(BaseModel):
-    id: int
-    status: Literal["waiting", "joined", "expired", "locked"]
-    name: str
-    projects: list[str]
-    slots: int
-    labels: list[str]
-    allow_web_terminal: bool
-    tries_left: int = Field(description="wrong codes the pairing takes before it locks")
-    created_at: datetime
-    expires_at: datetime
-    used_at: datetime | None
-    worker_id: int | None = Field(description="the worker the pairing made, once a machine joined with it")
-
-
-class Worker(BaseModel):
-    id: int
-    name: str
-    owner: str = Field(description="the login of the member who registered it")
-    status: Literal[runs.WORKER_STATUSES]
-    hostname: str
-    os: str
-    arch: str
-    agent_version: str
-    slots: int
-    labels: list[str]
-    plugins: list[str] = Field(
-        description="the plugins whose runtimes and environments it takes, as its owner set them"
-    )
-    projects: list[str]
-    runtimes: dict = Field(
-        description="the runtimes its last heartbeat reported, keyed claude-code, opencode, codex or <plugin>/<name>, "
-        "each {available, version, reason, models}; models lists what the runtime offers there, null when it lists none"
-    )
-    checkouts: dict = Field(
-        description="the checkouts its last heartbeat reported, keyed <project>/<repo>, each {path, branch}"
-    )
-    free_slots: int | None = Field(description="the free slots its last heartbeat reported; null before the first")
-    allow_web_terminal: bool
-    dispatch_from: Literal[DISPATCH_FROM] = Field(
-        description="who may hand it runs: any, runs its owner dispatched with any credential; web, only runs "
-        "dispatched from a web session"
-    )
-    held_runs: int = Field(description="runs it holds now (leased, running, interactive or verifying)")
-    features: list[str] = Field(
-        default_factory=list,
-        description="what its daemon said it does besides its kinds of run: session_per_step, a plan run with a "
-        "session for each step; author_decisions, an author run whose agent asks decisions; empty for a daemon that "
-        "said none",
-    )
-    created_at: datetime
-    last_heartbeat_at: datetime | None
-    drained_at: datetime | None
-    revoked_at: datetime | None
-
-
-class DispatchFrom(BaseModel):
-    value: Literal[DISPATCH_FROM] = Field(
-        description="any: runs dispatched with any credential of the owner; web: only runs dispatched from a web "
-        "session, so a token cannot hand the worker work"
-    )
-
-
-class WorkerUpdate(BaseModel):
-    """What PATCH /v1/workers/{id} changes: each field it gives, at least one; a field left out or null stays."""
-
-    slots: int | None = Field(None, ge=1, le=runs.MAX_SLOTS, description="runs the worker holds at once")
-    labels: list[Annotated[str, Field(pattern=LABEL)]] | None = Field(None, max_length=MAX_LABELS)
-    name: str | None = Field(None, pattern=WORKER_NAME, description="unique among the owner's workers not revoked")
-    plugins: list[Annotated[str, Field(pattern=PLUGIN_ID)]] | None = Field(
-        None,
-        max_length=runs.MAX_WORKER_PLUGINS,
-        description="the plugins whose runtimes and environments it takes; [] for none",
-    )
-
-    @model_validator(mode="after")
-    def _some_field(self) -> WorkerUpdate:
-        if self.slots is None and self.labels is None and self.name is None and self.plugins is None:
-            raise ValueError("name at least one of slots, labels, name and plugins to change")
-        return self
-
-
-class WorkerCredential(BaseModel):
-    token: str = Field(description="the worker token, evw_...; shown once, the hub keeps only its SHA-256")
-    token_id: int
-    expires_at: datetime = Field(description="moves forward with every use")
-    worker: Worker
-
-
 # Reading workers
 
 
@@ -366,9 +242,13 @@ def _listed(*where):
             w.c.os,
             w.c.arch,
             w.c.agent_version,
+            w.c.agent_commit,
             w.c.slots,
             w.c.labels,
             w.c.plugins,
+            w.c.version_locked,
+            w.c.self_update,
+            w.c.self_update_since,
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
             w.c.runtimes,
             w.c.checkouts,
@@ -393,6 +273,8 @@ def _worker(row) -> Worker:
     fields = dict(row._mapping)
     now = fields.pop("now")
     fields["features"] = list(fields["features"] or ())  # NULL: its daemon said none
+    report, since = fields.pop("self_update"), fields.pop("self_update_since")
+    fields["self_update"] = None if report is None else {**report, "since": since}
     status = runs.worker_status(
         last_heartbeat_at=fields["last_heartbeat_at"],
         drained_at=fields["drained_at"],
@@ -893,14 +775,16 @@ async def set_dispatch_from(request: Request, worker_id: WorkerId, body: Dispatc
 
 
 def _shown(value) -> str:
-    """A setting as an audit target shows it: labels in brackets, comma separated."""
+    """A setting as an audit target shows it: labels in brackets, comma separated, and true or false as JSON does."""
+    if isinstance(value, bool):
+        return "true" if value else "false"
     return f"[{','.join(value)}]" if isinstance(value, list) else str(value)
 
 
 @router.patch("/{worker_id}", response_model=Worker, responses={**REFUSALS, 422: {"model": ErrorBody}})
 async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdate, user: CurrentUser) -> Worker:
-    """Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine
-    token."""
+    """Change the worker's slots, labels, name, plugins or version lock: its owner only, from a web session or with
+    their machine token."""
     wanted = body.model_dump(exclude_none=True)
     for field in ("labels", "plugins"):
         if field in wanted:
@@ -912,10 +796,9 @@ async def update_worker(request: Request, worker_id: WorkerId, body: WorkerUpdat
         if revoked_at is not None:
             raise HTTPException(409, f"worker {worker_id} was revoked at {revoked_at.isoformat()}; it takes no runs")
         w = tables.workers
-        row = (
-            await conn.execute(select(w.c.slots, w.c.labels, w.c.name, w.c.plugins).where(w.c.id == worker_id))
-        ).one()
-        now = {"slots": row.slots, "labels": list(row.labels), "name": row.name, "plugins": list(row.plugins)}
+        held = select(w.c.slots, w.c.labels, w.c.name, w.c.plugins, w.c.version_locked).where(w.c.id == worker_id)
+        row = (await conn.execute(held)).one()
+        now = {**row._mapping, "labels": list(row.labels), "plugins": list(row.plugins)}
         changed = {field: value for field, value in wanted.items() if value != now[field]}
         if changed:  # the values it has already: nothing changes, nothing is audited
             if "name" in changed and await _name_taken(conn, owner_id, changed["name"], besides=worker_id):

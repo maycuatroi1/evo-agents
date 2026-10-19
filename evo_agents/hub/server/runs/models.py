@@ -33,6 +33,8 @@ NOT_HELD = "this worker does not hold run {id}: it may have been lost, cancelled
 STEP_REPORT_STATUSES = ("in_progress", "done", "pending")  # what a plan run's worker reports of a step
 RUN_KIND = r"^[a-z][a-z0-9_]{0,31}$"  # a kind of run a heartbeat names, known to this hub or not
 MAX_RUN_KINDS = 20
+MAX_SELF_UPDATE_REASON = runs.SELF_UPDATE_REASON_CHARS  # characters of self_update.reason in a heartbeat
+MAX_SELF_UPDATE_ERROR = runs.SELF_UPDATE_ERROR_CHARS  # characters of self_update.error in a heartbeat
 MAX_STEP_EVIDENCE_CHARS = MAX_EVIDENCE_BYTES  # the agent's evidence of one step; the hub's adds to it, within the bytes
 
 RunId = Annotated[int, Path(ge=1, le=MAX_ID)]
@@ -560,6 +562,32 @@ class CheckoutReport(BaseModel):
     branch: str | None = Field(None, min_length=1, max_length=255, pattern=LINE, description="checked out there")
 
 
+class SelfUpdateReport(BaseModel):
+    """What the daemon last found of updating itself to the tag nightly of evo-agents."""
+
+    state: str = Field(
+        pattern=RUN_KIND,
+        description="current, it runs the commit nightly points to; waiting, nightly points to another one and it "
+        "waits until every daemon of its install is idle; updating, it is installing that commit and restarts on it; "
+        "locked, its owner locked the worker's version; unsupported, it cannot update itself (reason says why). A "
+        "state this hub does not know is kept as named (runs.SELF_UPDATE_STATES)",
+    )
+    reason: str | None = Field(
+        None, min_length=1, max_length=MAX_SELF_UPDATE_REASON, description="why, with unsupported above all"
+    )
+    nightly_commit: str | None = Field(
+        None, pattern=OBJECT_NAME, description="the commit nightly pointed to when the daemon last read it"
+    )
+    checked_at: datetime | None = Field(None, description="when the daemon last read where nightly points")
+    error: str | None = Field(
+        None,
+        min_length=1,
+        max_length=MAX_SELF_UPDATE_ERROR,
+        description="the last attempt that failed: reading the tag, installing, or the new install not starting",
+    )
+    error_at: datetime | None = Field(None, description="when that attempt failed")
+
+
 class HeartbeatRequest(BaseModel):
     runtimes: dict[RuntimeName, RuntimeReport] = Field(
         default_factory=dict,
@@ -593,6 +621,17 @@ class HeartbeatRequest(BaseModel):
         "whose agent runs in a container of a plugin's environment. One that says none "
         "takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is "
         "left out",
+    )
+    agent_commit: str | None = Field(
+        None,
+        pattern=OBJECT_NAME,
+        description="the commit of evo-agents the daemon's install was built from; none for an install that names "
+        "no commit (PyPI, a local checkout) and from an older daemon. Each heartbeat sets what the hub shows",
+    )
+    self_update: SelfUpdateReport | None = Field(
+        None,
+        description="what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the "
+        "hub shows, so a daemon sends it every time once it has one",
     )
 
     def stored(self) -> tuple[dict, dict]:
@@ -651,6 +690,10 @@ class WorkerSettings(BaseModel):
     plugins: list[str] = Field(
         default_factory=list,
         description="the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none",
+    )
+    version_locked: bool = Field(
+        description="its owner locked its version: the daemon stays on the evo-agents it runs and does not update "
+        "itself; a hub before 0048 sends none, and a daemon that got none does not update itself either"
     )
 
 

@@ -8,7 +8,6 @@ import {
   CircleMinus,
   GitBranch,
   Info,
-  type LucideIcon,
   Pause,
   Play,
   Power,
@@ -27,11 +26,10 @@ import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { StatusBadge } from "@/components/status/status-badge";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { whoamiQuery } from "@/lib/queries";
-import { cn } from "@/lib/utils";
 
 import { Ago } from "./ago";
 import { ChipList } from "./badges";
@@ -40,6 +38,7 @@ import { DispatchFromSwitch } from "./dispatch-from-switch";
 import { HeartbeatStrip } from "./heartbeat-strip";
 import { useRecordPrefetched, useWorkerFailure, useWorkerWrite } from "./hooks";
 import { readCheckouts, readRuntimes, type RuntimeInfo, workerView } from "./model";
+import { Note } from "./note";
 import {
   changeWorker,
   type Worker,
@@ -47,11 +46,14 @@ import {
   workerKeys,
   workerQuery,
 } from "./queries";
+import { SectionCard } from "./section-card";
+import { UpdateNotes, VersionCard } from "./version-card";
 import { WorkerSettings } from "./worker-settings";
 
 /**
- * One worker: its runtimes, scope and checkouts, the last hour of heartbeats, its latest runs, drain, resume and
- * revoke, and, for its owner, its settings and the switch that keeps it to runs dispatched from the web.
+ * One worker: its runtimes, scope, checkouts and version, the last hour of heartbeats, its latest runs, drain, resume
+ * and revoke, and, for its owner, its settings with the version lock and the switch that keeps it to runs dispatched
+ * from the web.
  */
 export function WorkerDetail({ id, initialError }: { id: number; initialError: ApiErrorInfo | null }) {
   const t = useTranslations("workers.detail");
@@ -92,10 +94,11 @@ function WorkerPage({ worker }: { worker: Worker }) {
         actions={<WorkerActions worker={worker} isOwner={isOwner} />}
       />
       <StatusNote worker={worker} isOwner={isOwner} admin={Boolean(me?.admin)} />
-      <div className="grid gap-4 lg:grid-cols-3">
+      <div className="grid gap-4 lg:grid-cols-2 2xl:grid-cols-4">
         <Runtimes worker={worker} />
         <Scope worker={worker} isOwner={isOwner} />
         <Checkouts worker={worker} />
+        <VersionCard worker={worker} isOwner={isOwner} />
       </div>
       {isOwner ? <WorkerSettings worker={worker} /> : null}
       <Card data-testid="worker-heartbeat">
@@ -131,23 +134,6 @@ function WorkerPage({ worker }: { worker: Worker }) {
         </CardContent>
       </Card>
     </div>
-  );
-}
-
-function Note({ tone, icon: Icon, children, testId }: { tone: "info" | "warning" | "muted"; icon: LucideIcon; children: ReactNode; testId?: string }) {
-  return (
-    <p
-      className={cn(
-        "flex items-start gap-2.5 rounded-md border px-3 py-2.5 text-sm",
-        tone === "info" && "bg-muted text-foreground",
-        tone === "warning" && "border-attention/20 bg-attention-soft text-attention",
-        tone === "muted" && "bg-card text-muted-foreground",
-      )}
-      data-testid={testId}
-    >
-      <Icon className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
-      <span className="text-pretty">{children}</span>
-    </p>
   );
 }
 
@@ -192,6 +178,7 @@ function StatusNote({ worker, isOwner, admin }: { worker: Worker; isOwner: boole
         </Note>,
       );
     }
+    notes.push(<UpdateNotes key="update" worker={worker} isOwner={isOwner} />);
     notes.push(
       <Note key="help" tone="muted" icon={Info}>
         {t("actionsHelp")}
@@ -205,20 +192,6 @@ function RuntimeIcon({ runtime }: { runtime: RuntimeInfo }) {
   if (runtime.available === true) return <CircleCheck className="mt-0.5 size-4 shrink-0 text-success" aria-hidden="true" />;
   if (runtime.available === false) return <CircleMinus className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
   return <CircleHelp className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />;
-}
-
-function SectionCard({ title, description, children, testId }: { title: string; description: string; children: ReactNode; testId: string }) {
-  return (
-    <Card className="min-w-0" data-testid={testId}>
-      <CardHeader>
-        <CardTitle>
-          <h2>{title}</h2>
-        </CardTitle>
-        <CardDescription>{description}</CardDescription>
-      </CardHeader>
-      <CardContent className="min-w-0">{children}</CardContent>
-    </Card>
-  );
 }
 
 function Runtimes({ worker }: { worker: Worker }) {
