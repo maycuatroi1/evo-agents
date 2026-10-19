@@ -572,12 +572,13 @@ and the check mark or the cross takes the eyes off. A lost run tried again keeps
 reaction chips only (`web/DESIGN.md`).
 
 **Events.** Each change is an event of the chat, numbered by it: a message, a reaction put or taken off, a member added
-or removed, the image set or taken off (`image_changed`, with the image's URL now and who changed it). A message is numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read,
-which the unread count of the list starts from (their own message reads up to it). `GET .../events?after=SEQ` pages
-them, and `GET .../stream` sends them as server-sent events, as a run's stream does: the seq as id, Last-Event-ID or
-`after` to go on, a ping after 15 idle seconds, woken by `pg_notify` on channel `evo_chat_events` on the api process's
-one LISTEN connection. A stream ends with an `end` event once its reader is no longer in the chat or no longer clears
-its label. A member reads the events of the messages whose label they clear. Chat messages do not expire with
+or removed, the image set or taken off (`image_changed`, with the image's URL now and who changed it). A message is
+numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read, which the unread count
+of the list starts from (their own message reads up to it). `GET .../events?after=SEQ` pages them, and
+`GET .../stream` sends them as server-sent events, as a run's stream does: the seq as id, Last-Event-ID or `after` to
+go on, a ping after 15 idle seconds, woken by `pg_notify` on channel `evo_chat_events` on the api process's one LISTEN
+connection. A stream ends with an `end` event once its reader is no longer in the chat or no longer clears its label.
+A member reads the events of the messages whose label they clear. Chat messages do not expire with
 `EVO_HUB_RUN_LOG_DAYS`.
 
 **In the knowledge graph.** A project that enables the core plugin chats (`docs/plugins.md`, Chat history) has in its
