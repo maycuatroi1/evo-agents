@@ -1,17 +1,53 @@
 """Sensitivity labels and sink clearances (definition D8).
 
-A label is an element of L = levels x 2^projects x locations x integrity. The order is "may flow to":
-a lower level, a subset of projects, a less restricted location and trusted integrity sit lower.
-A sink may read x when label(x) is below the sink's clearance. A source with no label is treated as
-the highest level with integrity U (fail closed).
+A label is an element of L = levels x 2^projects x locations x integrity x 2^principals. The order is "may flow to":
+a lower level, a subset of projects, a less restricted location, trusted integrity and a subset of principals sit
+lower. A sink may read x when label(x) is below the sink's clearance. A source with no label is treated as the highest
+level with integrity U (fail closed).
+
+The principals are the label's audience, strings with a prefix: ``chat:<id>``, a member of that chat, and
+``grant:<project>:<level>``, one with a grant on that project up to that level at least. A reader holds an audience
+too, and sees an item only when the item's audience is a subset of the reader's, as with projects; an item with no
+audience passes this dimension for every reader. Join takes the union, meet the intersection. An audience that cannot
+be read is the highest, TOP_AUDIENCE, which only the clearance of a sink holds and no reader: the item is seen by none
+(fail closed).
 """
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
+
+from evo_agents.kg.protocol import PRINCIPAL
 
 DEFAULT_LEVELS = ["public", "internal", "customer", "secret"]
 DEFAULT_LOCATIONS = ["any"]
+EVERY = "*"  # the principal that stands for all of them
+TOP_AUDIENCE = frozenset({EVERY})  # the highest audience: above every other, and below only itself
+_PRINCIPAL = re.compile(PRINCIPAL)
+
+
+def audience_of(value) -> frozenset[str]:
+    """The audience a kg/1 label's ``audience`` names: none for a missing key or an empty list; the principals of a
+    sorted list of them without repeats; TOP_AUDIENCE for anything else."""
+    if value is None or value == []:
+        return frozenset()
+    if not isinstance(value, list) or not all(isinstance(p, str) and _PRINCIPAL.match(p) for p in value):
+        return TOP_AUDIENCE
+    return frozenset(value) if value == sorted(set(value)) else TOP_AUDIENCE
+
+
+def audience_join(a: frozenset[str], b: frozenset[str]) -> frozenset[str]:
+    return TOP_AUDIENCE if EVERY in a or EVERY in b else a | b
+
+
+def audience_meet(a: frozenset[str], b: frozenset[str]) -> frozenset[str]:
+    return b if EVERY in a else a if EVERY in b else a & b
+
+
+def audience_below(a: frozenset[str], b: frozenset[str]) -> bool:
+    """Whether a reader holding audience ``b`` sees what audience ``a`` names."""
+    return EVERY in b or (EVERY not in a and a <= b)
 
 
 @dataclass(frozen=True)
@@ -20,6 +56,16 @@ class Label:
     location: int
     integrity: str  # "T" (parser-derived, trusted) or "U" (free text, untrusted)
     projects: frozenset[str]
+    audience: frozenset[str] = frozenset()  # principals a reader must all be (module docstring)
+
+    def __post_init__(self):
+        if EVERY in self.audience and self.audience != TOP_AUDIENCE:
+            object.__setattr__(self, "audience", TOP_AUDIENCE)
+
+    @classmethod
+    def of(cls, label: tuple, projects=frozenset()) -> Label:
+        """The label of a store row's (level, location, integrity) and, when it has one, audience."""
+        return cls(label[0], label[1], label[2], frozenset(projects), label[3] if len(label) > 3 else frozenset())
 
     def join(self, other: Label) -> Label:
         return Label(
@@ -27,6 +73,7 @@ class Label:
             max(self.location, other.location),
             "U" if "U" in (self.integrity, other.integrity) else "T",
             self.projects | other.projects,
+            audience_join(self.audience, other.audience),
         )
 
     def meet(self, other: Label) -> Label:
@@ -35,6 +82,7 @@ class Label:
             min(self.location, other.location),
             "T" if "T" in (self.integrity, other.integrity) else "U",
             self.projects & other.projects,
+            audience_meet(self.audience, other.audience),
         )
 
     def below(self, other: Label) -> bool:
@@ -43,6 +91,7 @@ class Label:
             and self.location <= other.location
             and (self.integrity == "T" or other.integrity == "U")
             and self.projects <= other.projects
+            and audience_below(self.audience, other.audience)
         )
 
 
@@ -58,6 +107,23 @@ def meet_all(labels) -> Label | None:
     for label in labels:
         out = label if out is None else out.meet(label)
     return out
+
+
+def any_of(labels) -> Label | None:
+    """The label of an element that any one of its derivations, labelled ``labels``, reveals: ``meet_all`` in level,
+    location, integrity and projects. In audience the meet (the intersection) would show the element to a reader in
+    neither of two chats, so it takes the least audience of the derivations at the lowest level and location, else the
+    join of theirs: a reader then sees the element only when it sees one derivation whole."""
+    labels = list(labels)
+    low = meet_all(labels)
+    if low is None:
+        return None
+    lowest = [label.audience for label in labels if (label.level, label.location) == (low.level, low.location)]
+    lowest = lowest or [label.audience for label in labels]
+    least = next((a for a in lowest if all(audience_below(a, b) for b in lowest)), None)
+    if least is None:
+        least = frozenset().union(*lowest)
+    return Label(low.level, low.location, low.integrity, low.projects, least)
 
 
 @dataclass(frozen=True)
@@ -123,6 +189,7 @@ class Policy:
                 self._location(raised["location"]) if raised.get("location") in self.locations else 0,
                 raised.get("integrity", "T"),
                 frozenset({self.project}),
+                audience_of(raised.get("audience")),
             )
             base = base.join(extra)
         return base
@@ -150,8 +217,10 @@ class Policy:
         return label.level <= hub.level and label.location <= hub.location
 
     def describe(self, label: Label) -> dict:
-        return {
+        """The label by names; ``audience``, sorted, only when it names one."""
+        named = {
             "level": self.level_name(label.level),
             "location": self.location_name(label.location),
             "integrity": label.integrity,
         }
+        return {**named, "audience": sorted(label.audience)} if label.audience else named

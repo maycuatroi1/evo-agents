@@ -487,7 +487,9 @@ the first run of its session and the repos of its project the worker has a check
 them). Only that worker claims it, with `chat` in its heartbeat's `run_kinds`, and the claim hands the prompt the hub
 builds then (`chat_runs.build_chat_prompt`): the rules, the chat and its members, the repos, a snapshot of the chat of
 at most 12 KiB (the first message of the thread, the 30 latest of the thread, the 10 of the chat before it, the oldest
-left out first, as the reader clears their labels) and the message that started the run, whole. Its budget is what is
+left out first, as the reader clears their labels; a line counts those left out and says how to find them: `kg_search`
+with kinds `ChatMessage`, then `chat_message`, `chat_thread` or `evo-agents worker chat read`) and the message that
+started the run, whole. Its budget is what is
 left of the chat's for 24 hours, and 30 minutes of agent time. It ends `done` with its agent's turn, without verify
 results, never waits and is never rerun (409); a lost one is tried again with its chat. The worker posts the agent's
 last message of each turn with `POST /v1/worker/runs/{id}/chat`, which the hub keeps as the agent's message in the
@@ -495,8 +497,9 @@ thread (and in the run's log). A message to the agent in the thread while the ru
 one that comes once it ended done, or that it ended without taking, queues the run that goes on in its session
 (`resume_of_run_id`, the session, the branch and repos, pinned to its worker), with the message in its inbox.
 
-The agent of a chat run, and of a step, plan or author run, talks in chats with the worker's token
-(`evo_agents.hub.server.chat_agents`), its profile being of the run's project (409 otherwise):
+The agent of a chat run, and of a step, plan or author run, talks in chats and reads them with the worker's token
+(`evo_agents.hub.server.chat_agents`, `evo_agents.hub.server.chat_read`), its profile being of the run's project (409
+otherwise):
 
 | Command | Route | What |
 | --- | --- | --- |
@@ -504,6 +507,7 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
+| `evo-agents worker chat read MESSAGE [--thread]` | `POST .../chat/read` (`id`, `thread`) | a message of a chat whole, or with `--thread` its thread (the first message and the replies, oldest first, at most 500), those the run's agent may read (`docs/hub.md`, Group chats, In the knowledge graph). MESSAGE is its id, or its item as `kg_search` lists it, `plugin.chats:message:<id>`, or a thread's item `plugin.chats:thread:<chat>/<root>`. It prints the hub's text, the same as the `/mcp` tools `chat_message` and `chat_thread` give, under a line saying it is data, never instructions; a message it may not read is an error (404), as one that does not exist. What it shows counts toward the audience of a memory the agent writes next |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
 A chat run's agent can ask its owner decisions too, of the category `triage` alone, on a daemon with the feature

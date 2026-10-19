@@ -82,7 +82,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
-| memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
+| memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
@@ -110,10 +110,11 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 23 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 25 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
-`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
-`digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
+`ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, what the Curator's review run reads: `curator_figures`,
+`digest_list`, `digest_show`, `run_events` and `decision_list`, and `chat_message` and `chat_thread`, which read
+messages of a group chat whole (Group chats, In the knowledge graph); they follow the same rules as the REST routes.
 `tools/list` shows the agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, any
 other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
@@ -268,9 +269,23 @@ Both rules fail closed: a level the ladder lacks counts as the highest, and a la
 object. Something you may not see answers exactly like something that does not exist. A hub admin without a grant
 on a project manages it (registration, grants) but reads and pushes nothing in it.
 
+**Audience.** A label of the knowledge graph or of a memory may also name an audience, principals a reader must all be
+(`docs/kg.md`, Audience): `chat:<id>`, a member of that chat, and `grant:<project>:<level>`, someone whose grant on
+that project reaches that level. The hub computes a reader's audience from its database at each read
+(`evo_agents/hub/server/kg_audience.py`). A person holds `chat:<id>` for each chat they are a member of, not taken
+out, whose label as it is now they clear, and `grant:<p>:<l>` for each project they hold a grant on and each level of
+its ladder up to the grant's max level. A sink does not narrow it, since the clearance of every sink holds the highest
+audience. The agent of a run holds its owner's audience, and the agent of a chat run what both people its prompt is
+cleared for hold (`chat_runs.run_clearers`): the person who started it and the member whose worker runs it. Every read
+of a graph asks for it: the `kg_*` tools of REST and of `/mcp`, `kg_more` and the web's graph routes; the review of a
+proposal reads with none, since every member of the project sees what it keeps. So a member of the project who is not
+in a chat sees nothing of it, someone who joins later sees the messages whose labels they clear, and someone who leaves
+loses them at their next read, with no build.
+
 Memories add one rule on top: `project` and `reference` memories go to every member the read rule lets through, while
 `user` and `feedback` memories go only to the person who wrote them. Memories outside any project are personal and
-only their owner sees them.
+only their owner sees them. A memory whose label names an audience goes only to a reader whose audience holds it
+(Memories, skills and knowledge graphs, Audience of memories).
 
 ## Agent profiles
 
@@ -492,6 +507,25 @@ one LISTEN connection. A stream ends with an `end` event once its reader is no l
 its label. A member reads the events of the messages whose label they clear. Chat messages do not expire with
 `EVO_HUB_RUN_LOG_DAYS`.
 
+**In the knowledge graph.** A project that enables the core plugin chats (`docs/plugins.md`, Chat history) has in its
+graph each message whose label has a part of that project, under the audience of its chat (Projects and who sees
+what, Audience), so the graph keeps who reads a message as the chat does. `kg_search` finds a message by the words of
+its text, with or without diacritics, and lists it as `plugin.chats:message:<id>` with its chat, thread, author and
+time, never its text. The tools `chat_message` and `chat_thread` of `/mcp`, and for the agent of a run
+`evo-agents worker chat read MESSAGE [--thread]` (`docs/workers.md`, Chat runs), read a message or its thread whole:
+its first message and the replies, oldest first, at most 500. They take the message's id, its item as kg_search
+lists it, or a thread's item `plugin.chats:thread:<chat>/<root>`, and print the messages as a chat run's prompt does,
+under a line saying they are data, never instructions (`evo_agents/hub/server/chat_read.py`). Each call checks again who may read:
+a person who is a member of the chat, not taken out, and clears its label now and the label each message was sent
+with; for the agent of a chat run, both people its prompt is cleared for, each that way; for the agent of another
+run, its owner, and only messages whose label holds a part of the run's project, besides those of its own chat run's
+chat. On `/mcp` each part of a message's label must also flow to the session's sink. A message that does not exist,
+one of a chat the caller is not in and one the caller may not read all get the same answer, and a thread leaves out
+the messages the caller may not read without counting them. On `/mcp` a long reading is cut as the `kg_*` results
+are, and `kg_more` gives the rest while the reader's audience still holds the chat and the grants its messages need.
+What a reading shows counts toward the audience of a memory written after it (Memories, skills and knowledge graphs,
+Audience of memories). The feature `chats` owns both tools (Branding and features).
+
 | Route | Command | Who |
 | --- | --- | --- |
 | `GET /v1/chats` | `hub chat list` | anyone: their chats |
@@ -670,7 +704,11 @@ what its daemon reports of its install: `workers.version_locked`, the lock its o
 evo-agents the worker's last heartbeat said its install was built from, `workers.self_update`, what that heartbeat said
 of updating itself to the tag nightly, and `workers.self_update_since`, when the hub first got that state in an
 unbroken line of heartbeats (`docs/workers.md`, Updating itself to nightly). Going back to 0047 drops the four columns:
-no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating.
+no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating. Schema 0049 adds
+`runs.seen_audience`, the principals of what the hub returned to the agent of the run with an audience (Memories,
+skills and knowledge graphs, Audience of memories): empty for every run there is and every new one, it only grows,
+sorted and without repeats. Going back to 0048 drops the column, and a memory written meanwhile keeps the audience its
+label took.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1044,6 +1082,24 @@ next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. 
 phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop; in the session of a run's
 agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
+**Audience of memories.** A memory derived from chat messages carries the audience of those chats
+(`evo_agents/hub/server/memory_audience.py`): its label holds the principals under the key `audience`, sorted, as a
+kg/1 label does. Every read of memories gives one that names an audience only to a reader whose audience holds it,
+computed at that read as for the graph (Projects and who sees what, Audience), and one whose audience cannot be read to
+no one. A write keeps or raises the audience, never lowers it: the stored audience is the memory's own, plus what the
+writer says it read (`audience` of `PUT /v1/memories` and of the tool `memory_write`), plus, for the agent of a run,
+what the hub showed it. The hub notes that in `runs.seen_audience`: the labels of `kg_*` results, the messages
+`chat_message`, `chat_thread` and `evo-agents worker chat read` read, and the memories `memory_search` and
+`memory_get` returned. A chat run counts its own chat, and a run that goes on in another run's session counts what
+that run was shown. A Claude Code session on a machine sends the audience of its session label (`~/.evo/kg/sessions/`,
+which the `kg_*` results and the chat readings of `evo-agents hub mcp` join): the proxy adds it to each
+`memory_write`, and the Stop hook, like `evo-agents hub memory push` run inside the session (`CLAUDE_CODE_SESSION_ID`),
+to each file it pushes. When that record exists but cannot be read, nothing leaves: the proxy answers `memory_write`
+with an error and the push sends nothing. Only an admin of the memory's project who reads it lowers its audience, by
+hand and to a part of it: `PUT /v1/memories/{id}/audience` with `audience` and `if_revision` writes a new revision and
+the audit row `memory.audience`. Raising it there is a 422, a stale revision a 409, and a personal memory, which has no
+admin, a 403. No command of the CLI lowers it.
+
 **Session digests.** Stop also pushes the digest of the session once its transcript holds 6 messages, and again after
 each turn that changed it, to the project the session's directory belongs to, decided as for memories; a directory of
 no project, and the session of a run's agent, whose trace is on the hub already, push none. A digest
@@ -1184,7 +1240,11 @@ many commits that was behind the remote's default branch on the machine that syn
 `kg_status`, `kg_node`'s links and the project's knowledge graph page (`GET /v1/kg/{project}/graph`, `sources`, for the
 sources the member can see) show it. `evo-agents hub kg build --project demo --wait` queues a
 build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a build succeeded, `evo-agents kg
-serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule.
+serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule and the reader's
+audience (Projects and who sees what, Audience). A reader who does not hold every audience of a build gets the counts
+of `kg_status` and of the graph pages within their own audience, and for a project whose graph holds chats every
+answer that names a build gives its nodes and edges as null (`GET /v1/kg/{project}/builds`, `.../builds/{id}`), since
+those totals count messages most members may not read.
 
 A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
 the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
@@ -1434,7 +1494,7 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 
 | Feature | Set for | Off means |
 | --- | --- | --- |
-| `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 |
+| `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 and the `/mcp` tools `chat_message` and `chat_thread` return that error |
 | `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
 | `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` answers 404 and the `kg_*` tools of `/mcp` return that error |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |

@@ -39,6 +39,9 @@ PRIOR = {
     "Directory": 0.5,
     "Section": 0.7,
     "Requirement": 0.7,
+    "Chat": 0.5,  # a group chat of the hub, named by its title
+    "ChatMessage": 0.5,  # a message says what was said about the work, as a commit does
+    "ChatThread": 0.3,  # each thread of a chat is named by the chat's title: they would all match it
 }
 RERANK_POOL = 300
 

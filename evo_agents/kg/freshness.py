@@ -17,15 +17,24 @@ branch has no ``base`` and no ``behind``.
 An item links to its file by branch (its ``uri``), because a link by commit would change every item's hash on every
 commit. The tools show the link at the commit read instead (``Links``), so the lines of a span match what it opens.
 
+A source the hub's core plugins keep (``evo_agents.hub.kg_sources``) may end with a cursor naming the newest item it
+gave, ``{"item": "<id>", "at": "<time>"}``, such as the newest message of the chats; a build copies it as the
+source's read too, which kg_status shows (``describe``) and ``reads`` leaves out, since it names no commit.
+
 Cursors come from connectors, and on the hub from any member's push: a value that does not look like a commit, a ref
-or an https link is dropped, so no text of theirs reaches a tool's answer or the SessionStart note.
+or an https link is dropped, so no text of theirs reaches a tool's answer or the SessionStart note; an item's cursor
+keeps only an id and a time that look like one.
 """
 
 from __future__ import annotations
 
 import re
 
+from evo_agents.kg.protocol import ID_PATTERN, TIME_PATTERN
+
 SHA = re.compile(r"[0-9a-f]{7,64}")
+ITEM = re.compile(ID_PATTERN)
+TIME = re.compile(TIME_PATTERN)
 REF = re.compile(r"[A-Za-z0-9._/@^~{}-]{1,200}")
 URL = re.compile(r"https://[^\s\"'<>]{1,500}")
 SHORT = 7  # characters of a SHA shown
@@ -40,8 +49,18 @@ def _url(value) -> str | None:
     return value if isinstance(value, str) and URL.fullmatch(value) else None
 
 
+def _item_read(cursor: dict) -> dict | None:
+    item, at = cursor.get("item"), cursor.get("at")
+    if isinstance(item, str) and ITEM.match(item) and isinstance(at, str) and TIME.match(at):
+        return {"item": item, "at": at}
+    return None
+
+
 def read_of(cursor) -> dict | None:
-    """The read a source's cursor names, as the git connector writes it; None for any other cursor."""
+    """The read a source's cursor names, as the git connector writes it, or the newest item a plugin's source gave;
+    None for any other cursor."""
+    if isinstance(cursor, dict) and "item" in cursor:
+        return _item_read(cursor)
     if not isinstance(cursor, dict) or not isinstance(cursor.get("commit"), str) or not SHA.fullmatch(cursor["commit"]):
         return None
     read = {"commit": cursor["commit"], "ref": _ref(cursor.get("ref")), "base": None, "behind": None}
@@ -100,7 +119,9 @@ def _behind(read: dict) -> str | None:
 
 
 def describe(read: dict) -> str:
-    """One read in words: ``1550c7a of HEAD, 3 behind origin/main``."""
+    """One read in words: ``1550c7a of HEAD, 3 behind origin/main``, or ``plugin.chats:message:812 at <time>``."""
+    if "commit" not in read:
+        return f"{read.get('item')} at {read.get('at')}"
     behind = _behind(read)
     return f"{read['commit'][:SHORT]} of {read.get('ref') or 'HEAD'}" + (f", {behind}" if behind else "")
 

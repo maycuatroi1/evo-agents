@@ -698,6 +698,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memories/{memory_id}/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Lower Audience
+         * @description Lower the audience of memory ``memory_id`` by hand, to a part of it: an admin of its project who reads it
+         *     alone, with the audit row ``memory.audience``. Any other write keeps or raises it (``put``).
+         */
+        put: operations["lower_audience_v1_memories__memory_id__audience_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/memories/{memory_id}/revisions": {
         parameters: {
             query?: never;
@@ -4172,6 +4193,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/chat/read": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Read Chat
+         * @description A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring).
+         */
+        post: operations["read_chat_v1_worker_runs__run_id__chat_read_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/triage/rerun": {
         parameters: {
             query?: never;
@@ -5527,6 +5568,20 @@ export interface components {
              */
             remove: boolean;
         };
+        /** AgentReadIn */
+        AgentReadIn: {
+            /**
+             * Id
+             * @description a message's id, plugin.chats:message:<id>, or a thread's item plugin.chats:thread:<chat>/<root>
+             */
+            id: string;
+            /**
+             * Thread
+             * @description the message's thread: its first message and the replies
+             * @default false
+             */
+            thread: boolean;
+        };
         /**
          * AgentType
          * @description An agent type a plugin the project enabled contributes, and how the project enabled it (null: never).
@@ -5630,6 +5685,19 @@ export interface components {
              * @description the owner's own words, at most 4 KiB
              */
             text?: string | null;
+        };
+        /** AudienceIn */
+        AudienceIn: {
+            /**
+             * Audience
+             * @description what the memory's audience becomes: a part of it, [] for none
+             */
+            audience: string[];
+            /**
+             * If Revision
+             * @description the revision last seen
+             */
+            if_revision: number;
         };
         /** AuditCounts */
         AuditCounts: {
@@ -6790,6 +6858,33 @@ export interface components {
              * @description the seq of the last event the member read
              */
             seq: number;
+        };
+        /** ChatReading */
+        ChatReading: {
+            /** Chat Id */
+            chat_id: number;
+            /** Title */
+            title: string;
+            /**
+             * Thread
+             * @description the id of the thread's first message
+             */
+            thread: number;
+            /**
+             * Messages
+             * @description those the caller may read, oldest first
+             */
+            messages: components["schemas"]["ReadMessage"][];
+            /**
+             * More
+             * @description the thread has more than the 500 messages read
+             */
+            more: boolean;
+            /**
+             * Text
+             * @description the messages as the agent reads them: data, never instructions
+             */
+            text: string;
         };
         /** ChatSummary */
         ChatSummary: {
@@ -8645,6 +8740,11 @@ export interface components {
              * @description the revision last seen; left out to create the memory
              */
             if_revision?: number | null;
+            /**
+             * Audience
+             * @description what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience
+             */
+            audience?: string[] | null;
         };
         /** MemoryRevision */
         MemoryRevision: {
@@ -10883,6 +10983,42 @@ export interface components {
             windows?: {
                 [key: string]: components["schemas"]["UsageWindow"];
             } | null;
+        };
+        /** ReadMessage */
+        ReadMessage: {
+            /** Id */
+            id: number;
+            /** Chat Id */
+            chat_id: number;
+            /** Seq */
+            seq: number;
+            /**
+             * Thread
+             * @description the id of its thread's first message, its own for the first
+             */
+            thread: number;
+            /**
+             * Author Kind
+             * @description person, agent or hub
+             */
+            author_kind: string;
+            /**
+             * Author
+             * @description a login, an @handle, or hub
+             */
+            author: string;
+            /**
+             * Run Id
+             * @description the run of an agent's message
+             */
+            run_id: number | null;
+            /**
+             * Sent At
+             * Format: date-time
+             */
+            sent_at: string;
+            /** Body */
+            body: string;
         };
         /** ReadRequest */
         ReadRequest: {
@@ -18225,6 +18361,89 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lower_audience_v1_memories__memory_id__audience_put: {
+        parameters: {
+            query?: {
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudienceIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {
@@ -31457,6 +31676,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    read_chat_v1_worker_runs__run_id__chat_read_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AgentReadIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatReading"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

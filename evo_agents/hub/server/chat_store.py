@@ -4,7 +4,9 @@ the reactions on them, the events its stream sends and the notices it sends, eac
 Every change writes one event of the chat (chat_events), numbered by the chat (``chats.event_seq``, counted under its
 row lock, so a reader never sees a number before the ones below it), and notifies CHANNEL with the chat's id once the
 transaction commits, which wakes the chat's streams (``chat_events.ChatStreams``) on the api process's one LISTEN. A
-message is numbered by the event that brought it.
+message is numbered by the event that brought it. A message also queues, in the same transaction, a build of the
+knowledge graph of each project its label names whose graph holds its chats (``kg_sources.reads_chats``: the plugin
+chats), which joins a build that waits (``kg_build.queue_if_configured``).
 
 ``status_reaction`` is how a run of an agent marks the message that started it as the run moves (``chats.
 STATUS_REACTIONS``): by rule, with no model. A run calls it in the transaction that moves it, so this module imports
@@ -19,7 +21,9 @@ from sqlalchemy import delete, func, insert, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import chats, plugin_events, tables
+from evo_agents.hub import chats, kg_sources, plugin_events, tables
+from evo_agents.hub.jobs import JobQueue
+from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.chat_access import ChatAccess
 from evo_agents.hub.server.chat_views import ChatAuthor, agent_author, profiles_by_id
 
@@ -115,7 +119,7 @@ async def insert_message(
     run_id: int | None = None,
 ) -> tuple[int, int]:
     """Store a message of a person, an agent or the hub (neither) in the chat, with the chat's label now, and its
-    event; (its id, its seq)."""
+    event, and queue the builds of the graphs that hold it; (its id, its seq)."""
     seq = await next_seq(conn, chat.chat_id)
     cm = tables.chat_messages
     statement = (
@@ -136,8 +140,10 @@ async def insert_message(
     await write_event(conn, chat.chat_id, "message", {"message_id": message_id}, seq)
     by = "person" if author_user_id is not None else "agent" if author_profile_id is not None else "hub"
     said = {"chat_id": chat.chat_id, "message_id": message_id, "seq": seq, "thread_root_id": thread_root_id, "by": by}
-    for project in chat.projects:  # the projects of its agents: a chat of people alone belongs to none
+    for project in chat.projects:  # the projects of its agents, its label's: a chat of people alone belongs to none
         await plugin_events.emit(conn, "chat.message", project.id, {**said, "run_id": run_id})
+        if await kg_sources.reads_chats(conn, project.id):
+            await queue_if_configured(JobQueue.in_transaction(), conn, project.id, project.name)
     return message_id, seq
 
 
