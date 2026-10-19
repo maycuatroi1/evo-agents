@@ -1,5 +1,5 @@
 """Reading the tasks of a project: the tasks a member sees (``tasks``, with filters), one task (``task``), the people
-in each slot, a task's history and comments, the sprints, and the members a task may name.
+in each slot, a task's history and comments, the sprints, and the members a task may name (``project_members``).
 
 A task carries a label (the project's default, or one an admin set), and it is read under that label: through the
 sink X-Evo-Sink names, else the project's hub sink, as plans are read (``ProjectAccess.visible``). A task the member
@@ -87,6 +87,14 @@ class SprintRow:
     created_at: datetime
     closed_at: datetime | None
     tasks: int
+
+
+@dataclass(frozen=True)
+class MemberRow:
+    """A member of the project, whom a task may name, with the role of their grant."""
+
+    login: str
+    role: str
 
 
 @dataclass(frozen=True)
@@ -286,6 +294,19 @@ async def sprint(conn: AsyncConnection, project_id: int, name: str, *, lock: boo
     return SprintRow(**row._mapping) if row else None
 
 
+async def project_members(conn: AsyncConnection, access: ProjectAccess) -> list[MemberRow]:
+    """Everyone who holds a grant on the project, by login: whom a task may name (``members``)."""
+    reader(access)
+    u, g = tables.users, tables.grants
+    query = (
+        select(u.c.login, g.c.role)
+        .join_from(u, g, g.c.user_id == u.c.id)
+        .where(g.c.project_id == access.project_id)
+        .order_by(u.c.login)
+    )
+    return [MemberRow(row.login, row.role) for row in await conn.execute(query)]
+
+
 async def members(conn: AsyncConnection, access: ProjectAccess, logins: set[str]) -> dict[str, int]:
     """login -> user id of each of ``logins`` who holds a grant on the project; 422 naming those who hold none."""
     if not logins:
@@ -309,6 +330,7 @@ __all__ = [
     "CommentRow",
     "EventRow",
     "Filters",
+    "MemberRow",
     "People",
     "SprintRow",
     "TaskRow",
@@ -318,6 +340,7 @@ __all__ = [
     "members",
     "missing",
     "people",
+    "project_members",
     "reader",
     "sink_of",
     "sprint",

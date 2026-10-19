@@ -229,6 +229,7 @@ def test_tasks_a_writer_creates_a_task_with_people_and_links_that_readers_read(c
 
     listed = client.get(f"{BASE}/tasks", params={"sprint": "Sprint 7"}, headers=hub["eve"]).json()
     assert [t["ref"] for t in listed] == ["T-1"]
+    assert listed[0]["codes"] == ["UC ORD-1"]  # the board's cards show what a task implements
     assert client.get(f"{BASE}/tasks", params={"backlog": "true"}, headers=hub["eve"]).json() == []
     assert [t["ref"] for t in client.get(f"{BASE}/tasks", params={"mine": "true"}, headers=hub["bao"]).json()] == [
         "T-1"
@@ -383,8 +384,26 @@ def test_tasks_link_srs_items_only_while_the_project_enables_srs(client, hub):
     refused = edited(client, hub["alice"], task["ref"], expect=422, links={"use_cases": ["UC ORD-2"]})
     assert "does not enable plugin srs" in refused["message"]
     assert client.get(f"{BASE}/settings", headers=hub["eve"]).json()["srs"] is False
+    assert client.get(f"{BASE}/tasks", headers=hub["eve"]).json()[0]["codes"] == []
     enable(client, hub["owner"], "srs")
     assert [link["code"] for link in shown(client, hub["eve"], task["ref"])["links"]] == ["UC ORD-1", None]
+    assert client.get(f"{BASE}/tasks", headers=hub["eve"]).json()[0]["codes"] == ["UC ORD-1"]
+
+
+def test_tasks_people_lists_the_members_a_task_may_name(client, hub):
+    people = client.get(f"{BASE}/people", headers=hub["eve"])
+    assert people.status_code == 200, people.text
+    assert people.json() == [{"login": login, "role": role} for login, (_, role, _) in sorted(MEMBERS.items())]
+    assert client.get(f"{BASE}/people").status_code == 401
+
+
+def test_tasks_manifest_adds_the_board_to_the_menu_and_its_other_pages_without(client, hub):
+    plugin = client.get(f"/v1/projects/{PROJECT}/plugins/tasks", headers=hub["eve"]).json()
+    pages = {page["name"]: page for page in plugin["pages"]}
+    assert list(pages) == ["board", "backlog", "mine", "import"]
+    assert (pages["board"]["title"], pages["board"]["icon"], pages["board"]["menu"]) == ("Tasks", "kanban", True)
+    assert all(page["native"] and page["url"] is None for page in pages.values())
+    assert [name for name, page in pages.items() if page["menu"]] == ["board"]
 
 
 # Importing

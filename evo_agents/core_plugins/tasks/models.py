@@ -71,6 +71,7 @@ class TasksItem(BaseModel):
     roles: TasksRoles
     steps_done: int = Field(description="how many of the plan steps it links are done")
     steps_total: int = Field(description="how many plan steps it links that the caller sees")
+    codes: list[str] = Field(description="the codes of the SRS items it links to that the caller sees, as linked")
     label: dict = Field(description="the label the task carries")
     created_by: str
     created_at: datetime
@@ -202,6 +203,13 @@ class TasksItemEdit(BaseModel):
         }
 
 
+class TasksPerson(BaseModel):
+    """A member of the project, whom a task may name."""
+
+    login: str
+    role: str = Field(description="the role of their grant on the project: reader, writer or admin")
+
+
 class TasksSprint(BaseModel):
     name: str
     goal: str
@@ -277,7 +285,7 @@ def settings_model(config: Settings, srs: bool) -> TasksSettings:
     )
 
 
-def item_model(config: Settings, row: TaskRow, held: People, progress: tuple[int, int]) -> TasksItem:
+def item_model(config: Settings, row: TaskRow, held: People, progress: tuple[int, int], codes: list[str]) -> TasksItem:
     return TasksItem(
         number=row.number,
         ref=config.ref(row.number),
@@ -293,6 +301,7 @@ def item_model(config: Settings, row: TaskRow, held: People, progress: tuple[int
         roles=TasksRoles(**held.roles),
         steps_done=progress[0],
         steps_total=progress[1],
+        codes=codes,
         label=row.label,
         created_by=row.created_by,
         created_at=row.created_at,
@@ -351,6 +360,7 @@ __all__ = [
     "TasksItemIn",
     "TasksLink",
     "TasksLinksIn",
+    "TasksPerson",
     "TasksRoles",
     "TasksRolesIn",
     "TasksRun",

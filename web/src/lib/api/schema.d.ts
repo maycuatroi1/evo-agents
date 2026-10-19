@@ -3211,6 +3211,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/tasks/{project}/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List People
+         * @description The members of the project, whom a task may name as an assignee, a BA, a QA or a Dev, by login.
+         */
+        get: operations["list_people_v1_x_tasks__project__people_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/tasks/{project}/tasks/{ref}/comments": {
         parameters: {
             query?: never;
@@ -14424,6 +14444,11 @@ export interface components {
              */
             steps_total: number;
             /**
+             * Codes
+             * @description the codes of the SRS items it links to that the caller sees, as linked
+             */
+            codes: string[];
+            /**
              * Label
              * @description the label the task carries
              */
@@ -14493,6 +14518,11 @@ export interface components {
              * @description how many plan steps it links that the caller sees
              */
             steps_total: number;
+            /**
+             * Codes
+             * @description the codes of the SRS items it links to that the caller sees, as linked
+             */
+            codes: string[];
             /**
              * Label
              * @description the label the task carries
@@ -14697,6 +14727,19 @@ export interface components {
              * @description URLs of pull or merge requests
              */
             pulls?: string[];
+        };
+        /**
+         * TasksPerson
+         * @description A member of the project, whom a task may name.
+         */
+        TasksPerson: {
+            /** Login */
+            login: string;
+            /**
+             * Role
+             * @description the role of their grant on the project: reader, writer or admin
+             */
+            role: string;
         };
         /** TasksRoles */
         TasksRoles: {
@@ -27347,6 +27390,82 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["TasksSprint"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_people_v1_x_tasks__project__people_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TasksPerson"][];
                 };
             };
             /** @description Unauthorized */

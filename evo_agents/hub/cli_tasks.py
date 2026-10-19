@@ -41,6 +41,7 @@ ITEM_KEYS = (
     "roles",
     "steps_done",
     "steps_total",
+    "codes",
     "label",
     "created_by",
     "created_at",

@@ -7072,6 +7072,7 @@
           "roles",
           "steps_done",
           "steps_total",
+          "codes",
           "label",
           "created_by",
           "created_at",
@@ -7288,6 +7289,7 @@
           "roles",
           "steps_done",
           "steps_total",
+          "codes",
           "label",
           "created_by",
           "created_at",
@@ -7428,6 +7430,7 @@
           "roles",
           "steps_done",
           "steps_total",
+          "codes",
           "label",
           "created_by",
           "created_at",
@@ -7481,6 +7484,7 @@
           "roles",
           "steps_done",
           "steps_total",
+          "codes",
           "label",
           "created_by",
           "created_at",
@@ -26103,6 +26107,104 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/TasksSprint"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/tasks/{project}/people": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List People",
+          "description": "The members of the project, whom a task may name as an assignee, a BA, a QA or a Dev, by login.",
+          "operationId": "list_people_v1_x_tasks__project__people_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/TasksPerson"
+                    },
+                    "title": "Response List People V1 X Tasks  Project  People Get"
                   }
                 }
               }
@@ -56883,6 +56985,14 @@
               "title": "Steps Total",
               "description": "how many plan steps it links that the caller sees"
             },
+            "codes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Codes",
+              "description": "the codes of the SRS items it links to that the caller sees, as linked"
+            },
             "label": {
               "additionalProperties": true,
               "type": "object",
@@ -56920,6 +57030,7 @@
             "roles",
             "steps_done",
             "steps_total",
+            "codes",
             "label",
             "created_by",
             "created_at",
@@ -57035,6 +57146,14 @@
               "title": "Steps Total",
               "description": "how many plan steps it links that the caller sees"
             },
+            "codes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Codes",
+              "description": "the codes of the SRS items it links to that the caller sees, as linked"
+            },
             "label": {
               "additionalProperties": true,
               "type": "object",
@@ -57110,6 +57229,7 @@
             "roles",
             "steps_done",
             "steps_total",
+            "codes",
             "label",
             "created_by",
             "created_at",
@@ -57630,6 +57750,26 @@
           "type": "object",
           "title": "TasksLinksIn",
           "description": "Links to add."
+        },
+        "TasksPerson": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "role": {
+              "type": "string",
+              "title": "Role",
+              "description": "the role of their grant on the project: reader, writer or admin"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "role"
+          ],
+          "title": "TasksPerson",
+          "description": "A member of the project, whom a task may name."
         },
         "TasksRoles": {
           "properties": {
