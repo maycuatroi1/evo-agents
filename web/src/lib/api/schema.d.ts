@@ -4061,7 +4061,8 @@ export interface paths {
         };
         /**
          * List Events
-         * @description The chat's events after ``after``, oldest first; ``more`` when there are later ones.
+         * @description The chat's events after ``after``, oldest first; ``more`` when there are later ones. With ``progress``, the
+         *     progress of the agents' runs on their way under the messages they took, as the reader may read them.
          */
         get: operations["list_events_v1_chats__chat_id__events_get"];
         put?: never;
@@ -4082,7 +4083,9 @@ export interface paths {
         /**
          * Stream
          * @description The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no
-         *     longer read the chat. A ``: ping`` comment keeps an idle stream open.
+         *     longer read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too
+         *     (``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages
+         *     changed.
          */
         get: operations["stream_v1_chats__chat_id__stream_get"];
         put?: never;
@@ -4187,6 +4190,27 @@ export interface paths {
          * @description The worker pushed the chat run's branch of a repo: its draft pull request, linked in the thread.
          */
         post: operations["pushed_v1_worker_runs__run_id__chat_pulls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/chat/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Repo
+         * @description The worker opened repo ``repo`` of the project in the chat run, as its agent asked: the hub adds it to the run's
+         *     repos on the run's branch (see the module's docstring).
+         */
+        post: operations["open_repo_v1_worker_runs__run_id__chat_repos_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -6628,6 +6652,11 @@ export interface components {
             last_seq: number;
             /** More */
             more: boolean;
+            /**
+             * Progress
+             * @description with progress=true: the progress of every message of the chat whose run is on its way now
+             */
+            progress?: components["schemas"]["ChatProgress"][] | null;
         };
         /** ChatMemberChange */
         ChatMemberChange: {
@@ -6762,6 +6791,47 @@ export interface components {
              */
             seq: number;
         };
+        /**
+         * ChatProgress
+         * @description How far the run of an agent that took a message is, said by rule from the run's state and its worker's notes
+         *     (``chat_progress``): shown while the run is on its way and its session has not answered after the message.
+         */
+        ChatProgress: {
+            /**
+             * Message Id
+             * @description the message the run took: it started the run, or waits in its inbox
+             */
+            message_id: number;
+            /** Run Id */
+            run_id: number;
+            /**
+             * Handle
+             * @description the agent's, @ left out
+             */
+            handle: string;
+            /**
+             * Step
+             * @description waiting: for its worker; claimed: by its worker; checking: access to the run's repos; opening: a repo; starting: the agent; working: the agent; inbox: the message waits for the agent's next turn
+             * @enum {string}
+             */
+            step: "waiting" | "claimed" | "checking" | "opening" | "starting" | "working" | "inbox";
+            /**
+             * Worker
+             * @description the worker the run waits for or runs on
+             */
+            worker: string | null;
+            /**
+             * Repo
+             * @description the repo it opens, at step opening
+             */
+            repo?: string | null;
+            /**
+             * Since
+             * Format: date-time
+             * @description when the step began
+             */
+            since: string;
+        };
         /** ChatPull */
         ChatPull: {
             /** Repo */
@@ -6885,6 +6955,34 @@ export interface components {
              * @description the messages as the agent reads them: data, never instructions
              */
             text: string;
+        };
+        /** ChatRepo */
+        ChatRepo: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description the run's branch, chat/<id of its session's first run>, the repo's worktree is on
+             */
+            branch: string;
+            /**
+             * Added
+             * @description the hub added the repo to the run now; false when the run worked in it already
+             */
+            added: boolean;
+            /**
+             * Repos
+             * @description the run's repos now: those it started with, then those opened, in order
+             */
+            repos: components["schemas"]["RunRepo"][];
+        };
+        /** ChatRepoIn */
+        ChatRepoIn: {
+            /**
+             * Repo
+             * @description a repo of the run's project, as the project names it, that the worker has a checkout of
+             */
+            repo: string;
         };
         /** ChatSummary */
         ChatSummary: {
@@ -8096,6 +8194,11 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /**
+             * Progress
+             * @description the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer
+             */
+            progress?: components["schemas"]["ChatProgress"][];
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -11680,6 +11783,26 @@ export interface components {
              * @description a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most 3); null for any other run
              */
             hop?: number | null;
+            /**
+             * Session Run Id
+             * @description a chat run's session: the id of its first run, which its branch chat/<id> names (the run's own id for the first); null for any other run
+             */
+            session_run_id?: number | null;
+            /**
+             * Session Turn
+             * @description a chat run's turn in its session: 1 for its first run, one more for each after it; null for any other run
+             */
+            session_turn?: number | null;
+            /**
+             * Session Turns
+             * @description the runs of a chat run's session so far; null for another run
+             */
+            session_turns?: number | null;
+            /**
+             * Session Title
+             * @description the title of a chat run's session, its first run's, which the pull requests of its branch take; each run after it is titled by the message that woke it. Null for any other run
+             */
+            session_title?: string | null;
             /**
              * Machine
              * @description a local run's machine, as its hub login names it; null otherwise
@@ -21091,6 +21214,10 @@ export interface operations {
                 q?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description only the runs of the chat session this run started (Run.session_run_id) */
+                session_run_id?: number | null;
+                /** @description session: each chat session once, as its latest run, listed when any of its runs matches the search; the state filter, the counts and the total read that run's state. Every other run as it is */
+                group?: "session" | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;
@@ -31241,6 +31368,8 @@ export interface operations {
                 /** @description the seq the events start after */
                 after?: number;
                 limit?: number;
+                /** @description also the progress of the agents' runs on their way under the messages they took (ChatProgress) */
+                progress?: boolean;
             };
             header?: never;
             path: {
@@ -31311,6 +31440,8 @@ export interface operations {
             query?: {
                 /** @description where a first connection starts */
                 after?: number;
+                /** @description also the progress of the agents' runs on their way under the messages they took (ChatProgress) */
+                progress?: boolean;
             };
             header?: {
                 /** @description sent by a reconnecting client */
@@ -31640,6 +31771,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatPull"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    open_repo_v1_worker_runs__run_id__chat_repos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRepoIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatRepo"];
                 };
             };
             /** @description Unauthorized */

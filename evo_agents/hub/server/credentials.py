@@ -4,7 +4,8 @@ the run gives them back (``docs/credentials.md``).
 POST /v1/worker/runs/{id}/credentials, with the worker's token and the protocol header as on every worker route, asks
 for the leases of a run the worker holds, in one of ``runs.HELD_STATES`` (``waiting`` of a plan run among them); any
 other run, another worker's or one that ended, is 404 as for a state report. The hub takes the run's repos (its repo
-for a run of one step, its repos for a plan run) and their origins in project_repos, compared in the form of
+for a run of one step, its repos for a plan run, and for a chat run those it started with and those its agent opened
+since, ``chat_agents.open_repo``) and their origins in project_repos, compared in the form of
 ``credentials.normalize_origin``, and leases what the run's owner, the member who dispatched it, bound to the run's
 project, on any of their workers or on this one, and that has not expired:
 

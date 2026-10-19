@@ -39,14 +39,20 @@ export function threadMessages(api: ApiClient, id: number, root: number, signal?
   return call(api.GET("/v1/chats/{chat_id}/messages", { params: { path: { chat_id: id }, query: { thread: root, limit: THREAD_SIZE } }, signal }));
 }
 
-/** The chat's events after `after`, oldest first: what the page reads while its stream cannot be used. */
+/**
+ * The chat's events after `after`, oldest first, with the progress of the agents' runs under the messages they took:
+ * what the page reads while its stream cannot be used.
+ */
 export function chatEventsAfter(api: ApiClient, id: number, after: number, signal?: AbortSignal): Promise<ChatEvents> {
-  return call(api.GET("/v1/chats/{chat_id}/events", { params: { path: { chat_id: id }, query: { after } }, signal }));
+  return call(api.GET("/v1/chats/{chat_id}/events", { params: { path: { chat_id: id }, query: { after, progress: true } }, signal }));
 }
 
-/** The chat's server-sent events, from the event after `after` on a first connection. */
+/**
+ * The chat's server-sent events, from the event after `after` on a first connection, and its `progress` events: the
+ * progress of the agents' runs under the messages they took, at once and each time it changed.
+ */
 export function chatStreamPath(id: number, after: number): string {
-  return `/v1/chats/${id}/stream?after=${after}`;
+  return `/v1/chats/${id}/stream?after=${after}&progress=true`;
 }
 
 // Writes, each with the session's X-Evo-CSRF header.

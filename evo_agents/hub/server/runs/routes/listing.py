@@ -46,6 +46,17 @@ async def list_runs(
     limit: Annotated[int, Query(ge=1, le=MAX_LIST)] = 50,
     offset: Annotated[int, Query(ge=0, le=MAX_OFFSET)] = 0,
     sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+    session_run_id: Annotated[
+        int | None,
+        Query(ge=1, le=MAX_ID, description="only the runs of the chat session this run started (Run.session_run_id)"),
+    ] = None,
+    group: Annotated[
+        Literal["session"] | None,
+        Query(
+            description="session: each chat session once, as its latest run, listed when any of its runs matches the "
+            "search; the state filter, the counts and the total read that run's state. Every other run as it is"
+        ),
+    ] = None,
 ) -> RunList:
     """The project's runs, newest first, of the plans the caller may read, with how many are in each state."""
     return await run_list(
@@ -59,6 +70,8 @@ async def list_runs(
         dispatched_by=dispatched_by,
         kind=kind,
         account=account,
+        session_run_id=session_run_id,
+        group=group,
         q=q,
         limit=limit,
         offset=offset,

@@ -3,7 +3,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { Route } from "next";
 import { useFormatter, useTranslations } from "next-intl";
-import { useCallback } from "react";
+import { useCallback, useMemo } from "react";
 
 import { useWriteFailure, type WriteFailure } from "@/components/admin/notice";
 import { notify } from "@/components/feedback/toast";
@@ -123,7 +123,10 @@ export function useCanDispatch(project: string): boolean {
 /** The signed-in member, for links to the workers they may open. */
 export function useViewer(): Viewer | null {
   const { data } = useQuery(whoamiQuery(browserApi));
-  return data ? { login: data.login, admin: Boolean(data.admin) } : null;
+  const login = data?.login;
+  const admin = Boolean(data?.admin);
+  // The same object while the viewer stays who they are, so a table built for them keeps its cells between refreshes.
+  return useMemo(() => (login === undefined ? null : { login, admin }), [login, admin]);
 }
 
 /**

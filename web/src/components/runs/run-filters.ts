@@ -75,9 +75,10 @@ export function isFiltered(filters: RunFilters): boolean {
   return filters.facet !== null || filters.kind !== null || filters.account !== "" || filters.q !== "";
 }
 
-/** What the API is asked for the list a set of filters shows. */
+/** What the API is asked for the list a set of filters shows: each chat session once, as its latest turn. */
 export function listQuery(filters: RunFilters): RunQuery {
   return {
+    group: "session",
     states: filters.facet ? FACET_STATES[filters.facet] : [],
     kind: filters.kind,
     account: filters.account,

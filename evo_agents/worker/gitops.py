@@ -75,6 +75,9 @@ REJECTED = re.compile(
     r"|behind its remote\W+(?:hint:\W*)?counterpart",
     re.IGNORECASE,
 )
+# The line of `git push --porcelain` for a ref the remote declined by a rule of its own (a pre-receive or update hook,
+# a protected branch, a ruleset such as GitHub's push protection of secrets), and its reason in parentheses.
+REMOTE_REJECTED = re.compile(r"^!\t\S+\t\[remote rejected\](?: \((?P<reason>[^\n]*)\))?$", re.MULTILINE)
 EXCLUDE_RESULT = f":(exclude){RESULT_DIR}"  # the agent's result file stays out of every commit
 # Directories no commit of a run holds, at any depth: learned skills and CLI suggestions a Stop hook of the owner's
 # Claude Code writes in the session's directory (continuous-learning, under .claude/; a copy of the learned skills
@@ -105,6 +108,11 @@ class GitAuthError(GitError):
 
 class PushRefused(GitError):
     """A push the worker never makes: a default branch, in a run of one step or one its plan does not name."""
+
+
+class PushDeclined(GitError):
+    """The remote declined a push by a rule of its own (a hook, a protected branch, a ruleset), not for its credential
+    nor because the branch moved on: nothing of the push landed, and the commits are still here."""
 
 
 class PushConflict(GitError):
@@ -263,9 +271,14 @@ async def git(
         raise GitError(f"git {args[0]} gave no answer within {timeout:g}s") from None
     stdout, stderr = out.decode(errors="replace"), err.decode(errors="replace")
     if check and proc.returncode != 0:
-        error = GitAuthError if AUTH_FAILURE.search(stderr) else GitError
-        raise error(f"git {args[0]} failed ({proc.returncode}): {_tail(stderr or stdout)}")
+        raise _failure(args[0], proc.returncode, stdout, stderr)
     return proc.returncode, stdout, stderr
+
+
+def _failure(command: str, code: int, stdout: str, stderr: str) -> GitError:
+    """The error of ``git COMMAND`` that exited ``code``: GitAuthError when the remote refused its credential."""
+    error = GitAuthError if AUTH_FAILURE.search(stderr) else GitError
+    return error(f"git {command} failed ({code}): {_tail(stderr or stdout)}")
 
 
 async def rev(cwd: Path, ref: str) -> str | None:
@@ -563,9 +576,10 @@ async def _send(
     env: Mapping[str, str] | None,
     options: Collection[str] = (),
 ) -> None:
-    """``git push`` of ``source`` (HEAD, or a commit) to ``branch`` of the remote, never forced."""
+    """``git push`` of ``source`` (HEAD, or a commit) to ``branch`` of the remote, never forced; PushDeclined when the
+    remote declined it by a rule of its own, whose reason (``REMOTE_REJECTED``) ends the message."""
     sent = [f"--push-option={option}" for option in options]
-    await git(
+    code, out, err = await git(
         cwd,
         "push",
         "--quiet",
@@ -575,7 +589,15 @@ async def _send(
         f"{source}:refs/heads/{branch}",
         timeout=NETWORK_TIMEOUT,
         env=env,
+        check=False,
     )
+    if code == 0:
+        return
+    failed = _failure("push", code, out, err)
+    declined = REMOTE_REJECTED.search(out)
+    if declined is None or isinstance(failed, GitAuthError):
+        raise failed
+    raise PushDeclined(f"{failed} ({remote} declined it: {declined['reason'] or 'remote rejected'})")
 
 
 async def push(

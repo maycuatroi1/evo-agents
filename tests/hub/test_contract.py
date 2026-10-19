@@ -184,11 +184,15 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker plan",
         "worker propose",
         "worker put",
+        "worker repo open",
         "worker step",
         "worker triage invite",
         "worker triage plan",
         "worker triage rerun",
     ]
+    opened = printed["worker repo open"]
+    assert [(p["name"], p["required"]) for p in opened["positionals"]] == [("repo", True)]
+    assert opened["options"] == [] and opened["json"] is None, "it prints the worktree's path alone"
     put = printed["worker put"]
     assert [p["name"] for p in put["positionals"]] == ["file"]
     assert [o["flags"] for o in put["options"] if o["flags"] != ["--json"]] == [["--if-revision"]]
