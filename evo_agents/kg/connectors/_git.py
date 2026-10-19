@@ -124,6 +124,16 @@ def history(repo: Path, commit: str, since: str | None = None) -> list[dict]:
     return found
 
 
+def is_ancestor(repo: Path, older: str, newer: str) -> bool:
+    """Whether ``older`` is ``newer`` or one of its ancestors. GitError when either is not a commit of the clone."""
+    result = subprocess.run(
+        ["git", "-C", str(repo), "merge-base", "--is-ancestor", older, newer], capture_output=True, text=True
+    )
+    if result.returncode not in (0, 1):
+        raise GitError(f"git merge-base --is-ancestor {older} {newer} failed in {repo}: {result.stderr.strip()}")
+    return result.returncode == 0
+
+
 def commit_time(repo: Path, commit: str) -> str:
     return git(repo, "show", "-s", "--format=%cI", commit).strip()
 
