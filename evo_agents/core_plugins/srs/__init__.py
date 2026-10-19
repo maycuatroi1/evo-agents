@@ -16,14 +16,18 @@ codes.
 The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
 readers read, writers write, admins drop coded items. ``evo-agents hub srs list|show|import|export|submit|approve``
 is their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migration 0046), every row of a document
-carrying its label, the project's by default.
+carrying its label, the project's by default. The version of each document approved last is a source of the project's
+knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the ids a mention of their
+codes gets.
 
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
 ``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
-comments, ``diff`` compares two versions, ``models`` and ``server`` are the API.
+comments, ``diff`` compares two versions, ``models`` and ``server`` are the API, ``kg`` gives the knowledge graph its
+approved versions.
 """
 
 SERVER = "evo_agents.core_plugins.srs.server"
+KG = "evo_agents.core_plugins.srs.kg"
 TEMPLATES = ("srs-basic",)
 ROLES = ("ba", "qa", "dev")  # evo_agents.hub.tables_srs.REVIEW_ROLES
 CODED_KINDS = ("use_case", "business_rule", "screen", "nfr", "cbr")
@@ -97,6 +101,9 @@ MANIFEST = {
     "config": CONFIG,
     "contributes": {
         "routes": [{"name": "documents", "title": "The BA documents of a project", "python": f"{SERVER}:router"}],
+        "kg_sources": [
+            {"name": "documents", "title": "The approved version of each document", "python": f"{KG}:kg_source"}
+        ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
     },
 }

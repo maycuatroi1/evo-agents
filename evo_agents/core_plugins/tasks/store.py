@@ -176,6 +176,13 @@ def _filtered(query, filters: Filters):
     return query
 
 
+async def all_tasks(conn: AsyncConnection, project_id: int) -> list[TaskRow]:
+    """Every task of the project, by number, whoever reads: the knowledge graph reads them all and labels each by its
+    row (``kg``)."""
+    t = tables.tasks.items
+    return [TaskRow(**row._mapping) for row in await conn.execute(_tasks_query(project_id).order_by(t.c.number))]
+
+
 async def tasks(conn: AsyncConnection, access: ProjectAccess, sink: str | None, filters: Filters) -> list[TaskRow]:
     """The tasks of the project the member sees that ``filters`` keeps, by number, at most ``filters.limit``."""
     reader(access)
@@ -305,6 +312,7 @@ __all__ = [
     "People",
     "SprintRow",
     "TaskRow",
+    "all_tasks",
     "comments",
     "events",
     "members",

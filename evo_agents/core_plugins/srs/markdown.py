@@ -313,7 +313,9 @@ def title_of(doc: Document) -> str | None:
 # Writing
 
 
-def _block_text(item: Item, rows: list[Item], anchors: bool) -> str:
+def block_text(item: Item, rows: list[Item], anchors: bool) -> str:
+    """The block of a heading item as a document exports it: its heading, its screen code comment when ``anchors``, its
+    body, its coded table ``rows`` and the text after them; a row's own line for a row."""
     if item.level is None:
         return item.body
     text = "#" * item.level + " " + heading_text(item.kind, item.title, item.code, item.fields)
@@ -337,7 +339,7 @@ def render(doc: Document, *, anchors: bool = True) -> str:
         after = index + 1
         while after < len(items) and items[after].level is None and items[after].parent == index:
             after += 1
-        blocks.append(_block_text(items[index], items[index + 1 : after], anchors))
+        blocks.append(block_text(items[index], items[index + 1 : after], anchors))
         index = after
     return "\n\n".join(text for text in blocks if text) + "\n"
 
@@ -357,6 +359,7 @@ def normalize(text: str, *, anchors: bool = True) -> str:
 
 __all__ = [
     "aliases_of",
+    "block_text",
     "cells",
     "fields_of",
     "normalize",

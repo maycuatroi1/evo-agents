@@ -66,6 +66,19 @@ MAX_REVIEW_CHARS = 10_000
 MAX_COMMENT_CHARS = 20_000
 
 
+# The node of the knowledge graph each kind of coded item is: the plugin srs declares them, the plugin tasks links
+# tasks to them (evo_agents.hub.kg_sources). A screen is a section of its document, no node of its own.
+KG_NODE_KINDS = {"use_case": "UseCase", "business_rule": "Requirement", "nfr": "Requirement", "cbr": "Requirement"}
+
+
+def kg_node_id(kind: str, code: str | None) -> str | None:
+    """The id of the node of the knowledge graph an item of ``kind`` with ``code`` is: the id the link stage gives a
+    mention of the code, ``<kind>:<code>`` with whitespace runs as one space (``usecase:UC ORD-1``,
+    ``requirement:BR ORD1-2``); None for a kind that is no node, or an item without a code."""
+    node = KG_NODE_KINDS.get(kind)
+    return f"{node.lower()}:{' '.join(code.split())}" if node and code and code.strip() else None
+
+
 def code_key(code: str) -> str:
     """The form two codes are compared in, as srs_codes.code_key holds it: whitespace runs as one space, case folded.
     The plugin tasks finds an item by code in this form too."""
