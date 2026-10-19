@@ -54,7 +54,16 @@ function useCrumbs(): Crumb[] {
   if (parts[0] === "p" && parts[1] && pluginPage) {
     // A plugin's page names itself as its menu item does, after the project.
     const project = decodeURIComponent(parts[1]);
-    return [{ label: project, href: projectHref(project) }, { label: pageTitle ?? itemLabel(parts[4] ?? parts[3] ?? "") }];
+    const crumbs: Crumb[] = [{ label: project, href: projectHref(project) }];
+    const page: Crumb = { label: pageTitle ?? itemLabel(parts[4] ?? parts[3] ?? "") };
+    const rest = parts.slice(5);
+    if (rest.length === 0) return [...crumbs, page];
+    // A page below it (a core plugin's native pages: a document, an item of it): the plugin's page links back, the
+    // object below it goes by its id and links to itself from deeper pages, and an item at the end goes by its id too.
+    const base = `/${parts.slice(0, 5).join("/")}`;
+    crumbs.push({ ...page, href: base }, { label: itemLabel(rest[0]), href: rest.length > 1 ? `${base}/${rest[0]}` : undefined });
+    if (rest.length > 2) crumbs.push({ label: itemLabel(rest[rest.length - 1]) });
+    return crumbs;
   }
   if (parts[0] === "p" && parts[1]) {
     const project = decodeURIComponent(parts[1]);

@@ -376,6 +376,15 @@ def test_srs_source_answers_are_read_with_their_labels_ids_and_identifiers():
             checked("plugin.srs", "srs", answer, KNOWLEDGE, PROJECT)
 
 
+def test_srs_document_links_its_page_on_the_hub_when_the_hub_knows_its_url():
+    row, snap = snapshot(SAMPLE_SRS.read_text(encoding="utf-8"), "demo-shop", "k", screens=True)
+    assert "uri" not in srs_kg.document_item("plugin.srs", row, snap)  # a hub without EVO_HUB_PUBLIC_URL
+    item = srs_kg.document_item("plugin.srs", row, snap, ("https://hub.example.org/", "shop one"))
+    assert item["uri"] == "https://hub.example.org/p/shop%20one/x/srs/documents/demo-shop"
+    (found,) = checked("plugin.srs", "srs", {"items": [item]}, KNOWLEDGE, PROJECT).items
+    assert found["uri"] == item["uri"] and found["label"]["level"] == LABEL["level"]
+
+
 def test_srs_identifiers_find_codes_inside_text_and_come_before_the_projects_own():
     patterns = {entry["kind"]: entry["pattern"] for entry in srs_kg.identifiers(template_of())}
     assert set(patterns) == {"UseCase", "Requirement"}
