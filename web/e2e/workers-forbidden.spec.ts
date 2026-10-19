@@ -2,7 +2,7 @@ import { call } from "../src/lib/api/client";
 
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, type Account, bearerClient, type HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
-import { csrfHeader, heartbeat, registerWorker, workersOf } from "./support/workers";
+import { AGENT_COMMIT, csrfHeader, heartbeat, registerWorker, workersOf } from "./support/workers";
 
 /**
  * A worker belongs to the member who registered it because the API says so, not because the web hides it: another
@@ -47,6 +47,7 @@ test("another member sees nothing of my worker, on the pages or through the API"
   const calls: { method: "GET" | "POST" | "PATCH"; path: string; data?: object }[] = [
     { method: "GET", path: `/v1/workers/${worker.id}` },
     { method: "PATCH", path: `/v1/workers/${worker.id}`, data: { slots: 4 } },
+    { method: "PATCH", path: `/v1/workers/${worker.id}`, data: { version_locked: true } },
     { method: "POST", path: `/v1/workers/${worker.id}/drain` },
     { method: "POST", path: `/v1/workers/${worker.id}/undrain` },
     { method: "POST", path: `/v1/workers/${worker.id}/revoke` },
@@ -59,7 +60,7 @@ test("another member sees nothing of my worker, on the pages or through the API"
   }
   // Nothing changed for the owner.
   const mine = (await workersOf(owner)).find((w) => w.id === worker.id);
-  expect(mine).toMatchObject({ status: "online", drained_at: null, revoked_at: null, slots: 1 });
+  expect(mine).toMatchObject({ status: "online", drained_at: null, revoked_at: null, slots: 1, version_locked: false });
 });
 
 test("a reader cannot create a pairing code, in the dialog or through the API", async ({ page, member }) => {
@@ -129,4 +130,24 @@ test("a hub admin sees every worker and may drain it, but only its owner resumes
   const ownerApi = bearerClient(await machineToken(owner));
   const resumed = await call(ownerApi.POST("/v1/workers/{worker_id}/undrain", { params: { path: { worker_id: worker.id } } }));
   expect(resumed.status).toBe("online");
+});
+
+test("a hub admin sees the evo-agents a worker runs and its lock, but only its owner locks or unlocks it", async ({ page, admin, signInAs }) => {
+  const { owner, worker } = await ownerWithWorker(admin);
+  const ownerApi = bearerClient(await machineToken(owner));
+  await call(ownerApi.PATCH("/v1/workers/{worker_id}", { params: { path: { worker_id: worker.id } }, body: { version_locked: true } }));
+  await heartbeat(worker.id, { agentCommit: AGENT_COMMIT, selfUpdate: { state: "locked" } });
+  await signInAs(ADMIN_ACCOUNT);
+
+  await page.goto(`/workers/${worker.id}`);
+  const main = page.locator("#main");
+  await expect(main.getByTestId("worker-as-admin")).toBeVisible();
+  await expect(main.getByTestId("worker-commit-sha")).toHaveText("ca3e9af");
+  await expect(main.getByTestId("worker-updates")).toHaveText(`Locked by ${owner.login}: it stays on this version.`);
+  await expect(main.getByRole("switch", { name: "Lock version" })).toHaveCount(0); // the state, without the switch
+
+  const refused = await page.request.patch(`/v1/workers/${worker.id}`, { data: { version_locked: false }, headers: await csrfHeader(page) });
+  expect(refused.status()).toBe(403);
+  expect((await refused.json()).message).toContain(`only ${owner.login}`);
+  expect((await workersOf(owner)).find((w) => w.id === worker.id)?.version_locked).toBe(true);
 });
