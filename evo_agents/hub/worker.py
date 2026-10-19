@@ -251,7 +251,8 @@ async def curator_changes(context: JobContext, timestamp: int | None = None) -> 
     from evo_agents.hub.server.changes import advance
 
     found = hub(context)
-    return await advance(found.engine, found.github_app, getattr(found, "curator_app", None))
+    curator_app = getattr(found, "curator_app", None)
+    return await advance(found.engine, found.github_app, curator_app, blobs=found.blobs, data_dir=found.data_dir)
 
 
 @queue.periodic(cron="*/10 * * * *")

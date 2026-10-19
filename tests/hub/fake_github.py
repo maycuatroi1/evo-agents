@@ -26,7 +26,8 @@ repo and holds the permission each needs, as GitHub does: GET /repos/{o}/{r}; GE
 .../rulesets/{id}, whose ``current_user_can_bypass`` says whether the token's App is among the ruleset's bypass Apps;
 GET .../branches/{branch}, GET .../git/trees/{sha} and GET .../compare/{base}...{head} over the commits ``commit`` made
 on the default branch (its tree whole, or cut for a commit of ``cut_trees``; a comparison of two of them, its commits
-oldest first, paged); POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files``
+oldest first, paged, with its merge base; and of a branch's head ``push`` set, whose merge base is the default branch's
+head at the push); GET .../contents/{path}?ref= of the files ``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files``
 set) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them);
 POST .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
 the token's App may not bypass (405), and otherwise merges. A pull request names the base's commit it opened on, and
@@ -96,6 +97,8 @@ class FakeRepo:
     history: list = field(default_factory=list)  # (sha, committer time) of the default branch's commits, oldest first
     trees: dict = field(default_factory=dict)  # commit -> its files {path: blob sha}
     cut_trees: set = field(default_factory=set)  # commits whose tree GitHub answers cut (truncated)
+    contents: dict = field(default_factory=dict)  # (commit, path) -> the file's text (``put_file``)
+    merge_bases: dict = field(default_factory=dict)  # a pushed branch's head -> the default branch's head at the push
 
 
 @dataclass
@@ -245,6 +248,7 @@ class FakeGitHub:
         with self._lock:
             repo = self.repos[(owner.lower(), name.lower())]
             repo.heads[branch] = sha
+            repo.merge_bases.setdefault(sha, repo.heads.get(repo.default_branch))
             if message is not None:
                 repo.messages[sha] = message
             if files is not None:
@@ -261,6 +265,15 @@ class FakeGitHub:
             repo.history.append((sha, when))
             repo.trees[sha] = dict(files)
             repo.heads[repo.default_branch] = sha
+
+    def put_file(self, owner: str, name: str, sha: str, path: str, text: str | None) -> None:
+        """File ``path`` of commit ``sha`` of owner/name holds ``text`` (None: the commit has no such file)."""
+        with self._lock:
+            repo = self.repos[(owner.lower(), name.lower())]
+            if text is None:
+                repo.contents.pop((sha, path), None)
+            else:
+                repo.contents[(sha, path)] = text
 
     def ci(self, sha: str, runs: list | None = None, statuses: dict | None = None) -> None:
         """What CI says of ``sha``: its check runs (name, status, conclusion) and its combined status."""
@@ -619,6 +632,15 @@ class FakeGitHub:
                 return refused
             base, _, head = rest[1].partition("...")
             shas = [sha for sha, _ in repo.history]
+            if head in repo.merge_bases and head not in shas:  # a pushed branch over the default branch
+                merge_base = {"sha": repo.merge_bases[head]}
+                return 200, {
+                    "status": "ahead",
+                    "ahead_by": 1,
+                    "behind_by": 0,
+                    "commits": [],
+                    "merge_base_commit": merge_base,
+                }
             if base not in shas or head not in shas:
                 return 404, {"message": "Not Found"}
             low, high = shas.index(base), shas.index(head)
@@ -627,7 +649,17 @@ class FakeGitHub:
             size, page = int(query.get("per_page", "250")), int(query.get("page", "1"))
             listed = repo.history[low + 1 : high + 1][(page - 1) * size : page * size]
             commits = [{"sha": sha, "commit": {"committer": {"date": when}}} for sha, when in listed]
-            return 200, {"status": status, "ahead_by": ahead, "behind_by": behind, "commits": commits}
+            found = {"status": status, "ahead_by": ahead, "behind_by": behind, "commits": commits}
+            return 200, {**found, "merge_base_commit": {"sha": shas[min(low, high)]}}
+        if method == "GET" and rest[:1] == ["contents"] and len(rest) >= 2:
+            _, _, refused = need("contents", "read")
+            if refused:
+                return refused
+            text = repo.contents.get((query.get("ref"), "/".join(rest[1:])))
+            if text is None:
+                return 404, {"message": "Not Found"}
+            encoded = base64.b64encode(text.encode()).decode()
+            return 200, {"type": "file", "encoding": "base64", "path": "/".join(rest[1:]), "content": encoded}
         if method == "GET" and rest[:2] == ["rules", "branches"]:
             _, _, refused = need("metadata", "read")
             if refused:

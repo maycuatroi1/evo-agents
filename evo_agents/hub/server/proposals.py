@@ -17,7 +17,8 @@ edit (``{repo, path}``, each a repo of the project), the findings it rests on (o
 at least one of the two, and a draft plan: a plan of plan.schema.json in outcome steps, each step with ``what``,
 ``verify`` and a non-empty ``acceptance`` list (422 otherwise, with what the schema says). The hub computes its tier
 with ``tiers.tier_of`` from the charter's protected paths, the paths, the paths the knowledge graph says those reach
-(when the project has one), and the kind, and keeps the reasons. A proposal whose fingerprint is that of a proposal
+(when the project has one), why the graph cannot tell for some (``change_tiers.unknown_paths``: at least tier 1), and
+the kind, and keeps the reasons. A proposal whose fingerprint is that of a proposal
 rejected in the last REJECTED_DAYS days is stored ``dropped``, with ``duplicate_of`` naming it, unless its evidence (its
 own and its findings') counts at least EVIDENCE_FACTOR times the rejected one's. A review run records at most
 MAX_FINDINGS findings and MAX_PROPOSALS proposals (409 after that).
@@ -64,10 +65,11 @@ from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
-from evo_agents.hub.server import audit, facet_figures
+from evo_agents.hub.server import audit, change_tiers, facet_figures
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
 from evo_agents.hub.server.changes import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import notify, run_link
@@ -85,7 +87,6 @@ PROPOSAL = "curator.proposal"  # the owner answered: "<project> proposal:<id> ru
 MAX_LIST = 200
 MAX_OFFSET = 100_000
 SHOWN_PROBLEMS = 5
-GRAPH_DEPTH = 2  # hops of kg_impact a proposal's paths are followed
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
@@ -326,44 +327,6 @@ async def _writer(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
             403, f"{run.owner.login}, who owns run {run.id}, no longer holds the writer role on project {run.project}"
         )
     return access
-
-
-# The knowledge graph
-
-
-@dataclass(frozen=True)
-class GraphView:
-    """What the project's knowledge graph says of some paths: those it has no file for, and the files their edits
-    reach."""
-
-    unmatched: frozenset[str]
-    impacted: frozenset[tuple[str, str]]
-
-
-async def graph_view(request: Request, owner: Principal, access: ProjectAccess, targets: list[str]) -> GraphView | None:
-    """``kg_impact`` of ``targets`` (``repo:path`` each) in the project's latest graph, read as ``owner`` through the
-    project's hub sink; None when there is no target, or the project has no graph or it cannot be read now."""
-    if not targets:
-        return None
-    from evo_agents.hub.server import kg  # its routes import the plans and runs modules
-
-    sink = access.rules.hub_sink.sink if access.rules.hub_sink else kg.CLI_SINK
-    arguments = {"paths": targets, "depth": GRAPH_DEPTH}
-    try:
-        result = await kg.tool_result(request.app.state, owner, access.name, "kg_impact", arguments, sink)
-    except HTTPException as exc:
-        log.info("no knowledge graph for the review", extra={"project": access.name, "status": exc.status_code})
-        return None
-    data = result.get("structuredContent")
-    if result.get("isError") or not isinstance(data, dict):
-        return None
-    reached = set()
-    for item in data.get("impacted") or []:
-        props = ((item or {}).get("node") or {}).get("props") or {}
-        if isinstance(props.get("repo"), str) and isinstance(props.get("path"), str):
-            reached.add((props["repo"], props["path"]))
-    unmatched = {str(path) for path in data.get("unmatched") or []}
-    return GraphView(frozenset(unmatched), frozenset(reached))
 
 
 # Evidence
@@ -638,7 +601,8 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         paths = list(dict.fromkeys((item.repo, item.path) for item in body.paths))
         graph = await graph_view(request, run.owner, access, [f"{repo}:{path}" for repo, path in paths])
         impacted = sorted(graph.impacted) if graph is not None else None
-        tier = tiers.tier_of(body.kind, paths, await _protected(conn, run.project_id), impacted or [])
+        unknown = await change_tiers.unknown_paths(conn, run.project_id, paths, graph)
+        tier = tiers.tier_of(body.kind, paths, await _protected(conn, run.project_id), impacted or [], unknown=unknown)
         fingerprint = tiers.fingerprint(body.kind, paths, body.title)
         rejected = await _rejected_like(conn, run.project_id, fingerprint)
         dropped = rejected is not None and tiers.drops(count, rejected.evidence_count)

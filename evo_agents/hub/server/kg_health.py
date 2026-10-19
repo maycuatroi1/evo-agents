@@ -14,9 +14,10 @@ config:
   the repo's default branch and the commit it points at (``head``), how many of its commits the commit read lacks
   (``behind``) and how long the oldest of them has waited (``lag_hours``, 0 when none does), and the files of the
   branch against those the build holds (``kg_coverage.compare_files``): ``missing``, ``stale`` and ``deleted``, each
-  counted with a few paths, and the ``code:`` evidence a finding can cite for them. A source with no successful build,
-  a repo off GitHub, a hub without the App, an App not installed, a commit GitHub does not know, a tree GitHub cut:
-  the entry says why (``why``) and keeps what was read;
+  counted with a few paths, and the ``code:`` evidence a finding can cite for them; ``off``, those paths whole (up to
+  ``kg_coverage.MAX_OFF_PATHS``), which the tier rules read and the figures leave out. A source with no successful
+  build, a repo off GitHub, a hub without the App, an App not installed, a commit GitHub does not know, a tree GitHub
+  cut: the entry says why (``why``) and keeps what was read;
 
 and, once for the project, ``eval``: the retrieval evaluation of the latest build's graph (``kg_health_eval``), from the
 plans the schedule's owner may read, asked as that owner reads the graph through the project's hub sink. The same
@@ -200,6 +201,7 @@ async def measure_source(app, source: dict, held, origin: str | None, now: datet
         files = held.files if isinstance(held.files, dict) else {}
         entry.update(kg_coverage.compare_files(source, read["tree"], files))
         entry["evidence"] = kg_coverage.file_evidence(source.get("repo"), entry["samples"])
+        entry["off"] = kg_coverage.off_paths(source, read["tree"], files)
     entry["why"] = "; ".join(why) or None
     return entry
 
@@ -429,10 +431,14 @@ async def figures(
     coverage = (
         {"build_id": latest.id, "finished_at": latest.finished_at.isoformat(), **latest.coverage} if latest else None
     )
+    sources = [
+        {key: value for key, value in entry.items() if key != "off"} if isinstance(entry, dict) else entry
+        for entry in body.get("sources") or []
+    ]  # the paths a source's files are off by are for the tier rules; the figures keep their counts and samples
     return {
         "measured_at": measured.measured_at.isoformat() if measured is not None else None,
         "build": body.get("build"),
-        "sources": body.get("sources") or [],
+        "sources": sources,
         "eval": body.get("eval"),
         "coverage": coverage,
         "builds": _builds(rows),

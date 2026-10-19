@@ -2,8 +2,8 @@
 attributes (``tables.curator_changes``, ``tables.curator_repo_checks``, ``tables.curator_ledger``,
 ``tables.replay_tasks``, ``tables.curator_replays``): queries name them there.
 
-curator_changes (0017, 0019) holds what each accepted proposal became, curator_repo_checks (0017) the last check of
-each repo's ruleset, and curator_ledger (0018) what happened to each proposal, never changed or deleted
+curator_changes (0017, 0019, 0054) holds what each accepted proposal became, curator_repo_checks (0017) the last
+check of each repo's ruleset, and curator_ledger (0018) what happened to each proposal, never changed or deleted
 (``evo_agents.hub.server.changes``, ``evo_agents.hub.server.ledger``). replay_tasks (0053) holds each project's suite
 of replay tasks, made from its own history and only ever added to, and curator_replays (0053) each replay of one task
 for one change, with what its two arms found (``evo_agents.hub.replay``, ``evo_agents.hub.server.replays``).
@@ -74,6 +74,7 @@ def _changes(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _stamp("updated_at"),
         Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon (0019)
+        Column("knowledge", JSONB(none_as_null=True)),  # its pull request on knowledge.yaml, kind kg_source (0054)
         ForeignKeyConstraint(
             ["builder_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_builder_run_id_fkey"
         ),

@@ -4597,6 +4597,7 @@
       "docs": "Tài liệu",
       "memory": "Memory",
       "test_add": "Thêm test",
+      "kg_source": "Nguồn graph",
       "fix": "Sửa lỗi",
       "refactor": "Refactor",
       "lint": "Luật lint",

@@ -29,6 +29,7 @@ from evo_agents.kg.connectors._files import excluded, selected
 
 MAX_FILES = 50_000  # files of one git source a build keeps; past that the list is cut and says so
 SAMPLES = 5  # paths, sessions and runs an entry names
+MAX_OFF_PATHS = 2000  # paths missing, stale and deleted a measure keeps of one source, for the tier rules
 GIT = "git"
 MENTION_KEYS = ("mentions", "resolved", "ambiguous", "dangling")
 RETRIEVAL_KEYS = ("calls", "lookups", "empty", "searches", "fallbacks", "edited", "in_results", "in_top")
@@ -140,6 +141,23 @@ def compare_files(source: Mapping, tree: Mapping[str, str], held: Mapping[str, s
         "deleted": len(deleted),
         "samples": {"missing": missing[:SAMPLES], "stale": stale[:SAMPLES], "deleted": deleted[:SAMPLES]},
     }
+
+
+def off_paths(source: Mapping, tree: Mapping[str, str], held: Mapping[str, str]) -> dict:
+    """The paths ``compare_files`` counts as missing, stale and deleted, each list sorted, MAX_OFF_PATHS of them in
+    all, and whether there were more (``cut``): what the tier rules read of a path whose file the graph lacks or holds
+    older than the default branch (``evo_agents.hub.server.change_tiers``)."""
+    branch = {path: sha for path, sha in tree.items() if read_by(source, path)}
+    found = {
+        "missing": sorted(set(branch) - set(held)),
+        "stale": sorted(path for path in set(branch) & set(held) if branch[path] != held[path]),
+        "deleted": sorted(set(held) - set(branch)),
+    }
+    room, kept = MAX_OFF_PATHS, {}
+    for key, paths in found.items():
+        kept[key] = paths[:room]
+        room -= len(kept[key])
+    return {**kept, "cut": sum(len(paths) for paths in found.values()) > MAX_OFF_PATHS}
 
 
 def file_evidence(repo: str | None, samples: Mapping) -> list[str]:

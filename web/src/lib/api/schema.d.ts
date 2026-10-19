@@ -8703,6 +8703,13 @@ export interface components {
              * @description commands run in the worktree; never logged, never shown
              */
             hidden_checks: string[];
+            /**
+             * Knowledge
+             * @description a change of kind kg_source whose pull request changed knowledge.yaml: its files, the sources it edits and the checks the worker runs for it besides the verify (harness validate, a trial sync of each source), whose results the verdict's verify carries under those names; null for any other change
+             */
+            knowledge?: {
+                [key: string]: unknown;
+            } | null;
         };
         /** KgBuildCoverage */
         KgBuildCoverage: {
@@ -11391,7 +11398,7 @@ export interface components {
              * @description the kind of change, which gives its first tier
              * @enum {string}
              */
-            kind: "docs" | "memory" | "test_add" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
+            kind: "docs" | "memory" | "test_add" | "kg_source" | "fix" | "refactor" | "lint" | "skill" | "cli" | "release_prep" | "revert" | "feature" | "api_change" | "schema_change" | "global_config" | "dependency_major" | "operation" | "test_loosen" | "verify_change" | "ci_change" | "credentials" | "curator_rules";
             /** Title */
             title: string;
             /**

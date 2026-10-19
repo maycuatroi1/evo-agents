@@ -235,6 +235,7 @@ def test_the_hub_measures_each_git_source_of_a_charter_against_its_default_branc
         "deleted": 1,
         "samples": {"missing": ["app/new.py"], "stale": ["app/b.py"], "deleted": ["app/gone.py"]},
         "evidence": ["code:evo-agents:app/new.py", "code:evo-agents:app/b.py", "code:evo-agents:app/gone.py"],
+        "off": {"missing": ["app/new.py"], "stale": ["app/b.py"], "deleted": ["app/gone.py"], "cut": False},
         "why": None,
     }
     assert kb["why"] == kg_health.OFF_GITHUB and kb["behind"] is None and kb["missing"] is None
@@ -324,6 +325,7 @@ def test_the_nights_figures_hold_the_health_of_the_graph_and_the_lens_kg_health_
     assert health["measured_at"] == MEASURED.isoformat() and health["build"]["id"] == build_id
     assert [item["source"] for item in health["sources"]] == ["code", "kb", "unbuilt", "local"]
     assert health["sources"][0]["behind"] == 2 and health["sources"][0]["lag_hours"] == 6.0
+    assert all("off" not in item for item in health["sources"])  # the tier rules read those paths, not the Reviewer
     assert health["coverage"]["build_id"] == build_id and health["coverage"]["python"]["uncalled_methods"] == 2
     builds = health["builds"]
     assert {key: builds[key] for key in ("builds", "succeeded", "failed", "unchanged", "unchanged_rate")} == {
@@ -407,7 +409,7 @@ def test_schema_0052_takes_the_lens_kg_health_and_going_back_deletes_what_it_wro
     assert sql(world.db, select(func.to_regclass("public.kg_health"), func.to_regclass("public.kg_source_files"))) == [
         (None, None)
     ]
-    assert migrate(world.db.dsn).applied == ("0052", "0053")
+    assert migrate(world.db.dsn).applied == ("0052", "0053", "0054")
     b = tables.kg_builds
     assert sql(world.db, select(func.count(), func.count(b.c.coverage)))[0] == (3, 0)  # the column came back empty
     again = finding(

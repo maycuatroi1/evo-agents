@@ -27,10 +27,12 @@ When the Builder ends done with every step of the plan done (``builder_ended``),
 request (``pr_pending``) on GitHub, or for its Judge (``judge_pending``) on GitLab, where the push opened the merge
 request. The job ``curator.changes`` (``advance``) opens the pull request with the workers' App, reads its files and
 runs ``judge.hack_signs`` on them: a sign fails the change at once and puts its proposal at tier 3. Those files also
-give the proposal its tier again (``_retier``: ``tiers.tier_of`` over the paths the pull request really changes, which
+give the proposal its tier again (``change_tiers.retier``: ``tiers.tier_of`` over the paths the pull request really
+changes, what the knowledge graph says of them and, for kind kg_source, what it does to knowledge.yaml key by key, which
 only ever raises it), so a proposal of docs whose pull request changes code is tier 1 from then on. A list of files
 GitHub cuts short is a sign too. A judge run reads what it needs with GET /v1/worker/runs/{id}/judge, the hidden checks
-of the charter included, and posts its verdict with POST /v1/worker/runs/{id}/verdict. Both take, besides the worker's
+of the charter and the checks of knowledge.yaml included (``change_tiers.judge_knowledge``), and posts its verdict with
+POST /v1/worker/runs/{id}/verdict, those checks' results among its verify results. Both take, besides the worker's
 token, the run's own key (``judge.JUDGE_KEY_HEADER``), which the hub makes when the run is claimed, hands the daemon in
 the claim alone and keeps as a SHA-256 (``issue_judge_key``): the worker token, which code on the worker's machine can
 read, neither reads a hidden check nor writes a verdict. The hub passes the change only as ``judge.final_verdict``
@@ -60,6 +62,7 @@ import secrets
 from collections import Counter
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import partial
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, HTTPException, Request, Response
@@ -70,7 +73,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, judge, runs, tables, tiers
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, change_tiers
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -170,6 +173,12 @@ class JudgeInputs(BaseModel):
     verify: list[str] = Field(description="the verify of each step of the plan, as the Builder had them")
     protected_paths: list[str]
     hidden_checks: list[str] = Field(description="commands run in the worktree; never logged, never shown")
+    knowledge: dict | None = Field(
+        None,
+        description="a change of kind kg_source whose pull request changed knowledge.yaml: its files, the sources it "
+        "edits and the checks the worker runs for it besides the verify (harness validate, a trial sync of each "
+        "source), whose results the verdict's verify carries under those names; null for any other change",
+    )
 
 
 class HiddenResult(BaseModel):
@@ -855,12 +864,14 @@ async def judge_inputs(
             )
         ).one()
         verify = await _plan_verify(conn, row)
+        knowledge = change_tiers.judge_knowledge(change)
+        checks = f", {len(knowledge['checks'])} check(s) of knowledge.yaml" if knowledge else ""
         await write_event(
             conn,
             run_id,
             {
-                "text": f"The Judge read its inputs: {len(verify)} verify command(s) of the plan and {len(hidden)} "
-                "hidden check(s) of the project, which only this run reads.",
+                "text": f"The Judge read its inputs: {len(verify)} verify command(s) of the plan{checks} and "
+                f"{len(hidden)} hidden check(s) of the project, which only this run reads.",
                 "change_id": change.id,
             },
         )
@@ -876,41 +887,8 @@ async def judge_inputs(
         verify=verify,
         protected_paths=[item for item in charter.get("protected_paths") or [] if isinstance(item, str)],
         hidden_checks=hidden,
+        knowledge=knowledge,
     )
-
-
-async def _retier(conn: AsyncConnection, change, paths: list[str], charter: dict) -> int:
-    """The tier of the change's proposal again, from ``paths``, those the diff really touches, with the charter's
-    protected paths (``tiers.tier_of``): raised when they give a higher one, with the reasons, never lowered. The
-    tier the change has now."""
-    pr = tables.proposals
-    row = (
-        await conn.execute(
-            select(pr.c.kind, pr.c.tier, pr.c.tier_reasons).where(pr.c.id == change.proposal_id).with_for_update()
-        )
-    ).one()
-    named = []
-    for path in paths:
-        normal = tiers.normalize_path(path)
-        named.append((change.repo, normal if normal is not None else "(a path that is no repo path)"))
-    protected = [item for item in charter.get("protected_paths") or [] if isinstance(item, str)]
-    try:
-        found = tiers.tier_of(row.kind, sorted(set(named)), protected)
-    except ValueError:
-        found = tiers.Tier(3, [f"kind {row.kind} is not a kind of change: tier 3"])
-    if found.tier <= row.tier:
-        return max(row.tier, change.tier)
-    kept = list(row.tier_reasons or [])
-    for reason in found.reasons[1:]:
-        if reason not in kept:
-            kept.append(reason)
-    kept.append(f"the files the change really touches give it tier {found.tier}, not {row.tier}")
-    await conn.execute(update(pr).values(tier=found.tier, tier_reasons=kept).where(pr.c.id == change.proposal_id))
-    log.info(
-        "curator change raised",
-        extra={"change_id": change.id, "proposal_id": change.proposal_id, "tier": found.tier, "was": row.tier},
-    )
-    return found.tier
 
 
 async def _raise_tier(conn: AsyncConnection, change, signs: list[dict]) -> None:
@@ -932,7 +910,7 @@ async def record_verdict(
     ``judge.final_verdict`` says, and the paths the diff touches give its proposal its tier again."""
     async with request.app.state.engine.begin() as conn:
         row, change = await _held_judge(conn, user, run_id, judge_key)
-        expected = await _plan_verify(conn, row)
+        expected = await _plan_verify(conn, row) + change_tiers.judge_checks(change)
         hidden_count = change.hidden_count
         if hidden_count is None:
             charter = await _charter(conn, row.project_id)
@@ -975,7 +953,10 @@ async def record_verdict(
             values["tier"] = 3
         elif body.paths:
             charter = await _charter(conn, row.project_id)
-            values["tier"] = await _retier(conn, change, body.paths, charter)
+            state = request.app.state
+            reader = change_tiers.GraphReader(state.blobs, state.kg_graphs)
+            facts = await change_tiers.verdict_facts(state.engine, change, body.paths, reader)
+            values["tier"] = await change_tiers.retier(conn, change, facts, charter)
         await _set(conn, change.id, **values)
         text = f"The Judge {'passed' if passed else 'failed'} the Curator's change #{change.id}"
         text += "." if passed else f": {'; '.join(failures)}."
@@ -1046,7 +1027,7 @@ def _pr_body(project: str, change, proposal_title: str) -> str:
     )
 
 
-async def _open_pull(engine: AsyncEngine, app: GitHubApp, change) -> str:
+async def _open_pull(engine: AsyncEngine, app: GitHubApp, change, reader: change_tiers.GraphReader) -> str:
     from evo_agents.hub.server import pulls
 
     target = github_target(change.origin)
@@ -1113,12 +1094,13 @@ async def _open_pull(engine: AsyncEngine, app: GitHubApp, change) -> str:
     )
     if cut is not None:  # first, so the cap on signs never drops it
         signs.insert(0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": cut})
+    facts = await change_tiers.pull_facts(engine, app, change, target, judge.changed_paths(diff), made, reader)
     async with engine.begin() as conn:
         locked = await change_of_plan(conn, change.project_id, change.plan_id, lock=True)
         if locked is None or locked.state != "pr_pending":
             return "moved"
         values = {"pr_number": number, "pr_url": url, "base_branch": base, "head_sha": head, "reason": None}
-        values["tier"] = await _retier(conn, locked, judge.changed_paths(diff), charter)
+        values.update(tier=await change_tiers.retier(conn, locked, facts, charter), knowledge=facts.knowledge)
         if signs:
             _, failures = judge.final_verdict(
                 agent=None, verify=[], expected_verify=[], hidden=[], hidden_count=0, signs=signs, head_matches=True
@@ -1226,7 +1208,54 @@ async def _ruleset_now(engine: AsyncEngine, curator_app: GitHubApp | None, chang
     return found
 
 
-async def _merge(engine: AsyncEngine, app: GitHubApp, curator_app: GitHubApp | None, change) -> str:
+async def _read_merge(app: GitHubApp, target: Target, change, token: str) -> dict:
+    """What the hub reads of a judged change's pull request before it merges it: the pull request, its files and
+    whether GitHub cut them, the check runs and statuses of its head, its head commit's message, and the repo."""
+    from evo_agents.hub.server import pulls
+
+    found = await pulls.pull(app, token, target.owner, target.name, change.pr_number)
+    files, cut = await _files_of(app, token, target, change.pr_number, found.get("changed_files"))
+    head = (found.get("head") or {}).get("sha")
+    runs_found = await pulls.check_runs(app, token, target.owner, target.name, head) if judge.is_sha(head) else None
+    statuses = await pulls.combined_status(app, token, target.owner, target.name, head) if judge.is_sha(head) else None
+    try:
+        commits = await pulls.pull_commits(app, token, target.owner, target.name, change.pr_number)
+    except GitHubRefused:
+        commits = []
+    message = next(
+        (
+            (item.get("commit") or {}).get("message")
+            for item in commits
+            if isinstance(item, dict) and item.get("sha") == head
+        ),
+        None,
+    )
+    repo = await pulls.repository(app, token, target.owner, target.name)
+    return {
+        "pull": found,
+        "files": files,
+        "cut": cut,
+        "runs": runs_found,
+        "statuses": statuses,
+        "message": message,
+        "repo": repo,
+    }
+
+
+async def _tier_again(engine: AsyncEngine, app: GitHubApp, change, target: Target, diff, pull: dict, charter, reader):
+    """The tier of a judged change from its pull request's files as GitHub lists them now (``change_tiers.retier``),
+    kept on the change when it rose."""
+    facts = await change_tiers.pull_facts(engine, app, change, target, judge.changed_paths(diff), pull, reader)
+    async with engine.begin() as conn:
+        tier = await change_tiers.retier(conn, change, facts, charter)
+        if tier != change.tier:
+            await _set(conn, change.id, tier=tier)
+    return tier
+
+
+async def _merge(
+    engine: AsyncEngine, app: GitHubApp, curator_app: GitHubApp | None, change, reader: change_tiers.GraphReader
+) -> str:
     from evo_agents.hub.server import pulls
 
     if not change.passed:
@@ -1262,39 +1291,7 @@ async def _merge(engine: AsyncEngine, app: GitHubApp, curator_app: GitHubApp | N
     if paused:
         return await _wait_paused(engine, change)
     ruleset = await _ruleset_now(engine, curator_app, change, target)
-
-    async def read(token: str) -> dict:
-        found = await pulls.pull(app, token, target.owner, target.name, change.pr_number)
-        files, cut = await _files_of(app, token, target, change.pr_number, found.get("changed_files"))
-        head = (found.get("head") or {}).get("sha")
-        runs_found = await pulls.check_runs(app, token, target.owner, target.name, head) if judge.is_sha(head) else None
-        statuses = (
-            await pulls.combined_status(app, token, target.owner, target.name, head) if judge.is_sha(head) else None
-        )
-        try:
-            commits = await pulls.pull_commits(app, token, target.owner, target.name, change.pr_number)
-        except GitHubRefused:
-            commits = []
-        message = next(
-            (
-                (item.get("commit") or {}).get("message")
-                for item in commits
-                if isinstance(item, dict) and item.get("sha") == head
-            ),
-            None,
-        )
-        repo = await pulls.repository(app, token, target.owner, target.name)
-        return {
-            "pull": found,
-            "files": files,
-            "cut": cut,
-            "runs": runs_found,
-            "statuses": statuses,
-            "message": message,
-            "repo": repo,
-        }
-
-    seen = await pulls.with_token(app, target.owner, target.name, "read", read)
+    seen = await pulls.with_token(app, target.owner, target.name, "read", partial(_read_merge, app, target, change))
     found = seen["pull"]
     diff = judge.from_github_files(seen["files"])
     signs = judge.hack_signs(
@@ -1307,10 +1304,7 @@ async def _merge(engine: AsyncEngine, app: GitHubApp, curator_app: GitHubApp | N
         signs.insert(
             0, {"kind": "diff_unreadable", "path": "(the pull request's files)", "line": None, "text": seen["cut"]}
         )
-    async with engine.begin() as conn:
-        tier = await _retier(conn, change, judge.changed_paths(diff), charter)
-        if tier != change.tier:
-            await _set(conn, change.id, tier=tier)
+    tier = await _tier_again(engine, app, change, target, diff, found, charter, reader)
     if isinstance(seen["message"], str):
         ci, ci_reasons = judge.ci_state(
             seen["runs"],
@@ -1515,10 +1509,14 @@ async def _watch(engine: AsyncEngine, app: GitHubApp, change) -> str:
     return "still_open"
 
 
-async def advance(engine: AsyncEngine, github_app: GitHubApp | None, curator_app: GitHubApp | None) -> dict:
+async def advance(
+    engine: AsyncEngine, github_app: GitHubApp | None, curator_app: GitHubApp | None, *, blobs=None, data_dir=None
+) -> dict:
     """One pass of the job ``curator.changes`` (see the module's docstring); how many changes ended in each outcome.
-    GitHub failing leaves a change as it is for the next pass."""
+    GitHub failing leaves a change as it is for the next pass. ``blobs`` and ``data_dir`` are where the knowledge
+    graphs the tier rules read come from (``change_tiers.GraphReader``)."""
     outcomes: Counter = Counter()
+    reader = change_tiers.GraphReader.at(blobs, data_dir)
     for change in await _due_changes(engine):
         try:
             if change.forge != "github":
@@ -1536,7 +1534,7 @@ async def advance(engine: AsyncEngine, github_app: GitHubApp | None, curator_app
                 outcomes["no_app"] += 1
                 continue
             if change.state == "pr_pending":
-                outcomes[await _open_pull(engine, github_app, change)] += 1
+                outcomes[await _open_pull(engine, github_app, change, reader)] += 1
                 continue
             if (
                 change.check_run_id is None
@@ -1544,7 +1542,7 @@ async def advance(engine: AsyncEngine, github_app: GitHubApp | None, curator_app
                 and github_target(change.origin) is not None
             ):
                 outcomes[await _write_check(engine, github_app, change)] += 1
-            outcomes[await _merge(engine, github_app, curator_app, change)] += 1
+            outcomes[await _merge(engine, github_app, curator_app, change, reader)] += 1
         except GitHubUnavailable as exc:
             log.warning("a curator change waits for GitHub", extra={"change_id": change.id, "why": str(exc)})
             outcomes["github"] += 1

@@ -17,7 +17,9 @@ as it may not be for a moment after the push; any other refusal is final.
 
 For the measure of a knowledge graph's health (``evo_agents.hub.server.kg_health``) the workers' App reads, with
 ``contents: read``, the commit a default branch points at (``branch_head``), the files of a commit's tree
-(``tree``), and how many commits of the branch a commit lacks (``compare``).
+(``tree``), and how many commits of the branch a commit lacks (``compare``); for the tier of a change of knowledge.yaml
+(``evo_agents.hub.server.change_tiers``), a pull request's merge base (``compare``) and the text of a file at a commit
+(``file_text``).
 
 ``check_ruleset`` answers whether the Curator's App is kept off a repo's default branch: GET /repos/{o}/{r} names the
 default branch, GET /repos/{o}/{r}/rules/branches/{branch} the rules that apply to it, and for each ruleset with a rule
@@ -33,6 +35,7 @@ in part, so a pull request of more files than the hub reads, or of more check ru
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -227,12 +230,35 @@ async def compare(app: GitHubApp, token: str, owner: str, repo: str, base: str, 
     first = commits[0] if commits and isinstance(commits[0], dict) else {}
     oldest = ((first.get("commit") or {}).get("committer") or {}).get("date")
     ahead, behind = data.get("ahead_by"), data.get("behind_by")
+    merge_base = (data.get("merge_base_commit") or {}).get("sha")
     return {
         "status": data.get("status") if isinstance(data.get("status"), str) else None,
         "ahead_by": ahead if type(ahead) is int else None,
         "behind_by": behind if type(behind) is int else None,
         "oldest": oldest if isinstance(oldest, str) else None,
+        "merge_base": merge_base if isinstance(merge_base, str) else None,
     }
+
+
+async def file_text(app: GitHubApp, token: str, owner: str, repo: str, path: str, ref: str) -> str | None:
+    """The text of file ``path`` of owner/repo at commit ``ref``; None when the commit has no such file. A file GitHub
+    does not answer whole (over 1 MB), or that is not UTF-8, is a ``Refused``: it is never read in part."""
+    doing = f"reading {path} at {ref[:12]} of {owner}/{repo}"
+    response = await _api(
+        app, token, "GET", _path("repos", owner, repo, "contents", *path.split("/")), doing, params={"ref": ref}
+    )
+    if response.status_code == 404:
+        return None
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    content = data.get("content") if isinstance(data, dict) else None
+    if not isinstance(data, dict) or data.get("type") != "file" or data.get("encoding") != "base64":
+        raise Refused(f"GitHub did not answer the whole file while {doing}")
+    try:
+        return base64.b64decode(content or "", validate=False).decode("utf-8")
+    except (ValueError, UnicodeDecodeError):
+        raise Refused(f"GitHub answered a file that is not UTF-8 text while {doing}") from None
 
 
 async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict | None:

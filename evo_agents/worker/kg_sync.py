@@ -184,7 +184,7 @@ def _harness_text(checkout: Path, project: str) -> tuple[str, str, dict, dict] |
     return knowledge_text, ref, manifest, knowledge
 
 
-def _view_manifest(manifest: dict, checkouts: dict[str, Path]) -> dict:
+def view_manifest(manifest: dict, checkouts: dict[str, Path]) -> dict:
     """harness.yaml as the view writes it: each repo's path the worker's checkout of it, none for a repo without one,
     and no workspace, every path being absolute."""
     repos = []
@@ -218,7 +218,7 @@ def write_view(root: Path, project: str, checkouts: dict[str, Path], lock: Calla
             continue
         knowledge_text, ref, manifest, knowledge = found
         view = kg_dir(root) / "harness" / project
-        manifest = _view_manifest(manifest, checkouts)
+        manifest = view_manifest(manifest, checkouts)
         _write(view, "harness.yaml", yaml.safe_dump(manifest, sort_keys=False, allow_unicode=True))
         _write(view, manifest["knowledge_file"], knowledge_text)
         ontology = knowledge.get("ontology")
@@ -335,7 +335,7 @@ def git_sources(project: Project) -> list[dict]:
     return [src for src in project.sources() if isinstance(src, dict) and src.get("connector") == "git"]
 
 
-def _failure(result: SyncResult) -> str | None:
+def sync_failure(result: SyncResult) -> str | None:
     """What went wrong with a sync: for a failed one, its first issue, else the exception of its connector, else its
     stderr; for an ok one, a fetch that failed, so the commit read may lag the remote. None when nothing did."""
     if result.ok:
@@ -453,7 +453,7 @@ class KgSync:
         cursor = corpus.cursor(sid)
         cursor = cursor if isinstance(cursor, dict) else {}
         found.commit, found.behind = cursor.get("commit"), cursor.get("behind")
-        problem = _failure(result)
+        problem = sync_failure(result)
         found.status = "ok" if problem is None else "failed"
         found.error = None if problem is None else cut(problem, self.secrets)
         if result.ok and not result.unchanged:

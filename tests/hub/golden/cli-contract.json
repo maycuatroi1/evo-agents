@@ -8432,6 +8432,7 @@
             "docs",
             "memory",
             "test_add",
+            "kg_source",
             "fix",
             "refactor",
             "lint",
@@ -45407,6 +45408,19 @@
               "type": "array",
               "title": "Hidden Checks",
               "description": "commands run in the worktree; never logged, never shown"
+            },
+            "knowledge": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Knowledge",
+              "description": "a change of kind kg_source whose pull request changed knowledge.yaml: its files, the sources it edits and the checks the worker runs for it besides the verify (harness validate, a trial sync of each source), whose results the verdict's verify carries under those names; null for any other change"
             }
           },
           "type": "object",
@@ -51390,6 +51404,7 @@
                 "docs",
                 "memory",
                 "test_add",
+                "kg_source",
                 "fix",
                 "refactor",
                 "lint",
