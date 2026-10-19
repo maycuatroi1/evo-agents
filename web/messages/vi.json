@@ -2452,7 +2452,17 @@
       "handedLabel": "@{handle}: run #{id}, nơi agent nhận việc",
       "refused": "@{handle} không nhận việc:",
       "pull": "PR #{number} trong {repo}",
-      "newTab": "(mở trong tab mới)"
+      "newTab": "(mở trong tab mới)",
+      "progress": {
+        "waiting": "<agent>@{handle}</agent> đã nhận, đang chờ worker {worker}",
+        "waitingAny": "<agent>@{handle}</agent> đã nhận, đang chờ một worker",
+        "inbox": "<agent>@{handle}</agent> đã nhận, tin nằm trong inbox của lượt đang chạy",
+        "claimed": "<agent>@{handle}</agent>: worker {worker} đã nhận run",
+        "checking": "<agent>@{handle}</agent> đang kiểm quyền truy cập các repo",
+        "opening": "<agent>@{handle}</agent> đang mở {repo}",
+        "starting": "<agent>@{handle}</agent> đang khởi động",
+        "working": "<agent>@{handle}</agent> đang làm"
+      }
     },
     "reactions": {
       "you": "bạn",
@@ -3711,6 +3721,10 @@
             "label": "Xung đột khi push",
             "hint": "Nhánh trên origin đã đổi nên lần push bị từ chối."
           },
+          "push_declined": {
+            "label": "Push bị từ chối",
+            "hint": "Origin từ chối lần push theo luật riêng của nó, như một hook hay nhánh được bảo vệ. Commit vẫn nằm trên nhánh của run trong worktree."
+          },
           "verify_failed": {
             "label": "Verify không đạt",
             "hint": "Lệnh verify của bước không đạt."
@@ -3988,6 +4002,22 @@
       "kind": "Chat run",
       "line": "Một lượt của @{agent} trong group chat",
       "lineProject": "{project}: một lượt của @{agent} trong group chat"
+    },
+    "session": {
+      "turns": "{count, plural, other {# lượt}}",
+      "line": "Phiên của {person} với @{agent} trong group chat",
+      "mobileLine": "{count, plural, other {# lượt}}, phiên của {person} với @{agent}",
+      "turnsLabel": "Các lượt của phiên {title}",
+      "turn": "Lượt {turn}",
+      "turnOf": "Lượt {turn} trong {turns}",
+      "turnLink": "Lượt {turn}: {title}",
+      "navLabel": "Các lượt của phiên này",
+      "navError": "Không đọc được các lượt khác.",
+      "loading": "Đang đọc các lượt",
+      "error": "Không đọc được các lượt của phiên này.",
+      "retry": "Thử lại",
+      "more": "{shown} lượt mới nhất trong {total} lượt",
+      "untitled": "Lượt chưa có tiêu đề"
     },
     "taskRun": {
       "kind": "Task run",

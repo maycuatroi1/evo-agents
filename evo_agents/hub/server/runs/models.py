@@ -333,6 +333,22 @@ class Run(BaseModel):
         description="a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most "
         "3); null for any other run",
     )
+    session_run_id: int | None = Field(
+        None,
+        description="a chat run's session: the id of its first run, which its branch chat/<id> names (the run's own id "
+        "for the first); null for any other run",
+    )
+    session_turn: int | None = Field(
+        None,
+        description="a chat run's turn in its session: 1 for its first run, one more for each after it; null for any "
+        "other run",
+    )
+    session_turns: int | None = Field(None, description="the runs of a chat run's session so far; null for another run")
+    session_title: str | None = Field(
+        None,
+        description="the title of a chat run's session, its first run's, which the pull requests of its branch take; "
+        "each run after it is titled by the message that woke it. Null for any other run",
+    )
     machine: str | None = Field(None, description="a local run's machine, as its hub login names it; null otherwise")
     cwd: str | None = Field(None, description="the directory a local run's session works in; null otherwise")
     claude_email: str | None = Field(

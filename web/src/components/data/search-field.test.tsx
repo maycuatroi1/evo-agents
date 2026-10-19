@@ -13,7 +13,17 @@ import { SearchField } from "./search-field";
 import { takesText } from "./search-shortcut";
 
 /** A field whose committed query comes back as its value, as the URL does on a page. */
-function Field({ testId = "search", onCommit = vi.fn(), shortcut }: { testId?: string; onCommit?: (q: string) => void; shortcut?: boolean }) {
+function Field({
+  testId = "search",
+  onCommit = vi.fn(),
+  shortcut,
+  debounce = 50,
+}: {
+  testId?: string;
+  onCommit?: (q: string) => void;
+  shortcut?: boolean;
+  debounce?: number;
+}) {
   const [value, setValue] = useState("");
   return (
     <SearchField
@@ -25,7 +35,7 @@ function Field({ testId = "search", onCommit = vi.fn(), shortcut }: { testId?: s
       label={`Search ${testId}`}
       placeholder="Step, plan or #run"
       clearLabel="Clear search"
-      debounce={50}
+      debounce={debounce}
       shortcut={shortcut}
       testId={testId}
     />
@@ -71,6 +81,60 @@ describe("SearchField", () => {
     await user.keyboard("{Escape}");
     expect(onCommit).toHaveBeenLastCalledWith("");
     expect(input).toHaveValue("");
+  });
+
+  it("commits the query typed once focus leaves the field, before the pause ends, so a click elsewhere comes after it", async () => {
+    const user = userEvent.setup();
+    const onCommit = vi.fn();
+    renderVi(
+      <>
+        <Field onCommit={onCommit} debounce={60_000} />
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    await user.type(screen.getByRole("searchbox"), "deploy");
+    expect(onCommit).not.toHaveBeenCalled();
+    await user.click(screen.getByRole("button", { name: "Elsewhere" }));
+    expect(onCommit.mock.calls).toEqual([["deploy"]]);
+    await user.click(screen.getByRole("searchbox"));
+    await user.tab();
+    expect(onCommit).toHaveBeenCalledTimes(1); // nothing typed since: losing focus commits nothing
+  });
+
+  it("drops the query typed on a page the person has left, at the end of its pause and when focus leaves", async () => {
+    const user = userEvent.setup();
+    const onCommit = vi.fn();
+    const before = window.location.pathname;
+    onTestFinished(() => window.history.replaceState(null, "", before));
+    renderVi(
+      <>
+        <Field onCommit={onCommit} />
+        <button type="button">Elsewhere</button>
+      </>,
+    );
+    const input = screen.getByRole("searchbox");
+    await user.type(input, "deploy");
+    window.history.pushState(null, "", "/p/acme/runs/7");
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(onCommit).not.toHaveBeenCalled();
+
+    await user.type(input, " now");
+    window.history.pushState(null, "", "/p/acme/runs/8");
+    await user.click(screen.getByRole("button", { name: "Elsewhere" }));
+    await new Promise((resolve) => setTimeout(resolve, 120));
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it("clears without committing the query typed first, and keeps focus in the field", async () => {
+    const user = userEvent.setup();
+    const onCommit = vi.fn();
+    renderVi(<Field onCommit={onCommit} debounce={60_000} />);
+    const input = screen.getByRole("searchbox");
+    await user.type(input, "dep");
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+    expect(onCommit).not.toHaveBeenCalled(); // "" is the query already committed
+    expect(input).toHaveValue("");
+    expect(input).toHaveFocus();
   });
 });
 

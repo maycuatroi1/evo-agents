@@ -811,8 +811,13 @@ Shared pieces built on them:
   `@handle`), the time, the text through SafeMarkdown (`components/data/markdown.tsx`: Markdown, never HTML), then
   square chips for where it leads (`message-links.tsx`: an agent's message's run, each mention's run as `@handle: run
   #N`, a mention the hub refused in `attention` with the hub's reason, each GitHub pull request the message links, in
-  a new tab), its reactions, and for a message that starts a thread, the faces of who replied, "3 replies" in `brand`
-  and when the last came, which opens the thread. React and Reply in thread sit over its top right corner from 768 px
+  a new tab), how far each run it handed work to is while that run is on its way (`message-progress.tsx`, by the hub's
+  rule, for a visitor who may read the run: one polite status line per run, "@handle got it, waiting for worker X" or
+  "in the inbox of the running turn" with a still neutral dot, then each step of its setup and working with the
+  running dot, each in place of the one before; gone once the agent answers or the run ends, so a message nobody
+  works on shows nothing), its reactions, and for a message that starts a thread, the faces of who replied, "3
+  replies" in `brand` and when the last came, which opens the thread.
+  React and Reply in thread sit over its top right corner from 768 px
   (a `popover` box shown while the pointer is over the message, a key is in it or its picker is open), and in a row of
   their own under it on phones. Reactions (`reactions.tsx`) are the chat's one place for emoji (Style): a round chip
   per emoji with its count, the visitor's own pressed (`brand-soft`, `aria-pressed`), named by the emoji's name, the

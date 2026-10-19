@@ -2,21 +2,28 @@
 it goes to, the session it goes on in, the chat's budget, the agent's messages in the thread and the reactions that
 follow the run.
 
-``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent
-(``chat_agents``): the run of the profile's agent for the person at the origin of the chain. Refused, with why, when
-that person is not a writer on the profile's project, when the chat's budget is spent, or when no worker of the person
-can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in
-its inbox; one that ended done is gone on from by a new run, pinned to its worker, in its session, with the message in
-its inbox; else a new session starts on the person's worker the profile allows, with the most of the project's repos
-checked out first, on the branch ``chat/<run>``. The profile of an agent type that routes its chat runs to its
+``hand_work`` is what a mention asks, of a person (``hand_mentions``, from ``chats``) or of an agent (``chat_agents``):
+the run of the profile's agent for the person at the origin of the chain. Refused, with why, when that person is not a
+writer on the profile's project, when the chat's budget is spent, or when no worker of the person can take it now. Each
+(thread, agent, person) is one session: a run of it that is queued or held takes the message in its inbox; one that
+ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by a new run, pinned to
+its worker, in its session, with the message in its inbox; else a new session starts on the person's worker the profile
+allows, with the most of the project's repos checked out first, on the branch ``chat/<run>``, in the repos of the
+project that worker has a checkout of; on a daemon of ``runs.LAZY_CHAT_REPOS``, in the project's harness alone, and its
+agent opens the others it needs (``chat_agents.open_repo``), which the runs after it in the session start with
+(``_continue_run``). Each run after the first takes its title from the message that woke it (``rules.turn_title``), not
+from the run before; the first run's stays the session's. The profile of an agent type that routes its chat runs to its
 ``run_as`` (``chat_route``) takes the worker of that member instead, who must hold writer on the project, and its run's
 row is dispatched by them; the person stays the origin the hub's chat code acts for (``ChatRun.dispatcher_id``).
 
-A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) put the agent's reaction on the message that
-started it by rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
+A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) wake the chat's streams, whose progress of the
+run under its messages changed (``chat_progress``), and put the agent's reaction on the message that started it by
+rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
 done with messages of its inbox untaken goes on in its session at once, with them. Its prompt is built when it is
-claimed (``chat_prompt``). The agent's reply at the end of each turn, and the messages of its commands, are messages of
-its profile in the thread (``post_agent``): a person it mentions gets the notice, an agent none, and no run.
+claimed (``chat_prompt``); on a daemon of ``runs.LAZY_CHAT_REPOS`` it lists every repo of the project, those open and
+those the message or the thread names first (``rules.ranked_repos``). The agent's reply at the end of each turn, and
+the messages of its commands, are messages of its profile in the thread (``post_agent``): a person it mentions gets the
+notice, an agent none, and no run.
 """
 
 from __future__ import annotations
@@ -34,7 +41,7 @@ from evo_agents.hub.author import harness_repo
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_route import Route, origin, route_of
-from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction
+from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction, wake
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
@@ -111,12 +118,19 @@ def _spent(spent: float, budget: float) -> str:
 # The worker
 
 
+async def project_harness(conn: AsyncConnection, project_id: int) -> str | None:
+    """The repo a worker names the checkout of the project's harness by (``author.harness_repo``); None for a project
+    registered without one."""
+    p = tables.projects
+    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == project_id))).scalar_one_or_none()
+    return harness_repo(path)
+
+
 async def project_repos(conn: AsyncConnection, project_id: int) -> list[str]:
     """The repos of a project a chat run works in: its harness, then the repos it lists, by name."""
-    p, pr = tables.projects, tables.project_repos
-    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == project_id))).scalar_one_or_none()
+    pr = tables.project_repos
     names = (await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))).scalars()
-    harness = harness_repo(path)
+    harness = await project_harness(conn, project_id)
     return list(dict.fromkeys([*([harness] if harness else []), *names]))
 
 
@@ -176,6 +190,7 @@ def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | 
             r.c.worker_id,
             r.c.session_id,
             r.c.usage,
+            r.c.failure_cause,
             w.c.revoked_at.is_not(None).label("revoked"),
             m.c.author_user_id.label("author_id"),
         )
@@ -233,12 +248,16 @@ async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
     await write_user_message(conn, run_id, event)
 
 
+CONTINUED = ("kind", "project_id", "title", "mode", "approval", "timeout_s", "repos", "branch", "model", "chat_id")
+CONTINUED += ("profile_id", "profile_version", "session_id", "runtime")
+
+
 def _continue_run(previous: int, values: dict):
     """The run that goes on in the session of chat run ``previous``: its project, profile, repos, branch, runtime and
-    model, pinned to its worker, in its session; ``values`` names the rest."""
+    model, pinned to its worker, in its session; ``values`` names the rest, and a title (``_titled``), or else the
+    run takes the title of ``previous``."""
     r = tables.runs
-    copied = ("kind", "project_id", "title", "mode", "approval", "timeout_s", "repos", "branch", "model", "chat_id")
-    copied += ("profile_id", "profile_version", "session_id", "runtime")
+    copied = tuple(name for name in CONTINUED if name not in values)
     source = select(
         *(r.c[name] for name in copied),
         r.c.worker_id.label("pinned_worker_id"),
@@ -250,8 +269,26 @@ def _continue_run(previous: int, values: dict):
     return insert(r).from_select(columns, source).returning(r.c.id)
 
 
+def _titled(values: dict, title: str | None) -> dict:
+    """``values`` of a run that goes on in a session, with ``title`` when there is one."""
+    return {**values, "title": title} if title else values
+
+
+async def _woken_title(conn: AsyncConnection, run_id: int, text: str) -> str | None:
+    """The title of the run that goes on in the session of chat run ``run_id``, woken by ``text``; None when the run
+    has no profile or chat any more."""
+    r, c, ap = tables.runs, tables.chats, tables.agent_profiles
+    query = (
+        select(ap.c.handle, c.c.title)
+        .select_from(r.join(c, c.c.id == r.c.chat_id).join(ap, ap.c.id == r.c.profile_id))
+        .where(r.c.id == run_id)
+    )
+    row = (await conn.execute(query)).one_or_none()
+    return None if row is None else rules.turn_title(row.handle, row.title, text)
+
+
 async def _go_on(conn: AsyncConnection, previous, hand: Hand, left: float) -> int:
-    """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``."""
+    """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``, its title."""
     budget = rules.run_budget(left + curator.run_cost(previous.usage))  # the claim takes the session's cost off
     values = {
         "dispatched_by": hand.owner_id,
@@ -260,20 +297,25 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand, left: float) -> in
         "hop": hand.hop,
         "budget": budget,
     }
+    values = _titled(values, rules.turn_title(hand.profile.handle, hand.chat.title, hand.body))
     new_id = (await conn.execute(_continue_run(previous.id, values))).scalar_one()
     await _to_inbox(conn, new_id, hand)
-    shown = f"goes on in the session of run #{previous.id}, as {hand.author} wrote in the thread"
+    failed = f" (failed: {previous.failure_cause})" if previous.state == "failed" else ""
+    shown = f"goes on in the session of run #{previous.id}{failed}, as {hand.author} wrote in the thread"
     await write_event(conn, new_id, {"text": shown, "resume_of_run_id": previous.id})
     await notify_queued(conn, new_id)
     return new_id
 
 
-async def go_on_parked(conn: AsyncConnection, parked_id: int, why: str, *, token_id: int | None = None) -> int:
+async def go_on_parked(
+    conn: AsyncConnection, parked_id: int, why: str, *, woken_by: str | None, token_id: int | None = None
+) -> int:
     """Queue the run that goes on in the session of chat run ``parked_id``, which waited for its owner's answer and was
     parked, whose row the caller holds locked, and end the parked run done; the new run's id. The new run is the
     parked one's for the thread, the person, the worker and the agent time used so far; the decisions of the parked
     run still open and the messages of its inbox the worker has not handed to the agent go to it. ``why`` ends the
-    new run's first event, such as "as owner answered decision #3"."""
+    new run's first event, such as "as owner answered decision #3", and ``woken_by``, the answer or the message that
+    made it go on, is its title (the parked run's when None)."""
     r = tables.runs
     row = (
         await conn.execute(
@@ -297,6 +339,8 @@ async def go_on_parked(conn: AsyncConnection, parked_id: int, why: str, *, token
         "run_seconds": row.run_seconds,
         "budget": rules.run_budget(max(budget - spent, 0.0) + curator.run_cost(row.usage)),
     }
+    if woken_by is not None:
+        values = _titled(values, await _woken_title(conn, parked_id, woken_by))
     await move_run(
         conn, parked_id, "parked", "done", "owner", reason="resumed in a new run", token_id=token_id, decisions=None
     )
@@ -312,15 +356,20 @@ async def go_on_parked(conn: AsyncConnection, parked_id: int, why: str, *, token
 
 
 async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
-    """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>."""
+    """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>, with the repos of the
+    project the worker has a checkout of: of them, the project's harness alone on a daemon of
+    ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``)."""
     profile = hand.profile
     names = [
         name
         for name in await project_repos(conn, profile.project_id)
         if f"{profile.project}/{name}" in (worker.checkouts or {})
     ]
+    if runs.LAZY_CHAT_REPOS in (worker.features or ()):
+        harness = await project_harness(conn, profile.project_id)
+        names = [name for name in names if name == harness]
     allow = profiles.allowed(profile.permissions, "model")
-    title = runs.step_title({"title": f"@{profile.handle} in {hand.chat.title}: {hand.body}"})
+    title = rules.turn_title(profile.handle, hand.chat.title, hand.body)
     values = {
         "kind": "chat",
         "project_id": profile.project_id,
@@ -396,9 +445,9 @@ async def _run_as_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
 
 async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str | None]:
     """(the run the mention reached, None) or (None, why it reached none), in the caller's transaction: the session's
-    run that is queued or held takes the message in its inbox; one that ended done is gone on from; else a new
-    session starts on a worker of the dispatcher, or of the run_as of the agent's type when it routes its chat runs
-    there (see the module's docstring)."""
+    run that is queued or held takes the message in its inbox; one that ended done, or failed because the remote
+    declined its push, is gone on from; else a new session starts on a worker of the dispatcher, or of the run_as of
+    the agent's type when it routes its chat runs there (see the module's docstring)."""
     refusal = await _writer_refusal(conn, hand)
     if refusal is not None:
         return None, refusal
@@ -415,10 +464,15 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
     if spent >= budget:
         return None, _spent(spent, budget)
     if session is not None and session.state == "parked" and session.session_id:
-        new_id = await go_on_parked(conn, session.id, f"as {hand.author} wrote in the thread")
+        new_id = await go_on_parked(conn, session.id, f"as {hand.author} wrote in the thread", woken_by=hand.body)
         await _to_inbox(conn, new_id, hand)
         return new_id, None
-    if session is not None and session.state == "done" and session.session_id and not session.revoked:
+    if (
+        session is not None
+        and rules.goes_on(session.state, session.failure_cause)
+        and session.session_id
+        and not session.revoked
+    ):
         return await _go_on(conn, session, hand, budget - spent), None
     worker, why = await pick_worker(conn, hand)
     if worker is None:
@@ -607,20 +661,23 @@ async def hub_reply(conn: AsyncConnection, chat_id: int, root_id: int, text: str
 
 
 async def _untaken(conn: AsyncConnection, run_id: int) -> list:
+    """The messages of the inbox of run ``run_id`` its worker did not hand to the agent, but answers, oldest first."""
     i = tables.run_inbox
-    query = select(i.c.id).where(i.c.run_id == run_id, i.c.delivered_at.is_(None), i.c.decision_id.is_(None))
-    return (await conn.execute(query.order_by(i.c.id))).scalars().all()
+    query = select(i.c.id, i.c.body).where(i.c.run_id == run_id, i.c.delivered_at.is_(None), i.c.decision_id.is_(None))
+    return (await conn.execute(query.order_by(i.c.id))).all()
 
 
 async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str | None = None) -> int | None:
-    """What chat run ``run_id`` moving to ``new`` does in its chat: the agent's reaction on the message that started it,
-    the hub's reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run
-    that goes on in its session with them (its id)."""
+    """What chat run ``run_id`` moving to ``new`` does in its chat: the chat's streams woken, since the run's progress
+    under its messages changed (``chat_progress``); the agent's reaction on the message that started it, the hub's
+    reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run that goes on
+    in its session with them (its id), titled by the first of them."""
     if old == "parked" and new == "done":  # it waited for an answer and a new run goes on in its session (go_on_parked)
         return None
     found = await chat_run(conn, run_id)
     if found is None:
         return None
+    await wake(conn, found.chat_id)
     await status_reaction(conn, message_id=found.message_id, profile_id=found.profile_id, state=new)
     if new == "failed":
         profile = await _run_profile(conn, run_id)
@@ -641,9 +698,10 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
         "hop": found.hop,
         "budget": rules.run_budget(max(budget - spent, 0.0) + curator.run_cost(session.usage)),
     }
+    values = _titled(values, await _woken_title(conn, run_id, rules.woken_text(untaken[0].body)))
     new_id = (await conn.execute(_continue_run(run_id, values))).scalar_one()
     i = tables.run_inbox
-    await conn.execute(update(i).values(run_id=new_id).where(i.c.id.in_(untaken)))
+    await conn.execute(update(i).values(run_id=new_id).where(i.c.id.in_([row.id for row in untaken])))
     await write_event(conn, new_id, {"text": f"goes on in the session of run #{run_id} with its messages untaken"})
     await notify_queued(conn, new_id)
     log.info("chat run goes on with its inbox", extra={"run_id": new_id, "resume_of": run_id})
@@ -665,16 +723,36 @@ def _clearers(found: ChatRun) -> list[int]:
     return list(dict.fromkeys([found.dispatcher_id, found.dispatched_by]))
 
 
+async def _listing(
+    conn: AsyncConnection, run_id: int, profile: Profile, repos: list, texts: list[str]
+) -> tuple[list[dict], str | None]:
+    """(every repo of the project of chat run ``run_id`` as its prompt lists them, ``rules.ranked_repos``: the run's
+    ``repos`` open, those ``texts`` name, and whether the run's worker has a checkout of each; the project's
+    harness)."""
+    r, w = tables.runs, tables.workers
+    held_by = select(w.c.checkouts).join_from(r, w, w.c.id == r.c.worker_id).where(r.c.id == run_id)
+    checkouts = (await conn.execute(held_by)).scalar_one_or_none() or {}
+    names = await project_repos(conn, profile.project_id)
+    opened = [entry.get("repo") for entry in repos if isinstance(entry, dict)]
+    held = {name for name in [*names, *opened] if isinstance(name, str) and f"{profile.project}/{name}" in checkouts}
+    listing = rules.ranked_repos(names, opened, held, rules.named_repos(names, texts))
+    return listing, await project_harness(conn, profile.project_id)
+
+
 async def run_clearers(conn: AsyncConnection, run_id: int) -> list[int] | None:
     """The people what chat run ``run_id`` reads must be cleared for, as its prompt is; None for another kind of run."""
     found = await chat_run(conn, run_id)
     return None if found is None else _clearers(found)
 
 
-async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, repos: list) -> str:
+async def chat_prompt(
+    conn: AsyncConnection, run_id: int, branch: str | None, repos: list, features: tuple[str, ...] = ()
+) -> str:
     """The prompt of chat run ``run_id`` as its worker claims it (``chat_runs.build_chat_prompt``): the snapshot holds
     the messages its dispatcher clears the label of, and the member whose worker runs it too. Before the thread it
-    shows the messages that start no thread, or in a direct chat the latest turns (``chat_runs.snapshot``)."""
+    shows the messages that start no thread, or in a direct chat the latest turns (``chat_runs.snapshot``). On a daemon
+    that lists ``runs.LAZY_CHAT_REPOS`` among its ``features``, every repo of the project, those the message that woke
+    it or a message of the thread the prompt shows names before the others not open (``_listing``)."""
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
@@ -698,6 +776,7 @@ async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, re
     readers = [await label_reader(conn, user_id, [row.label for row in rows]) for user_id in _clearers(found)]
     authors = await profiles_by_id(conn, [row.author_profile_id for row in rows if row.author_profile_id])
     shown = {row.id: _message(row, authors) for row in rows if all(reader.sees(row.label) for reader in readers)}
+    in_thread = [shown[row.id]["body"] for row in rows if row.id in shown and root_id in (row.id, row.thread_root_id)]
     trigger = shown.pop(found.message_id, None) or {"id": found.message_id, "author": found.dispatcher, "body": ""}
     root = shown.pop(root_id, None) if root_id != found.message_id else None
     blocks = rules.snapshot(
@@ -708,6 +787,9 @@ async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, re
     )
     people, agents = await _member_names(conn, found.chat_id)
     _, budget = await chat_spend(conn, found.chat_id)
+    listing, harness = None, None
+    if runs.LAZY_CHAT_REPOS in features:
+        listing, harness = await _listing(conn, run_id, profile, repos, [trigger["body"], *in_thread])
     return rules.build_chat_prompt(
         agent={
             "handle": profile.handle,
@@ -723,6 +805,8 @@ async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, re
         budget_usd=budget,
         blocks=blocks,
         repos=repos,
+        listing=listing,
+        harness=harness,
     )
 
 

@@ -1,6 +1,8 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
+import { createAgentByApi } from "./support/agents";
+import { chatSession, chatWorker } from "./support/chats";
 import { expect, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -28,8 +30,9 @@ import { startFakeTerminal } from "./support/terminal";
 
 /**
  * Review screenshots of the runs pages, the Dispatch dialog and a run's page (live, in review, its diff, the Take
- * over dialog and the Terminal tab), and of plan runs (the Run plan dialog, the plan page's banner, the plans list and
- * a plan run's page), light and dark, desktop and 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless it is set; like
+ * over dialog and the Terminal tab), of plan runs (the Run plan dialog, the plan page's banner, the plans list and
+ * a plan run's page), and of a chat session (its row open into its turns, a turn's page), light and dark, desktop and
+ * 375 px, written to E2E_SCREENSHOT_DIR. Skipped unless it is set; like
  * screenshots.spec.ts it asserts nothing beyond the page being ready.
  */
 const dir = process.env.E2E_SCREENSHOT_DIR;
@@ -286,6 +289,40 @@ test.describe("runs screenshots", () => {
         await other.close();
         await main.getByTestId("terminal-disconnect").click();
         await expect(main.getByTestId("terminal-status")).toHaveAttribute("data-status", "closed");
+      }
+    });
+  }
+
+  for (const scheme of ["light", "dark"] as const) {
+    test(`a chat session in ${scheme}`, async ({ page, member }) => {
+      await page.emulateMedia({ colorScheme: scheme });
+      const me = await member([{ role: "admin", maxLevel: "internal" }]);
+      const project = me.projects[0];
+      await seedRunPlan(me, project);
+      const handle = uniqueName("reviewer");
+      await createAgentByApi(me, project, { handle, name: "Code reviewer" });
+      const live = await chatWorker(me, project, uniqueName("mini"));
+      const asks = ["please fix the flaky wait test", "one more thing: the retries", "and the docs, while you are at it?"];
+      const {
+        runs: [, second],
+      } = await chatSession(me, handle, live, asks);
+      await dispatch(me, project, ["2"]); // a step run queued beside the session, after it, so its worker never takes it
+      for (const [width, height, suffix] of [
+        [1440, 900, ""],
+        [375, 812, "-375"],
+      ] as const) {
+        await page.setViewportSize({ width, height });
+        const shot = (name: string) => page.screenshot({ path: path.join(dir!, `${name}${suffix}-${scheme}.png`), fullPage: true });
+        await open(page, `/p/${project}/runs`);
+        await expect(page.locator("#main").getByTestId("runs-table")).toBeVisible();
+        if (width > 768) {
+          await page.locator("#main").getByTestId("runs-session-toggle").click();
+          await expect(page.locator("#main").getByTestId("session-turn")).toHaveCount(3);
+        }
+        await shot("runs-chat-session");
+        await open(page, runPath(project, second));
+        await expect(page.locator("#main").getByTestId("run-turn-link")).toHaveCount(3);
+        await shot("run-chat-turn");
       }
     });
   }

@@ -22,6 +22,8 @@ export type ChatMention = Schemas["ChatMention"];
 export type ChatReaction = Schemas["ChatReaction"];
 export type ChatEvent = Schemas["ChatEvent"];
 export type ChatEvents = Schemas["ChatEvents"];
+/** How far an agent's run that took a message is (`chat_progress` of the API): its step, worker and repo. */
+export type ChatProgress = Schemas["ChatProgress"];
 export type ChatCreate = Schemas["ChatCreate"];
 
 /** The API's limits (`chats.MAX_*`, `chat_runs.*`). */

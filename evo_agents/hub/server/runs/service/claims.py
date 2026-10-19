@@ -516,7 +516,8 @@ async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, 
 
 async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...] = ()) -> RunSpec:
     """The claim of run ``run_id`` by a worker whose daemon says it does ``features`` (``runs.WORKER_FEATURES``): an
-    author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``."""
+    author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``, and a chat
+    run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``."""
     view = await run_view(conn, run_id)
     r, revisions = tables.runs, tables.plan_revisions
     project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
@@ -551,7 +552,8 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     elif view.kind == "chat":
         from evo_agents.hub.server.chat_runs import chat_prompt  # it queues runs through this package
 
-        prompt = await chat_prompt(conn, run_id, view.branch, [repo.model_dump() for repo in view.repos or []])
+        repos = [repo.model_dump() for repo in view.repos or []]
+        prompt = await chat_prompt(conn, run_id, view.branch, repos, features)
         title = view.title
     elif view.kind == "task":
         from evo_agents.hub.server.task_dispatch import task_prompt  # it queues runs through this package

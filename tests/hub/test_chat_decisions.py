@@ -129,6 +129,14 @@ def test_the_answer_to_a_parked_chat_run_resumes_its_session_on_its_worker_and_b
         f"chat/{spec['id']}",
         mention["id"],
     )
+    session = "@reviewer in Release talk: @reviewer please fix the flaky wait test"
+    assert (new["title"], new["session_run_id"], new["session_turn"], new["session_title"]) == (
+        f"@reviewer in Release talk: Answer to decision #{found['id']} (triage): The wait test fails twice in three. "
+        "Retry or skip it? Chosen option: skip, Skip it.",
+        spec["id"],
+        2,
+        session,
+    )  # the answer that made it go on titles it, as criterion a5 of chat-runs-start-fast says
     assert claim(client, worker)["id"] == new_id
     assert [(row[0], row[1]) for row in chat_runs_of(hub_db)][0] == (spec["id"], "done")
     inbox = client.post(f"/v1/worker/runs/{new_id}/inbox", json={}, headers=worker["headers"]).json()["messages"]
@@ -146,7 +154,12 @@ def test_a_reply_in_the_thread_resumes_a_parked_chat_run_with_its_decision_open(
     assert len(rows) == 2, rows
     new_id = rows[-1][0]
     assert run_of(client, hub["owner"], spec["id"])["state"] == "done"
-    assert run_of(client, hub["owner"], new_id)["resume_of_run_id"] == spec["id"]
+    new = run_of(client, hub["owner"], new_id)
+    assert (new["resume_of_run_id"], new["title"], new["session_turn"]) == (
+        spec["id"],
+        "@reviewer in Release talk: just retry it",
+        2,
+    )
     moved_to = sql(
         hub_db, select(tables.decisions.c.run_id, tables.decisions.c.state).where(tables.decisions.c.id == found["id"])
     )
@@ -164,3 +177,24 @@ def test_a_chat_run_decision_is_in_the_overview_and_the_notifications_of_its_own
     assert [(n["kind"], n["decision_state"]) for n in notes if n["decision_id"] == found["id"]] == [
         ("decision", "open")
     ]
+
+
+def test_a_message_from_the_run_page_resumes_a_parked_chat_run_titled_by_it(client, hub, hub_db):
+    """Criterion a5 of chat-runs-start-fast: the owner's message to a parked chat run from its page makes the run that
+    goes on in its session, titled by that message."""
+    worker = chat_worker(client, hub["owner"], "studio")
+    _, _, spec, _ = waiting_chat(client, hub, worker)
+    wait_for(hub_db, spec["id"], minutes=11)
+    recover(client)
+    left = client.post(
+        f"/v1/projects/{PROJECT}/runs/{spec['id']}/messages", json={"text": "skip it\nfor now"}, headers=hub["owner"]
+    )
+    assert left.status_code == 201, left.text
+    new_id = chat_runs_of(hub_db)[-1][0]
+    new = run_of(client, hub["owner"], new_id)
+    assert (new["resume_of_run_id"], new["title"], new["session_turn"], new["session_turns"]) == (
+        spec["id"],
+        "@reviewer in Release talk: skip it for now",
+        2,
+        2,
+    )
