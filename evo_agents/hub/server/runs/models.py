@@ -381,13 +381,24 @@ class ReplaySpec(BaseModel):
     repo: str = Field(description="the change's repo")
 
 
+class HistorySpec(BaseModel):
+    """What the worker of a history run is told (``evo_agents.hub.server.history``): how it reads the project's
+    history in batches."""
+
+    batch_items: int = Field(description="items one batch reads at most")
+    batch_chars: int = Field(description="characters of excerpts one batch reads at most")
+    batch_turns: int = Field(description="turns of the agent on one batch")
+    naming_share: float = Field(description="the share of the run's caps kept for naming the clusters")
+
+
 class CuratorSpec(BaseModel):
     """What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
-    change, its branch, its forge and its pull request; for a Judge the commit to judge, and for a replay the change's
-    head, its task and its own key (``evo_agents.hub.server.replays``)."""
+    change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
+    head, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own
+    key (``evo_agents.hub.server.history``)."""
 
-    role: Literal["reviewer", "builder", "judge", "replay"]
+    role: Literal["reviewer", "builder", "judge", "replay", "history"]
     protected_paths: list[str] = Field(default_factory=list, description="globs of the charter, repo:glob for one repo")
     change_id: int | None = None
     branch: str | None = Field(None, description="curator/..., the one branch a Builder pushes")
@@ -405,6 +416,12 @@ class CuratorSpec(BaseModel):
         None,
         description="a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge "
         "run's",
+    )
+    history: HistorySpec | None = Field(None, description="a history run's batches; null for any other run")
+    history_key: str | None = Field(
+        None,
+        description="a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); "
+        "the daemon keeps it as a judge run's",
     )
 
 

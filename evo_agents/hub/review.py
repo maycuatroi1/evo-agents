@@ -95,6 +95,7 @@ FIGURE_KEYS = (
     "kg_health",
     "facets",
     "weekly",
+    "clusters",
 )
 
 # The causes of the failures the figures count, in the order a text is tried against them: the first that matches.
@@ -381,7 +382,8 @@ def build_review_prompt(
     lines += [
         "",
         "# The night's figures, shortened (curator_figures gives them whole)",
-        "Counted by the hub without any model, over the sessions and runs of the last days.",
+        "Counted by the hub without any model, over the sessions and runs of the last days; clusters groups the "
+        "sessions by the facets a cheap model wrote of them on nights before, over the whole history.",
         _figures_text(figures or {}),
     ]
     return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)

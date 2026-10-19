@@ -5,7 +5,7 @@
     "evo_agents/hub/memory.py": 1129,
     "evo_agents/hub/run_cli.py": 1003,
     "evo_agents/hub/server/changes.py": 1562,
-    "evo_agents/hub/server/curator.py": 1356,
+    "evo_agents/hub/server/curator.py": 1330,
     "evo_agents/worker/cli.py": 1226,
     "evo_agents/worker/interactive.py": 1378
   },
@@ -13,7 +13,7 @@
     "evo_agents/harness/__init__.py::knowledge_semantics": {"complexity": 16},
     "evo_agents/hub/cli_client.py::register_client": {"statements": 80},
     "evo_agents/hub/contract.py::check_words": {"complexity": 20, "statements": 53},
-    "evo_agents/hub/curator_cli.py::register_curator": {"statements": 53},
+    "evo_agents/hub/curator_cli.py::register_curator": {"statements": 52},
     "evo_agents/hub/judge.py::ci_state": {"complexity": 18},
     "evo_agents/hub/judge.py::hack_signs": {"complexity": 29, "statements": 69},
     "evo_agents/hub/kg_ingest.py::config_problems": {"complexity": 22, "statements": 51},

@@ -277,14 +277,16 @@ def _blob_lines(store: BlobStore | None, sha256: str, size: int | None, kind: st
             raise Unavailable(f"blob {sha256} of kind {kind} cannot be read: {exc}") from None
 
 
-def _file_lines(store, parts: list, scratch: Path | None) -> Iterator[tuple[int, object]]:
+def file_lines(store, parts: list, scratch: Path | None) -> Iterator[tuple[int, object]]:
+    """The lines of a transcript file whose ``parts`` (first_line, blob, size) are in ``store``, each as (its number
+    in the file, its JSON value or None); Unavailable when a part cannot be read."""
     for part in parts:
         for offset, raw in _blob_lines(store, part.blob, part.size, local.KIND, scratch):
             yield part.first_line + offset, _json(raw)
 
 
 def _read_session(store, files: dict[str, list], runtime: str | None, scratch: Path | None) -> dict:
-    return session_facet(((file, _file_lines(store, parts, scratch)) for file, parts in files.items()), runtime)
+    return session_facet(((file, file_lines(store, parts, scratch)) for file, parts in files.items()), runtime)
 
 
 async def _session(engine: AsyncEngine, store, item: Todo, scratch: Path | None) -> Made | None:
@@ -333,7 +335,8 @@ def _cost(usage) -> float | None:
     return curator.run_cost(usage)
 
 
-async def _stored_events(engine: AsyncEngine, run_id: int, builder: RunFacet) -> None:
+async def stored_events(engine: AsyncEngine, run_id: int, builder) -> None:
+    """Add the events of run ``run_id`` the hub holds to ``builder`` (anything with ``add``), in seq order."""
     e, after = tables.run_events, 0
     while True:
         query = (
@@ -352,7 +355,8 @@ async def _stored_events(engine: AsyncEngine, run_id: int, builder: RunFacet) ->
         after = page[-1].seq
 
 
-def _read_log(store, sha256: str, builder: RunFacet, scratch: Path | None) -> None:
+def read_log(store, sha256: str, builder, scratch: Path | None) -> None:
+    """Add the events of the run log blob ``sha256`` to ``builder``; Unavailable when it cannot be read."""
     for _, raw in _blob_lines(store, sha256, None, "run-log", scratch):
         builder.add(_json(raw))
 
@@ -375,14 +379,14 @@ async def _run(engine: AsyncEngine, store, item: Todo, scratch: Path | None) -> 
     builder, source = RunFacet(row.runtime), "events"
     if row.log_sha256 and store is not None:
         try:
-            await asyncio.to_thread(_read_log, store, row.log_sha256, builder, scratch)
+            await asyncio.to_thread(read_log, store, row.log_sha256, builder, scratch)
             source = "run_log"
         except Unavailable:
             if store is not None and await asyncio.to_thread(store.has_blob, row.log_sha256):
                 raise  # the log is there but cannot be read now: try again later
             builder = RunFacet(row.runtime)
     if source == "events":
-        await _stored_events(engine, item.run_id, builder)
+        await stored_events(engine, item.run_id, builder)
     body = builder.body(row.usage, _cost(row.usage))
     session = row.session_id if isinstance(row.session_id, str) and len(row.session_id) <= MAX_SESSION_ID else None
     print_ = run_fingerprint(row.log_sha256, row.event_seq)

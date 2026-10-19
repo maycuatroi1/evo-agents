@@ -1418,6 +1418,7 @@
           "outcome_days",
           "review",
           "replay",
+          "history",
           "reviewer",
           "builder",
           "judge",
@@ -1481,6 +1482,7 @@
           "outcome_days",
           "review",
           "replay",
+          "history",
           "reviewer",
           "builder",
           "judge",
@@ -1617,6 +1619,84 @@
           "offset"
         ],
         "schema": "FindingList"
+      }
+    },
+    "hub curator history clusters": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--limit"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false,
+          "minimum": 1,
+          "maximum": 200,
+          "default": 50
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "min_sessions",
+          "clusters",
+          "hidden",
+          "counted_at"
+        ],
+        "schema": "FacetClusterList"
+      }
+    },
+    "hub curator history status": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "project",
+          "budget_usd",
+          "runtime",
+          "model",
+          "llm",
+          "runs",
+          "clusters",
+          "hidden"
+        ],
+        "schema": "HistoryStatus"
       }
     },
     "hub curator pause": {
@@ -5644,6 +5724,7 @@
             "chat",
             "task",
             "replay",
+            "history",
             "local"
           ]
         },
@@ -16209,6 +16290,7 @@
                       "chat",
                       "task",
                       "replay",
+                      "history",
                       "local"
                     ],
                     "type": "string"
@@ -25420,6 +25502,446 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/Replay"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/history": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "History Status",
+          "description": "Where the project's history run stands: its cap and model, the facets of the model, its latest runs.",
+          "operationId": "history_status_v1_projects__project__curator_history_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HistoryStatus"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/projects/{project}/curator/history/clusters": {
+        "get": {
+          "tags": [
+            "curator"
+          ],
+          "summary": "List Clusters",
+          "description": "The clusters of the project's facets of MIN_CLUSTER_SESSIONS sessions or more, as the hub last counted them.",
+          "operationId": "list_clusters_v1_projects__project__curator_history_clusters_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "limit",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "integer",
+                "maximum": 200,
+                "minimum": 1,
+                "default": 50,
+                "title": "Limit"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/FacetClusterList"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/history/next": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Next Batch",
+          "description": "The next batch of the history run this worker holds, with the run's key (see the module's docstring).",
+          "operationId": "next_batch_v1_worker_runs__run_id__history_next_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-History-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the history run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-History-Key"
+              },
+              "description": "the history run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryNext"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HistoryBatch"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/history/report": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Report History",
+          "description": "The facets the model wrote and the names it gave, of the history run this worker holds, with the run's key.",
+          "operationId": "report_history_v1_worker_runs__run_id__history_report_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            },
+            {
+              "name": "X-Evo-History-Key",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the history run's own key, which its claim handed the daemon; the worker token alone is refused",
+                "title": "X-Evo-History-Key"
+              },
+              "description": "the history run's own key, which its claim handed the daemon; the worker token alone is refused"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HistoryReport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HistoryReported"
                   }
                 }
               }
@@ -40717,6 +41239,9 @@
             "replay": {
               "$ref": "#/components/schemas/ReplaySettings"
             },
+            "history": {
+              "$ref": "#/components/schemas/HistorySettings"
+            },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
             },
@@ -40954,6 +41479,9 @@
             },
             "replay": {
               "$ref": "#/components/schemas/ReplaySettings"
+            },
+            "history": {
+              "$ref": "#/components/schemas/HistorySettings"
             },
             "reviewer": {
               "$ref": "#/components/schemas/Role"
@@ -42444,7 +42972,8 @@
                 "reviewer",
                 "builder",
                 "judge",
-                "replay"
+                "replay",
+                "history"
               ],
               "title": "Role"
             },
@@ -42564,6 +43093,29 @@
               ],
               "title": "Replay Key",
               "description": "a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge run's"
+            },
+            "history": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/HistorySpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a history run's batches; null for any other run"
+            },
+            "history_key": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "History Key",
+              "description": "a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); the daemon keeps it as a judge run's"
             }
           },
           "type": "object",
@@ -42571,7 +43123,7 @@
             "role"
           ],
           "title": "CuratorSpec",
-          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, and for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``)."
+          "description": "What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the\ncharter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the\nchange, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's\nhead, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own\nkey (``evo_agents.hub.server.history``)."
         },
         "CuratorStatus": {
           "properties": {
@@ -43935,6 +44487,193 @@
           "title": "EvidenceIn",
           "description": "One piece of evidence, as ``review.parse_evidence`` reads it from the command line."
         },
+        "FacetCluster": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "named": {
+              "type": "boolean",
+              "title": "Named",
+              "description": "whether the model named it; else its name is its key in words"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "task_type": {
+              "type": "string",
+              "title": "Task Type"
+            },
+            "failure_mode": {
+              "type": "string",
+              "title": "Failure Mode"
+            },
+            "sessions": {
+              "type": "integer",
+              "title": "Sessions",
+              "description": "its sessions, a run counting as one"
+            },
+            "runs": {
+              "type": "integer",
+              "title": "Runs"
+            },
+            "members": {
+              "type": "integer",
+              "title": "Members"
+            },
+            "representative": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Representative",
+              "description": "its latest session, as evidence names it"
+            },
+            "examples": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Examples"
+            },
+            "keys": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Keys",
+              "description": "the groups it holds: its own and those the model joined to it"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "name",
+            "named",
+            "description",
+            "task_type",
+            "failure_mode",
+            "sessions",
+            "runs",
+            "members",
+            "representative",
+            "examples",
+            "keys"
+          ],
+          "title": "FacetCluster"
+        },
+        "FacetClusterList": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "min_sessions": {
+              "type": "integer",
+              "title": "Min Sessions"
+            },
+            "clusters": {
+              "items": {
+                "$ref": "#/components/schemas/FacetCluster"
+              },
+              "type": "array",
+              "title": "Clusters"
+            },
+            "hidden": {
+              "type": "integer",
+              "title": "Hidden",
+              "description": "clusters of fewer sessions, left out"
+            },
+            "counted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Counted At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "min_sessions",
+            "clusters",
+            "hidden",
+            "counted_at"
+          ],
+          "title": "FacetClusterList"
+        },
+        "FacetReport": {
+          "properties": {
+            "item": {
+              "type": "string",
+              "pattern": "^(session):([^\\s:]{1,100})$|^(run):([1-9][0-9]{0,18})$",
+              "title": "Item",
+              "description": "session:ID or run:ID"
+            },
+            "fingerprint": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "title": "Fingerprint"
+            },
+            "facet": {
+              "anyOf": [
+                {
+                  "additionalProperties": true,
+                  "type": "object"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Facet",
+              "description": "the facet the model wrote (history.clean_facet)"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "why there is none"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "item",
+            "fingerprint"
+          ],
+          "title": "FacetReport"
+        },
         "FailedBuildCounts": {
           "properties": {
             "failed": {
@@ -44717,6 +45456,27 @@
           ],
           "title": "GroupMessage"
         },
+        "GroupSample": {
+          "properties": {
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "friction": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Friction"
+            }
+          },
+          "type": "object",
+          "required": [
+            "summary",
+            "friction"
+          ],
+          "title": "GroupSample"
+        },
         "HTTPValidationError": {
           "properties": {
             "detail": {
@@ -45138,6 +45898,448 @@
             "exit_code"
           ],
           "title": "HiddenResult"
+        },
+        "HistoryBatch": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/HistoryItem"
+              },
+              "type": "array",
+              "title": "Items",
+              "description": "the next batch, the latest first; none once nothing waits"
+            },
+            "waiting": {
+              "type": "integer",
+              "title": "Waiting",
+              "description": "the items without a facet of the model, this batch's included"
+            },
+            "groups": {
+              "items": {
+                "$ref": "#/components/schemas/HistoryGroup"
+              },
+              "type": "array",
+              "title": "Groups",
+              "description": "with clusters: the groups of facets that have no name yet"
+            },
+            "named": {
+              "items": {
+                "$ref": "#/components/schemas/NamedGroup"
+              },
+              "type": "array",
+              "title": "Named",
+              "description": "with clusters: the groups named before"
+            }
+          },
+          "type": "object",
+          "required": [
+            "items",
+            "waiting",
+            "groups",
+            "named"
+          ],
+          "title": "HistoryBatch"
+        },
+        "HistoryGroup": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "label": {
+              "type": "string",
+              "title": "Label",
+              "description": "its kind of task and failure mode, in words"
+            },
+            "sessions": {
+              "type": "integer",
+              "title": "Sessions"
+            },
+            "samples": {
+              "items": {
+                "$ref": "#/components/schemas/GroupSample"
+              },
+              "type": "array",
+              "title": "Samples"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "label",
+            "sessions",
+            "samples"
+          ],
+          "title": "HistoryGroup"
+        },
+        "HistoryItem": {
+          "properties": {
+            "item": {
+              "type": "string",
+              "title": "Item",
+              "description": "session:ID or run:ID"
+            },
+            "kind": {
+              "type": "string",
+              "title": "Kind"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source",
+              "description": "what it is, in words"
+            },
+            "fingerprint": {
+              "type": "string",
+              "title": "Fingerprint",
+              "description": "the content it was read at; the report names it back"
+            },
+            "lines": {
+              "type": "integer",
+              "title": "Lines",
+              "description": "the entries of its transcript"
+            },
+            "anchors": {
+              "type": "integer",
+              "title": "Anchors",
+              "description": "its errors and corrections"
+            },
+            "cut": {
+              "type": "boolean",
+              "title": "Cut",
+              "description": "whether the excerpt leaves part of it out"
+            },
+            "excerpt": {
+              "type": "string",
+              "title": "Excerpt"
+            }
+          },
+          "type": "object",
+          "required": [
+            "item",
+            "kind",
+            "source",
+            "fingerprint",
+            "lines",
+            "anchors",
+            "cut",
+            "excerpt"
+          ],
+          "title": "HistoryItem"
+        },
+        "HistoryNext": {
+          "properties": {
+            "clusters": {
+              "type": "boolean",
+              "title": "Clusters",
+              "description": "group the facets again and add the groups that have no name yet",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "HistoryNext"
+        },
+        "HistoryReport": {
+          "properties": {
+            "facets": {
+              "items": {
+                "$ref": "#/components/schemas/FacetReport"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Facets"
+            },
+            "names": {
+              "items": {
+                "$ref": "#/components/schemas/NameReport"
+              },
+              "type": "array",
+              "maxItems": 40,
+              "title": "Names"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "HistoryReport"
+        },
+        "HistoryReported": {
+          "properties": {
+            "stored": {
+              "type": "integer",
+              "title": "Stored",
+              "description": "facets kept"
+            },
+            "stale": {
+              "type": "integer",
+              "title": "Stale",
+              "description": "facets of content that changed since, or of an item gone, left"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "items the model gave none, which wait"
+            },
+            "named": {
+              "type": "integer",
+              "title": "Named",
+              "description": "groups that got their name"
+            },
+            "waiting": {
+              "type": "integer",
+              "title": "Waiting",
+              "description": "the items without a facet of the model now"
+            }
+          },
+          "type": "object",
+          "required": [
+            "stored",
+            "stale",
+            "failed",
+            "named",
+            "waiting"
+          ],
+          "title": "HistoryReported"
+        },
+        "HistoryRunView": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "night": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Night"
+            },
+            "state": {
+              "type": "string",
+              "title": "State"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model"
+            },
+            "cost_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cost Usd"
+            },
+            "analyzed": {
+              "type": "integer",
+              "title": "Analyzed"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed"
+            },
+            "stale": {
+              "type": "integer",
+              "title": "Stale"
+            },
+            "named": {
+              "type": "integer",
+              "title": "Named"
+            },
+            "queued_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Queued At"
+            },
+            "finished_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Finished At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "night",
+            "state",
+            "model",
+            "cost_usd",
+            "analyzed",
+            "failed",
+            "stale",
+            "named",
+            "queued_at",
+            "finished_at"
+          ],
+          "title": "HistoryRunView"
+        },
+        "HistorySettings": {
+          "properties": {
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number",
+                  "maximum": 1000.0,
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the most the night's history run may cost; null: the smaller of 1 USD and 0.25 of night_budget_usd; 0: no history run"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the model of the reviewer's runtime it runs on; null: the cheapest the worker on duty reports for that runtime (haiku on Claude Code)"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "HistorySettings",
+          "description": "How the night's history run reads the project's sessions and runs with a cheap model\n(``evo_agents.hub.history``)."
+        },
+        "HistorySpec": {
+          "properties": {
+            "batch_items": {
+              "type": "integer",
+              "title": "Batch Items",
+              "description": "items one batch reads at most"
+            },
+            "batch_chars": {
+              "type": "integer",
+              "title": "Batch Chars",
+              "description": "characters of excerpts one batch reads at most"
+            },
+            "batch_turns": {
+              "type": "integer",
+              "title": "Batch Turns",
+              "description": "turns of the agent on one batch"
+            },
+            "naming_share": {
+              "type": "number",
+              "title": "Naming Share",
+              "description": "the share of the run's caps kept for naming the clusters"
+            }
+          },
+          "type": "object",
+          "required": [
+            "batch_items",
+            "batch_chars",
+            "batch_turns",
+            "naming_share"
+          ],
+          "title": "HistorySpec",
+          "description": "What the worker of a history run is told (``evo_agents.hub.server.history``): how it reads the project's\nhistory in batches."
+        },
+        "HistoryStatus": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "budget_usd": {
+              "anyOf": [
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Budget Usd",
+              "description": "the night's cap of the history run; null without a charter"
+            },
+            "runtime": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Runtime",
+              "description": "the reviewer's runtime it runs on"
+            },
+            "model": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Model",
+              "description": "the charter's history.model; null: the cheapest the worker reports"
+            },
+            "llm": {
+              "$ref": "#/components/schemas/LlmCoverage"
+            },
+            "runs": {
+              "items": {
+                "$ref": "#/components/schemas/HistoryRunView"
+              },
+              "type": "array",
+              "title": "Runs",
+              "description": "the latest history runs, newest first"
+            },
+            "clusters": {
+              "type": "integer",
+              "title": "Clusters",
+              "description": "clusters in the night's figures"
+            },
+            "hidden": {
+              "type": "integer",
+              "title": "Hidden",
+              "description": "smaller clusters, which stay out of them"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "budget_usd",
+            "runtime",
+            "model",
+            "llm",
+            "runs",
+            "clusters",
+            "hidden"
+          ],
+          "title": "HistoryStatus"
         },
         "Inbox": {
           "properties": {
@@ -46301,6 +47503,42 @@
           ],
           "title": "Live"
         },
+        "LlmCoverage": {
+          "properties": {
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "items": {
+              "type": "integer",
+              "title": "Items",
+              "description": "sessions and runs the model reads, as the reader may read them"
+            },
+            "analyzed": {
+              "type": "integer",
+              "title": "Analyzed",
+              "description": "those with a facet of the model of their content now"
+            },
+            "waiting": {
+              "type": "integer",
+              "title": "Waiting"
+            },
+            "failed": {
+              "type": "integer",
+              "title": "Failed",
+              "description": "those whose last attempt failed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "version",
+            "items",
+            "analyzed",
+            "waiting",
+            "failed"
+          ],
+          "title": "LlmCoverage"
+        },
         "LocalDecisionAsk": {
           "properties": {
             "category": {
@@ -46949,6 +48187,87 @@
             "messages"
           ],
           "title": "ModelCount"
+        },
+        "NameReport": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "pattern": "^[a-z]+/(?:FM-[1-3]\\.[1-6]|none)$",
+              "title": "Key",
+              "description": "<task_type>/<failure mode or none>"
+            },
+            "name": {
+              "type": "string",
+              "maxLength": 80,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Name"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            },
+            "same_as": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z]+/(?:FM-[1-3]\\.[1-6]|none)$",
+                  "description": "<task_type>/<failure mode or none>"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Same As",
+              "description": "the group it is the same as, which it counts in"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "key",
+            "name"
+          ],
+          "title": "NameReport"
+        },
+        "NamedGroup": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "name": {
+              "type": "string",
+              "title": "Name"
+            },
+            "description": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Description"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "name",
+            "description"
+          ],
+          "title": "NamedGroup"
         },
         "Neighbourhood": {
           "properties": {
@@ -48256,6 +49575,7 @@
                 "chat",
                 "task",
                 "replay",
+                "history",
                 "local"
               ],
               "title": "Kind"
@@ -53365,6 +54685,7 @@
                 "chat",
                 "task",
                 "replay",
+                "history",
                 "local"
               ],
               "title": "Kind",
@@ -55436,7 +56757,8 @@
                 "author",
                 "chat",
                 "task",
-                "replay"
+                "replay",
+                "history"
               ],
               "title": "Kind"
             },

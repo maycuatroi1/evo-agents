@@ -1,7 +1,7 @@
 """A run on this worker: what every kind of run shares (``Run``), and what a kind brings to it (``RunKind``).
 
 The daemon holds a ``Run`` for each run it claimed. The run's kind (``kinds.KINDS``: step, plan, review, judge, author,
-chat, task, replay) is a ``RunKind`` the Run composes, never a subclass: it gets the Run in its constructor and works through the
+chat, task, replay, history) is a ``RunKind`` the Run composes, never a subclass: it gets the Run in its constructor and works through the
 parts the Run holds, which every kind shares: its log (``event``, ``note``) and the events on their way to the hub
 (``sender``), its leases (``credentials``), its agent (``agent``), the owner's messages (``inbox``), its reports
 (``reports``) and its budget (``watchdog``). The git, the preflight, the verify commands and the commit are functions of
@@ -97,9 +97,11 @@ class Run:
         self.outcome: Outcome | None = None
         found = spec.get("curator")
         self.curator: dict | None = found if isinstance(found, dict) else None  # a run of the Curator: its role
-        # A judge run's and a replay run's own key: in this object alone, out of the spec its adapter and records see.
+        # A judge run's, a replay run's and a history run's own key: in this object alone, out of the spec its adapter
+        # and records see.
         self.judge_key: str | None = self.curator.pop("judge_key", None) if self.curator is not None else None
         self.replay_key: str | None = self.curator.pop("replay_key", None) if self.curator is not None else None
+        self.history_key: str | None = self.curator.pop("history_key", None) if self.curator is not None else None
         self.listeners: list = []  # what a kind counts of its agent's events: each called with (kind, body)
         self.unsupported_noted: set[str] = set()
         self._background: set[asyncio.Task] = set()

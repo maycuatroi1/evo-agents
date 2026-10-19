@@ -3102,6 +3102,86 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project}/curator/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History Status
+         * @description Where the project's history run stands: its cap and model, the facets of the model, its latest runs.
+         */
+        get: operations["history_status_v1_projects__project__curator_history_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project}/curator/history/clusters": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Clusters
+         * @description The clusters of the project's facets of MIN_CLUSTER_SESSIONS sessions or more, as the hub last counted them.
+         */
+        get: operations["list_clusters_v1_projects__project__curator_history_clusters_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/history/next": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Next Batch
+         * @description The next batch of the history run this worker holds, with the run's key (see the module's docstring).
+         */
+        post: operations["next_batch_v1_worker_runs__run_id__history_next_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/worker/runs/{run_id}/history/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report History
+         * @description The facets the model wrote and the names it gave, of the history run this worker holds, with the run's key.
+         */
+        post: operations["report_history_v1_worker_runs__run_id__history_report_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/builder/{project}/proposals": {
         parameters: {
             query?: never;
@@ -6652,6 +6732,7 @@ export interface components {
             outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
             replay?: components["schemas"]["ReplaySettings"];
+            history?: components["schemas"]["HistorySettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -6781,6 +6862,7 @@ export interface components {
             outcome_days: number;
             review?: components["schemas"]["ReviewSettings"];
             replay?: components["schemas"]["ReplaySettings"];
+            history?: components["schemas"]["HistorySettings"];
             reviewer?: components["schemas"]["Role"];
             builder?: components["schemas"]["Role"];
             judge?: components["schemas"]["Judge"];
@@ -7462,15 +7544,16 @@ export interface components {
          * CuratorSpec
          * @description What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
          *     charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
-         *     change, its branch, its forge and its pull request; for a Judge the commit to judge, and for a replay the change's
-         *     head, its task and its own key (``evo_agents.hub.server.replays``).
+         *     change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
+         *     head, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own
+         *     key (``evo_agents.hub.server.history``).
          */
         CuratorSpec: {
             /**
              * Role
              * @enum {string}
              */
-            role: "reviewer" | "builder" | "judge" | "replay";
+            role: "reviewer" | "builder" | "judge" | "replay" | "history";
             /**
              * Protected Paths
              * @description globs of the charter, repo:glob for one repo
@@ -7512,6 +7595,13 @@ export interface components {
              * @description a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge run's
              */
             replay_key?: string | null;
+            /** @description a history run's batches; null for any other run */
+            history?: components["schemas"]["HistorySpec"] | null;
+            /**
+             * History Key
+             * @description a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); the daemon keeps it as a judge run's
+             */
+            history_key?: string | null;
         };
         /** CuratorStatus */
         CuratorStatus: {
@@ -8056,6 +8146,83 @@ export interface components {
              */
             commit?: string | null;
         };
+        /** FacetCluster */
+        FacetCluster: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /**
+             * Named
+             * @description whether the model named it; else its name is its key in words
+             */
+            named: boolean;
+            /** Description */
+            description: string | null;
+            /** Task Type */
+            task_type: string;
+            /** Failure Mode */
+            failure_mode: string;
+            /**
+             * Sessions
+             * @description its sessions, a run counting as one
+             */
+            sessions: number;
+            /** Runs */
+            runs: number;
+            /** Members */
+            members: number;
+            /**
+             * Representative
+             * @description its latest session, as evidence names it
+             */
+            representative: string | null;
+            /** Examples */
+            examples: string[];
+            /**
+             * Keys
+             * @description the groups it holds: its own and those the model joined to it
+             */
+            keys: string[];
+        };
+        /** FacetClusterList */
+        FacetClusterList: {
+            /** Project */
+            project: string;
+            /** Min Sessions */
+            min_sessions: number;
+            /** Clusters */
+            clusters: components["schemas"]["FacetCluster"][];
+            /**
+             * Hidden
+             * @description clusters of fewer sessions, left out
+             */
+            hidden: number;
+            /** Counted At */
+            counted_at: string | null;
+        };
+        /** FacetReport */
+        FacetReport: {
+            /**
+             * Item
+             * @description session:ID or run:ID
+             */
+            item: string;
+            /** Fingerprint */
+            fingerprint: string;
+            /**
+             * Facet
+             * @description the facet the model wrote (history.clean_facet)
+             */
+            facet?: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Error
+             * @description why there is none
+             */
+            error?: string | null;
+        };
         /** FailedBuildCounts */
         FailedBuildCounts: {
             /**
@@ -8409,6 +8576,13 @@ export interface components {
              */
             created_at: string;
         };
+        /** GroupSample */
+        GroupSample: {
+            /** Summary */
+            summary: string;
+            /** Friction */
+            friction: string[];
+        };
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
@@ -8586,6 +8760,232 @@ export interface components {
             exit_code: number;
             /** Duration Ms */
             duration_ms?: number | null;
+        };
+        /** HistoryBatch */
+        HistoryBatch: {
+            /**
+             * Items
+             * @description the next batch, the latest first; none once nothing waits
+             */
+            items: components["schemas"]["HistoryItem"][];
+            /**
+             * Waiting
+             * @description the items without a facet of the model, this batch's included
+             */
+            waiting: number;
+            /**
+             * Groups
+             * @description with clusters: the groups of facets that have no name yet
+             */
+            groups: components["schemas"]["HistoryGroup"][];
+            /**
+             * Named
+             * @description with clusters: the groups named before
+             */
+            named: components["schemas"]["NamedGroup"][];
+        };
+        /** HistoryGroup */
+        HistoryGroup: {
+            /** Key */
+            key: string;
+            /**
+             * Label
+             * @description its kind of task and failure mode, in words
+             */
+            label: string;
+            /** Sessions */
+            sessions: number;
+            /** Samples */
+            samples: components["schemas"]["GroupSample"][];
+        };
+        /** HistoryItem */
+        HistoryItem: {
+            /**
+             * Item
+             * @description session:ID or run:ID
+             */
+            item: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Source
+             * @description what it is, in words
+             */
+            source: string;
+            /**
+             * Fingerprint
+             * @description the content it was read at; the report names it back
+             */
+            fingerprint: string;
+            /**
+             * Lines
+             * @description the entries of its transcript
+             */
+            lines: number;
+            /**
+             * Anchors
+             * @description its errors and corrections
+             */
+            anchors: number;
+            /**
+             * Cut
+             * @description whether the excerpt leaves part of it out
+             */
+            cut: boolean;
+            /** Excerpt */
+            excerpt: string;
+        };
+        /** HistoryNext */
+        HistoryNext: {
+            /**
+             * Clusters
+             * @description group the facets again and add the groups that have no name yet
+             * @default false
+             */
+            clusters: boolean;
+        };
+        /** HistoryReport */
+        HistoryReport: {
+            /** Facets */
+            facets?: components["schemas"]["FacetReport"][];
+            /** Names */
+            names?: components["schemas"]["NameReport"][];
+        };
+        /** HistoryReported */
+        HistoryReported: {
+            /**
+             * Stored
+             * @description facets kept
+             */
+            stored: number;
+            /**
+             * Stale
+             * @description facets of content that changed since, or of an item gone, left
+             */
+            stale: number;
+            /**
+             * Failed
+             * @description items the model gave none, which wait
+             */
+            failed: number;
+            /**
+             * Named
+             * @description groups that got their name
+             */
+            named: number;
+            /**
+             * Waiting
+             * @description the items without a facet of the model now
+             */
+            waiting: number;
+        };
+        /** HistoryRunView */
+        HistoryRunView: {
+            /** Id */
+            id: number;
+            /** Night */
+            night: string | null;
+            /** State */
+            state: string;
+            /** Model */
+            model: string | null;
+            /** Cost Usd */
+            cost_usd: number | null;
+            /** Analyzed */
+            analyzed: number;
+            /** Failed */
+            failed: number;
+            /** Stale */
+            stale: number;
+            /** Named */
+            named: number;
+            /**
+             * Queued At
+             * Format: date-time
+             */
+            queued_at: string;
+            /** Finished At */
+            finished_at: string | null;
+        };
+        /**
+         * HistorySettings
+         * @description How the night's history run reads the project's sessions and runs with a cheap model
+         *     (``evo_agents.hub.history``).
+         */
+        HistorySettings: {
+            /**
+             * Budget Usd
+             * @description the most the night's history run may cost; null: the smaller of 1 USD and 0.25 of night_budget_usd; 0: no history run
+             */
+            budget_usd?: number | null;
+            /**
+             * Model
+             * @description the model of the reviewer's runtime it runs on; null: the cheapest the worker on duty reports for that runtime (haiku on Claude Code)
+             */
+            model?: string | null;
+        };
+        /**
+         * HistorySpec
+         * @description What the worker of a history run is told (``evo_agents.hub.server.history``): how it reads the project's
+         *     history in batches.
+         */
+        HistorySpec: {
+            /**
+             * Batch Items
+             * @description items one batch reads at most
+             */
+            batch_items: number;
+            /**
+             * Batch Chars
+             * @description characters of excerpts one batch reads at most
+             */
+            batch_chars: number;
+            /**
+             * Batch Turns
+             * @description turns of the agent on one batch
+             */
+            batch_turns: number;
+            /**
+             * Naming Share
+             * @description the share of the run's caps kept for naming the clusters
+             */
+            naming_share: number;
+        };
+        /** HistoryStatus */
+        HistoryStatus: {
+            /** Project */
+            project: string;
+            /**
+             * Budget Usd
+             * @description the night's cap of the history run; null without a charter
+             */
+            budget_usd: number | null;
+            /**
+             * Runtime
+             * @description the reviewer's runtime it runs on
+             */
+            runtime: string | null;
+            /**
+             * Model
+             * @description the charter's history.model; null: the cheapest the worker reports
+             */
+            model: string | null;
+            llm: components["schemas"]["LlmCoverage"];
+            /**
+             * Runs
+             * @description the latest history runs, newest first
+             */
+            runs: components["schemas"]["HistoryRunView"][];
+            /**
+             * Clusters
+             * @description clusters in the night's figures
+             */
+            clusters: number;
+            /**
+             * Hidden
+             * @description smaller clusters, which stay out of them
+             */
+            hidden: number;
         };
         /** Inbox */
         Inbox: {
@@ -9095,6 +9495,28 @@ export interface components {
              */
             status: "ok";
         };
+        /** LlmCoverage */
+        LlmCoverage: {
+            /** Version */
+            version: number;
+            /**
+             * Items
+             * @description sessions and runs the model reads, as the reader may read them
+             */
+            items: number;
+            /**
+             * Analyzed
+             * @description those with a facet of the model of their content now
+             */
+            analyzed: number;
+            /** Waiting */
+            waiting: number;
+            /**
+             * Failed
+             * @description those whose last attempt failed
+             */
+            failed: number;
+        };
         /** LocalDecisionAsk */
         LocalDecisionAsk: {
             /**
@@ -9396,6 +9818,32 @@ export interface components {
              * @description messages of the model that name it
              */
             messages: number;
+        };
+        /** NameReport */
+        NameReport: {
+            /**
+             * Key
+             * @description <task_type>/<failure mode or none>
+             */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description?: string | null;
+            /**
+             * Same As
+             * @description the group it is the same as, which it counts in
+             */
+            same_as?: string | null;
+        };
+        /** NamedGroup */
+        NamedGroup: {
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Description */
+            description: string | null;
         };
         /** Neighbourhood */
         Neighbourhood: {
@@ -9984,7 +10432,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
             /** Project */
             project: string;
             /** Plan Id */
@@ -12209,7 +12657,7 @@ export interface components {
              * @description step: one step of the plan; plan: every step not done yet; review: the night's review of the project by the Curator, on no plan; judge: the Curator's Judge of a change of its plan; author: a plan written from a member's request, on no plan when it writes a new one; chat: one turn of an agent mentioned in a group chat, on no plan; local: a Claude Code session on a member's own machine, which no worker runs and the hub only watches
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "local";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local";
             /** Project */
             project: string;
             /**
@@ -13217,7 +13665,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay";
+            kind: "step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history";
             /** Project */
             project: string;
             /**
@@ -22143,7 +22591,7 @@ export interface operations {
                 /** @description a login */
                 dispatched_by?: string | null;
                 /** @description only runs of this kind */
-                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "local") | null;
+                kind?: ("step" | "plan" | "review" | "judge" | "author" | "chat" | "task" | "replay" | "history" | "local") | null;
                 /** @description only local runs of this Claude account */
                 account?: string | null;
                 /** @description text in the title, step, plan, repo, branch, worker, login, error, machine, cwd or Claude account, or a run number */
@@ -28118,6 +28566,294 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Replay"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    history_status_v1_projects__project__curator_history_get: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryStatus"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    list_clusters_v1_projects__project__curator_history_clusters_get: {
+        parameters: {
+            query?: {
+                limit?: number;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FacetClusterList"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    next_batch_v1_worker_runs__run_id__history_next_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the history run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-History-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryNext"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryBatch"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    report_history_v1_worker_runs__run_id__history_report_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                /** @description the history run's own key, which its claim handed the daemon; the worker token alone is refused */
+                "X-Evo-History-Key"?: string | null;
+            };
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HistoryReport"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HistoryReported"];
                 };
             };
             /** @description Unauthorized */

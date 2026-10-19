@@ -445,7 +445,9 @@ JUDGE_TOOLS = frozenset({*KG_TOOL_NAMES, "hub_projects"})
 # What the agent of a replay run may call: none of the hub's tools, which hold the project as it is now (the graph of
 # the default branch, the plans with the evidence of the step it does again): it does the step from its base commit.
 REPLAY_TOOLS: frozenset[str] = frozenset()
-RUN_TOOLS = {"judge": JUDGE_TOOLS, "replay": REPLAY_TOOLS}  # the kinds of run whose agent calls only these
+# What the agent of a history run may call: none, since each batch it reads is in its prompt.
+HISTORY_TOOLS: frozenset[str] = frozenset()
+RUN_TOOLS = {"judge": JUDGE_TOOLS, "replay": REPLAY_TOOLS, "history": HISTORY_TOOLS}  # whose agent calls only these
 # What only a local session can call: the agent of a run asks its owner through the run's decisions.
 LOCAL_ONLY = frozenset({"ask_member"})
 

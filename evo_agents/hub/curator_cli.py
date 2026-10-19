@@ -24,7 +24,8 @@ figures`` prints the figures of the latest night, or of ``--night`` (GET .../cur
 
 ``curator changes`` lists what the accepted proposals of tier 0 to 2 became: the Curator's plan, its branch, its pull
 request, the Judge's verdict and the merge, newest first (GET .../curator/changes); ``curator replay tasks|show``
-(``evo_agents.hub.replay_cli``) the replays that measure them. ``curator protection`` lists the
+(``evo_agents.hub.replay_cli``) the replays that measure them, and ``curator history status|clusters``
+(``evo_agents.hub.history_cli``) the night's history run and the clusters of its facets. ``curator protection`` lists the
 project's repos with the last check of their ruleset (GET .../curator/protection), and ``--check REPO`` checks one now
 with the Curator's App, which only an admin of the project may (POST .../curator/protection/{repo}/check): a Builder
 runs on a repo of GitHub only once its default branch keeps the Curator's App off.
@@ -46,6 +47,8 @@ from evo_agents.hub.cli_client import _client_command, _print_json, _project_pat
 from evo_agents.hub.client import HubError
 from evo_agents.hub.contract import json_option, returns_array, returns_object
 from evo_agents.hub.curator import CHARTER_META, money
+from evo_agents.hub.history import budget_usd as history_budget
+from evo_agents.hub.history_cli import register_history
 from evo_agents.hub.plan_cli import _project
 from evo_agents.hub.replay import DEFAULT_TASKS
 from evo_agents.hub.replay_cli import register_replay
@@ -70,6 +73,7 @@ CHARTER_BODY_KEYS = (
     "outcome_days",
     "review",
     "replay",
+    "history",
     "reviewer",
     "builder",
     "judge",
@@ -196,6 +200,14 @@ def _replay(settings: dict) -> str:
     return f"{tasks} tasks of the holdout split a change, at most {money(cap)} a night"
 
 
+def _history(charter: dict) -> str:
+    cap = history_budget(charter)
+    if not cap:
+        return "none: history.budget_usd is 0"
+    model = (charter.get("history") or {}).get("model") or "the cheapest model of the reviewer's runtime"
+    return f"facets of the sessions and runs by {model}, at most {money(cap)} a night"
+
+
 def _print_charter(charter: dict) -> None:
     window = charter["window"]
     print(
@@ -216,6 +228,7 @@ def _print_charter(charter: dict) -> None:
         ("outcome", f"figures counted again {charter.get('outcome_days', 7)} days after a merge"),
         ("review", _review(charter.get("review") or {})),
         ("replay", _replay(charter.get("replay") or {})),
+        ("history", _history(charter)),
         ("reviewer", _role(charter["reviewer"])),
         ("builder", _role(charter["builder"])),
         ("judge", _role(charter["judge"])),
@@ -734,5 +747,5 @@ def register_curator(hsub) -> None:
     json_option(changes, returns_object("project", "changes", schema="ChangeList"))
     changes.set_defaults(func=cmd_changes)
 
-    _register_protection(csub, with_project)
-    register_replay(csub, with_project)
+    for register in (_register_protection, register_replay, register_history):
+        register(csub, with_project)

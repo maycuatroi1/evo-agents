@@ -46,6 +46,11 @@ def kind_refusal(run_id: int, kind: str, kinds: tuple[str, ...], command: str) -
             f"leave your work in the directory and end your turn; the worker runs the step's verify, not "
             f"`evo-agents worker {command}`, which only the agent of {kinds_of(kinds)} uses"
         )
+    if kind == "history":
+        return (
+            f"run {run_id} is a history run, whose agent answers each batch it is handed with the JSON object its "
+            f"prompt asks for and uses no command: `evo-agents worker {command}` is for the agent of {kinds_of(kinds)}"
+        )
     return (
         f"run {run_id} is a run of one step: only the agent of {kinds_of(kinds)} uses `evo-agents worker "
         f"{command}`; a run of one step writes {runs.RESULT_FILE} instead"

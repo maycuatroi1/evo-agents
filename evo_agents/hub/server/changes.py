@@ -348,8 +348,8 @@ async def curator_policy(
     conn: AsyncConnection, project_id: int, kind: str, plan_id: str | None
 ) -> CuratorPolicy | None:
     """The policy of a run of ``kind`` on ``plan_id`` when it is a run of the Curator (a review run, a judge run, a
-    replay run, or any run of a Curator's plan); None for any other run."""
-    role = {"review": "reviewer", "judge": "judge", "replay": "replay"}.get(kind, "builder")
+    replay run, a history run, or any run of a Curator's plan); None for any other run."""
+    role = {"review": "reviewer", "judge": "judge", "replay": "replay", "history": "history"}.get(kind, "builder")
     change = None if kind == "review" else await change_of_plan(conn, project_id, plan_id)
     if change is None and role == "builder":
         return None

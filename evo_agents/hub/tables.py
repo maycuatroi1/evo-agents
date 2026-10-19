@@ -990,6 +990,7 @@ hub_settings, builder_proposals = tables_settings.settings_tables(metadata)  # 0
 triage_chats, run_triage = tables_triage.triage_tables(metadata, projects, runs)  # 0044
 srs, tasks = tables_plugins.core_plugin_tables(metadata)  # the core plugins srs (0046) and tasks (0047)
 session_digests, session_transcripts, transcript_parts, session_facets = tables_sessions.session_tables(metadata)
+history_runs, facet_clusters = tables_sessions.history_tables(metadata, runs, RUN_ACTIVE)  # 0056
 curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_replays = tables_curator.tables(
     metadata, runs, RUN_ACTIVE
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0053), and runs_active_replay_key

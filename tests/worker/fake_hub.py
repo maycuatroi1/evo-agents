@@ -26,6 +26,7 @@ from datetime import UTC, datetime, timedelta
 from aiohttp import web
 
 from evo_agents.hub import runs
+from evo_agents.hub.history import HISTORY_KEY_HEADER
 from evo_agents.hub.judge import JUDGE_KEY_HEADER
 from evo_agents.hub.replay import REPLAY_KEY_HEADER
 
@@ -60,6 +61,16 @@ class FakeHub:
         self.judge_refused: list[tuple[str, int]] = []  # (route, run id) of each ask without the run's key
         self.replays: list[dict] = []  # what the replay runs posted, with the run's id
         self.replay_keys: dict[int, str] = {}  # run id -> the key its claim hands the daemon
+        # A history run's items, each {item, kind, source, fingerprint, lines, anchors, cut, excerpt}, handed out in
+        # order until reported; the groups that have no name and those named, which ``clusters`` hands; what its
+        # reports said (each with the run's id), and each ask of .../history/next (its body).
+        self.history_items: list[dict] = []
+        self.history_groups: list[dict] = []
+        self.history_named: list[dict] = []
+        self.history_reports: list[dict] = []
+        self.history_asks: list[dict] = []
+        self.history_keys: dict[int, str] = {}
+        self.history_batch = 6
         self.last_heartbeat: dict | None = None
         self.leases: dict[int, dict] = {}  # run id -> the {leases, missing} its ask for credentials gets
         self.credential_calls: list[tuple[str, int]] = []  # ("ask" or "give back", run id), in order
@@ -124,6 +135,8 @@ class FakeHub:
                 get("/v1/worker/runs/{id}/judge", self._judge),
                 post("/v1/worker/runs/{id}/verdict", self._verdict),
                 post("/v1/worker/runs/{id}/replay", self._replay),
+                post("/v1/worker/runs/{id}/history/next", self._history_next),
+                post("/v1/worker/runs/{id}/history/report", self._history_report),
                 post("/v1/worker/runs/{id}/credentials", self._credentials),
                 web.delete("/v1/worker/runs/{id}/credentials", self._give_back),
                 post("/v1/worker/runs/{id}/rate-limit", self._rate_limit),
@@ -323,6 +336,41 @@ class FakeHub:
             **extra,
         )
         self.replay_keys[run_id] = key
+        return run_id
+
+    def queue_history_run(self, budget: dict | None = None, model: str = "haiku", **extra) -> int:
+        """A history run of the night, as the night shift queues it, on no plan and no repo; its claim hands the daemon
+        the run's own key, which its routes take."""
+        key = secrets.token_urlsafe(16)
+        spec = {"batch_items": self.history_batch, "batch_chars": 60_000, "batch_turns": 4, "naming_share": 0.1}
+        run_id = self.queue_run(
+            kind="history",
+            project=self.project,
+            plan_id=None,
+            step_key=None,
+            title="History of the night of 2026-10-08",
+            plan_revision=None,
+            attempt=1,
+            max_attempts=1,
+            parent_run_id=None,
+            resume_of_run_id=None,
+            session_id=None,
+            runtime="claude-code",
+            model=model,
+            mode="headless",
+            approval="auto",
+            timeout_min=60,
+            repo=None,
+            branch=None,
+            repos=None,
+            lease_expires_at=_now(),
+            prompt="This history run reads the project's history.",
+            plan=None,
+            budget=budget,
+            curator={"role": "history", "protected_paths": [], "history": spec, "history_key": key},
+            **extra,
+        )
+        self.history_keys[run_id] = key
         return run_id
 
     def add_skill(self, name: str, version: int, bundle: bytes, *, sha256: str | None = None) -> dict:
@@ -910,6 +958,45 @@ class FakeHub:
         body = await request.json()
         self.replays.append({"run_id": run_id, **body})
         return web.json_response({"id": 1, "state": "running"})
+
+    def _held_history(self, request: web.Request, route: str) -> int:
+        run_id, run = self._run(request)
+        if run["state"] not in runs.HELD_STATES or run["spec"]["kind"] != "history":
+            raise _refusal(404, f"run {run_id} is not held by this worker, or not a history run")
+        if request.headers.get(HISTORY_KEY_HEADER) != self.history_keys.get(run_id):
+            self.judge_refused.append((route, run_id))
+            raise _refusal(403, f"run {run_id} is a history run: its routes take the run's own key")
+        return run_id
+
+    async def _history_next(self, request: web.Request) -> web.Response:
+        self._held_history(request, "history/next")
+        body = await request.json()
+        self.history_asks.append(body)
+        clusters = bool(body.get("clusters"))
+        answer = {
+            "items": self.history_items[: self.history_batch],
+            "waiting": len(self.history_items),
+            "groups": self.history_groups if clusters else [],
+            "named": self.history_named if clusters else [],
+        }
+        return web.json_response(answer)
+
+    async def _history_report(self, request: web.Request) -> web.Response:
+        run_id = self._held_history(request, "history/report")
+        body = await request.json()
+        self.history_reports.append({"run_id": run_id, **body})
+        reported = {entry["item"] for entry in body.get("facets") or []}
+        self.history_items = [item for item in self.history_items if item["item"] not in reported]
+        named = {entry["key"] for entry in body.get("names") or []}
+        self.history_groups = [group for group in self.history_groups if group["key"] not in named]
+        counts = {
+            "stored": sum(1 for entry in body.get("facets") or [] if entry.get("facet") is not None),
+            "stale": 0,
+            "failed": sum(1 for entry in body.get("facets") or [] if entry.get("error") is not None),
+            "named": len(named),
+            "waiting": len(self.history_items),
+        }
+        return web.json_response(counts)
 
     async def _verdict(self, request: web.Request) -> web.Response:
         run_id, run = self._run(request)

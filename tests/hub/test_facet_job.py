@@ -326,7 +326,9 @@ def test_the_night_figures_count_the_sessions_from_their_facets_with_the_keys_th
         "runs": 1,
         "runs_analyzed": 0,
         "failed": 0,
+        "llm": {"version": 1, "items": 0, "analyzed": 0, "waiting": 0, "failed": 0},
     }
+    assert after["clusters"] == []
 
 
 def figures_of(review, owner_id: int | None, since: datetime, until: datetime) -> dict:

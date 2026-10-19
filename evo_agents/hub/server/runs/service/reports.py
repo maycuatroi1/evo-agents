@@ -331,7 +331,7 @@ def _move_reason(body: StateReport, name: str, error: str | None, cancel_request
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind in ("plan", "review", "judge", "author", "chat", "task", "replay"):
+    if kind in ("plan", "review", "judge", "author", "chat", "task", "replay", "history"):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"
             raise HTTPException(409, f"run {run_id} is {article} {kind} run: report done or failed, not review")

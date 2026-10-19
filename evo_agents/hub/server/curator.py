@@ -34,7 +34,8 @@ of the night in a row failed or were reverted, every schedule of the project is 
 ``pause_reason`` and no member in ``paused_by``, and their owner gets the notice curator_paused), then it cancels its
 queued runs when it is paused or outside its window, and otherwise queues at most one run (``gate_of`` says when it
 may): the night's review run first, when the night has none yet and the worker runs review runs
-(``evo_agents.hub.server.collect``), else the judge run of a change of the Curator that waits for one, else the replay
+(``evo_agents.hub.server.collect``), else the night's history run once its review run was queued
+(``evo_agents.hub.server.history``), else the judge run of a change of the Curator that waits for one, else the replay
 run of a change that waits for one (``evo_agents.hub.server.replays``), else the Builder of a change the Curator
 planned (``evo_agents.hub.server.changes``), else a plan run of the charter's night_plans, as ``evo_agents.hub.curator``
 says, audited as curator.dispatch with the owner as actor and no token.
@@ -74,13 +75,14 @@ from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import curator, ledger, replay, review, runs, tables
+from evo_agents.hub import curator, ledger, runs, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.charter_settings import HistorySettings, ReplaySettings, ReviewSettings
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.night_cost import QUEUED_OR_HELD, NightFigures, night_figures, usage_cost
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -170,39 +172,6 @@ class CircuitBreaker(BaseModel):
     )
 
 
-class ReviewSettings(BaseModel):
-    """How the night's review run of the Curator looks (``evo_agents.hub.review``)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    lenses: int = Field(
-        review.LENSES_PER_NIGHT, ge=1, le=len(review.LENSES), description="lenses a night looks through, in turn"
-    )
-    days: int = Field(
-        review.REVIEW_DAYS, ge=1, le=curator.MAX_REVIEW_DAYS, description="the days of sessions and runs it counts"
-    )
-    budget_usd: float | None = Field(
-        None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most the review run may cost; null: as any run"
-    )
-
-
-class ReplaySettings(BaseModel):
-    """How the night shift replays the Curator's changes of a skill, an AGENTS.md or a CLAUDE.md on tasks of the
-    project's own history (``evo_agents.hub.replay``)."""
-
-    model_config = ConfigDict(extra="forbid")
-
-    tasks: int = Field(
-        replay.DEFAULT_TASKS,
-        ge=0,
-        le=replay.MAX_TASKS,
-        description="tasks of the holdout split each change is replayed on",
-    )
-    budget_usd: float | None = Field(
-        None, gt=0, le=curator.MAX_NIGHT_BUDGET_USD, description="the most a night's replay runs cost; null: no replay"
-    )
-
-
 class CharterBody(BaseModel):
     """What an admin writes."""
 
@@ -247,6 +216,7 @@ class CharterBody(BaseModel):
     )
     review: ReviewSettings = Field(default_factory=ReviewSettings)
     replay: ReplaySettings = Field(default_factory=ReplaySettings)
+    history: HistorySettings = Field(default_factory=HistorySettings)
     reviewer: Role = Field(default_factory=Role)
     builder: Role = Field(default_factory=Role)
     judge: Judge = Field(default_factory=Judge)
@@ -284,7 +254,8 @@ class CharterBody(BaseModel):
     def _run_within_night(self):
         if self.run_budget_usd is not None and self.run_budget_usd > self.night_budget_usd:
             raise ValueError("run_budget_usd is over night_budget_usd: a run never gets more than the night has")
-        for name, cap in (("review", self.review.budget_usd), ("replay", self.replay.budget_usd)):
+        caps = (("review", self.review.budget_usd), ("replay", self.replay.budget_usd))
+        for name, cap in (*caps, ("history", self.history.budget_usd)):
             if cap is not None and cap > self.night_budget_usd:
                 raise ValueError(
                     f"{name}.budget_usd is over night_budget_usd: a run never gets more than the night has"
@@ -1311,6 +1282,7 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
     """What schedule ``due`` does now, in the caller's transaction; a word for the job's summary."""
     from evo_agents.hub.server.changes import queue_builder, queue_judge  # it queues runs through this module
     from evo_agents.hub.server.collect import queue_review  # it queues runs through this module
+    from evo_agents.hub.server.history import queue_history  # it queues runs through this module
     from evo_agents.hub.server.replays import queue_replay  # it queues runs through this module
 
     word, gate = await gate_of(conn, due)
@@ -1318,6 +1290,8 @@ async def _fire(conn: AsyncConnection, due, *, curator_app: bool) -> str:
         return word
     if await queue_review(conn, due, gate) is not None:
         return "review"
+    if await queue_history(conn, due, gate) is not None:
+        return "history"
     if await queue_judge(conn, due, gate) is not None:
         return "judge"
     if await queue_replay(conn, due, gate) is not None:

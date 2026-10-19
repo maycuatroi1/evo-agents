@@ -25,8 +25,10 @@ source lags its default branch and the files it lacks or holds stale, at the lat
 covered, and what agents got from the graph. The sessions are their facets (``evo_agents.hub.server.facet_figures``):
 each session's whose transcripts or digest the owner may read, a digest the job hub.analyze_facets has not read yet as
 its facet would be, and a local run's only when its member is the schedule's owner. The night's figures add ``weekly``,
-the weekly series of every facet the owner may read, over the whole history, and ``facets``, how far the facets of the
-project are (``evo_agents.hub.facet_job.coverage``). Each entry names evidence a finding can cite as it is
+the weekly series of every facet the owner may read, over the whole history, ``facets``, how far the facets of the
+project are (``evo_agents.hub.facet_job.coverage``, and under ``llm`` those of the model), and ``clusters``, the groups
+of the facets of the model of 3 sessions or more, counted again (``evo_agents.hub.server.history``). Each entry names
+evidence a finding can cite as it is
 (``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned skills waiting for review and the open items of reports live in
 files, not on the hub: the worker counts them in the review run's worktrees (``evo_agents.worker.run.ReviewRun``). A
 session, a plan, and the runs of a plan, that the schedule's owner may not read through the project's hub sink are left
@@ -55,6 +57,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, facet_job, review, runs, tables
 from evo_agents.hub.server import audit, facet_figures, kg_health
+from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.run_state import notify_queued, write_event
@@ -276,7 +279,7 @@ async def compute_figures(
 ) -> dict:
     """The figures of the project of ``access`` over [since, until), as its member ``owner_id`` (the owner of the
     charter, whose local runs count) reads it (see the module's docstring): a JSON object of the keys of
-    ``review.FIGURE_KEYS`` but ``kg_sync``, ``weekly`` and ``facets``, which the night's figures add
+    ``review.FIGURE_KEYS`` but ``kg_sync``, ``weekly``, ``facets`` and ``clusters``, which the night's figures add
     (``ensure_figures``)."""
     return (await _counted(conn, access, since, until, owner_id))[0]
 
@@ -322,6 +325,7 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
     since = until - timedelta(days=days)
     figures, held, plans = await _counted(conn, access, since, until, due.owner_id)
     waiting = [session for session in held if session.numbers is not None]
+    read = await history_figures.figures(conn, access)
     figures = {
         "project": due.project,
         "night": night.isoformat(),
@@ -331,7 +335,8 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
         **figures,
         "kg_sync": await kg_sync_figures(conn, due.worker_id, due.project),
         "weekly": await facet_figures.weekly(conn, access, plans, until, due.owner_id, waiting),
-        "facets": await facet_job.coverage(conn, access.project_id),
+        "facets": {**await facet_job.coverage(conn, access.project_id), "llm": read["llm"]},
+        "clusters": read["clusters"],
     }
     cf = tables.curator_figures
     values = {"project_id": due.project_id, "schedule_id": due.id, "night": night, "since": since, "until": until}

@@ -9,7 +9,10 @@ and each subagent's (``subagents/...``): who uploaded it first, from which machi
 how far into the file on the machine the hub holds it (``source_bytes``, ``lines``), its parts and their bytes, the
 chain of their hashes, and ``deleted_at`` once its content was deleted. transcript_parts holds the parts in order,
 each the blob of kind transcript that holds its lines (``evo_agents.hub.server.transcripts``). session_facets (0051)
-holds the deterministic facet of each session and of each run that ended (``evo_agents.hub.facet_job``).
+holds the deterministic facet of each session and of each run that ended (``evo_agents.hub.facet_job``), and since 0056
+the facet a cheap model wrote of it (``llm``, ``evo_agents.hub.history``). history_runs (0056) holds one row per
+history run of the night shift, and facet_clusters (0056) the groups of a project's facets
+(``evo_agents.hub.server.history``).
 """
 
 from __future__ import annotations
@@ -30,7 +33,7 @@ from sqlalchemy import (
     column,
     func,
 )
-from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.dialects.postgresql import ARRAY, JSONB
 
 
 def _stamp(name: str) -> Column:
@@ -151,11 +154,20 @@ def facet_table(metadata: MetaData) -> Table:
         Column("retry_at", DateTime(timezone=True)),
         _stamp("created_at"),
         _stamp("updated_at"),
+        Column("llm", JSONB),  # 0056: the facet a cheap model wrote, and how it went
+        _count("llm_version", Integer),
+        Column("llm_fingerprint", Text),
+        Column("llm_at", DateTime(timezone=True)),
+        Column("llm_run_id", BigInteger),
+        _count("llm_attempts", Integer),
+        Column("llm_error", Text),
+        Column("llm_retry_at", DateTime(timezone=True)),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="session_facets_project_id_fkey"
         ),
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="session_facets_run_id_fkey"),
         ForeignKeyConstraint(["user_id"], ["users.id"], ondelete="SET NULL", name="session_facets_user_id_fkey"),
+        ForeignKeyConstraint(["llm_run_id"], ["runs.id"], ondelete="SET NULL", name="session_facets_llm_run_id_fkey"),
         PrimaryKeyConstraint("id", name="session_facets_pkey"),
         Index(
             "session_facets_session_key",
@@ -167,3 +179,59 @@ def facet_table(metadata: MetaData) -> Table:
         Index("session_facets_run_key", "run_id", unique=True, postgresql_where=column("kind") == "run"),
         Index("session_facets_project_idx", "project_id", "at"),
     )
+
+
+def history_tables(metadata: MetaData, runs: Table, active) -> tuple[Table, Table]:
+    """(history_runs, facet_clusters) of 0056, added to ``metadata``, and the index that keeps one history run of a
+    project active at a time: ``active`` are the states it counts (``tables.RUN_ACTIVE``)."""
+    Index(
+        "runs_active_history_key",
+        runs.c.project_id,
+        unique=True,
+        postgresql_where=(runs.c.kind == "history") & runs.c.state.in_(active),
+    )
+    history_runs = Table(
+        "history_runs",
+        metadata,
+        Column("run_id", BigInteger, nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("key_digest", Text),
+        _count("analyzed", Integer),
+        _count("failed", Integer),
+        _count("stale", Integer),
+        _count("named", Integer),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="history_runs_run_id_fkey"),
+        ForeignKeyConstraint(["project_id"], ["projects.id"], ondelete="CASCADE", name="history_runs_project_id_fkey"),
+        PrimaryKeyConstraint("run_id", name="history_runs_pkey"),
+        Index("history_runs_project_idx", "project_id", "run_id"),
+    )
+    clusters = Table(
+        "facet_clusters",
+        metadata,
+        Column("id", BigInteger, Identity(always=True), nullable=False),
+        Column("project_id", BigInteger, nullable=False),
+        Column("key", Text, nullable=False),
+        Column("name", Text),
+        Column("description", Text),
+        Column("merged_into", Text),
+        _count("sessions", Integer),
+        _count("runs", Integer),
+        Column("member_ids", ARRAY(BigInteger), nullable=False, server_default="{}"),
+        Column("examples", JSONB, nullable=False, server_default="[]"),
+        Column("named_run_id", BigInteger),
+        Column("named_at", DateTime(timezone=True)),
+        Column("counted_at", DateTime(timezone=True)),
+        _stamp("created_at"),
+        _stamp("updated_at"),
+        ForeignKeyConstraint(
+            ["project_id"], ["projects.id"], ondelete="CASCADE", name="facet_clusters_project_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["named_run_id"], ["runs.id"], ondelete="SET NULL", name="facet_clusters_named_run_id_fkey"
+        ),
+        PrimaryKeyConstraint("id", name="facet_clusters_pkey"),
+        UniqueConstraint("project_id", "key", name="facet_clusters_project_id_key_key"),
+    )
+    return history_runs, clusters

@@ -117,6 +117,8 @@ FACET_TABLES = frozenset({"session_facets"})
 KG_HEALTH_TABLES = frozenset({"kg_source_files", "kg_health"})
 # migration 0053: each project's suite of replay tasks, and the replays of the Curator's changes
 REPLAY_TABLES = frozenset({"replay_tasks", "curator_replays"})
+# migration 0056: the history runs, and the groups of the facets of the model
+HISTORY_TABLES = frozenset({"history_runs", "facet_clusters"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
