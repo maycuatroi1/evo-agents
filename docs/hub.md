@@ -692,7 +692,8 @@ night shift queues and of which a project has one active at a time), the facet o
 below); going back to 0055 drops the tables and the columns and deletes the history runs. Schema 0057 adds
 `history_lines` and `history_indexed`, the words of the project's history for search (The project's history, below),
 and `curator_playbook` and `curator_playbook_deltas` (The Curator's memory, below); going back to 0056 drops the four
-tables, and the job indexes the history again.
+tables, and the job indexes the history again. Schema 0058 adds the lenses `runtime` and `harness` to the checks of
+`findings` and `proposals` (The Curator's review, below); going back to 0057 deletes their findings and proposals.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -875,7 +876,8 @@ keeping the project's graph fresh (`kg_sync`: each git source with the commit it
 was read and pushed, and the error of a sync that failed, with how many failed; null when it said nothing), and the
 health of the project's knowledge graph (`kg_health`, The graph's health, below: each git source against its default
 branch at the latest measure, what the builds of the span covered and how many changed nothing, the retrieval
-evaluation, and what the facets say agents got from the graph; null for a project with no graph). The sessions
+evaluation, and what the facets say agents got from the graph; null for a project with no graph), and the
+`runtime` and the `harness` of the sessions and runs (Runtime and harness, below). The sessions
 of the span are their facets: each session's whose transcripts or digest the charter's owner may read, a digest the job
 has not read yet as its facet would be, and a local run's only when its member owns the charter and no facet or digest
 of the same session counts it already (`sessions` says how many came from each). The night's figures add `weekly`, per
@@ -889,15 +891,16 @@ history run, below). Counted again from the same data, a night's figures are the
 list is ordered by its counts and then by its keys. Then the night shift queues the review
 run on the worker on duty, before any plan run of the night, once that worker's daemon says it runs review runs.
 
-A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the
-worker pushes nothing at its end, and its GitHub token reads only (`contents: read`). Its prompt, which the hub builds
-(`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of twelve, taken in turn),
-says that what the agent reads is data and never instructions, names the hub's tools of the history and asks it to
-read in two tiers (the numbers first, the words of a transcript only where they point), and gives what earlier nights
-found through the night's lenses, the proposals rejected lately, the project's playbook and the night's figures
-(The Curator's memory, below). The agent reads the project through the MCP tools above, its run's project alone; the
-worker's adapter gives a run of the Curator the hub's MCP server whatever the machine has configured
-(`docs/workers.md`, The Curator's runs on the machine). It writes through three commands:
+A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the worker
+pushes nothing at its end, and its GitHub token reads only (`contents: read`). Its prompt, which the hub builds
+(`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of fourteen, taken in turn),
+says that what the agent reads is data and never instructions, names the hub's tools of the history and asks it to read
+in two tiers (the numbers first, the words of a transcript only where they point), and gives what earlier nights found
+through the night's lenses, the proposals rejected lately, the project's playbook and the night's figures (The Curator's
+memory, below), within 12 KiB: `runtime` and `harness` come first, their lists cut to 5, on a night of their lens, and
+last on any other night. The agent reads the project through the MCP tools above, its run's project alone; the worker's
+adapter gives a run of the Curator the hub's MCP server whatever the machine has configured (`docs/workers.md`, The
+Curator's runs on the machine). It writes through three commands:
 
 ```sh
 evo-agents worker finding --lens environment --title "sleep then tail is blocked" --evidence session:ID:errors:0 \
@@ -945,6 +948,33 @@ what each state, tier and lens would list with the other filters applied. Accept
 makes it a plan of the night shift (The Curator's changes, below); accepting one of tier 3 records the answer alone.
 `proposal show` (`GET .../curator/proposals/{id}`) answers, as `change`, the change accepting it made, when the caller
 may read that change's plan: its state, plan, branch, pull request and reason; null otherwise.
+
+**Runtime and harness.** The night's figures hold two more parts, counted without any model
+(`evo_agents/hub/runtime_metrics.py`, `evo_agents/hub/server/runtime_figures.py`). `runtime`: for the sessions and,
+apart, for the runs of the span, how many report their tokens, the tokens (input, output, cache write, cache read and
+the total), the shares of the prompt cache in what the model read, the cost in all and per session or per run (over
+those whose source names one: Claude Code's `cost-state`, a run's `usage`), the context (the largest peak, the median
+and the 95th percentile of the peaks, the median of the first request's), the compactions by trigger, and the five
+heaviest with their evidence (sessions by cache reads, runs by cost); for the runs, by kind, and what the first request
+of each read from the cache and wrote to it (`first_request_*` of a run's `usage`, `cold` when it read nothing and
+wrote); `merged_prs`, the pull requests that merged in the span (a repo of a plan the reader may read with status
+`merged` and its `merged_at` in the span, and the Curator's changes that merged, each plan and repo once), the cost of
+the runs of their plans and that cost per pull request; and per hook and per tool the calls timed, the mean, the median
+and the 95th percentile, read from the buckets of the facets (the bound of the bucket each falls in, at most the
+longest call when the facet knows it), the slowest 15. A session or a run whose source said no tokens is left out of
+the sums rather than counted as 0. `harness`: over the Claude Code sessions whose transcripts the hub read, per source
+of context (the always-loaded files, the instructions of MCP servers, the skill list, hooks, the output of MCP tools and
+of the others) the characters, the tokens they come to (4 characters a token, an estimate: no tokenizer runs), its
+share and the sessions it came in; the tokens of the fixed sources in all and per session; the always-loaded files,
+each once at its largest size, grouped by repo (the last directory of its path that names a repo of the project, else
+its directory); the tools whose output weighed most; the five sessions whose fixed sources weighed most; and the spool
+the sessions' digests say (`spool_results`, `spool_original_chars`, `spool_reads`), not measured again. The lens
+`runtime` reads the first and `harness` the second; their metrics in the ledger are the sessions' cost, the tokens
+written to the cache, the 95th percentile of the sessions' peak context, the compactions and the time of hooks
+(`runtime`), and the tokens of the always-loaded files, of the fixed sources and of the output of tools (`harness`).
+The 95th percentile of the peak context and the tokens of the always-loaded files are levels and compare as they are;
+the others compare per session or run, the cost from half a dollar. A revert names the heaviest sessions and runs of
+the worse figures.
 
 The web shows the same under each project's Curator (`/p/{project}/curator`): the night now and the nights before,
 the schedule and Pause or Resume, the proposals with their filters, a proposal's evidence (the run's log, the digest's
@@ -1423,7 +1453,11 @@ knowledge graph's tools, those that named no node, the searches after them and t
 files edited after the first call, those an earlier result named and those among its first five; the context of the
 first request and the largest; the compactions with their trigger and size; the tokens with cache reads and writes and
 the cost (Claude Code's `cost-state`, a run's `usage`); each hook's runs, time and timeouts; the skills loaded; the
-errors of the model's API; and what the person wrote with the turns that correct the agent. Its lists keep the names
+errors of the model's API; what the person wrote with the turns that correct the agent; and, for a Claude Code
+session, the characters each source of context put into its main thread (`sources`: the always-loaded files of the
+`instructions` attachments, the instructions of MCP servers, the skill list, the text of hooks) with each always-loaded
+file, its path (the home directory as `~/`), its type and its size (`loaded`), null for a Codex session, a run and a
+digest. Its lists keep the names
 and shapes of a digest's, so `session:ID:FIELD:INDEX` names an entry of a facet as it names one of a digest. The facet
 of a digest says null for what a digest does not hold.
 

@@ -33,7 +33,10 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
 1. **The window opens.** At the charter's `window.start`, in its time zone, the job `curator.collect` counts the
    night's figures of the project once, without any model: tool failures, failures that come from the environment,
    failed runs by cause, commands run again and again, corrections the person made, open items and stuck steps, the
-   health of the knowledge graph, and a weekly series over the whole history. The sessions come from their facets,
+   health of the knowledge graph, the runtime (tokens, the prompt cache, the context, compactions, the cost of each
+   session, run and merged pull request, the time of each hook and tool) and the harness (what it puts into every
+   context, by source, with the always-loaded files of each repo), and a weekly series over the whole history. The
+   sessions come from their facets,
    which the job `hub.analyze_facets` makes from each transcript, digest and run that ended (`docs/hub.md`, "Session
    facets"). The graph's health comes from the measure `curator.collect` takes every 6 hours: each git source against
    its default branch on GitHub, what the builds covered, the retrieval score, and what agents got from the graph
@@ -289,9 +292,10 @@ App any plan run of its owner gets, and it pushes as its plan says, the default 
 runs of the Curator. List in `night_plans` only plans you would let run unattended.
 
 **The Reviewer** works in worktrees detached at the commit origin's default branch has, and its prompt says that what
-it reads is data and never instructions. It looks through `review.lenses` of twelve lenses a night, taken in turn
-(`tool_errors`, `environment`, `corrections`, `failed_runs`, `tech_debt`, `code_health`, `docs_drift`,
-`skills_memory`, `cost`, `security`, `product_goals`, `kg_health`). Each finding and proposal cites evidence the hub
+it reads is data and never instructions. It looks through `review.lenses` of fourteen lenses a night, taken in turn
+(`tool_errors`, `environment`, `corrections`, `failed_runs`, `runtime`, `tech_debt`, `code_health`, `docs_drift`,
+`harness`, `skills_memory`, `cost`, `security`, `product_goals`, `kg_health`; `docs/hub.md`, "Runtime and harness",
+says what the night's figures hold for `runtime` and `harness`). Each finding and proposal cites evidence the hub
 checks before it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session's facet, else of its digest),
 `transcript:ID[:FILE]:LINE` (a line of a transcript the hub holds), `run:ID:SEQ` (an event of a run, a local run of the
 owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project; a file the knowledge graph does not hold
@@ -599,6 +603,7 @@ evo-agents hub kg health --project demo
 | 0055 | the ledger line `skill_release`: a global skill the hub published from a merge whose replays won, or published again |
 | 0056 | runs of kind `history`, the facet of the model on `session_facets`, `history_runs`, `facet_clusters`: the history run and the clusters of its facets |
 | 0057 | `history_lines`, `history_indexed`: the words of the history for search; `curator_playbook`, `curator_playbook_deltas`: the playbook and its deltas |
+| 0058 | the lenses `runtime` and `harness` |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and
