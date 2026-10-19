@@ -461,21 +461,56 @@ mentioned gets the notice `chat_mention`, and one added the notice `chat_added`,
 a restricted chat the notice names the chat and links to it, without sender or text. A message that mentions no agent
 makes no run and asks no model anything.
 
-**Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`,
-Chat runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile
-on its project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile
-allows, online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs,
-the one with a checkout of more of the project's repos first; the person must be a writer on the profile's project. No
-such worker, and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that
-declares `chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project
-enabled the type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention keeps the run it made
-(`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the agent in its thread goes
-to the run of the session that is queued or held, in its inbox, and once that run ended done it wakes the session as a
-new run that goes on in it (`resume_of_run_id`), on the same worker and branch. Another person's mention starts a
-session of their own, on their own worker. In a chat of one person, a message in a thread without a mention goes to the
-one agent whose session that person has there (`via` thread); with two people or more, they mention it. The run's
-reactions follow it as above, a run that failed says why in the thread, and the agent's reply at the end of each turn
-is its message in the thread, with the run that wrote it.
+**Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`, Chat
+runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile on its
+project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile allows,
+online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs, the one with
+a checkout of more of the project's repos first; the person must be a writer on the profile's project. No such worker,
+and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
+`chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project enabled the
+type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention
+keeps the run it made (`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the
+agent in its thread goes to the run of the session that is queued or held, in its inbox, and once that run ended done it
+wakes the session as a new run that goes on in it (`resume_of_run_id`), on the same worker and branch. A run that failed
+only because origin declined its push (`push_declined`: a hook, a protected branch, a ruleset) is gone on from the same
+way, so the next run pushes the commits it left on the session's branch; after any other failure the next message opens
+a new session. Another person's mention starts a session of their own, on their own worker. In a chat of one person, a
+message in a thread without a mention goes to the one agent whose session that person has there (`via` thread); with two
+people or more, they mention it. The run's reactions follow it as above, a run that failed says why in the thread, and
+the agent's reply at the end of each turn is its message in the thread, with the run that wrote it.
+
+**A run starts fast.** The worker prepares the repos of a run several at a time, at most 8, and a run that goes on in
+its session asks no origin before its agent starts: the fetch of the worktrees it adopted is its check
+(`docs/workers.md`, A chat run on the machine). On a worker whose daemon lists the feature `lazy_chat_repos`, the first
+run of a session holds the project's harness alone, and its prompt lists every repo of the project, those the thread
+names first. The agent opens a repo it needs with `evo-agents worker repo open REPO`, which prints the path of its
+worktree on the session's branch: the daemon asks the hub to add the repo to the run (`POST
+/v1/worker/runs/{id}/chat/repos`, audited as `run.open_repo`), takes the run's leases again for it, fetches it and
+makes the worktree; the runs after it in the session start with every repo opened (`docs/workers.md`, Repos a chat run
+opens). An older daemon still gets every repo its worker has a checkout of, with the prompt it had before.
+
+**Turns.** Each run of a session is a turn, titled by the message that woke it, `@handle in <chat>: <text>`; the
+session's title is its first run's, which its pull requests take. A run carries `session_run_id`, `session_turn`,
+`session_turns` and `session_title`, and `GET /v1/projects/{p}/runs` takes `group=session` (each session once, as its
+latest run) and `session_run_id` (the turns of one), so the web's Runs page shows a session as one row that opens into
+its turns (`docs/workers.md`, Reading runs).
+
+**Progress.** Under a message that an agent's run took, the thread says how far that run is, by rule, with no model
+asked and no chat message, notice or Telegram message written (`evo_agents/hub/server/chat_progress.py`). Each
+message carries `progress`, one entry per run on its way that took it (`message_id`, `run_id`, `handle`, `step`,
+`worker`, `repo`, `since`). The step is `waiting` for the worker while the run is queued, then the step of its setup
+the worker's latest note names: `claimed`, `checking` access to the repos, `opening` a repo (with `repo`), `starting`
+the agent; then `working`, or `opening` again for a repo the agent asked for. A message that waits in the inbox of a run
+whose agent started is at `inbox` until the worker hands it to the agent. The entry shows under the message that
+started the run until a run of its session writes in the thread after it, and under an inbox message until the
+session writes after the agent took it; a run that ended shows none, and its reactions and its message say the rest.
+The sender's `POST .../messages` already answers it ("waiting for worker X"). Only a reader who may read the run sees
+it (a grant on its project, and its default label through the project's hub sink, as a run is read); anyone else
+reads the chat as before. `GET .../events` and `GET .../stream` take `progress=true`: the events answer then carries
+`progress`, the whole chat's, and the stream sends an event named `progress` (`{"progress": [...]}`, with no id, so
+`Last-Event-ID` and the chat's numbering do not change) once it opens and each time it changes. The hub wakes the
+chat's streams with `pg_notify` alone, never an event, when a chat run moves, when its worker sends a note that names a
+step, and when the worker takes its inbox. A stream without the parameter is as before.
 
 **Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
 rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
@@ -536,7 +571,7 @@ Audience of memories). The feature `chats` owns both tools (Branding and feature
 | `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
-| `POST .../read`, `GET .../events`, `GET .../stream` | | a member |
+| `POST .../read`, `GET .../events`, `GET .../stream` (`progress=true`: the progress under the messages too) | | a member |
 | `PATCH /v1/chats/{id}` (`budget_usd`) | | its creator |
 
 Creating a chat, adding and removing a member, sending a message and changing the budget are audited (`chat.create`,
