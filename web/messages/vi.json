@@ -2452,7 +2452,17 @@
       "handedLabel": "@{handle}: run #{id}, nơi agent nhận việc",
       "refused": "@{handle} không nhận việc:",
       "pull": "PR #{number} trong {repo}",
-      "newTab": "(mở trong tab mới)"
+      "newTab": "(mở trong tab mới)",
+      "progress": {
+        "waiting": "<agent>@{handle}</agent> đã nhận, đang chờ worker {worker}",
+        "waitingAny": "<agent>@{handle}</agent> đã nhận, đang chờ một worker",
+        "inbox": "<agent>@{handle}</agent> đã nhận, tin nằm trong inbox của lượt đang chạy",
+        "claimed": "<agent>@{handle}</agent>: worker {worker} đã nhận run",
+        "checking": "<agent>@{handle}</agent> đang kiểm quyền truy cập các repo",
+        "opening": "<agent>@{handle}</agent> đang mở {repo}",
+        "starting": "<agent>@{handle}</agent> đang khởi động",
+        "working": "<agent>@{handle}</agent> đang làm"
+      }
     },
     "reactions": {
       "you": "bạn",

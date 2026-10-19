@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import type { Chat, ChatAuthor, ChatEvent, ChatPage, GroupMessage } from "@/lib/chats";
+import type { Chat, ChatAuthor, ChatEvent, ChatPage, ChatProgress, GroupMessage } from "@/lib/chats";
 
-import { applyEvents, feedOf, mainMessages, reacted, readInto, replyCount, threadMessages, threadTail, withMessage, withReactions } from "./feed-model";
+import {
+  applyEvents,
+  feedOf,
+  mainMessages,
+  reacted,
+  readInto,
+  replyCount,
+  threadMessages,
+  threadTail,
+  withMessage,
+  withProgress,
+  withReactions,
+} from "./feed-model";
 
 const OCTO: ChatAuthor = { kind: "person", login: "octo", name: "octo", deleted: false };
 const MAI: ChatAuthor = { kind: "person", login: "mai", name: "mai", deleted: false };
@@ -110,5 +122,26 @@ describe("a chat's feed", () => {
     const answered = withReactions(sent, message(1, 1, { body: "ignored", reactions: [{ emoji: "\u{1F44D}", count: 1, mine: true, people: ["octo"], agents: [] }] }));
     expect(answered.entries.get(1)?.message.reactions).toHaveLength(1);
     expect(answered.entries.get(1)?.message.body).toBe("message 1");
+  });
+
+  it("takes the progress the stream sent for every message of the chat, and replaces only the messages it changed", () => {
+    const step = (message_id: number, run_id: number, value: ChatProgress["step"]): ChatProgress => ({
+      message_id,
+      run_id,
+      handle: "reviewer",
+      step: value,
+      worker: "studio",
+      repo: null,
+      since: "2026-10-14T08:00:00Z",
+    });
+    const start = feedOf(page([message(1, 1, { progress: [step(1, 7, "waiting")] }), message(2, 2), message(3, 3)], 3));
+    const claimed = withProgress(start, [step(1, 7, "claimed"), step(2, 8, "inbox")]);
+    expect(claimed.entries.get(1)?.message.progress?.map((item) => item.step)).toEqual(["claimed"]);
+    expect(claimed.entries.get(2)?.message.progress?.map((item) => item.step)).toEqual(["inbox"]);
+    expect(claimed.entries.get(3)).toBe(start.entries.get(3)); // no progress before or after: the same entry
+    expect(withProgress(claimed, [step(1, 7, "claimed"), step(2, 8, "inbox")])).toBe(claimed); // nothing changed
+    const answered = withProgress(claimed, [step(9, 9, "working")]); // a message the page does not hold
+    expect([1, 2, 3].map((id) => answered.entries.get(id)?.message.progress ?? [])).toEqual([[], [], []]);
+    expect(answered.entries.has(9)).toBe(false);
   });
 });

@@ -11,6 +11,7 @@ import { cn } from "@/lib/utils";
 
 import { AuthorAvatar, AuthorName } from "./author";
 import { MessageLinks } from "./message-links";
+import { MessageProgress } from "./message-progress";
 import { ReactionChips, ReactionPicker } from "./reactions";
 
 export type MessageActions = {
@@ -40,7 +41,8 @@ type Props = MessageActions & {
 
 /**
  * One message of a chat (web/DESIGN.md, Chats): the author's face, name and time; the text as Markdown that is never
- * HTML; where it leads (the agent's run, the runs its mentions handed work to, its pull requests); its reactions; and
+ * HTML; where it leads (the agent's run, the runs its mentions handed work to, its pull requests); how far each run it
+ * handed work to is while that run is on its way (`message-progress.tsx`); its reactions; and
  * for a message that starts a thread, how many replies it has, who wrote them, and a way into it. React and Reply in
  * thread sit at its top right, shown while the pointer is over it or a key is in it, always on touch screens.
  */
@@ -83,6 +85,7 @@ export function MessageItem({ message, chat, me, thread, highlighted = false, do
           {message.body}
         </SafeMarkdown>
         <MessageLinks message={message} chat={chat} />
+        <MessageProgress progress={message.progress} />
         {under?.(message)}
         {/* The reactions, then React and Reply in thread: in the same row under 768 px; from 768 px those two sit over
             the message's top right corner, shown while the pointer is over it, a key is in it or its picker is open. */}

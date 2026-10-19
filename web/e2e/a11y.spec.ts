@@ -2,7 +2,19 @@ import type { Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { agentPath, agentsPath, createAgentByApi, putAvatarByApi } from "./support/agents";
-import { agentAnswers, chatPath, chatSession, chatWorker, claimChatRun, createChatByApi, reactByApi, sendByApi, signedInPerson } from "./support/chats";
+import {
+  agentAnswers,
+  chatPath,
+  chatSession,
+  chatWorker,
+  claimChatRun,
+  claimOnly,
+  createChatByApi,
+  reactByApi,
+  sendByApi,
+  setupNote,
+  signedInPerson,
+} from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { seedCurator } from "./support/curator";
 import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
@@ -211,6 +223,23 @@ async function seedChat(me: Member) {
   await claimChatRun(live, runId);
   await agentAnswers(live, runId, "Fixed the wait. Draft PR: https://github.com/example-org/api/pull/7");
   return { chat, root, asked };
+}
+
+/**
+ * A chat of `me` with the default agent of their first project whose two mentions' runs are on their way: the first
+ * claimed by its worker and opening a repo, the second waiting for that worker. The chat.
+ */
+async function seedChatProgress(me: Member) {
+  const project = me.projects[0];
+  const live = await chatWorker(me, project, uniqueName("a11y-setup"), 2);
+  const chat = await createChatByApi(me, { title: "Setup talk", agents: [project] });
+  const asked = await sendByApi(me, chat.id, `@${project} is the wait test flaky?`);
+  const runId = asked.mentions[0]?.run_id;
+  if (!runId) throw new Error(`the mention made no run: ${JSON.stringify(asked.mentions)}`);
+  await claimOnly(live, runId);
+  await setupNote(live, runId, 1, "opening", "evo-agents-harness");
+  await sendByApi(me, chat.id, `@${project} and the docs, in a session of their own?`);
+  return chat;
 }
 
 /** A session of the default agent of the first project of `me` in three turns, the last one running: the runs' ids. */
@@ -878,6 +907,18 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("reaction-chip").first()).toBeVisible();
       await page.locator("#main").getByTestId("chat-composer-text").pressSequentially("@");
       await expect(page.locator("#main").getByTestId("mention-menu")).toBeVisible();
+    },
+  },
+  {
+    name: "a chat whose mentions' runs are on their way: one opening a repo, one waiting for its worker",
+    open: async ({ page, me }) => {
+      const chat = await seedChatProgress(me);
+      await open(page, chatPath(chat.id));
+      const steps = page.locator("#main").getByTestId("message-progress-step");
+      await expect(steps).toHaveCount(2);
+      await expect(steps.first()).toHaveAttribute("data-step", "opening");
+      await expect(steps.last()).toHaveAttribute("data-step", "waiting");
+      await expectNoSeriousViolations(page, "a chat with its runs' progress");
     },
   },
   {
