@@ -41,7 +41,7 @@ import {
 } from "./nav";
 import { useNavCounts } from "./nav-counts";
 import { PluginNavItems } from "./plugin-nav";
-import { ProjectSwitcher, useCurrentProject } from "./project-switcher";
+import { ProjectSwitcher, useSelectedProject } from "./project-switcher";
 import { NAV_SHORTCUTS, ShortcutKeys } from "./shortcuts";
 import { UserMenu } from "./user-menu";
 
@@ -129,7 +129,7 @@ function NavItem({ label, icon: Icon, href, active, count, value, onNavigate }: 
 
 /**
  * The sidebar of the kit's AppShell: the mark and name (the hub's branding's when it sets them), the project switcher,
- * Home and Inbox, the current project's areas and the pages its plugins add, the hub's areas, then the fleet line and
+ * Home and Inbox, the selected project's areas and the pages its plugins add, the hub's areas, then the fleet line and
  * the account at the foot.
  * An area whose feature a hub admin turned off, for the hub or the project shown, is left out. 240 px wide, folding
  * to 56 px of icons on desktop (the header button, Ctrl or Cmd + B) and a sheet under 768 px.
@@ -138,7 +138,7 @@ export function AppSidebar() {
   const t = useTranslations("nav");
   const tApp = useTranslations("app");
   const pathname = usePathname();
-  const project = useCurrentProject();
+  const project = useSelectedProject();
   const counts = useNavCounts(project);
   const { isMobile, setOpenMobile } = useSidebar();
   const { data: me } = useQuery(whoamiQuery(browserApi));
