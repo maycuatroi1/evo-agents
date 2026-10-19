@@ -22,7 +22,11 @@ the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions
 worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that failed with its error;
 and the health of the project's knowledge graph (``kg_health``, ``evo_agents.hub.server.kg_health``): how far each git
 source lags its default branch and the files it lacks or holds stale, at the latest measure, what the builds of the span
-covered, and what agents got from the graph. The sessions are their facets (``evo_agents.hub.server.facet_figures``):
+covered, and what agents got from the graph; and the ``runtime`` and the ``harness`` of the sessions and runs
+(``evo_agents.hub.server.runtime_figures``): their tokens, the prompt cache, the context, the compactions, the cost of
+each session, run and merged pull request, the time of each hook and tool, and what the harness puts into every
+context, by source, with the always-loaded files of each repo. The sessions are their facets
+(``evo_agents.hub.server.facet_figures``):
 each session's whose transcripts or digest the owner may read, a digest the job hub.analyze_facets has not read yet as
 its facet would be, and a local run's only when its member is the schedule's owner. The night's figures add ``weekly``,
 the weekly series of every facet the owner may read, over the whole history, ``facets``, how far the facets of the
@@ -56,7 +60,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, facet_job, review, runs, tables
-from evo_agents.hub.server import audit, facet_figures, kg_health
+from evo_agents.hub.server import audit, facet_figures, kg_health, runtime_figures
 from evo_agents.hub.server import history as history_figures
 from evo_agents.hub.server.facet_figures import Cause, cut, rate
 from evo_agents.hub.server.projects import ProjectAccess
@@ -247,7 +251,8 @@ async def _counted(
     held = await facet_figures.sessions_of(conn, access, since, until, owner_id)
     sessions = facet_figures.session_figures(held)
     environment: dict[str, Cause] = sessions.pop("environment")
-    ran = await _run_figures(conn, _ended_runs(access.project_id, plans, since, until), environment)
+    ended = _ended_runs(access.project_id, plans, since, until)
+    ran = await _run_figures(conn, ended, environment)
     tools = sorted(ran.pop("tools") + sessions.pop("tools"), key=_tool_order)[:TOP]
     causes = [
         {
@@ -261,6 +266,7 @@ async def _counted(
         for name, found in sorted(environment.items(), key=lambda item: (-item[1].count, item[0]))
     ]
     planned = await _plan_figures(conn, access, until)
+    spent, harness = await runtime_figures.figures(conn, access, ended, plans, since, until, held)
     figures = {
         "tools": tools,
         "environment": causes,
@@ -270,6 +276,8 @@ async def _counted(
         "learned_skills": None,  # in files of the worktrees: the review run's worker counts them
         "decisions": await _decision_figures(conn, access.project_id, plans, since),
         "kg_health": await kg_health.figures(conn, access, plans, since, until, held),
+        "runtime": spent,
+        "harness": harness,
     }
     return figures, held, plans
 

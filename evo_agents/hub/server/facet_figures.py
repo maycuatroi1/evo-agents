@@ -40,6 +40,9 @@ TOP = 30
 SAMPLES = 5
 SAMPLE_CHARS = 200
 LISTS = ("tools", "bash", "errors", "repeated_commands", "commands", "command_at", "user_turns", "kg")
+# The parts of a facet the runtime and the harness of the figures read (evo_agents.hub.runtime_metrics).
+RUNTIME_PARTS = ("usage", "cost_usd", "context", "compactions", "compaction", "hooks", "sources", "loaded")
+PARTS = (*LISTS, *RUNTIME_PARTS)
 WEEK_SUMS = (
     "messages",
     "tool_calls",
@@ -91,7 +94,7 @@ class Cause:
 
 @dataclass
 class Session:
-    """One session of the figures: the lists of its facet, and whose evidence they are."""
+    """One session of the figures: the lists of its facet (PARTS), and whose evidence they are."""
 
     source: str  # transcript, digest or local
     at: datetime
@@ -118,7 +121,7 @@ class Session:
 
 
 def _fields(body):
-    return [body[name].label(name) for name in LISTS]
+    return [body[name].label(name) for name in PARTS]
 
 
 def _session_facets(project_id: int, since: datetime, until: datetime):
@@ -177,7 +180,7 @@ def _local_runs(project_id: int, owner_id: int, since: datetime, until: datetime
 
 
 def _lists(row) -> dict:
-    return {name: getattr(row, name) for name in LISTS}
+    return {name: getattr(row, name) for name in PARTS}
 
 
 async def sessions_of(
@@ -195,7 +198,7 @@ async def sessions_of(
         for row in await conn.execute(_waiting_digests(access.project_id, since, until)):
             if access.visible(row.label, through):
                 body = facets.digest_facet(row.body)
-                lists = {name: body.get(name) for name in LISTS}
+                lists = {name: body.get(name) for name in PARTS}
                 messages = facets.count(body.get("messages")) or 0
                 session = Session(
                     "digest", row.at, row.session_id, row.session_id, None, messages, body.get("model"), lists

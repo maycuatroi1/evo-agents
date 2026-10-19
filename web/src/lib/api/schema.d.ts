@@ -8514,7 +8514,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
             /**
              * Severity
              * @default medium
@@ -11497,7 +11497,7 @@ export interface components {
              * Lens
              * @description add: the lens it is for; none: every lens
              */
-            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+            lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
             /**
              * Text
              * @description add: the lesson
@@ -12324,7 +12324,7 @@ export interface components {
              * Lens
              * @enum {string}
              */
-            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
+            lens: "tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health";
             /**
              * Kind
              * @description the kind of change, which gives its first tier
@@ -27204,7 +27204,7 @@ export interface operations {
             query?: {
                 /** @description of this review run */
                 run_id?: number | null;
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 limit?: number;
                 offset?: number;
             };
@@ -27333,7 +27333,7 @@ export interface operations {
                 state?: ("open" | "accepted" | "rejected" | "deferred" | "dropped")[];
                 /** @description any of these tiers; repeat it */
                 tier?: number[];
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 /** @description of this review run */
                 run_id?: number | null;
                 limit?: number;
@@ -29676,7 +29676,7 @@ export interface operations {
     show_earlier_v1_projects__project__curator_earlier_get: {
         parameters: {
             query?: {
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 status?: ("open" | "proposed" | "rejected" | "merged" | "kept" | "reverted") | null;
                 limit?: number;
             };
@@ -29741,7 +29741,7 @@ export interface operations {
         parameters: {
             query?: {
                 /** @description its entries and those of no lens */
-                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "tech_debt" | "code_health" | "docs_drift" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
+                lens?: ("tool_errors" | "environment" | "corrections" | "failed_runs" | "runtime" | "tech_debt" | "code_health" | "docs_drift" | "harness" | "skills_memory" | "cost" | "security" | "product_goals" | "kg_health") | null;
                 /** @description the retired entries too, after the live ones */
                 retired?: boolean;
             };

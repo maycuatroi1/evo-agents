@@ -24,7 +24,12 @@ digest that the figures and the evidence read (``tools``, ``bash``, ``errors``, 
   the source says none;
 - ``hooks``: per hook (its name and its command), how many ran, their time and buckets, how many failed or timed out;
 - ``skills``: the skills the agent loaded (the Skill tool) or that came back into its context;
-- ``api_errors``: the errors of the model's API the runtime wrote, by text, each with its cause.
+- ``api_errors``: the errors of the model's API the runtime wrote, by text, each with its cause;
+- ``sources``: the characters each source of context (CONTEXT_SOURCES) put into the main thread of a Claude Code
+  session: the always-loaded files (CLAUDE.md, AGENTS.md, a memory index), the instructions of MCP servers, the list of
+  skills, the text of hooks; the output of tools is ``tools[].output_chars``. ``loaded``: each always-loaded file, its
+  path (a home directory as ``~/``), its type, its largest size in characters and how often it came. Both are null for
+  a Codex session, a run and a digest, whose sources the facet does not see.
 
 A facet built from a digest (``digest_facet``) holds what the digest holds and null for what it does not know. Each
 list is bounded and ordered by its counts and then its text, so the same content makes the same facet. ``summary``
@@ -60,6 +65,7 @@ MAX_FILES = 200
 MAX_TOOLS = 200
 MAX_HOOKS = 50
 MAX_SKILLS = 50
+MAX_LOADED = 50  # always-loaded files a facet names
 MAX_KG_PATHS = 500  # paths of kg results a facet remembers
 MAX_RESULT_PATHS = 50  # paths of one kg result
 MAX_NAME = digest.MAX_NAME
@@ -67,6 +73,8 @@ TEXT_CHARS = digest.ERROR_CHARS
 COMMAND_CHARS = digest.COMMAND_CHARS
 TURN_CHARS = digest.USER_TURN_CHARS
 HOOK_CHARS = 200
+# The sources of context a Claude Code transcript names besides the output of tools (``Tally.context_text``).
+CONTEXT_SOURCES = ("always_loaded", "mcp_instructions", "skills", "hooks")
 VERSION_NUMBER = re.compile(r"(?<=[=@v])\d+(?:\.\d+)+")
 HOME = re.compile(r"(?:/Users|/home)/[^/\s]+/")
 NODE_FILE = re.compile(r"^[^:\s]+:file:([^#]+)")
@@ -279,6 +287,8 @@ class Tally:
         self.hooks: dict[tuple[str, str], Hook] = {}
         self.skills: dict[str, list] = {}  # name: [calls, times it came back into the context]
         self.api_errors: Counter = Counter()
+        self.sources: Counter | None = None  # CONTEXT_SOURCES: characters; None until a Claude Code main thread came
+        self.loaded: dict[str, list] = {}  # an always-loaded file's path: [its type, its largest size, how often]
         self.files: list[dict] = []
         self._open: dict[str, tuple[str, str | None, datetime | None, str | None]] = {}  # call: (tool, program, at, kg)
 
@@ -407,6 +417,29 @@ class Tally:
         if text:
             self.api_errors[text] += 1
 
+    # The sources of context
+
+    def sees_context(self) -> None:
+        """A Claude Code main thread came: its sources of context count, from 0."""
+        if self.sources is None:
+            self.sources = Counter(dict.fromkeys(CONTEXT_SOURCES, 0))
+
+    def context_text(self, source: str, text) -> None:
+        """``text`` came into the main thread's context from ``source`` (one of CONTEXT_SOURCES)."""
+        self.sees_context()
+        if isinstance(text, str) and text:
+            self.sources[source] = min(self.sources[source] + len(text), MAX_COUNT)
+
+    def load_file(self, path, kind, content) -> None:
+        """An always-loaded file (CLAUDE.md, AGENTS.md, a memory index) came into the main thread's context."""
+        self.context_text("always_loaded", content)
+        path = cut(HOME.sub("~/", str(path or "").strip()), digest.PATH_CHARS)
+        if not path or (path not in self.loaded and len(self.loaded) >= MAX_LOADED * 4):
+            return
+        found = self.loaded.setdefault(path, [cut(kind or "unknown", MAX_NAME), 0, 0])
+        found[1] = max(found[1], len(content) if isinstance(content, str) else 0)
+        found[2] += 1
+
     # The facet
 
     def body(self) -> dict:
@@ -444,7 +477,13 @@ class Tally:
                 {"text": text, "n": n, "cause": review.environment_cause(text) or WORK}
                 for text, n in ranked(self.api_errors)[:MAX_ERRORS]
             ],
+            "sources": None if self.sources is None else {name: self.sources[name] for name in CONTEXT_SOURCES},
+            "loaded": None if self.sources is None else self._loaded(),
         }
+
+    def _loaded(self) -> list[dict]:
+        ordered = sorted(self.loaded.items(), key=lambda kv: (-kv[1][1], kv[0]))[:MAX_LOADED]
+        return [{"path": path, "type": kind, "chars": chars, "loads": n} for path, (kind, chars, n) in ordered]
 
     def _models(self) -> dict:
         per_model = ranked(self.models)
@@ -562,6 +601,8 @@ def digest_facet(body: dict, runtime: str | None = None) -> dict:
         "hooks": None,
         "skills": None,
         "api_errors": None,
+        "sources": None,
+        "loaded": None,
     }
 
 

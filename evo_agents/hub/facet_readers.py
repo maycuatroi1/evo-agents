@@ -7,7 +7,10 @@
   attachments of the skills that came back into the context), the compactions with their trigger and size
   (``compact_boundary``), the cost (the largest ``totalCostUSD`` of the ``cost-state`` lines of the main file), the
   errors of the model's API (``api_error``), and the time of each call, from the line of its call to the line of its
-  result. What the person wrote counts in the main thread only, a compaction's summary left out. A message of the model
+  result; in the main thread, the sources of its context (``facets.CONTEXT_SOURCES``): the files of the
+  ``instructions`` attachments (CLAUDE.md, AGENTS.md, a memory index), the blocks of ``mcp_instructions_delta``, the
+  ``skill_listing``, and the text of hooks (``hook_additional_context`` and the content of ``hook_success``). What the
+  person wrote counts in the main thread only, a compaction's summary left out. A message of the model
   counts once, with the usage of its last line, as in the digest. A Codex rollout is read through its items and token
   counts, as the digest reads it; the usage of each of its threads (main and subagents) adds up.
 - ``run_facet`` reads the events of a run (``docs/workers.md``, "Event kinds"), from its log or from the hub: its tool
@@ -87,10 +90,12 @@ class ClaudeReader:
             return
         kind = line.get("type")
         main = file == MAIN and not line.get("isSidechain")
+        if main:
+            self.tally.sees_context()
         if kind == "system":
             self._system(line, main, f"{file}:{number}")
         elif kind == "attachment":
-            self._attachment(line.get("attachment"))
+            self._attachment(line.get("attachment"), main)
         elif kind == "cost-state" and file == MAIN:
             cost = line.get("totalCostUSD")
             if isinstance(cost, (int, float)) and not isinstance(cost, bool) and cost >= 0:
@@ -116,7 +121,7 @@ class ClaudeReader:
             error = line.get("error") if isinstance(line.get("error"), dict) else {}
             self.tally.api_error(error.get("formatted") or error.get("message") or "")
 
-    def _attachment(self, found) -> None:
+    def _attachment(self, found, main: bool) -> None:
         if not isinstance(found, dict):
             return
         kind = found.get("type")
@@ -125,10 +130,30 @@ class ClaudeReader:
             failed = kind != "hook_success" and not timed_out
             name = found.get("hookName") or found.get("hookEvent")
             self.tally.hook(name, found.get("command"), found.get("durationMs"), failed=failed, timed_out=timed_out)
+            if main and kind == "hook_success":
+                self.tally.context_text("hooks", found.get("content"))
         elif kind == "invoked_skills":
             for skill in found.get("skills") or []:
                 if isinstance(skill, dict):
                     self.tally.skill_back(skill.get("name"))
+        elif main:
+            self._context(kind, found)
+
+    def _context(self, kind, found: dict) -> None:
+        """A source of the main thread's context (``facets.CONTEXT_SOURCES``) an attachment names."""
+        if kind == "instructions":
+            for item in found.get("files") or []:
+                if isinstance(item, dict):
+                    self.tally.load_file(item.get("path"), item.get("type"), item.get("content"))
+        elif kind == "mcp_instructions_delta":
+            for block in found.get("addedBlocks") or []:
+                self.tally.context_text("mcp_instructions", block)
+        elif kind == "skill_listing":
+            self.tally.context_text("skills", found.get("content"))
+        elif kind == "hook_additional_context":
+            content = found.get("content")
+            for text in content if isinstance(content, list) else [content]:
+                self.tally.context_text("hooks", text)
 
     def _user(self, line: dict, at: datetime | None, main: bool, where: str) -> None:
         items = _items(line)

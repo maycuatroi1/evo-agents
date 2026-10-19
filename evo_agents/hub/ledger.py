@@ -21,19 +21,21 @@ a command run again and again, a correction). Each is a metric key that ``read_m
 ``outcome_of`` compares them with the same figures counted over the charter's ``outcome_days`` after the merge, per
 unit of activity (the sessions and the runs that ran in each span, ``activity``), so spans of different length and
 busyness compare: a metric is worse when its rate rose by more than WORSE_FACTOR and it counts at least its
-MIN_WORSE, better when it fell by as much. A metric of the state the knowledge graph is in (LEVEL_METRICS: the commits
-it lags, the files it lacks or holds stale) compares as it is, not per unit of activity. The result (OUTCOMES) is
-``revert`` when a metric got worse and none got better, ``keep`` when none got worse, and ``unclear`` when the figures
-are mixed, when the proposal named no figure the hub counts, or when either span had less than MIN_ACTIVITY. A
-``revert`` makes the hub propose a revert of the merge commit (``revert_draft``), a proposal of kind ``revert``, tier 1
-at least.
+MIN_WORSE (MIN_WORSE_USD for one in USD), better when it fell by as much. A metric of a level rather than of activity
+(LEVEL_METRICS: the commits the knowledge graph lags, the files it lacks or holds stale, the 95th percentile of the
+sessions' peak context, the tokens of the always-loaded files) compares as it is, not per unit of activity. The metrics
+of the lenses runtime and harness (``evo_agents.hub.runtime_metrics``) read the figures' ``runtime`` and ``harness``.
+The result (OUTCOMES) is ``revert`` when a metric got worse and none got better, ``keep`` when none got worse, and
+``unclear`` when the figures are mixed, when the proposal named no figure the hub counts, or when either span had less
+than MIN_ACTIVITY. A ``revert`` makes the hub propose a revert of the merge commit (``revert_draft``), a proposal of
+kind ``revert``, tier 1 at least.
 """
 
 from __future__ import annotations
 
 from collections.abc import Iterable, Mapping
 
-from evo_agents.hub import kg_coverage
+from evo_agents.hub import kg_coverage, runtime_metrics
 from evo_agents.hub.judge import slug
 
 ACTORS = ("curator", "agent", "user")
@@ -74,6 +76,7 @@ LENS_METRICS: dict[str, tuple[str, ...]] = {
     "tech_debt": ("open_items", "stuck_steps"),
     "cost": ("cost_usd",),
     "kg_health": tuple(kg_coverage.METRICS),
+    **runtime_metrics.LENS_METRICS,
 }
 METRIC_WORDS = {
     "tool_errors": "tool calls that failed",
@@ -84,10 +87,12 @@ METRIC_WORDS = {
     "stuck_steps": "steps of active plans that did not move",
     "cost_usd": "the cost of the runs, in USD",
     **{key: words for key, (words, _) in kg_coverage.METRICS.items()},
+    **{key: words for key, (words, _) in runtime_metrics.METRICS.items()},
 }
-# Metrics of a level the graph is at when the figures are counted rather than of the activity of the span: compared as
-# they are, not per session or run.
-LEVEL_METRICS = kg_coverage.LEVELS
+# Metrics of a level the graph or the sessions are at when the figures are counted rather than of the activity of the
+# span: compared as they are, not per session or run.
+LEVEL_METRICS = kg_coverage.LEVELS | runtime_metrics.LEVELS
+USD_METRICS = frozenset({"cost_usd"}) | runtime_metrics.USD  # a cost must reach MIN_WORSE_USD before it is worse
 PREFIX_WORDS = {
     "environment": "failures from the environment of cause {name}",
     "failed_runs": "runs that failed or were lost of cause {name}",
@@ -151,6 +156,8 @@ def read_metric(figures: Mapping, key: str) -> float:
         return _number(ran.get("cost_usd"))
     if key in kg_coverage.METRICS:
         return float(kg_coverage.METRICS[key][1](figures.get("kg_health")))
+    if key in runtime_metrics.METRICS:
+        return float(runtime_metrics.METRICS[key][1](figures))
     prefix, _, name = key.partition(":")
     if prefix == "environment":
         return float(sum(_int(item.get("count")) for item in _entries(figures, "environment", "cause", name)))
@@ -246,7 +253,7 @@ def compare(key: str, before: float, before_activity: int, after: float, after_a
     """``worse``, ``better`` or ``same``: how metric ``key`` moved, per unit of activity (see the module's
     docstring)."""
     rate_before, rate_after = rate_of(key, before, before_activity), rate_of(key, after, after_activity)
-    least = MIN_WORSE_USD if key == "cost_usd" else MIN_WORSE
+    least = MIN_WORSE_USD if key in USD_METRICS else MIN_WORSE
     if after >= least and rate_after > rate_before * WORSE_FACTOR:
         return "worse"
     if rate_before > 0 and rate_after * WORSE_FACTOR < rate_before:
@@ -306,8 +313,9 @@ def outcome_of(trigger: Mapping | None, after: Mapping, *, since: str | None = N
 def worse_evidence(after: Mapping, outcome: Mapping) -> list[str]:
     """Evidence, as ``review.parse_evidence`` reads it, that the figures ``after`` hold for the metrics ``outcome``
     found worse: the evidence of an environment cause, a command run again and again or a correction, the runs of a
-    cause of failures, and of the knowledge graph's health the files of its git sources and the sessions and runs whose
-    lookups came back empty; at most MAX_REVERT_EVIDENCE."""
+    cause of failures, of the knowledge graph's health the files of its git sources and the sessions and runs whose
+    lookups came back empty, and of the runtime and the harness their heaviest sessions and runs; at most
+    MAX_REVERT_EVIDENCE."""
     worse = {item.get("key") for item in _list(outcome.get("metrics")) if item.get("change") == "worse"}
     found: list[str] = []
 
@@ -335,6 +343,7 @@ def worse_evidence(after: Mapping, outcome: Mapping) -> list[str]:
     if worse & (set(kg_coverage.METRICS) - kg_coverage.LEVELS):
         retrieved = health.get("retrieval") if isinstance(health.get("retrieval"), Mapping) else {}
         add(_list(retrieved.get("evidence")))
+    add(runtime_metrics.evidence(after, worse))
     return found
 
 

@@ -45,9 +45,15 @@ LENSES: dict[str, str] = {
     "hub answering 5xx, the network, rate limits, credentials, tools missing on the machine",
     "corrections": "where the person corrected an agent: the same correction more than once is a missing rule",
     "failed_runs": "runs that failed or were lost, by cause, and what would have kept them going",
+    "runtime": "how the sessions and runs spend (the figures' runtime): their tokens and the prompt cache (the shares "
+    "read and written, what the first request of a run wrote), their peak context and compactions, the cost of each "
+    "session, run and merged pull request, and the hooks and tools whose median or 95th percentile time is long",
     "tech_debt": "the open items of plans (tech_debt, debt, open questions) and of reports, and steps that are stuck",
     "code_health": "lint, type and test trouble in the code, tests that flake, code that drifted from its own rules",
     "docs_drift": "documentation that no longer says what the code does: versions, paths, commands, figures",
+    "harness": "what the harness puts into every context (the figures' harness): the always-loaded files (CLAUDE.md, "
+    "AGENTS.md, memory) of each repo and their size, the instructions of MCP servers, the skill list, the text of "
+    "hooks and the output of tools, in tokens, and the spool; where a shorter harness would carry the same rules",
     "skills_memory": "skills and memories: learned skills waiting for review, duplicates, ones that contradict",
     "cost": "what the runs and sessions cost, and where the same result could cost less",
     "security": "secrets in the open, permissions wider than needed, text in data that tries to steer an agent",
@@ -108,7 +114,13 @@ FIGURE_KEYS = (
     "facets",
     "weekly",
     "clusters",
+    "runtime",
+    "harness",
 )
+# A figure of FIGURE_KEYS the prompt shows first on a night of its lens, its lists cut to LENS_FIGURE_ITEMS, and last on
+# any other night, so a long one does not push the others out of FIGURES_BYTES.
+LENS_FIGURES = {"runtime": "runtime", "harness": "harness"}
+LENS_FIGURE_ITEMS = 5
 
 # The causes of the failures the figures count, in the order a text is tried against them: the first that matches.
 ENVIRONMENT_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
@@ -381,12 +393,26 @@ def _rules(project: str) -> list[str]:
     ]
 
 
-def _figures_text(figures: dict) -> str:
-    """The figures as the prompt shows them: JSON of the lists, each kept short, within FIGURES_BYTES."""
+def _short(value, items: int):
+    """``value`` with each of its lists, at any depth, cut to ``items``."""
+    if isinstance(value, list):
+        return [_short(item, items) for item in value[:items]]
+    if isinstance(value, dict):
+        return {key: _short(item, items) for key, item in value.items()}
+    return value
+
+
+def _figures_text(figures: dict, lenses=()) -> str:
+    """The figures as the prompt shows them: JSON of the lists, each kept short, within FIGURES_BYTES; a figure of
+    LENS_FIGURES first when the night looks through its lens (``lenses``), else last."""
+    tonight = [LENS_FIGURES[name] for name in lenses if name in LENS_FIGURES]
+    others = [key for key in FIGURE_KEYS if key not in LENS_FIGURES.values()]
     shown = {}
-    for key in FIGURE_KEYS:
+    for key in [*tonight, *others, *(key for key in LENS_FIGURES.values() if key not in tonight)]:
         value = figures.get(key)
-        if isinstance(value, list):
+        if key in LENS_FIGURES.values() and value is not None:
+            shown[key] = _short(value, LENS_FIGURE_ITEMS)
+        elif isinstance(value, list):
             shown[key] = value[:10]
         elif value is not None:
             shown[key] = value
@@ -433,8 +459,8 @@ def build_review_prompt(
     the night with what each looks for, the repos and their worktrees (``worktrees`` maps a repo to its folder under
     the agent's directory, the repo's name when it maps none), the charter's ``goals``, what earlier nights found
     through the night's lenses and the proposals rejected lately (``earlier``), the lines of the project's playbook
-    (``playbook``, ``evo_agents.hub.playbook.prompt_lines``), and the night's figures, shortened; within
-    MAX_PROMPT_BYTES."""
+    (``playbook``, ``evo_agents.hub.playbook.prompt_lines``), and the night's figures, shortened (``_figures_text``);
+    within MAX_PROMPT_BYTES."""
     worktrees = worktrees or {}
     when = f"the night of {night.isoformat()}" if night else "this night"
     lines = [
@@ -468,6 +494,6 @@ def build_review_prompt(
         "# The night's figures, shortened (curator_figures gives them whole)",
         "Counted by the hub without any model, over the sessions and runs of the last days; clusters groups the "
         "sessions by the facets a cheap model wrote of them on nights before, over the whole history.",
-        _figures_text(figures or {}),
+        _figures_text(figures or {}, lenses),
     ]
     return clip("\n".join(lines) + "\n", MAX_PROMPT_BYTES)

@@ -147,7 +147,7 @@ def test_the_lenses_of_the_nights_take_turns_and_each_comes_round():
     for offset in range(len(review.LENSES)):
         seen |= set(review.lenses_for(night + timedelta(days=offset), 3))
     assert seen == set(review.LENSES)
-    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 12
+    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 14
 
 
 @pytest.mark.parametrize(
