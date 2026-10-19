@@ -611,6 +611,7 @@ class HubMcp(MCPServer):
                 body=body,
                 label=arguments.get("label"),
                 if_revision=arguments.get("if_revision"),
+                audience=arguments.get("audience"),
             )
         except ValidationError as exc:
             raise Refusal(f"the memory cannot be written: {_problems(exc)}; nothing was written") from None

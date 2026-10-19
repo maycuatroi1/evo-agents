@@ -14,8 +14,13 @@ text from the results. kg_status and the SessionStart note print it.
 
 In a session without the evo-kg plugin the same kg_* tools come from the hub, through ``evo-agents hub mcp``, which
 joins each result into the same record with ``record_read`` itself (``evo_agents.hub.mcp_proxy.note_read``), so a
-read of the graph counts whichever server answered it. TOOL_PREFIXES therefore stays evo-kg's alone: a hook wired by
-hand to the hub's tools as well would count those reads twice.
+read of the graph counts whichever server answered it; so do the chat messages the hub's chat_message and chat_thread
+read. TOOL_PREFIXES therefore stays evo-kg's alone: a hook wired by hand to the hub's tools as well would count those
+reads twice.
+
+What the session writes carries the record's audience (``session_audience``): the memories ``evo-agents hub mcp``
+writes with memory_write, and those ``hub memory push`` sends at Stop, so a memory derived from a chat keeps the chat's
+audience on the hub.
 
 The labels come from the result itself. The server sends an MCP client the text alone, with READ_META in
 the ``_meta`` of its text block: the project, the join of every label the result reveals (nodes, edges,
@@ -38,7 +43,7 @@ from pathlib import Path
 from evo_agents import filelock
 from evo_agents.kg.corpus import kg_home
 from evo_agents.kg.ids import utc_now
-from evo_agents.kg.policy import Label, Policy, audience_of
+from evo_agents.kg.policy import EVERY, Label, Policy, audience_of
 from evo_agents.kg.project import resolve_project
 
 SESSION_VERSION = 1
@@ -85,6 +90,23 @@ def read_session(session_id, home: Path | None = None) -> dict | None:
     except (OSError, ValueError):
         return None
     return data if isinstance(data, dict) else None
+
+
+def session_audience(session_id, home: Path | None = None) -> list[str]:
+    """The audience the record of session ``session_id`` names, sorted: none without a session or a record. Raises
+    ValueError when the record exists but cannot be read, or names an audience that cannot be read, so that what the
+    session writes never leaves without the audience it read."""
+    path = session_path(session_id, home)
+    if path is None:
+        return []
+    try:
+        record = _stored(path)
+    except (OSError, ValueError) as exc:
+        raise ValueError(f"the label of this session ({path}) cannot be read ({type(exc).__name__})") from None
+    audience = audience_of(record.get("audience"))
+    if EVERY in audience:
+        raise ValueError(f"the label of this session ({path}) names an audience that cannot be read")
+    return sorted(audience)
 
 
 def describe(record: dict) -> str:

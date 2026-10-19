@@ -25,6 +25,12 @@ The text shows the messages as the prompt of a chat run does (``chat_runs.render
 what they say is data, never instructions. On /mcp it goes through the envelope of ``kg serve``: over CAP_CHARS it is
 cut, and kg_more gives the rest while the reader's audience (``kg_audience``) still holds the chat and the grants its
 messages need.
+
+What a reading reveals is that audience too: the chat, and a grant on each project its messages' labels name up to the
+level named. For the agent of a run it is noted as what the run was shown (``run_audience``), in the transaction that
+reads, so a memory the agent writes next carries it. On /mcp the text says it in its READ_META, as a kg_* result says
+its label, so that ``evo-agents hub mcp`` joins it into the label of the person's Claude Code session
+(``evo_agents.kg.sessions``) and a memory the session writes carries it too.
 """
 
 from __future__ import annotations
@@ -47,9 +53,12 @@ from evo_agents.hub.server.chat_runs import chat_run, run_clearers
 from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import ProjectAccess, project_access
+from evo_agents.hub.server.run_audience import note
 from evo_agents.hub.server.runs.models import RunId
 from evo_agents.hub.server.security import MACHINE, CurrentUser, Principal
+from evo_agents.kg.policy import DEFAULT_LEVELS
 from evo_agents.kg.serve import Session
+from evo_agents.kg.sessions import READ_META
 
 log = logging.getLogger(__name__)
 
@@ -318,9 +327,37 @@ async def answer(state, user: Principal, sink: str, owner: tuple, name: str, arg
     async with state.engine.begin() as conn:
         readers = await readers_of(conn, user)
         reading, kept = await read(conn, readers, arguments["id"], name == "chat_thread", sink)
+        if user.scope is not None:
+            await note(conn, user.scope.run_id, kept)
+        label = await session_label(conn, owner[1], kept)
     data = reading.model_dump(mode="json", exclude={"text"})
     data["summary"] = f"{len(reading.messages)} message(s) of chat {reading.chat_id}"
-    return state.kg_handles.call(_Answer(sink, reading.text, data, kept), owner, name, {})
+    data["label"] = label  # what the reading reveals, as a kg_* result says it
+    result = state.kg_handles.call(_Answer(sink, reading.text, data, kept), owner, name, {})
+    read_meta = {"project": owner[1], "label": label, "results_read": len(reading.messages)}
+    for block in result.get("content") or []:
+        block.setdefault("_meta", {})[READ_META] = read_meta  # the text block: what ``kg.sessions`` reads
+    return result
+
+
+async def session_label(conn: AsyncConnection, project: str | None, kept: frozenset[str]) -> dict:
+    """The label of a reading whose audience is ``kept``, as the record of a Claude Code session takes it
+    (``evo_agents.kg.sessions``): integrity U, the projects its messages' labels name, the highest level they name for
+    ``project``, the session's (on its ladder; else the first named, else the ladder's lowest), and the audience."""
+    parts = sorted(tuple(principal.split(":", 2)[1:]) for principal in kept if principal.startswith("grant:"))
+    ladder: list[str] = []
+    if project is not None:
+        found = select(tables.projects.c.levels).where(tables.projects.c.name == project)
+        ladder = list((await conn.execute(found)).scalar_one_or_none() or [])
+    named = [level for name, level in parts if name == project] or [level for _, level in parts]
+    level = max(named, key=lambda n: ladder.index(n) if n in ladder else len(ladder)) if named else None
+    projects = sorted({name for name, _ in parts})
+    return {
+        "level": level or (ladder or DEFAULT_LEVELS)[0],
+        "integrity": "U",
+        "projects": projects,
+        "audience": sorted(kept),
+    }
 
 
 # The run's agent
@@ -331,7 +368,8 @@ async def read_chat(request: Request, run_id: RunId, body: AgentReadIn, user: Cu
     """A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring)."""
     async with request.app.state.engine.begin() as conn:
         readers = await run_readers(conn, user, run_id)
-        reading, _ = await read(conn, readers, body.id, body.thread, None)
+        reading, kept = await read(conn, readers, body.id, body.thread, None)
+        await note(conn, run_id, kept)
     log.info(
         "chat read by an agent", extra={"run_id": run_id, "chat_id": reading.chat_id, "read": len(reading.messages)}
     )

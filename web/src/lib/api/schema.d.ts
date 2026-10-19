@@ -698,6 +698,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/memories/{memory_id}/audience": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Lower Audience
+         * @description Lower the audience of memory ``memory_id`` by hand, to a part of it: an admin of its project who reads it
+         *     alone, with the audit row ``memory.audience``. Any other write keeps or raises it (``put``).
+         */
+        put: operations["lower_audience_v1_memories__memory_id__audience_put"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/memories/{memory_id}/revisions": {
         parameters: {
             query?: never;
@@ -5665,6 +5686,19 @@ export interface components {
              */
             text?: string | null;
         };
+        /** AudienceIn */
+        AudienceIn: {
+            /**
+             * Audience
+             * @description what the memory's audience becomes: a part of it, [] for none
+             */
+            audience: string[];
+            /**
+             * If Revision
+             * @description the revision last seen
+             */
+            if_revision: number;
+        };
         /** AuditCounts */
         AuditCounts: {
             /** Rows */
@@ -8706,6 +8740,11 @@ export interface components {
              * @description the revision last seen; left out to create the memory
              */
             if_revision?: number | null;
+            /**
+             * Audience
+             * @description what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience
+             */
+            audience?: string[] | null;
         };
         /** MemoryRevision */
         MemoryRevision: {
@@ -18322,6 +18361,89 @@ export interface operations {
             cookie?: never;
         };
         requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Written"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["evo_agents__hub__server__memories__Conflict"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    lower_audience_v1_memories__memory_id__audience_put: {
+        parameters: {
+            query?: {
+                /** @description the sink reading the memories (read rule) */
+                sink?: string;
+            };
+            header?: never;
+            path: {
+                memory_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AudienceIn"];
+            };
+        };
         responses: {
             /** @description Successful Response */
             200: {

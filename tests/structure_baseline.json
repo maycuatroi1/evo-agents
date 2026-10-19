@@ -2,7 +2,7 @@
   "about": "Frozen exceptions to the budgets of tests/structure.py (1000 lines a module; 50 statements and a complexity of 15 a function; no private name imported across modules). Entries only shrink: `python -m tests.structure tighten` lowers them; see docs/structure.md.",
   "modules": {
     "evo_agents/hub/judge.py": 1251,
-    "evo_agents/hub/memory.py": 1129,
+    "evo_agents/hub/memory.py": 1124,
     "evo_agents/hub/run_cli.py": 1003,
     "evo_agents/hub/server/changes.py": 1568,
     "evo_agents/hub/server/curator.py": 1375,
