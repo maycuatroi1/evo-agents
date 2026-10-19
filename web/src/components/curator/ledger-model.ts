@@ -21,6 +21,7 @@ export const LEDGER_ACTIONS = [
   "left_open",
   "closed",
   "outcome",
+  "skill_release",
 ] as const satisfies readonly LedgerLine["action"][];
 export const LEDGER_ACTORS = ["curator", "agent", "user"] as const satisfies readonly LedgerLine["actor"][];
 export const LEDGER_OUTCOMES = ["keep", "revert", "unclear"] as const satisfies readonly NonNullable<LedgerLine["outcome"]>[];

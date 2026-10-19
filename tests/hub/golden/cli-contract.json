@@ -2183,7 +2183,8 @@
           "change_id",
           "tasks",
           "replays",
-          "arms"
+          "arms",
+          "verdict"
         ],
         "schema": "ChangeReplay"
       }
@@ -40571,6 +40572,12 @@
               "type": "object",
               "title": "Arms",
               "description": "replay.compare: per arm the replays, passed, cost, turns, tool errors, context"
+            },
+            "verdict": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Verdict",
+              "description": "replay.verdict at the head of the change's pull request: whether its replays won, and why"
             }
           },
           "type": "object",
@@ -40579,7 +40586,8 @@
             "change_id",
             "tasks",
             "replays",
-            "arms"
+            "arms",
+            "verdict"
           ],
           "title": "ChangeReplay"
         },
@@ -46079,7 +46087,8 @@
                 "merged",
                 "left_open",
                 "closed",
-                "outcome"
+                "outcome",
+                "skill_release"
               ],
               "title": "Action"
             },
@@ -57180,7 +57189,8 @@
                 "diff_unreadable",
                 "expected_changed",
                 "golden_changed",
-                "assert_caught"
+                "assert_caught",
+                "instruction_weakened"
               ],
               "title": "Kind"
             },

@@ -29,6 +29,12 @@ The tier is the highest of them, and ``Tier.reasons`` says which rule gave each 
 computes it for a proposal from its paths, then again from the paths its pull request really changes, which only ever
 raises it (``evo_agents.hub.server.change_tiers``); a protected path stays tier 3 whatever else says.
 
+One rule lowers the tier a change merges with, never its proposal's (``replay_tier``): a change of a kind of
+REPLAY_KINDS whose pull request edits a harness alone (the files of one skill, AGENTS.md and CLAUDE.md files:
+``evo_agents.hub.replay.harness_only``) and whose replays on the project's holdout tasks won (``replay.verdict``) is
+tier 0, whatever its kind, its code paths or the graph gave it, unless a rule made it tier 3. Without replays that won,
+or with any other file in its diff, it keeps the tier these rules give.
+
 A protected glob is matched against the path within its repo (``.github/workflows/**`` protects that directory of every
 repo of the project); a glob written ``repo:glob`` protects that repo's paths alone. ``*`` matches within one
 directory, ``**`` across directories (``**/`` also matches none), ``?`` one character; nothing else is special.
@@ -117,6 +123,7 @@ KNOWLEDGE_PATHS = ("knowledge.yaml",)  # the knowledge config at the root of a r
 SOURCE_KEYS = ("ref", "fetch", "refresh", "include", "exclude", "allow")  # what a change of kind kg_source edits
 SOURCE_CONNECTORS = ("git", "harness")  # of the sources it may edit
 SHOWN_CHANGES = 3  # of what a knowledge.yaml change does besides SOURCE_KEYS, named in a reason
+REPLAY_KINDS = ("docs", "skill", "global_config")  # the kinds whose change replays that won make tier 0
 MAX_PATHS = 100  # paths one proposal names
 MAX_PATH_CHARS = 500
 PATH = re.compile(r"^[^\x00-\x1f\x7f\\]+$")
@@ -290,6 +297,18 @@ def tier_of(
                 3, f"the change reaches {repo}:{path} in the knowledge graph, which is protected ({found}): tier 3"
             )
     return Tier(tier, reasons)
+
+
+def replay_tier(kind: str, found: Tier, *, harness: str | None, won: str | None) -> Tier:
+    """The tier a change of ``kind`` merges with, the rules having given it ``found``: tier 0 when its pull request
+    edits ``harness`` alone (what it edits, ``replay.harness_only``; None when it edits more) and its replays won
+    (``won``, why; None when they did not), its kind is one of REPLAY_KINDS and no rule made it tier 3; ``found``
+    otherwise."""
+    if found.tier in (0, 3) or kind not in REPLAY_KINDS or not harness or not won:
+        return found
+    return Tier(
+        0, [*found.reasons, f"it edits {harness} alone and its replays on the holdout tasks won ({won}): tier 0"]
+    )
 
 
 def fingerprint(kind: str, paths: list[tuple[str, str]], title: str) -> str:

@@ -19,6 +19,13 @@ change's repo, arm ``b`` with the harness of the change's branch. The harness is
 model of the charter's Builder; then the worker runs the step's verify on what it did as code it does not trust, as a
 judge run does. An arm passes when every verify command exited 0. ``compare`` adds up the arms of the replays of one
 change. The Judge reads none of it, and decides nothing of it.
+
+``verdict`` says whether a change's replays won, from the replays of the holdout split with both arms whose arm b ran
+at the head of the change's pull request: with fewer than MIN_HOLDOUT of them they do not win; with them, arm b wins
+when it passed more tasks than arm a, or as many with a mean cost or a mean number of turns at least MIN_SAVING lower
+(each mean over the replays where both arms name it). ``harness_only`` says whether a diff edits a harness alone: the
+files of one skill, AGENTS.md and CLAUDE.md files, nothing else. A change of such a diff whose replays won is tier 0
+(``evo_agents.hub.tiers.replay_tier``).
 """
 
 from __future__ import annotations
@@ -50,6 +57,8 @@ MAX_TITLE_CHARS = 300
 MAX_VERIFY_CHARS = 2000  # a task's verify, one shell line, as a step's report takes it
 MAX_REASON_CHARS = 2000
 MAX_PATHS = 200  # harness paths an arm names
+MIN_HOLDOUT = 6  # holdout tasks with both arms at the change's head its replays need before they can win
+MIN_SAVING = 0.10  # with as many tasks passed, arm b's mean cost or turns at least this share lower than arm a's
 CURATOR_PLAN_PREFIX = "curator-"  # evo_agents.hub.judge.CURATOR_PLAN_PREFIX: plans whose steps give no task
 SHA = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 SHORT_SHA = re.compile(r"^[0-9a-f]{7,64}$")
@@ -194,3 +203,77 @@ def compare(results: Iterable[dict]) -> dict:
         for key in ("cost_usd", "turns", "tool_errors", "duration_ms", "peak_context_tokens"):
             total.setdefault(key, None)
     return {**shown, "both": both}
+
+
+def harness_only(paths: Iterable[str]) -> str | None:
+    """What ``paths`` (within one repo) edit when they edit a harness alone: the files of one skill, AGENTS.md and
+    CLAUDE.md files, and nothing else, in words; None otherwise, or for no path."""
+    paths = sorted(set(paths))
+    if not paths or not all(harness_path(path) for path in paths):
+        return None
+    skills = sorted({found for found in map(skill_dir, paths) if found})
+    if len(skills) > 1:
+        return None
+    files = [path for path in paths if skill_dir(path) is None]
+    named = [f"the files of skill {skills[0]}"] if skills else []
+    named += [", ".join(files[:3]) + (f" and {len(files) - 3} more" if len(files) > 3 else "")] if files else []
+    return " and ".join(named)
+
+
+def _means(pairs: list[tuple[dict, dict]], key: str) -> tuple[float | None, float | None, float | None]:
+    """(arm a's mean, arm b's mean, b's saving: 1 - b / a) of ``key`` over the pairs where both arms name it."""
+    values = [(_number(a.get(key)), _number(b.get(key))) for a, b in pairs]
+    values = [(x, y) for x, y in values if x is not None and y is not None]
+    if not values:
+        return None, None, None
+    mean_a = round(sum(x for x, _ in values) / len(values), 6)
+    mean_b = round(sum(y for _, y in values) / len(values), 6)
+    return mean_a, mean_b, round(1 - mean_b / mean_a, 6) if mean_a > 0 else None
+
+
+def verdict(rows: Iterable[dict], head_sha: str | None) -> dict:
+    """Whether the replays ``rows`` of one change (each its ``split``, ``state``, ``result_a`` and ``result_b``) won
+    at ``head_sha``, the head of its pull request (see the module's docstring): {won, reason, tasks, head_sha, a, b,
+    saving, paths}, ``a`` and ``b`` each arm's tasks passed and mean cost and turns, ``paths`` the harness files arm b
+    ran with."""
+    pairs = [
+        (row["result_a"], row["result_b"])
+        for row in rows
+        if row.get("split") == SPLITS[1]
+        and row.get("state") == "done"
+        and isinstance(row.get("result_a"), dict)
+        and isinstance(row.get("result_b"), dict)
+        and head_sha is not None
+        and row["result_b"].get("harness_sha") == head_sha
+    ]
+    arms: dict[str, dict] = {arm: {"passed": 0} for arm in ARMS}
+    saving: dict[str, float | None] = {}
+    for key in ("cost_usd", "turns"):
+        arms["a"][key], arms["b"][key], saving[key] = _means(pairs, key)
+    for index, arm in enumerate(ARMS):
+        arms[arm]["passed"] = sum(bool(pair[index].get("passed")) for pair in pairs)
+    paths = sorted({path for _, b in pairs for path in b.get("harness_paths") or [] if isinstance(path, str)})
+    found = {"tasks": len(pairs), "head_sha": head_sha, **arms, "saving": saving, "paths": paths[:MAX_PATHS]}
+    passed_a, passed_b = arms["a"]["passed"], arms["b"]["passed"]
+    if len(pairs) < MIN_HOLDOUT:
+        why = f"{len(pairs)} holdout task(s) replayed with both arms at the head, of the {MIN_HOLDOUT} a win needs"
+        return {**found, "won": False, "reason": why}
+    if passed_b != passed_a:
+        word = "more" if passed_b > passed_a else "fewer"
+        why = f"arm b passed {word} of the {len(pairs)} holdout tasks than arm a ({passed_b} against {passed_a})"
+        return {**found, "won": passed_b > passed_a, "reason": why}
+    lower = [
+        f"{'cost' if key == 'cost_usd' else 'turns'} {round(share * 100, 1)}% lower"
+        for key, share in saving.items()
+        if share is not None and share >= MIN_SAVING
+    ]
+    if lower:
+        why = f"arm b passed as many of the {len(pairs)} holdout tasks as arm a ({passed_b}), with a mean " + (
+            " and ".join(lower)
+        )
+        return {**found, "won": True, "reason": why}
+    why = (
+        f"arm b passed as many of the {len(pairs)} holdout tasks as arm a ({passed_b}), with neither its mean cost "
+        f"nor its mean turns {round(MIN_SAVING * 100)}% lower"
+    )
+    return {**found, "won": False, "reason": why}

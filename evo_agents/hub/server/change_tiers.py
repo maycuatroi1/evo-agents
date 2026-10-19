@@ -24,6 +24,12 @@ charter protects still makes it tier 3. The pull request's knowledge.yaml facts 
 they name besides the plan's verify (``knowledge_diff.judge_checks``), and its verdict, whose paths give the tier again,
 is judged against them; on GitLab, where the hub reads no pull request, a knowledge.yaml of a change of kind
 ``kg_source`` counts as not read.
+
+``retier`` also gives the tier the change merges with: tier 0 when its kind is one of ``tiers.REPLAY_KINDS``, the
+diff edits a harness alone (``replay.harness_only``) and its replays won at the head of its pull request
+(``replay_verdict``, ``replay.verdict``), unless a rule made it tier 3 (``tiers.replay_tier``); the proposal keeps the
+tier its rules gave. ``merge_tier`` is what the job takes a judged change at before it reads GitHub again: its
+proposal's tier, or 0 when its replays won, with why it waits for its owner otherwise.
 """
 
 from __future__ import annotations
@@ -37,7 +43,7 @@ from fastapi import HTTPException
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub import knowledge_diff, tables, tiers
+from evo_agents.hub import knowledge_diff, replay, tables, tiers
 from evo_agents.hub.kg_build import kg_root
 from evo_agents.hub.kg_graph import ArtifactMismatch, GraphCache, GraphUnavailable, Handles, answer
 from evo_agents.hub.server.github import GitHubRefused
@@ -311,7 +317,7 @@ def _knowledge_others(knowledge: dict | None) -> dict | None:
 async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict) -> int:
     """The tier of the change's proposal again, from ``facts`` of the diff it really has (its paths first), with the
     charter's protected paths (``tiers.tier_of``): raised when they give a higher one, with the reasons, never
-    lowered. The tier the change has now."""
+    lowered. The tier the change has now: that one, or 0 when its replays won (``_replayed``)."""
     pr = tables.proposals
     row = (
         await conn.execute(
@@ -331,7 +337,7 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict)
     except ValueError:
         found = tiers.Tier(3, [f"kind {row.kind} is not a kind of change: tier 3"])
     if found.tier <= row.tier:
-        return max(row.tier, change.tier)
+        return await _replayed(conn, change, row.kind, max(row.tier, change.tier), facts.paths)
     kept = list(row.tier_reasons or [])
     for reason in found.reasons[1:]:
         if reason not in kept:
@@ -342,7 +348,54 @@ async def retier(conn: AsyncConnection, change, facts: PullFacts, charter: dict)
         "curator change raised",
         extra={"change_id": change.id, "proposal_id": change.proposal_id, "tier": found.tier, "was": row.tier},
     )
-    return found.tier
+    return await _replayed(conn, change, row.kind, found.tier, facts.paths)
+
+
+# Replays that won
+
+
+async def replay_verdict(conn: AsyncConnection, change_id: int, head_sha: str | None) -> dict:
+    """``replay.verdict`` of change ``change_id``'s replays at ``head_sha``, with ``replays``, how many it has in
+    all."""
+    rp, t = tables.curator_replays, tables.replay_tasks
+    query = (
+        select(t.c.split, rp.c.state, rp.c.result_a, rp.c.result_b)
+        .join_from(rp, t, t.c.id == rp.c.task_id)
+        .where(rp.c.change_id == change_id)
+        .order_by(rp.c.id)
+    )
+    rows = [dict(row._mapping) for row in await conn.execute(query)]
+    return {**replay.verdict(rows, head_sha), "replays": len(rows)}
+
+
+async def _replayed(conn: AsyncConnection, change, kind: str, tier: int, paths) -> int:
+    """The tier the change merges with, its rules giving it ``tier`` and its diff touching ``paths``
+    (``tiers.replay_tier``)."""
+    if tier in (0, 3) or kind not in tiers.REPLAY_KINDS:
+        return tier
+    harness = replay.harness_only(path for _, path in named_paths(change.repo, list(paths)))
+    if harness is None:
+        return tier
+    found = await replay_verdict(conn, change.id, change.head_sha)
+    won = found["reason"] if found["won"] else None
+    final = tiers.replay_tier(kind, tiers.Tier(tier), harness=harness, won=won).tier
+    if final != tier:
+        log.info("curator change tier 0 by its replays", extra={"change_id": change.id, "was": tier})
+    return final
+
+
+async def merge_tier(conn: AsyncConnection, change) -> tuple[int, str]:
+    """(the tier the job takes judged ``change`` at before it reads GitHub again, why it waits for its owner): its
+    proposal's tier, or 0 when the change's replays won at its head, its files then read again (``retier``)."""
+    pr = tables.proposals
+    row = (await conn.execute(select(pr.c.kind, pr.c.tier).where(pr.c.id == change.proposal_id))).one()
+    why = f"tier {row.tier} waits for its owner to merge it"
+    if row.tier in (0, 3) or row.kind not in tiers.REPLAY_KINDS:
+        return row.tier, why
+    found = await replay_verdict(conn, change.id, change.head_sha)
+    if found["won"]:
+        return 0, ""
+    return row.tier, f"{why}; its replays did not win: {found['reason']}" if found["replays"] else why
 
 
 # The Judge's checks of knowledge.yaml

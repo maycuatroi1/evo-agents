@@ -4,7 +4,8 @@
 holdout when given (GET /v1/projects/{p}/curator/replay/tasks): each a step of a plan done before, with its repo, its
 verify and its base commit once a replay read it. ``curator replay show CHANGE`` shows the replays of one change of the
 Curator (GET .../curator/changes/{id}/replay): for each task, whether arm a (the harness of the default branch) and arm
-b (the harness of the change's branch) passed the step's verify, and what each cost; then both arms added up.
+b (the harness of the change's branch) passed the step's verify, and what each cost; then both arms added up, and
+whether the replays won at the head of the change's pull request, with why (``replay.verdict``).
 
 The project is ``--project``, or ``hub.project`` in the harness.yaml around the current directory. ``--json`` prints
 what the hub answered, with the keys declared next to the flag. Standard library only, like the client.
@@ -21,7 +22,7 @@ from evo_agents.hub.plan_cli import project_of_args
 from evo_agents.hub.replay import ARMS, SPLITS
 
 TASK_LIST_KEYS = ("project", "split", "tasks", "total", "counts")
-CHANGE_REPLAY_KEYS = ("project", "change_id", "tasks", "replays", "arms")
+CHANGE_REPLAY_KEYS = ("project", "change_id", "tasks", "replays", "arms", "verdict")
 
 
 def _path(project: str, *parts: str) -> str:
@@ -78,6 +79,9 @@ def cmd_show(args) -> int:
         cost = money(total["cost_usd"]) if total.get("cost_usd") is not None else "-"
         which = "the default branch's harness" if arm == "a" else "the change's harness"
         print(f"arm {arm} ({which}): {total['passed']} of {total['replays']} passed, {cost}")
+    verdict = found.get("verdict") or {}
+    if verdict:
+        print(f"{'won' if verdict.get('won') else 'not won'}: {verdict.get('reason')}")
     for item in found["replays"]:
         if item["reason"]:
             print(f"#{item['id']}: {item['reason']}")

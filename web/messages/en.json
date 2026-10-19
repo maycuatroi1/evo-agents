@@ -4687,7 +4687,8 @@
         "merged": "Merged",
         "left_open": "Left open",
         "closed": "Closed",
-        "outcome": "Outcome"
+        "outcome": "Outcome",
+        "skill_release": "Skill release"
       },
       "outcome": {
         "keep": "Keep",

@@ -9,10 +9,12 @@ those that set the proposal off (its first line in the ledger) per unit of activ
 line ``outcome`` (keep, revert or unclear) to the ledger, one per change, audited as curator.outcome. A ``revert`` makes
 it propose the revert of the merge commit (``propose_revert``): a proposal of kind ``revert``, tier 1 at least, of the
 same project, lens and label, whose draft plan reverts that commit alone and whose evidence is what the figures after
-the merge hold for the metrics that got worse, ``revert_of`` naming the proposal it undoes. Its owner finds it in the
-Inbox (a notification of kind proposal, whatever room the day's ``max_decisions_per_day`` leaves) and on Telegram, and
-accepts it as any proposal of tier 1: it becomes the Curator's plan, which the night shift builds on a branch of its own
-and whose pull request waits for its owner.
+the merge hold for the metrics that got worse, ``revert_of`` naming the proposal it undoes; a global skill the hub
+published from that merge gets its version before again at once (``skill_release.republish``). The owner finds the
+revert in the Inbox (a notification of kind proposal, whatever room the day's ``max_decisions_per_day`` leaves) and on
+Telegram, and accepts it as any proposal of tier 1: it becomes the Curator's plan, which the night shift builds on a
+branch of its own and whose pull request waits for its owner. The outcome of a change with replays keeps, besides the
+figures of its lens, their verdict at the head it merged (``replay``, ``change_tiers.replay_verdict``).
 
 ``check_circuit`` is the circuit breaker, which the night shift's gate (``curator.gate_of``) runs under the schedule's
 row lock each minute, before anything else and whether the window is open or not: once the charter's
@@ -35,7 +37,7 @@ from sqlalchemy import exists, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, ledger, review, tables, tiers
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, change_tiers, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
 
 log = logging.getLogger(__name__)
@@ -136,6 +138,9 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
     trigger = await _trigger(conn, proposal)
     after = await compute_figures(conn, access, change.merged_at, until, owner.owner_id)
     found = ledger.outcome_of(trigger, after, since=change.merged_at.isoformat(), until=until.isoformat())
+    replayed = await change_tiers.replay_verdict(conn, change.id, change.head_sha)
+    if replayed["replays"]:  # the replays it merged on, kept with the figures of the lens
+        found = {**found, "replay": replayed}
     revert_id = None
     if found["result"] == "revert":
         revert_id = await propose_revert(conn, change, proposal, found, after, charter, owner, project)
@@ -155,6 +160,8 @@ async def _measure(conn: AsyncConnection, change_id: int, moment: datetime) -> s
         what=what,
         details={"revert_proposal_id": revert_id, "outcome_days": days} if revert_id else {"outcome_days": days},
     )
+    if revert_id is not None:  # its line after the outcome's
+        await skill_release.republish(conn, change, owner.owner_id)
     await audit.record(
         conn,
         actor_id=None,

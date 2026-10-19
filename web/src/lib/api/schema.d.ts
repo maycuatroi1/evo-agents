@@ -6569,6 +6569,13 @@ export interface components {
             arms: {
                 [key: string]: unknown;
             };
+            /**
+             * Verdict
+             * @description replay.verdict at the head of the change's pull request: whether its replays won, and why
+             */
+            verdict: {
+                [key: string]: unknown;
+            };
         };
         /** Charter */
         Charter: {
@@ -9008,7 +9015,7 @@ export interface components {
              * Action
              * @enum {string}
              */
-            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome";
+            action: "proposed" | "dropped" | "accepted" | "rejected" | "deferred" | "planned" | "built" | "build_failed" | "pull_opened" | "judged" | "merged" | "left_open" | "closed" | "outcome" | "skill_release";
             /**
              * Actor
              * @description curator: the hub's own code; agent: an agent of a run of the Curator; user: a member
@@ -13963,7 +13970,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable" | "expected_changed" | "golden_changed" | "assert_caught";
+            kind: "assert_removed" | "test_removed" | "skip_added" | "threshold_changed" | "verify_changed" | "ci_changed" | "lint_config_changed" | "lint_suppressed" | "eq_overridden" | "exit_in_test" | "protected_path" | "diff_unreadable" | "expected_changed" | "golden_changed" | "assert_caught" | "instruction_weakened";
             /** Path */
             path: string;
             /** Line */

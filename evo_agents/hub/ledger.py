@@ -8,7 +8,8 @@ Each proposal has its lines in the ledger, which the hub only ever adds to: none
 acted (ACTORS): ``agent``, an agent of a run of the Curator (the Reviewer that proposed it, the Builder that built it,
 the Judge that judged it), with its run; ``user``, a member (who accepted, rejected or deferred it, or merged or closed
 its pull request by hand); ``curator``, the hub's own code (the plan it made, the pull request it opened, the signs of
-score hacking it found, the merge, the outcome, the revert it proposes). A line names what happened (ACTIONS) and,
+score hacking it found, the merge, the global skill it published from the merge, the outcome, the revert it proposes
+and the skill's version before it published again). A line names what happened (ACTIONS) and,
 when it applies, the commit, the commits before and after on the default branch (``before_sha``, ``after_sha``), the
 figures, the Judge's verdict, the pull request and when it merged.
 
@@ -51,6 +52,7 @@ ACTIONS = (
     "left_open",  # its change stays open for its owner, with why (curator)
     "closed",  # its pull request was closed without a merge (user)
     "outcome",  # the figures counted again after the merge: keep, revert or unclear (curator)
+    "skill_release",  # the hub published a global skill from its merge, or its version before again (curator)
 )
 OUTCOMES = ("keep", "revert", "unclear")
 DEFAULT_OUTCOME_DAYS = 7  # the charter's outcome_days by default

@@ -18,11 +18,15 @@ The claim of a replay run tells its worker the replay, the task and the change's
 run's own key (``replay_claim``), which the hub keeps as a SHA-256: the worker posts each arm's result with POST
 /v1/worker/runs/{id}/replay with that key alone (``replay.REPLAY_KEY_HEADER``), so code on the worker's machine that
 reads the worker token writes no result. The first arm that names the task's base commit sets it on the task, once.
-The Judge reads none of this: its prompt and its tools hold no replay.
+The Judge reads none of this: its prompt and its tools hold no replay. A replay done gives a change the Judge passed
+and the hub left open its merge again (``_won_again``): once its replays win (``change_tiers.replay_verdict``), the
+change is ``judged`` again and the job reads its pull request once more, which merges it as tier 0 when its diff edits a
+harness alone (``evo_agents.hub.server.change_tiers``).
 
 GET /v1/projects/{p}/curator/replay/tasks (reader) lists the project's suite, of ``split`` when given, the tasks of
 plans the caller may read through the project's hub sink; GET .../curator/changes/{id}/replay (reader) a change's
-replays with what each arm found and ``replay.compare`` of them. The MCP tool curator_replay answers both
+replays with what each arm found, ``replay.compare`` of them and ``replay.verdict`` at the head of its pull request,
+whether they won. The MCP tool curator_replay answers both
 (``mcp_answer``), the suite's select split alone to the agent of a run.
 """
 
@@ -42,7 +46,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import curator, replay, runs, tables
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, change_tiers
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -178,6 +182,9 @@ class ChangeReplay(BaseModel):
     tasks: int = Field(description="the tasks each change is replayed on, as the charter says now")
     replays: list[Replay]
     arms: dict = Field(description="replay.compare: per arm the replays, passed, cost, turns, tool errors, context")
+    verdict: dict = Field(
+        description="replay.verdict at the head of the change's pull request: whether its replays won, and why"
+    )
 
 
 # Queueing
@@ -436,6 +443,25 @@ async def _arm(conn: AsyncConnection, row, body: ReplayReport, run_id: int) -> N
     await write_event(
         conn, run_id, {"text": f"Arm {body.arm} of the replay {word} the step's verify.", "arm": body.arm}
     )
+    if other is not None:
+        await _won_again(conn, row.change_id, run_id)
+
+
+async def _won_again(conn: AsyncConnection, change_id: int, run_id: int) -> None:
+    """A change left open after the Judge passed it goes back to ``judged`` once its replays win, so the job reads its
+    pull request again and merges it as tier 0 when everything else still holds."""
+    c = tables.curator_changes
+    change = (await conn.execute(select(c).where(c.c.id == change_id).with_for_update())).one()
+    if change.state != "open" or change.passed is not True or change.forge != "github":
+        return
+    found = await change_tiers.replay_verdict(conn, change.id, change.head_sha)
+    if not found["won"]:
+        return
+    why = f"its replays won ({found['reason']}): the hub reads its pull request again to merge it"
+    values = {"state": "judged", "reason": why[: replay.MAX_REASON_CHARS], "updated_at": func.now()}
+    await conn.execute(update(c).values(**values).where(c.c.id == change.id))
+    await write_event(conn, run_id, {"text": f"The replays of the Curator's change #{change.id} won.", "won": True})
+    log.info("curator change judged again by its replays", extra={"change_id": change.id, "run_id": run_id})
 
 
 @worker_router.post("/runs/{run_id}/replay", response_model=Replay, responses=REFUSALS)
@@ -553,7 +579,7 @@ async def change_replay(conn: AsyncConnection, access: ProjectAccess, change_id:
     c, pr, rp, t = tables.curator_changes, tables.proposals, tables.curator_replays, tables.replay_tasks
     change = (
         await conn.execute(
-            select(c.c.id, pr.c.label)
+            select(c.c.id, c.c.head_sha, pr.c.label)
             .join_from(c, pr, pr.c.id == c.c.proposal_id)
             .where(c.c.id == change_id, c.c.project_id == access.project_id)
         )
@@ -573,7 +599,9 @@ async def change_replay(conn: AsyncConnection, access: ProjectAccess, change_id:
     ).scalar_one_or_none() or {}
     wanted = (charter.get("replay") or {}).get("tasks", replay.DEFAULT_TASKS)
     arms = replay.compare([{"result_a": item.a, "result_b": item.b} for item in shown])
-    return ChangeReplay(project=access.name, change_id=change_id, tasks=wanted, replays=shown, arms=arms)
+    rows = [{"split": item.split, "state": item.state, "result_a": item.a, "result_b": item.b} for item in shown]
+    found = replay.verdict(rows, change.head_sha)
+    return ChangeReplay(project=access.name, change_id=change_id, tasks=wanted, replays=shown, arms=arms, verdict=found)
 
 
 @router.get("/{project}/curator/changes/{change_id}/replay", response_model=ChangeReplay, responses=REFUSALS)
@@ -622,7 +650,8 @@ async def mcp_answer(request: Request, project: str, user: Principal, arguments:
         lines = [
             f"Change #{found.change_id} of project {project}: {len(found.replays)} of {found.tasks} replays; arm a "
             f"passed {arms['a']['passed']} of {arms['a']['replays']}, arm b {arms['b']['passed']} of "
-            f"{arms['b']['replays']}. Arm a has the harness of the default branch, arm b the change's."
+            f"{arms['b']['replays']}. Arm a has the harness of the default branch, arm b the change's.",
+            f"{'They won' if found.verdict['won'] else 'They did not win'}: {found.verdict['reason']}.",
         ]
         for item in found.replays:
             lines.append(

@@ -4687,7 +4687,8 @@
         "merged": "Đã merge",
         "left_open": "Để mở",
         "closed": "Đã đóng",
-        "outcome": "Kết quả"
+        "outcome": "Kết quả",
+        "skill_release": "Phát hành skill"
       },
       "outcome": {
         "keep": "Giữ",

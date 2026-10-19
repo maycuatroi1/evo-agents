@@ -42,6 +42,8 @@ the change open. The job then writes the Judge's check run on the pull request w
 when ``judge.merge_decision`` says so, reading everything again from GitHub first (the ruleset with the Curator's App,
 the files and the tier they give, the checks the ruleset requires and the head commit's message), and merging a tier 0
 change at the head the Judge passed; anything else, tiers 1 and 2 included, stays open for its owner with the reason.
+A change of a harness alone whose replays won merges as tier 0 (``change_tiers.merge_tier``), and the merge of one
+releases its global skill (``evo_agents.hub.server.skill_release``, part of each pass).
 While the project's night shift is paused the hub merges nothing: a judged change waits for it. Every WATCH_EVERY
 it reads such a pull request again: merged by hand, its change is ``merged`` (when, by whom, at which commit), closed
 without a merge, ``closed``. It also checks rulesets (``protection.check_rulesets``): the one of a repo a planned
@@ -73,7 +75,7 @@ from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
 from evo_agents.hub import curator, judge, runs, tables, tiers
 from evo_agents.hub.plans import step_key
-from evo_agents.hub.server import audit, change_tiers
+from evo_agents.hub.server import audit, change_tiers, skill_release
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
@@ -1268,8 +1270,7 @@ async def _merge(
     target = github_target(change.origin)
     async with engine.begin() as conn:
         charter = await _charter(conn, change.project_id)
-        pr = tables.proposals
-        tier = (await conn.execute(select(pr.c.tier).where(pr.c.id == change.proposal_id))).scalar_one()
+        tier, waits = await change_tiers.merge_tier(conn, change)
         body = (
             await conn.execute(
                 select(tables.plans.c.body).where(
@@ -1280,11 +1281,7 @@ async def _merge(
         paused = await _night_paused(conn, change.project_id)
     auto = tuple(item for item in charter.get("auto_merge") or [] if isinstance(item, int))
     if tier != 0 or 0 not in auto:  # no call to GitHub for a change the hub would never merge
-        why = (
-            f"tier {tier} waits for its owner to merge it"
-            if tier != 0
-            else "the charter's auto_merge does not name tier 0"
-        )
+        why = reason_line(waits) if tier != 0 else "the charter's auto_merge does not name tier 0"
         async with engine.begin() as conn:
             await _set(conn, change.id, state="open", reason=why)
         return "open"
@@ -1560,5 +1557,6 @@ async def advance(
                 log.warning("a pull request left open waits for GitHub", extra=why)
             except Exception:  # one change failing leaves the others their turn
                 log.exception("reading a pull request left open failed", extra={"change_id": change.id})
+    await skill_release.release(engine, github_app, blobs, outcomes)
     await check_rulesets(engine, curator_app, outcomes)
     return dict(sorted(outcomes.items()))

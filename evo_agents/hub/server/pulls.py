@@ -19,7 +19,8 @@ For the measure of a knowledge graph's health (``evo_agents.hub.server.kg_health
 ``contents: read``, the commit a default branch points at (``branch_head``), the files of a commit's tree
 (``tree``), and how many commits of the branch a commit lacks (``compare``); for the tier of a change of knowledge.yaml
 (``evo_agents.hub.server.change_tiers``), a pull request's merge base (``compare``) and the text of a file at a commit
-(``file_text``).
+(``file_text``); for a global skill the hub publishes from a merge commit (``evo_agents.hub.server.skill_release``),
+the files of the skill's directory at that commit, its tree and then each file's blob (``directory_files``).
 
 ``check_ruleset`` answers whether the Curator's App is kept off a repo's default branch: GET /repos/{o}/{r} names the
 default branch, GET /repos/{o}/{r}/rules/branches/{branch} the rules that apply to it, and for each ruleset with a rule
@@ -64,6 +65,7 @@ MERGE_METHOD = "merge"  # a merge commit, which `git revert -m 1` undoes
 HEAD_WAITS = (1.0, 3.0)  # seconds before each new try of a pull request whose head GitHub does not see yet
 MAX_ERRORS = 5  # items of GitHub's errors a refusal repeats
 MAX_SHOWN = 200  # characters of each text of GitHub's a refusal repeats
+FILE_MODES = ("100644", "100755")  # a regular file and an executable one, as a git tree names them
 
 
 class Refused(GitHubRefused):
@@ -259,6 +261,46 @@ async def file_text(app: GitHubApp, token: str, owner: str, repo: str, path: str
         return base64.b64decode(content or "", validate=False).decode("utf-8")
     except (ValueError, UnicodeDecodeError):
         raise Refused(f"GitHub answered a file that is not UTF-8 text while {doing}") from None
+
+
+async def directory_files(
+    app: GitHubApp, token: str, owner: str, repo: str, sha: str, directory: str, *, most: int, most_bytes: int
+) -> list[tuple[str, bool, bytes]]:
+    """The files under ``directory`` of commit ``sha`` of owner/repo, each (its path within the directory, whether it
+    is executable, its bytes), in path order: the commit's tree, whole, then each file's blob. A tree GitHub cuts, a
+    symbolic link or a submodule there, more than ``most`` files or ``most_bytes`` bytes, or a blob GitHub does not
+    hand whole is a ``Refused``: a directory is never read in part."""
+    doing = f"reading {directory} at {sha[:12]} of {owner}/{repo}"
+    where = _path("repos", owner, repo, "git", "trees", sha)
+    response = await _api(app, token, "GET", where, doing, params={"recursive": "1"})
+    if response.status_code != 200:
+        raise _refused(response, doing)
+    data = app._json(response, doing)
+    if data.get("truncated") is True or not isinstance(data.get("tree"), list):
+        raise Refused(f"GitHub did not list the whole tree while {doing}")
+    prefix = directory.rstrip("/") + "/"
+    entries = [item for item in data["tree"] if isinstance(item, dict) and str(item.get("path")).startswith(prefix)]
+    files = [item for item in entries if item.get("type") != "tree"]
+    odd = next((item for item in files if item.get("type") != "blob" or item.get("mode") not in FILE_MODES), None)
+    if odd is not None:
+        raise Refused(f"{odd.get('path')} is a symbolic link or a submodule, which a skill's bundle never holds")
+    if len(files) > most or sum(int(item.get("size") or 0) for item in files) > most_bytes:
+        raise Refused(f"{directory} holds more than {most} files or {most_bytes} bytes at {sha[:12]}")
+    found = []
+    for item in sorted(files, key=lambda entry: entry["path"]):
+        reading = f"reading {item['path']} at {sha[:12]} of {owner}/{repo}"
+        answer = await _api(app, token, "GET", _path("repos", owner, repo, "git", "blobs", item["sha"]), reading)
+        if answer.status_code != 200:
+            raise _refused(answer, reading)
+        blob = app._json(answer, reading)
+        try:
+            content = base64.b64decode(blob.get("content") or "", validate=False)
+        except ValueError:
+            content = None
+        if blob.get("encoding") != "base64" or content is None or len(content) != item.get("size", len(content)):
+            raise Refused(f"GitHub did not answer the whole file while {reading}")
+        found.append((item["path"][len(prefix) :], item.get("mode") == "100755", content))
+    return found
 
 
 async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict | None:
