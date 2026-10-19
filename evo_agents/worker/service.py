@@ -9,7 +9,10 @@ Either way the service runs ``evo-agents worker run --quiet``, naming this evo-a
 at each login. A daemon that exits with an error is started again 10 seconds later; one that stops cleanly (exit 0,
 after SIGTERM) stays stopped, and so does one that is no longer a worker (revoked on the hub or with ``worker
 revoke``), which exits ``home.EXIT_REVOKED``: the systemd unit lists that status in ``RestartPreventExitStatus``, and
-since launchd tells exits apart only as 0 or not, the LaunchAgent sets EVO_WORKER_REVOKED_EXIT to 0. A service
+since launchd tells exits apart only as 0 or not, the LaunchAgent sets EVO_WORKER_REVOKED_EXIT to 0. A daemon that
+updated its install to the tag nightly exits ``home.EXIT_UPDATED`` (75), an error to both managers, so it is started
+again 10 seconds later on the new install (``selfupdate``); a daemon checks at its start that its plist or unit does
+start it again before it updates itself. A service
 manager starts a job with almost no environment, so the service keeps PATH as it was when ``install`` ran, which is
 where the daemon looks for claude, opencode, codex, tmux and git, and pins EVO_WORKER_HOME to the state directory.
 Install again after a runtime moves to another directory. Installing again keeps every other EVO_WORKER_* variable

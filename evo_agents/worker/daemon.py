@@ -32,7 +32,14 @@
 - A token the hub no longer takes (401, 403: the worker or its token was revoked) stops the daemon with exit status
   ``home.EXIT_REVOKED`` (3), or the one EVO_WORKER_REVOKED_EXIT names: starting it again changes nothing, and the
   service tells its manager not to (``service``). A protocol the hub no longer speaks (426) stops it with exit status
-  1, which an upgrade can mend.
+  1, which an upgrade can mend; once its runs ended, it first updates itself to the tag nightly when it may and the
+  lock the hub sent last (``version_locked`` in config.json) says unlocked, and then exits ``home.EXIT_UPDATED``.
+- Each heartbeat says the commit its install was built from (``agent_commit``) and what it found of updating itself
+  to the tag nightly (``self_update``), and each turn of its loop of self-update (every heartbeat period) decides it
+  (``selfupdate``): a daemon that launchd or systemd runs from a uv tool install of evo-ak, whose worker the hub says
+  is not locked, installs the commit nightly points to once no daemon of the install holds a run, and exits
+  ``home.EXIT_UPDATED`` for its manager to start the new one. It claims nothing while another daemon of its install
+  updates it, nor once it changed under it. The lock the settings of the answer carry is kept in config.json.
 - At the start, the events a previous daemon left in the spool are sent, and runs it left unfinished are marked
   ended, their tmux sessions closed and their credential sockets removed. At the start and every hour, the worktrees
   of runs that ended more than 7 days ago are removed.
@@ -67,11 +74,12 @@ from evo_agents.plugins.runtimes import AcpRuntime
 from evo_agents.worker import checkouts, gitops, interactive, orphans
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.credentials import socket_path
-from evo_agents.worker.home import WorkerConfig, WorkerHome, revoked_exit
+from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
 from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable, WorkerHub, new_session
 from evo_agents.worker.power import KeepAwake, WakeWatch
 from evo_agents.worker.run import Run, Sender, run_class
 from evo_agents.worker.runtimes.acp import adapter_class
+from evo_agents.worker.selfupdate.updater import SelfUpdate
 from evo_agents.worker.spool import Spool, SpoolBudget, leftover_runs
 
 log = logging.getLogger("evo_agents.worker")
@@ -91,8 +99,8 @@ def _strings(value) -> bool:
 
 
 def _settings(value) -> dict | None:
-    """The worker settings of a heartbeat answer, {"slots", "name", "labels"} and "plugins" when the hub sends them
-    (0039), or None when they are not as the hub sends them."""
+    """The worker settings of a heartbeat answer, {"slots", "name", "labels"}, "plugins" when the hub sends them
+    (0039) and "version_locked" (0048), or None when they are not as the hub sends them."""
     if not isinstance(value, dict):
         return None
     slots, name, labels = value.get("slots"), value.get("name"), value.get("labels")
@@ -105,6 +113,10 @@ def _settings(value) -> dict | None:
         if not _strings(value["plugins"]) or len(value["plugins"]) > runs.MAX_WORKER_PLUGINS:
             return None
         found["plugins"] = list(value["plugins"])
+    if "version_locked" in value:
+        if not isinstance(value["version_locked"], bool):
+            return None
+        found["version_locked"] = value["version_locked"]
     return found
 
 
@@ -127,6 +139,7 @@ class Daemon:
         env: Mapping[str, str] | None = None,
         keep_awake: KeepAwake | None = None,
         wake: WakeWatch | None = None,
+        self_update: SelfUpdate | None = None,
     ):
         self.home = home
         self.config = config
@@ -155,6 +168,9 @@ class Daemon:
         self._declarations_unread: set[str] = set()  # the errors of declarations logged already
         self.keep_awake = keep_awake or KeepAwake(config.name)  # the power assertions, while it holds a run
         self.wake = wake or WakeWatch()  # notices a sleep from the turns of the heartbeat and claim loops
+        self.updater = self_update or SelfUpdate.here(home, self.env)  # updating its install to the tag nightly
+        self.outdated = False  # the hub answered 426
+        self._claiming = False
 
     # Shared with the runs
 
@@ -170,10 +186,10 @@ class Daemon:
         stop everything, without reports."""
         if not self.stopped_by_hub:
             self.stopped_by_hub = True
-            outdated = isinstance(problem, Outdated)
+            outdated = self.outdated = isinstance(problem, Outdated)
             self.exit_code = EXIT_FAILED if outdated else revoked_exit(self.env)
             log.error(
-                "the hub no longer speaks this daemon's protocol; upgrade evo-agents"
+                "the hub no longer speaks this daemon's protocol: it updates itself when it may, else upgrade evo-agents"
                 if outdated
                 else "the hub no longer takes this worker: it or its token was revoked; stopping",
                 extra={"status": problem.status, "error": str(problem), "exit_code": self.exit_code},
@@ -219,35 +235,14 @@ class Daemon:
             self.orphans = self._find_orphans()
             self._close_abandoned_runs()
             await self._look_at_machine(force=True)
-            available = sorted(name for name, report in self.runtimes.items() if report.get("available"))
-            log.info(
-                "worker started",
-                extra={
-                    "hub": self.config.url,
-                    "worker_id": self.config.worker_id,
-                    "worker": self.config.name,
-                    "slots": self.config.slots,
-                    "runtimes": available,
-                    "checkouts": sorted(self.checkouts),
-                    "version": __version__,
-                    "tmux": self.tmux.binary,
-                },
-            )
-            if not self.tmux.available:
-                log.warning("tmux is not on PATH: this worker takes headless runs only, with no takeover or terminal")
-            if not available:
-                log.warning("no runtime can take runs here; the worker claims nothing until one can")
-            if not self.checkouts:
-                log.warning(
-                    "no checkout of the worker's projects found: add their repos to the harness registry "
-                    "(`evo-agents hub registry pull`) or set checkouts in config.json",
-                    extra={"projects": self.config.projects},
-                )
+            self._log_start()
+            self.updater.publish(held=0, orphans=len(self.orphans), worker=self._who())
             leftovers = asyncio.create_task(self._send_leftovers())
             heartbeat = asyncio.create_task(self._heartbeat_loop())
             claims = asyncio.create_task(self._claim_loop())
             cleanup = asyncio.create_task(self._cleanup_loop())
-            background = [leftovers, heartbeat, cleanup]
+            updates = asyncio.create_task(self._self_update_loop())
+            background = [leftovers, heartbeat, cleanup, updates]
             await self.stopping.wait()
             claims.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -256,6 +251,8 @@ class Daemon:
                 log.info("waiting for the runs held to end", extra={"runs": sorted(self.run_tasks)})
             while self.run_tasks:
                 await asyncio.wait(list(self.run_tasks.values()))
+            if self.outdated:
+                await self._update_for_hub(updates)
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(asyncio.shield(leftovers), 0 if self.hard_stop.is_set() else LEFTOVER_GRACE)
         finally:
@@ -264,12 +261,42 @@ class Daemon:
             for task in background:
                 with contextlib.suppress(asyncio.CancelledError, Exception):
                     await task
+            await self.updater.settle()  # an install in flight ends before the daemon does
+            self.updater.close()
             await session.close()
             self.keep_awake.close()
             for sig in (signal.SIGTERM, signal.SIGINT):
                 loop.remove_signal_handler(sig)
         log.info("worker stopped", extra={"exit_code": self.exit_code})
         return self.exit_code
+
+    def _log_start(self) -> None:
+        available = sorted(name for name, report in self.runtimes.items() if report.get("available"))
+        log.info(
+            "worker started",
+            extra={
+                "hub": self.config.url,
+                "worker_id": self.config.worker_id,
+                "worker": self.config.name,
+                "slots": self.config.slots,
+                "runtimes": available,
+                "checkouts": sorted(self.checkouts),
+                "version": __version__,
+                "commit": self.updater.install.commit,
+                "self_update": self.updater.report(),
+                "tmux": self.tmux.binary,
+            },
+        )
+        if not self.tmux.available:
+            log.warning("tmux is not on PATH: this worker takes headless runs only, with no takeover or terminal")
+        if not available:
+            log.warning("no runtime can take runs here; the worker claims nothing until one can")
+        if not self.checkouts:
+            log.warning(
+                "no checkout of the worker's projects found: add their repos to the harness registry "
+                "(`evo-agents hub registry pull`) or set checkouts in config.json",
+                extra={"projects": self.config.projects},
+            )
 
     def _signal(self, sig: int) -> None:
         name = signal.Signals(sig).name
@@ -323,6 +350,7 @@ class Daemon:
             "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
             # a plan run with a session for each step (runner.sessions), an author run that asks decisions
             "features": list(runs.WORKER_FEATURES),
+            **self.updater.heartbeat_fields(),  # agent_commit and self_update, every time (0048)
         }
         try:
             answer = await self.hub.heartbeat(body)
@@ -384,6 +412,8 @@ class Daemon:
             self.slot_free.set()
         if answer.get("settings") is not None:
             self._take_settings(answer["settings"])
+        else:
+            self.updater.hear_lock(None)
         self._take_plugin_runtimes(answer.get("plugin_runtimes"))
 
     def _take_plugin_runtimes(self, value) -> None:
@@ -410,10 +440,11 @@ class Daemon:
         log.info("runtimes of plugins declared", extra={"runtimes": sorted(found)})
 
     def _take_settings(self, settings) -> None:
-        """Take the worker's settings the hub sent (slots, name, labels, plugins) when they differ from the config: in
-        memory, and in config.json, read again so a field set by hand since the start (checkouts) stays. Settings this
-        daemon cannot read are logged and left."""
+        """Take the worker's settings the hub sent (slots, name, labels, plugins, version_locked) when they differ from
+        the config: in memory, and in config.json, read again so a field set by hand since the start (checkouts) stays.
+        Settings this daemon cannot read are logged and left, and leave the lock unknown."""
         wanted = _settings(settings)
+        self.updater.hear_lock(None if wanted is None else wanted.get("version_locked"))
         if wanted is None:
             if not self._settings_unread:  # once, not at each heartbeat
                 self._settings_unread = True
@@ -440,6 +471,41 @@ class Daemon:
         if "slots" in changed:
             self.slot_free.set()  # more slots: the claim loop claims at once
 
+    # Updating itself
+
+    def _who(self) -> str:
+        return f"{self.config.name} (id {self.config.worker_id})"
+
+    async def _self_update_loop(self) -> None:
+        """A turn of the self-update each heartbeat period; one that updated the install, or found it updated, stops
+        the daemon to exit EXIT_UPDATED."""
+        while not self.stopping.is_set():
+            try:
+                restart = await self.updater.turn(held=len(self.runs), orphans=len(self.orphans), worker=self._who())
+            except Exception:  # a bug here must not end the daemon
+                log.exception("self-update: the turn failed")
+                restart = False
+            if restart and not self.stopping.is_set():
+                self.exit_code = EXIT_UPDATED
+                log.info("stopping to restart on the updated install", extra={"exit_code": EXIT_UPDATED})
+                self.stopping.set()
+                return
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self.stopping.wait(), self.heartbeat_s)
+
+    async def _update_for_hub(self, updates: asyncio.Task) -> None:
+        """The hub answered 426 and the runs ended: update to nightly, if the daemon may, before it exits."""
+        updates.cancel()
+        with contextlib.suppress(asyncio.CancelledError, Exception):
+            await updates
+        try:
+            updated = await self.updater.after_outdated(self.config.version_locked)
+        except Exception:
+            log.exception("self-update: the update the hub needs failed")
+            updated = False
+        if updated:
+            self.exit_code = EXIT_UPDATED
+
     # Claims
 
     async def _claim_loop(self) -> None:
@@ -464,32 +530,51 @@ class Daemon:
                 with contextlib.suppress(asyncio.TimeoutError):
                     await asyncio.wait_for(self.slot_free.wait(), self.heartbeat_s)
                 continue
+            if not self.updater.may_claim():  # another daemon of the install updates it, or this one restarts on it
+                self._install_idle()
+                with contextlib.suppress(asyncio.TimeoutError):
+                    await asyncio.wait_for(self.stopping.wait(), self.heartbeat_s)
+                continue
+            self._claiming = True
             try:
-                spec = await self.hub.claim()
-            except Unreachable as exc:
-                delay = exc.retry_after if exc.retry_after is not None else backoff.next()
-                log.warning("claim failed", extra={"retry_in_s": round(delay, 1), "error": str(exc)})
+                spec, delay = await self._claim(backoff)
+                if spec:
+                    try:
+                        self._start(spec)
+                    except Exception:
+                        log.exception("the claimed run could not start", extra={"run_id": spec.get("id")})
+                        await self._refuse(spec)
+            finally:
+                self._claiming = False
+                self._install_idle()
+            if delay:
                 await asyncio.sleep(delay)
-                continue
-            except Refused as exc:
-                if isinstance(exc, Outdated) or exc.status in (401, 403):
-                    self.fatal(exc)
-                    return
-                delay = backoff.next()
-                log.error("claim refused", extra={"status": exc.status, "error": str(exc)})
-                await asyncio.sleep(delay)
-                continue
-            except Exception:  # a bug here must not end the claims for the daemon's life
-                log.exception("claim failed")
-                await asyncio.sleep(backoff.next())
-                continue
-            backoff.reset()
-            if spec:
-                try:
-                    self._start(spec)
-                except Exception:
-                    log.exception("the claimed run could not start", extra={"run_id": spec.get("id")})
-                    await self._refuse(spec)
+
+    async def _claim(self, backoff: Backoff) -> tuple[dict | None, float]:
+        """One claim: the run it got, if any, and how long to wait before the next one."""
+        try:
+            spec = await self.hub.claim()
+        except Unreachable as exc:
+            delay = exc.retry_after if exc.retry_after is not None else backoff.next()
+            log.warning("claim failed", extra={"retry_in_s": round(delay, 1), "error": str(exc)})
+            return None, delay
+        except Refused as exc:
+            if isinstance(exc, Outdated) or exc.status in (401, 403):
+                self.fatal(exc)  # sets stopping, which ends the claim loop
+                return None, 0.0
+            delay = backoff.next()
+            log.error("claim refused", extra={"status": exc.status, "error": str(exc)})
+            return None, delay
+        except Exception:  # a bug here must not end the claims for the daemon's life
+            log.exception("claim failed")
+            return None, backoff.next()
+        backoff.reset()
+        return spec, 0.0
+
+    def _install_idle(self) -> None:
+        """Let the other daemons of the install update it, once this one neither claims nor holds a run."""
+        if not self.runs and not self._claiming:
+            self.updater.idle()
 
     async def _refuse(self, spec: dict) -> None:
         """Fail a claimed run the daemon cannot even start, so it does not wait for its lease to run out."""
@@ -522,6 +607,7 @@ class Daemon:
             self.runs.pop(run_id, None)
             self.run_tasks.pop(run_id, None)
             self.keep_awake.update(len(self.runs))
+            self._install_idle()
             self.slot_free.set()
 
         task.add_done_callback(ended)
