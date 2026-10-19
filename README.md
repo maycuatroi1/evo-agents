@@ -112,6 +112,20 @@ evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
 evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg_context and grep (docs/kg-eval.md)
 ```
 
+A harness's CI runs `harness validate` with the evo-agents of the tag `nightly`, the newest commit of main whose CI
+passed, which a workflow moves every night:
+
+```yaml
+      - name: Install evo-agents
+        run: python -m pip install "evo-ak @ git+https://github.com/maycuatroi1/evo-agents@nightly"
+      - name: Validate manifest, contracts, knowledge and plans
+        run: evo-agents harness validate .
+```
+
+A harness that must stay on one release pins it instead, `python -m pip install "evo-ak==<version>"`: the pin is
+that harness's lock, and only an edit of the workflow moves it. The worker daemon follows the same tag unless its
+owner locks its version ([docs/workers.md](docs/workers.md#updating-itself-to-nightly)).
+
 Corpus and graph live in `~/.evo/kg/<project>/` (override with `EVO_KG_HOME`), never in a repo. Every
 source sync and every build appends one line to `audit.jsonl` there: ids, times, counts and versions,
 never item content. A sync's line also counts the secrets the git connector redacted, by item id and kind,
@@ -302,6 +316,12 @@ evo-agents worker register --name mac-mini --project demo --slots 1    # or this
 evo-agents worker service install   # keep the daemon running in the background
 evo-agents worker doctor            # what the machine still holds that a worker should not; exit 2 on a high finding
 ```
+
+A daemon that `worker service install` runs from a `uv tool install` of evo-ak, from git or from PyPI, updates itself
+to the tag `nightly` once it and every daemon of its install are idle, and starts again on the new version; lock its
+version on the worker's page to keep it where it is. A team that follows nightly installs from it:
+`uv tool install --force 'evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@nightly'`.
+[docs/workers.md](docs/workers.md#updating-itself-to-nightly) has the conditions, the states and how to turn it off.
 
 Then, from any machine signed in to the hub:
 
