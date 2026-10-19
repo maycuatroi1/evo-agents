@@ -25,7 +25,9 @@ content did not change names the build whose artifact it reuses (``artifact_reus
 the retention deleted has ``artifact_pruned_at`` and no ``artifact_sha256`` (``evo_agents.hub.kg_prune``). A build job
 holds the lock and the queueing lock ``kg:<project>``, so one runs at a time and at most one waits; queueing while one
 waits returns the waiting build. The waiting job's row is locked until the queueing transaction commits, and the
-worker takes jobs with SKIP LOCKED, so a build that is already queued always sees the run that asked for it.
+worker takes jobs with SKIP LOCKED, so a build that is already queued always sees the run that asked for it. A build
+of a project whose graph holds its group chats (``kg_sources.reads_chats``) shows no ``nodes`` and ``edges``: its
+totals count messages most members may not read, and kg_status and the web's graph pages count what each reader sees.
 
 Reading: POST /v1/kg/{project}/tools/{tool} {arguments, sink} answers one of the seven kg_* tools of ``kg serve`` for a
 member, from the latest successful build holding an artifact (``evo_agents.hub.kg_graph``), with the hub's read rule:
@@ -78,6 +80,7 @@ from evo_agents.hub.kg_ingest import (
     read_run_log,
     refusal,
 )
+from evo_agents.hub.kg_sources import reads_chats
 from evo_agents.hub.memory import AGENT_SINK
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
@@ -562,7 +565,10 @@ async def _builds(
     if status is not None:
         query = query.where(b.c.status == status)
     rows = await conn.execute(query.order_by(b.c.id.desc()).limit(limit))
-    return [Build(**row._mapping) for row in rows]
+    builds = [Build(**row._mapping) for row in rows]
+    if builds and await reads_chats(conn, project_id):  # totals that count chats would tell who is in none of them
+        return [build.model_copy(update={"nodes": None, "edges": None}) for build in builds]
+    return builds
 
 
 async def _queue(request: Request, conn, project_id: int, project: str, requested_by: int | None):

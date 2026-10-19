@@ -122,11 +122,16 @@ def _artifact_note(build: dict) -> str:
     return ""
 
 
+def _counts(build: dict) -> str:
+    """A succeeded build's totals; the hub shows none of a graph that holds chats, whose kg_status counts instead."""
+    if build.get("nodes") is None or build.get("edges") is None:
+        return "counts in kg_status"
+    return f"{build['nodes']} nodes, {build['edges']} edges"
+
+
 def _build_row(build: dict) -> tuple:
     succeeded = build["status"] == "succeeded"
-    outcome = build.get("error") or (
-        f"{build['nodes']} nodes, {build['edges']} edges{_artifact_note(build)}" if succeeded else ""
-    )
+    outcome = build.get("error") or (f"{_counts(build)}{_artifact_note(build)}" if succeeded else "")
     return (
         build["id"],
         build["status"],
@@ -182,8 +187,7 @@ def cmd_build(args) -> int:
         verb = "Queued" if queued["queued"] else "A build was waiting already:"
         print(f"{verb} build {build['id']} of project {args.project}: {build['status']}.")
         if build["status"] == "succeeded":
-            counts = f"{build['nodes']} nodes, {build['edges']} edges"
-            print(f"{counts}, content {build['content_hash']}{_artifact_note(build)}")
+            print(f"{_counts(build)}, content {build['content_hash']}{_artifact_note(build)}")
         elif build["status"] == "failed":
             print(f"error: {build['error']}", file=sys.stderr)
     return 1 if build["status"] == "failed" else 0
