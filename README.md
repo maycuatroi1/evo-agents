@@ -374,7 +374,9 @@ covers the API and its OpenAPI document, sign-in from the CLI and the web, who s
 workers and runs, blobs on R2, the job worker and its queue, and operations: migrations, backup, restore and
 health checks. [docs/plugins.md](docs/plugins.md) covers plugins: their extension points, the plugin host and the
 `plugin/1` protocol, pages and signing; [docs/hub-deployment.md](docs/hub-deployment.md) a hub for a client, from the
-same images, with its own branding, publishers and plugins.
+same images, with its own branding, publishers and plugins. [docs/srs-plugin.md](docs/srs-plugin.md) and
+[docs/tasks-plugin.md](docs/tasks-plugin.md) cover the core plugins srs (BA documents with versions, approval and
+@ba) and tasks (a backlog linked to use cases and plan steps).
 
 ### The web
 
@@ -473,7 +475,7 @@ docs/         hub.md: running and using the hub; workers.md: workers, runs, plan
               (what kg_impact follows and covers per language, the text of every tool, search, the note after
               grep, plans of the hub, commits and pull requests, freshness, retention); kg-eval.md: measuring
               retrieval with `kg eval`; plugins.md: plugins, the plugin host and plugin/1; hub-deployment.md: a
-              hub for a client
+              hub for a client; srs-plugin.md and tasks-plugin.md: the core plugins srs and tasks
 ```
 
 ## License
