@@ -496,6 +496,11 @@ test("the chats list's row of agents scrolls sideways on its own while the page 
   await expect(main(page).getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
   await expect(main(page).getByTestId("chat-composer-text")).toBeFocused();
   await expect(main(page).getByTestId("chat-back")).toBeVisible();
+  // The way back stays on the row of the face and the name while the head wraps its tags and Details under them.
+  const back = await box(main(page).getByTestId("chat-back"));
+  const title = await box(main(page).getByTestId("chat-title"));
+  expect(Math.abs(back.y + back.height / 2 - (title.y + title.height / 2)), "the way back sits on the name's row").toBeLessThan(8);
+  expect(back.x + back.width, "the way back stands before the name").toBeLessThanOrEqual(title.x);
   await expectNoSeriousViolations(page, "a direct chat at 375 px");
 });
 

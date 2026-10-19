@@ -39,21 +39,19 @@ function BackLink() {
  * projects give it. A group chat's face is a button that changes or removes its image (`ChatImageControl`), and its
  * head says who is in it, with Members, which opens the sheet that adds and takes them out. A direct chat's head is its
  * agent's: its avatar and name, its @handle linking to the agent's page, its project, and Details, which opens the same
- * sheet without adding or taking out anyone. Under 1024 px a back link to the list stands before the face.
+ * sheet without adding or taking out anyone. Under 1024 px a back link to the list stands before the face, in the row
+ * of the face and the title, so it stays beside them when the head wraps at 375 px.
  */
 export function ChatHeader({ chat, me, onMembers }: { chat: Chat; me: string | null; onMembers: () => void }) {
   const [problem, setProblem] = useState<WriteFailure | null>(null);
   const agent = chat.kind === "direct" ? (chat.agents[0] ?? null) : null;
   return (
     <div className="flex flex-col gap-3 border-b px-3 py-3 sm:px-4" data-testid="chat-head" data-kind={chat.kind}>
-      <div className="flex items-center gap-2">
-        <BackLink />
-        {agent ? (
-          <DirectHead chat={chat} agent={agent} onDetails={onMembers} />
-        ) : (
-          <GroupHead chat={chat} me={me} onMembers={onMembers} image={<ChatImageControl chat={chat} me={me} onProblem={setProblem} />} />
-        )}
-      </div>
+      {agent ? (
+        <DirectHead chat={chat} agent={agent} onDetails={onMembers} />
+      ) : (
+        <GroupHead chat={chat} me={me} onMembers={onMembers} image={<ChatImageControl chat={chat} me={me} onProblem={setProblem} />} />
+      )}
       {problem ? (
         <div data-testid="chat-image-problem">
           <InlineError text={problem.text} detail={problem.detail} requestId={problem.requestId} />
@@ -72,8 +70,13 @@ function GroupHead({ chat, me, onMembers, image }: { chat: Chat; me: string | nu
   const who = names.length > shown.length ? t("andMore", { names: shown.join(", "), count: names.length - shown.length }) : names.length ? format.list(shown, { type: "conjunction" }) : t("onlyYou");
   return (
     <PageHeader
-      className="min-w-0 flex-1"
-      leading={image}
+      className="min-w-0"
+      leading={
+        <>
+          <BackLink />
+          {image}
+        </>
+      }
       title={<span id="chat-title" data-testid="chat-title">{chat.title}</span>}
       tags={levelsOf(chat).map((level) => (
         <VisibilityTag key={level} level={level} testId="chat-visibility" />
@@ -103,8 +106,13 @@ function DirectHead({ chat, agent, onDetails }: { chat: Chat; agent: ChatAgent; 
   const t = useTranslations("chats.header");
   return (
     <PageHeader
-      className="min-w-0 flex-1"
-      leading={<ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} size="lg" />}
+      className="min-w-0"
+      leading={
+        <>
+          <BackLink />
+          <ChatAvatar face={{ kind: "agent", agent: agentAuthor(agent) }} size="lg" />
+        </>
+      }
       title={<span id="chat-title" data-testid="chat-title">{agent.name}</span>}
       tags={
         <>
