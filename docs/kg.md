@@ -323,7 +323,11 @@ added, edited or deleted that the graph still holds (a merge against its first p
 add, at most 100 paths, `files` counting them all). Its message is not read. The first run, and any run after the
 connector or the source's config changed, reads the whole history and lists it complete, so a commit the ref no
 longer reaches goes, under the deletion guard; the runs after it read only the commits since the commit of the
-source's cursor. A mention links to the commit read when exactly one has that SHA: `repo@sha` among the commits of
+source's cursor. When the ref no longer reaches that commit (a force-push, a history rewritten with filter-repo, a
+reset to an older commit), the run reads the whole history again and warns `history of <ref> rewritten`, so the
+commits only on the old history go. The guard treats those removals as any others: a rewrite of a few commits goes
+at once, one of more than `max_removal_ratio` of them is held until `kg sync --accept-removals`, since a mistaken
+force-push looks the same to the connector as a planned rewrite. A mention links to the commit read when exactly one has that SHA: `repo@sha` among the commits of
 that repo, a bare SHA (7 to 40 hex digits, with a letter and a digit) in a step's evidence among the commits of the
 step's `repo` first, then of every repo; a SHA no source read keeps a `Commit` node of its own, `commit:<sha>` or
 `commit:<repo>@<sha>`, as before.
