@@ -247,6 +247,7 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | Agents, a project's agent profiles; New agent | `Bot`; `Plus` |
 | Chats, a group chat; New chat; Chat with an agent (its direct chat) | `MessagesSquare`; `Plus`; `MessagesSquare` |
 | A chat's thread, Reply in thread; Add a reaction; a chat's members | `MessageSquareReply`; `SmilePlus`; `Users` |
+| Reply in a direct chat, the composer's Replying to; what an answer answers (its quote) | `Reply`; `CornerDownRight` |
 | A group chat's image: change it (on its face), upload, remove; a direct chat's Details; its note that it keeps its two members | `Camera`; `ImageUp`, `Trash2`; `Info`; `Lock` |
 | A chat run's run; the draft pull request an agent's message links; leave a chat | `Activity`; `GitPullRequestDraft`; `LogOut` |
 | An agent's axes: credentials, tools, skills, workers, projects, models, runtimes, environments | `KeyRound`, `Wrench`, `Sparkles`, `Server`, `FolderKanban`, `BrainCircuit`, `SquareTerminal`, `Container` |
@@ -836,35 +837,54 @@ Shared pieces built on them:
   head is its agent's: its avatar, its name as the h1 with a Direct tag (`Bot`) and Deleted when it is, its `@handle`
   linking to the agent's page and its project under it, and Details, which opens the members sheet as its Details: its
   agent and its person with nobody to add, take out or leave (a `Lock` note says to start a group chat for that), and
-  the budget. Its composer says that every message goes to the agent, no @ needed. Messages (`message-list.tsx`) sit in a `role="log"` region
-  (polite) that scrolls on its own and Tab reaches, under a line for each day; it opens at the newest message, follows
-  new ones while the visitor reads at the end and offers Jump to the latest when they scrolled up; Show earlier
-  messages reads the page before. The chat shows the messages that are no reply; replies live in their thread. A
-  message (`message-item.tsx`) is its author's face (an agent's avatar or initial on its colour, a person's GitHub
-  avatar or initials, the hub's mark with an Automatic tag for what the hub says by rule), the name (an agent's with
-  `@handle`), the time, the text through SafeMarkdown (`components/data/markdown.tsx`: Markdown, never HTML), then
-  square chips for where it leads (`message-links.tsx`: an agent's message's run, each mention's run as `@handle: run
-  #N`, a mention the hub refused in `attention` with the hub's reason, each GitHub pull request the message links, in
-  a new tab), how far each run it handed work to is while that run is on its way (`message-progress.tsx`, by the hub's
-  rule, for a visitor who may read the run: one polite status line per run, "@handle got it, waiting for worker X" or
-  "in the inbox of the running turn" with a still neutral dot, then each step of its setup and working with the
-  running dot, each in place of the one before; gone once the agent answers or the run ends, so a message nobody
-  works on shows nothing), its reactions, and for a message that starts a thread, the faces of who replied, "3
-  replies" in `brand` and when the last came, which opens the thread.
-  React and Reply in thread sit over its top right corner from 768 px
-  (a `popover` box shown while the pointer is over the message, a key is in it or its picker is open), and in a row of
-  their own under it on phones. Reactions (`reactions.tsx`) are the chat's one place for emoji (Style): a round chip
-  per emoji with its count, the visitor's own pressed (`brand-soft`, `aria-pressed`), named by the emoji's name, the
-  count and who put it ("Eyes: 1, by @reviewer"); pressing one puts the visitor's or takes it off, and Add a reaction
-  opens a grid of 16 named emoji, the three an agent's run puts by rule first. A thread (`thread-panel.tsx`) is the
-  message that starts it, a line with the count, its replies and a composer that answers in it; a column of 26 rem
-  beside the chat from 2xl (where the sidebar and the list leave it room), a sheet from the right below; it reads the
-  whole thread once opened. `?thread=ID` opens one, and `?message=ID`, where a notice links, shows that message
-  marked (`surface-selected`) and focused, in its thread when it is a reply or older than the page read. A chat run (the triage agent of a
-  failed run) that asks ends its turn with a decision open: the kit's DecisionCard (`where="run"`) shows right under the
-  agent's last message of that run, in the chat or in its thread, so one click answers it. The page composes it
-  (`app/(app)/chats/[id]/chat-with-decisions.tsx`; the chats folder does not import the inbox): the decisions of the
-  latest 12 agent runs are read, the newest 3 every 3 seconds while the chat has not ended. In the Inbox and on Home a
+  the budget. Its composer says that every message goes to the agent, no @ needed. Messages (`message-list.tsx`, the
+  line worked out by `line-model.ts`) sit in a `role="log"` region (polite) that scrolls on its own and Tab reaches,
+  under a line for each day; it opens at the newest message, follows new ones while the visitor reads at the end and
+  offers Jump to the latest when they scrolled up; Show earlier messages reads the page before. They read as a chat
+  app's (`message-item.tsx`): the visitor's own on the right in a `brand-soft` bubble (the ground of their pressed
+  reaction too) with no face and no name, the time above; anyone else's on the left in a `muted` bubble after their face
+  (an agent's avatar or initial on its colour, a person's GitHub avatar or initials, the hub's mark) under their name
+  (an agent's with `@handle`, the hub's with an Automatic tag for what it says by rule) and the time. On those grounds
+  `fg` reads at 17.2:1 and 18.1:1 in light, 14.9:1 and 17.0:1 in dark, a link (`brand`) at 5.8:1 and 6.1:1, 6.2:1 and
+  7.1:1, and `fg-muted` (list marks, quotes) at 6.1:1 at the least. Messages of one author on the same day within five
+  minutes run on: the face, the name and the time show once, over the first, whose bubble turns a small corner toward
+  them; each other one keeps a head for a screen reader alone (the message's name: who, then when) and gives its full
+  time as the bubble's tooltip. A bubble is `radius-lg`, at most 42 rem wide and on phones the line less the face (the
+  visitor's 85 %), its text through SafeMarkdown (`components/data/markdown.tsx`: Markdown, never HTML) with inline code
+  and code blocks on `card`, a code block or a table scrolling inside it. Under the bubble, on its side: square chips
+  for where it leads (`message-links.tsx`: an agent's message's run, each mention's run as `@handle: run #N`, a mention
+  the hub refused in `attention` with the hub's reason, each GitHub pull request the message links, in a new tab), how
+  far each run it handed work to is while that run is on its way (`message-progress.tsx`, by the hub's rule, for a
+  visitor who may read the run: one polite status line per run, "@handle got it, waiting for worker X" or "in the inbox
+  of the running turn" with a still neutral dot, then each step of its setup and working with the running dot, each in
+  place of the one before; gone once the agent answers or the run ends, so a message nobody works on shows nothing),
+  what the page puts under it (a decision), its reactions, and in a group chat, for a message that starts a thread, the
+  faces of who replied, "3 replies" in `brand` and when the last came, which opens the thread. React and Reply sit
+  beside the bubble at its top, on the side away from the face, from 768 px (a `popover` box shown while the pointer is
+  over the message, a key is in it or its picker is open; the line leaves it room), and in a row of their own under it
+  on phones, 44 px each. A group chat's line holds the messages that are no reply: Reply in thread
+  (`MessageSquareReply`) opens the thread, where the replies live. A direct chat's line holds every message: the agent's
+  answers, which the hub posts in the thread of the message they answer, sit right under it, and no thread needs
+  opening; when another message came between (two tasks at once, an answer after the next question), the answer quotes
+  what it answers above its bubble (`message-parts.tsx`: `CornerDownRight`, You or the author, one line of the words,
+  the latest message of its thread before it by someone else), and the quote shows that message marked, or opens its
+  thread when the page has not read it. Reply (`Reply`) on a direct chat's message answers it from the chat's own
+  composer: a bar over the text says "Replying to <name>" with one line of it and Cancel the reply (Escape too), the
+  hint under the box says the reply goes on in the same session, and the message goes in that message's thread, so the
+  agent's session goes on; a message sent without Reply is a new task. Reactions (`reactions.tsx`) are the chat's one
+  place for emoji (Style): a round chip per emoji with its count, the visitor's own pressed (`brand-soft`,
+  `aria-pressed`), named by the emoji's name, the count and who put it ("Eyes: 1, by @reviewer"); pressing one puts the
+  visitor's or takes it off, and Add a reaction opens a grid of 16 named emoji, the three an agent's run puts by rule
+  first. A thread (`thread-panel.tsx`) is the message that starts it, a line with the count, its replies as bubbles that
+  run on as in the chat, and a composer that answers in it; a column of 26 rem beside the chat from 2xl (where the
+  sidebar and the list leave it room), a sheet from the right below; it reads the whole thread once opened. `?thread=ID`
+  opens one, and `?message=ID`, where a notice links, shows that message marked (a `brand` ring on its bubble) and
+  focused: in its thread when it is a reply of a group chat or older than the page read, otherwise where it sits in the
+  line. A chat run (the triage agent of a failed run) that asks ends its turn with a decision open: the kit's
+  DecisionCard (`where="run"`) shows right under the agent's last message of that run, in the chat or in its thread, so
+  one click answers it. The page composes it (`app/(app)/chats/[id]/chat-with-decisions.tsx`; the chats folder does not
+  import the inbox): the decisions of the latest 12 agent runs are read, the newest 3 every 3 seconds while the chat has
+  not ended. In the Inbox and on Home a
   decision of category `triage` reads "Triage run #N" and "project, triage of a failed run" where an author run's reads
   "Author run #N", and a `run_failed` notice that links to the thread opens it (Open triage thread). The composer
   (`composer.tsx`) is the kit's Composer with Send and Cmd or Ctrl with Enter; typing `@` opens the suggestions above

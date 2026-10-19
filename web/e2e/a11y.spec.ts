@@ -4,6 +4,7 @@ import { expectNoSeriousViolations } from "./support/a11y";
 import { agentPath, agentsPath, createAgentByApi, PIXEL_PNG, putAvatarByApi } from "./support/agents";
 import {
   agentAnswers,
+  chatPageOf,
   chatPath,
   chatSession,
   chatWorker,
@@ -241,6 +242,30 @@ async function seedChatProgress(me: Member) {
   await claimOnly(live, runId);
   await setupNote(live, runId, 1, "opening", "evo-agents-harness");
   await sendByApi(me, chat.id, `@${project} and the docs, in a session of their own?`);
+  return chat;
+}
+
+/**
+ * The direct chat of `me` with the default agent of their first project: a question the agent answered (its run, a
+ * draft pull request and a code block), the member's reply to that answer and a new question, then the agent's answer
+ * to the reply, which quotes it since the question came between; the question waits for the worker. The chat.
+ */
+async function seedDirectChat(me: Member) {
+  const project = me.projects[0];
+  const chat = await openDirectByApi(me, project);
+  const live = await chatWorker(me, project, uniqueName("a11y-direct"), 2);
+  const asked = await sendByApi(me, chat.id, "Is the **wait test** flaky?");
+  const runId = asked.mentions[0]?.run_id;
+  if (!runId) throw new Error(`the message made no run: ${JSON.stringify(asked.mentions)}`);
+  await claimChatRun(live, runId);
+  await agentAnswers(live, runId, "Not flaky: it waits on the clock. Draft PR: https://github.com/example-org/api/pull/7\n\n```ts\nawait clock.tickAsync(500);\n```");
+  const answer = (await chatPageOf(me, chat.id)).messages.find((message) => message.author.kind === "agent");
+  const reply = await sendByApi(me, chat.id, "And the `retries`?", answer?.id ?? null);
+  await sendByApi(me, chat.id, "Check the docs too?");
+  const replyRun = reply.mentions[0]?.run_id;
+  if (!replyRun) throw new Error(`the reply made no run: ${JSON.stringify(reply.mentions)}`);
+  await claimChatRun(live, replyRun);
+  await agentAnswers(live, replyRun, "Retries are bounded too: three at most.");
   return chat;
 }
 
@@ -936,15 +961,24 @@ const PAGES: Entry[] = [
     },
   },
   {
-    name: "a direct chat with its agent's head, the row of agents marking its agent, then its details",
+    name: "a direct chat with its agent's head, the member's messages and the agent's answers as bubbles, a reply being written, then its details",
     open: async ({ page, me }) => {
-      const chat = await openDirectByApi(me, me.projects[0]);
-      await sendByApi(me, chat.id, "Is the wait test flaky?");
+      const chat = await seedDirectChat(me);
       await open(page, chatPath(chat.id));
-      await expect(page.locator("#main").getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
-      await expect(page.locator("#main").locator('[data-testid="agent-strip-agent"][aria-current="true"]')).toHaveCount(1);
+      const main = page.locator("#main");
+      await expect(main.getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
+      await expect(main.locator('[data-testid="agent-strip-agent"][aria-current="true"]')).toHaveCount(1);
+      await expect(main.locator('[data-testid="chat-message"][data-mine="true"]')).toHaveCount(3);
+      await expect(main.getByTestId("message-quote")).toBeVisible();
+      await expect(main.getByTestId("message-progress-step")).toBeVisible();
+      await expect(main.getByTestId("message-pull-link")).toBeVisible();
       await expectNoSeriousViolations(page, "a direct chat");
-      await page.locator("#main").getByTestId("chat-details-open").click();
+      const answer = main.locator('[data-testid="chat-message"][data-author="agent"]').first();
+      await answer.hover();
+      await answer.getByTestId("message-reply").click();
+      await expect(main.getByTestId("chat-composer-replying")).toBeVisible();
+      await expectNoSeriousViolations(page, "a direct chat with a reply being written");
+      await main.getByTestId("chat-details-open").click();
       await expect(page.getByTestId("chat-direct-note")).toBeVisible();
     },
   },
