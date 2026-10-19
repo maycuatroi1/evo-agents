@@ -19,7 +19,7 @@ from evo_agents.kg.protocol.conformance import run_conformance
 from evo_agents.kg.protocol.runner import ConnectorContext, ConnectorRun
 from evo_agents.kg.serve import Session
 from evo_agents.kg.store import Store
-from evo_agents.kg.sync import sync_project
+from evo_agents.kg.sync import accept_removals, sync_project
 from tests.kg.projects import commit, git, make_project, write
 
 GOLDEN = Path(__file__).parent / "golden"
@@ -436,12 +436,104 @@ def test_git_history_after_a_cursor_of_the_same_input_reads_only_the_new_commits
     head = sh(repo, "rev-parse", "HEAD").strip()
 
     later = list(ConnectorRun(ConnectorContext("p", source, cursor=cursor)))
-    assert list(commits_of(later)) == [head]
+    assert list(commits_of(later)) == [head] and warnings_of(later) == []
     assert listing_of(later, "app:commit:")["complete"] is False  # what the first run read stays
     other = list(ConnectorRun(ConnectorContext("p", source, cursor={**cursor, "input": "sha256:other code"})))
     assert len(commits_of(other)) == 2 and listing_of(other, "app:commit:")["complete"] is True
     gone = list(ConnectorRun(ConnectorContext("p", source, cursor={**cursor, "commit": "0" * 40})))
     assert len(commits_of(gone)) == 2 and gone[-1]["status"] == "ok"  # a commit the clone lacks: the whole history
+    assert listing_of(gone, "app:commit:")["complete"] is True
+    assert warnings_of(gone) == [
+        "history of HEAD rewritten: 0000000000, the commit the last run read, is not in the clone; "
+        "read the whole history, so the commits only on the old one go"
+    ]
+
+
+def warnings_of(messages) -> list[str]:
+    return [m["message"] for m in messages if m["type"] == "log" and m["level"] == "warning"]
+
+
+def rewrite(repo: Path, keep: int) -> None:
+    """Give every commit of main after its first ``keep`` a new message, as filter-repo rewrites a history: new SHAs
+    from there on, and the old commits still in the clone with no ref that reaches them."""
+    shas = sh(repo, "rev-list", "--reverse", "main").split()
+    parent = shas[keep - 1] if keep else None
+    for sha in shas[keep:]:
+        tree = sh(repo, "rev-parse", f"{sha}^{{tree}}").strip()
+        parent = sh(repo, "commit-tree", tree, "-m", f"rewritten {sha[:10]}", *(["-p", parent] if parent else []))
+        parent = parent.strip()
+    sh(repo, "update-ref", "refs/heads/main", parent)
+
+
+def test_git_history_is_read_whole_again_once_the_ref_no_longer_reaches_the_cursors_commit(tmp_path):
+    repo = make_repo(tmp_path / "app")
+    for n in range(3):
+        (repo / "config.yaml").write_text(f"name: app{n}\n")
+        sh(repo, "commit", "-qam", f"edit {n}")
+    source = {"id": "app", "connector": "git", "path": str(repo)}
+    first = list(ConnectorRun(ConnectorContext("p", source)))
+    cursor = next(m for m in first if m["type"] == "state")["cursor"]
+    rewrite(repo, keep=2)
+    head = sh(repo, "rev-parse", "HEAD").strip()
+    # The old tip is still an object of the clone, so `git log <old>..<new>` runs and lists the new commits only.
+    assert sh(repo, "cat-file", "-t", cursor["commit"]).strip() == "commit"
+    assert len(sh(repo, "rev-list", f"{cursor['commit']}..{head}").split()) == 2
+
+    later = list(ConnectorRun(ConnectorContext("p", source, cursor=cursor)))
+    assert set(commits_of(later)) == set(sh(repo, "rev-list", "HEAD").split())
+    assert len(set(commits_of(later)) & set(commits_of(first))) == 2  # the two kept, then the two rewritten
+    assert listing_of(later, "app:commit:") == {"type": "listing", "scope": "app:commit:", "complete": True, "count": 4}
+    assert warnings_of(later) == [
+        f"history of HEAD rewritten: {cursor['commit'][:10]}, the commit the last run read, is not an ancestor of "
+        f"{head[:10]}; read the whole history, so the commits only on the old one go"
+    ]
+    assert later[-1]["status"] == "ok"
+
+    cursor = next(m for m in later if m["type"] == "state")["cursor"]
+    sh(repo, "reset", "-q", "--hard", "HEAD~1")  # back to an older commit: nothing new to read, one commit to drop
+    back = list(ConnectorRun(ConnectorContext("p", source, cursor=cursor)))
+    assert len(commits_of(back)) == 3 and listing_of(back, "app:commit:")["complete"] is True
+    assert len(warnings_of(back)) == 1
+
+
+def commits_in(corpus) -> set[str]:
+    return {r.item_id.rpartition(":")[2] for r in corpus.items("app") if ":commit:" in r.item_id}
+
+
+def test_sync_after_a_rewrite_removes_the_old_commits_and_holds_a_rewrite_of_too_many(tmp_path, kg_env):
+    project = make_project(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    for n in range(11):
+        write(app / "docs/notes.md", f"# Notes\n\nVersion {n} of the notes.\n")
+        commit(app, f"notes {n}")
+    assert sync_project(project, ["app"])[0].ok
+    assert len(commits_in(project.corpus())) == 12
+    files = {r.item_id: r.rev for r in project.corpus().items("app") if ":file:" in r.item_id}
+
+    old = git(app, "rev-parse", "HEAD").strip()
+    git(app, "commit", "-q", "--amend", "-m", "notes 10, reworded")  # a force-push of the last commit
+    (result,) = sync_project(project, ["app"])
+    assert result.ok and result.removals == 1 and result.held == [], result.issues
+    assert len(result.warnings) == 1 and result.warnings[0].startswith(f"history of HEAD rewritten: {old[:10]}")
+    corpus = project.corpus()
+    assert commits_in(corpus) == set(git(app, "rev-list", "HEAD").split())  # 12, the old tip gone
+    assert corpus.get(f"app:commit:{old}").deleted
+
+    rewrite(app, keep=4)  # eight of the twelve commits get new SHAs
+    (result,) = sync_project(project, ["app"])
+    assert result.ok and result.removals == 0 and len(result.warnings) == 1, result.issues
+    reason = "would remove 8 of 12 item(s), above max_removal_ratio 0.3"
+    assert result.held == [{"scope": "app:commit:", "reason": reason, "count": 8}]
+    new = set(git(app, "rev-list", "HEAD").split())
+    corpus = project.corpus()
+    assert len(commits_in(corpus)) == 20 and new <= commits_in(corpus)  # the old ones wait for a person
+    assert [(h["scope"], len(h["ids"])) for h in corpus.held("app")] == [("app:commit:", 8)]
+    assert {r.item_id: r.rev for r in corpus.items("app") if ":file:" in r.item_id} == files  # the same trees
+
+    assert accept_removals(project, "app") == 8
+    corpus = project.corpus()
+    assert commits_in(corpus) == new and corpus.held("app") == []
+    assert sync_project(project, ["app"])[0].unchanged  # the cursor names the new tip: nothing to read
 
 
 TOKEN = "ghp_" + "A1b2C3d4E5f6G7h8I9j0K1l2M3n4O5p6Q7r8"  # made up: what a token looks like, never one
