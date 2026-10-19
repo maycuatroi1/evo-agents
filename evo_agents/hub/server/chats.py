@@ -16,7 +16,10 @@ the mention keeps why, and the hub answers in the message's thread, naming it. A
 chat run for the sender (``chat_runs.hand_mentions``, at most ``chat_runs.MAX_RUNS_PER_MESSAGE`` agents a message),
 and the mention keeps the run it made or woke, or why it made none, which the hub's answer names too. In a chat of one
 person, a message in a thread without a mention goes to the one agent whose session the sender has in that thread
-(the mention ``via`` thread). A message that mentions no agent makes no run and asks no model anything.
+(the mention ``via`` thread). In a direct chat (``chat_direct``) a message whose mentions do not reach its agent goes to
+it all the same: in the thread of the sender's session with it as above, else ``via`` direct, which for a message
+outside a thread starts a new session. Elsewhere a message that mentions no agent makes no run and asks no model
+anything.
 
 PATCH /v1/chats/{id} changes the chat's budget: what its agents' runs may cost in 24 hours (``chat_runs``); only its
 creator does (403), audited as chat.budget.
@@ -47,6 +50,7 @@ from evo_agents.hub.server.chat_access import (
     projects_by_id,
     uncleared,
 )
+from evo_agents.hub.server.chat_direct import direct_mention
 from evo_agents.hub.server.chat_members import (
     LOGIN_PATTERN,
     REFUSALS,
@@ -96,6 +100,10 @@ MessageId = Annotated[int, Path(ge=1, le=MAX_ID)]
 Login = Annotated[str, Field(pattern=LOGIN_PATTERN)]
 Handle = Annotated[str, Field(pattern=profiles.HANDLE_PATTERN)]
 NOT_THERE = "chat {chat} has no message {id} that you can read"
+NOT_IN_CHAT = "@{name} is not in this chat: add it to the chat, then mention it again"
+NOT_IN_DIRECT = (
+    "@{name} is not in this direct chat, whose one agent never changes: start a group chat to talk with both"
+)
 
 router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
 
@@ -291,7 +299,7 @@ async def resolve_mentions(conn: AsyncConnection, chat: ChatAccess, user: Princi
     for name in names:
         found = members.get(name)
         if found is None and name in outsiders:
-            refusal = f"@{name} is not in this chat: add it to the chat, then mention it again"
+            refusal = (NOT_IN_DIRECT if chat.kind == chats.DIRECT else NOT_IN_CHAT).format(name=name)
             kept.append({"name": name, "via": None, "user_id": None, "profile_id": outsiders[name], "refusal": refusal})
             refusals.append(refusal)
         elif found is not None and "user_id" in found:
@@ -323,6 +331,16 @@ async def _thread_agent(conn: AsyncConnection, chat: ChatAccess, user: Principal
     return [{"name": handle, "via": "thread", "user_id": None, "profile_id": profile_id, "refusal": None}]
 
 
+async def _direct_agent(
+    conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int | None, kept: list[dict]
+) -> list[dict]:
+    """In direct chat ``chat``, the mention of its agent for a message whose mentions ``kept`` do not reach it: ``via``
+    thread when the sender has a session with it in the thread of ``root``, else ``via`` direct; none when they do."""
+    found = await direct_mention(conn, chat, kept)
+    threaded = await _thread_agent(conn, chat, user, root) if found else []
+    return threaded if threaded and threaded[0]["profile_id"] == found[0]["profile_id"] else found
+
+
 async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, body: ChatMessageIn) -> int:
     """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
     the notices; its id."""
@@ -333,7 +351,9 @@ async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, bod
     names = chats.mention_names(body.body)
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
     message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
-    if not any(mention["profile_id"] is not None for mention in kept):
+    if chat.kind == chats.DIRECT:
+        kept += await _direct_agent(conn, chat, user, root, kept)
+    elif not any(mention["profile_id"] is not None for mention in kept):
         kept += await _thread_agent(conn, chat, user, root)
     via = dispatch_credential(user.kind)
     hand = Hand(chat, message_id, root or message_id, None, user.user_id, user.login, via, 1, user.login, body.body)

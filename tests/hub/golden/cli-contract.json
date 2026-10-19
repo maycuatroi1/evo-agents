@@ -1079,7 +1079,8 @@
           "restricted",
           "last_seq",
           "last_read_seq",
-          "budget_usd"
+          "budget_usd",
+          "kind"
         ],
         "schema": "Chat"
       }
@@ -1107,7 +1108,8 @@
           "last_seq",
           "unread",
           "people",
-          "agents"
+          "agents",
+          "kind"
         ],
         "schema": "ChatSummary"
       }
@@ -30659,6 +30661,102 @@
           }
         }
       },
+      "/v1/chats/direct/{handle}": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Open Direct",
+          "description": "The caller's direct chat with agent ``handle``: the one there is (200), or one made now (201).",
+          "operationId": "open_direct_v1_chats_direct__handle__put",
+          "parameters": [
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "an agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "an agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "201": {
+              "description": "the direct chat, made now",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/people/{login}": {
         "put": {
           "tags": [
@@ -38763,6 +38861,15 @@
               "type": "number",
               "title": "Budget Usd",
               "description": "what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "group",
+                "direct"
+              ],
+              "title": "Kind",
+              "description": "group: members are added and removed; direct: one person and one agent, for good"
             }
           },
           "type": "object",
@@ -38777,7 +38884,8 @@
             "restricted",
             "last_seq",
             "last_read_seq",
-            "budget_usd"
+            "budget_usd",
+            "kind"
           ],
           "title": "Chat"
         },
@@ -39107,7 +39215,8 @@
                     "login",
                     "handle",
                     "project",
-                    "thread"
+                    "thread",
+                    "direct"
                   ]
                 },
                 {
@@ -39656,6 +39765,15 @@
               },
               "type": "array",
               "title": "Agents"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "group",
+                "direct"
+              ],
+              "title": "Kind",
+              "description": "group, or direct: one person and one agent"
             }
           },
           "type": "object",
@@ -39668,7 +39786,8 @@
             "last_seq",
             "unread",
             "people",
-            "agents"
+            "agents",
+            "kind"
           ],
           "title": "ChatSummary"
         },

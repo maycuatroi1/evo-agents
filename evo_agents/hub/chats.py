@@ -7,6 +7,11 @@ message is sent, the hub reads its mentions once (``mention_names``) and keeps t
 not inside a code span or a fenced code block, ignoring case. A name resolves among the chat's members only: a
 person's login, an agent's handle, or a project's name, which is the handle of that project's default agent.
 
+A chat is of one of CHAT_KINDS, which the hub keeps with it: a group chat (GROUP), which any member adds people and
+agents to, or a direct chat (DIRECT) of one person and one agent, which that person opens with the agent's handle and
+whose members never change. In a direct chat each message of the person that mentions no agent is work for its agent
+(``via`` DIRECT), as if it mentioned it.
+
 A reaction is one emoji of one person or agent on one message (``emoji_problem`` says what is one); a message carries
 at most MAX_EMOJI_KINDS different ones. An agent's reactions are set by rule, never by a model: STATUS_REACTIONS names
 the one a run of the agent puts on the message that started it as the run moves (eyes when a worker claims it, a check
@@ -34,7 +39,10 @@ EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 # off when it puts CHECK or CROSS. A run that is lost and tried again keeps its EYES.
 STATUS_REACTIONS = {"leased": EYES, "done": CHECK, "failed": CROSS, "cancelled": CROSS}
 
-VIA = ("login", "handle", "project", "thread")  # how a mention reached its member; thread: no @, a chat of one person
+GROUP, DIRECT = "group", "direct"
+CHAT_KINDS = (GROUP, DIRECT)
+# How a mention reached its member; thread: no @, a chat of one person; direct: no @ of the agent, a direct chat
+VIA = ("login", "handle", "project", "thread", DIRECT)
 EVENT_KINDS = ("message", "reaction_added", "reaction_removed", "member_added", "member_removed")
 NOTICE_MENTION, NOTICE_ADDED = "chat_mention", "chat_added"  # the kinds of notice a chat sends (``runs.NOTICE_KINDS``)
 
