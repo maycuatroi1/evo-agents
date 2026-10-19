@@ -64,6 +64,7 @@ ITEM_KIND_TO_NODE = {
     "page": "Document",
     "commit": "Commit",
     "pr": "PullRequest",
+    "ticket": "Ticket",
 }
 
 FORBIDDEN_ONTOLOGY_KEYS = {"same_as", "equivalent", "equals", "identify"}

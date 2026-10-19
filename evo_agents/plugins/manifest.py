@@ -12,7 +12,9 @@ A core plugin implements its contributions to the points of the hub (channels, r
 Python, which each names with ``python`` (one that names none does nothing there); a channel of a core plugin is a kind
 of members' channel, named as the hub names those (``CHANNEL_KIND``). Only a core plugin owns tables (``tables``), and
 each one's name starts with the plugin's table prefix (``table_prefix``): its id with ``_`` for ``-``, then ``_``. The
-tables come from the hub's own chain of migrations, never from the plugin at run time.
+tables come from the hub's own chain of migrations, never from the plugin at run time. Only a core plugin contributes a
+source of a project's knowledge graph (``kg_sources``), at most one, which the hub reads in its own process when it
+builds the graph of a project that enables the plugin (``evo_agents.hub.kg_sources``).
 
 A page (``pages``) of an isolated plugin names its HTML file in the bundle under ``pages/`` (``entry``), which the web
 shows in a sandboxed iframe; a core plugin's page is native, a page of the hub's web itself, and names no entry.
@@ -56,9 +58,18 @@ MAX_MANIFEST = 256 * 1024  # bytes of evo-plugin.json
 PLUGIN_ID = r"^[a-z][a-z0-9-]{0,62}$"  # a manifest's id, as plugin.schema.json has it
 TIERS = ("isolated", "core")
 EXTENSION_POINTS = tuple(POINT_VERSIONS)  # each with the versions of its contract this release serves
-CORE_ONLY_POINTS = ("tables",)  # what only a core plugin contributes
+CORE_ONLY_POINTS = ("tables", "kg_sources")  # what only a core plugin contributes
 # what a project enables a plugin for, besides its permissions, its config and its routes and runtimes of a project
-PROJECT_POINTS = ("mcp_tools", "jobs", "events", "pages", "agent_packs", "agent_types", "environments")
+PROJECT_POINTS = (
+    "mcp_tools",
+    "jobs",
+    "events",
+    "pages",
+    "agent_packs",
+    "agent_types",
+    "environments",
+    "kg_sources",
+)
 # the keys of an agent type that name contributions of the plugin's own, and the point of each
 AGENT_TYPE_POINTS = {"packs": "agent_packs", "jobs": "jobs", "events": "events", "pages": "pages"}
 CHANNEL_KIND = r"^[a-z][a-z0-9_-]{0,31}$"  # a kind of members' channel (notification_channels.kind), never "web"
@@ -86,6 +97,12 @@ PERMISSION_TEXT = {
     "plans:read": "read the project's plans",
     "memories:read": "read the project's memories",
     "notifications:send": "send notifications to the project's members",
+}
+
+
+CORE_ONLY_TEXT = {
+    "tables": "only a core plugin owns tables, which the hub's migrations create",
+    "kg_sources": "only a core plugin contributes a source of the knowledge graph, which the hub reads in its process",
 }
 
 
@@ -158,7 +175,7 @@ class Manifest:
 def is_per_project(data: dict) -> bool:
     """Whether a project enables the plugin of manifest ``data`` for anything: it is isolated, asks for a permission,
     takes a config, or contributes an MCP tool, a job, an event, a page, an agent pack, an agent type, an ACP runtime,
-    an environment or a route under /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of
+    an environment, a source of the knowledge graph or a route under /v1/x/<id>/<project>. A core plugin that does none of that (Telegram: a channel of
     members and routes of its own) runs hub-wide wherever it is installed: the hub's store lists it, installed with
     the image, and no project enables it. ``data`` is a manifest that was read once (the store keeps it so), not
     checked again here."""
@@ -209,7 +226,9 @@ def _contribution_problems(plugin_id: str, point: str, index: int, item: dict, c
             "plugin implements it in its own process"
         ]
     if point in CORE_ONLY_POINTS and not core:
-        return [f"{where}: only a core plugin owns tables, which the hub's migrations create"]
+        return [f"{where}: {CORE_ONLY_TEXT[point]}"]
+    if point == "kg_sources" and index > 0:
+        return [f"{where}: a plugin contributes at most one source of the knowledge graph, plugin.<its id>"]
     if "prefix" in item and not (core and point == "routes"):
         return [f"{where}.prefix: only a core plugin's route names the path its router is included under"]
     if point == "tables" and not item["name"].startswith(table_prefix(plugin_id)):
