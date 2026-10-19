@@ -186,20 +186,20 @@
       "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a project's BA documents in one table, with the tabs of the plugin's pages and the import for writers."
     },
     "/p/[project]/x/srs/documents/[slug]": {
-      "kB": 353.5,
-      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a document's contents, its headings as a tree beside the open item drawn by its kind, the item's editor that saves the next version, and the version's facts, checks and threads; an item's text is Markdown, so the safe Markdown renderer loads with it, as on a memory's page."
+      "kB": 353.8,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a document's contents, its headings as a tree beside the open item drawn by its kind, the item's editor that saves the next version, and the version's facts, checks and threads; an item's text is Markdown, so the safe Markdown renderer loads with it, as on a memory's page. The tabs and banners move to shared parts the Tasks pages draw too (srs-tasks-plugins step 6), and Turbopack regroups those chunks: 0.3 kB."
     },
     "/p/[project]/x/srs/documents/[slug]/comments": {
       "kB": 346.1,
       "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a document's threads with answers and Resolve; comments are Markdown, so the safe Markdown renderer loads with them."
     },
     "/p/[project]/x/srs/documents/[slug]/compare": {
-      "kB": 303.7,
-      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): two versions compared item by item, the counts in one strip and each item's lines unified or side by side."
+      "kB": 303.8,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): two versions compared item by item, the counts in one strip and each item's lines unified or side by side. The tabs and banners move to shared parts the Tasks pages draw too (srs-tasks-plugins step 6), and Turbopack regroups those chunks: 0.1 kB."
     },
     "/p/[project]/x/srs/documents/[slug]/items/[ref]": {
-      "kB": 353.1,
-      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a use case's or a requirement's page with its fields, steps, business rules, screens, threads and its trace read from the knowledge graph; its text is Markdown, so the safe Markdown renderer loads with it."
+      "kB": 353.6,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a use case's or a requirement's page with its fields, steps, business rules, screens, threads and its trace read from the knowledge graph; its text is Markdown, so the safe Markdown renderer loads with it. The page offers Create task while the project shows the plugin tasks, and its trace opens each task's page (srs-tasks-plugins step 6), which reads the tasks plugin of the project: 0.5 kB."
     },
     "/p/[project]/x/srs/documents/[slug]/versions": {
       "kB": 313.9,
@@ -212,6 +212,30 @@
     "/p/[project]/x/srs/import": {
       "kB": 317.3,
       "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): Markdown imported as a document or its next version, after the hub's dry run previews what it holds and what is wrong."
+    },
+    "/p/[project]/x/tasks/backlog": {
+      "kB": 318.3,
+      "reason": "The native pages of the core plugin tasks (srs-tasks-plugins step 6): every task by sprint, each sprint a table with a writer's Sprint menu, and the dialogs that add and close a sprint."
+    },
+    "/p/[project]/x/tasks/board": {
+      "kB": 305.1,
+      "reason": "The native pages of the core plugin tasks (srs-tasks-plugins step 6): a sprint's board, a column per status with the task cards, their Status and Assignee menus and dragging, and the filters by role, SRS item and the visitor's own tasks."
+    },
+    "/p/[project]/x/tasks/board/[ref]": {
+      "kB": 353.2,
+      "reason": "The native pages of the core plugin tasks (srs-tasks-plugins step 6): a task whole: its head and details saved as they change, its links to SRS items, plan steps, runs and pull requests, its history and comments; its description and comments are Markdown, so the safe Markdown renderer loads with it, as on an SRS item's page."
+    },
+    "/p/[project]/x/tasks/board/new": {
+      "kB": 295.8,
+      "reason": "The native pages of the core plugin tasks (srs-tasks-plugins step 6): the form of a new task, its links filled in from an SRS item's page or the board's sprint."
+    },
+    "/p/[project]/x/tasks/import": {
+      "kB": 295.6,
+      "reason": "The native pages of the core plugin tasks (srs-tasks-plugins step 6): evo-tasks/1 JSON imported once, after the hub's dry run previews what it would make and what is wrong."
+    },
+    "/p/[project]/x/tasks/mine": {
+      "kB": 316.1,
+      "reason": "The native pages of the core plugin tasks (srs-tasks-plugins step 6): the visitor's own tasks in two tables, open and finished, with the slots that are theirs."
     },
     "/secrets": {
       "kB": 320.5,

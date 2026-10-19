@@ -7,6 +7,7 @@ import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { type FormEvent, useId, useMemo, useState } from "react";
 
+import { Banner } from "@/components/feedback/banner";
 import { InlineError, useWriteFailure, type WriteFailure } from "@/components/feedback/notice";
 import { notify } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,6 @@ import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 
 import { type SrsChange, type SrsDocument, type SrsItem, saveVersion, srsDocumentQuery } from "./api";
-import { Banner } from "./banner";
 import { signInAgainOn401, useDocumentRefresh } from "./hooks";
 import { isRow } from "./model";
 

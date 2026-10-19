@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ChangeEvent, type FormEvent, useId, useState } from "react";
 
+import { Banner } from "@/components/feedback/banner";
 import { InlineError, useWriteFailure, type WriteFailure } from "@/components/feedback/notice";
 import { notify } from "@/components/feedback/toast";
 import { PageHeader } from "@/components/shell/page-header";
@@ -19,7 +20,6 @@ import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { type DocumentKind, importMarkdown, type SrsImport, type SrsImportResult, srsDocumentsQuery } from "./api";
-import { Banner } from "./banner";
 import { SrsTabs } from "./documents-page";
 import { signInAgainOn401, useDocumentRefresh, useSrsViewer } from "./hooks";
 import { ImportPreview, refusesSave } from "./import-preview";

@@ -1,26 +1,28 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BookOpen, FileDiff, Pencil } from "lucide-react";
+import { BookOpen, FileDiff, Pencil, Plus } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 
+import { Banner } from "@/components/feedback/banner";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { NotFoundState, PageSkeleton } from "@/components/states/states";
 import { Button } from "@/components/ui/button";
+import { usePluginPageOn } from "@/hooks/use-plugin-on";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
+import { newTaskHref, TASKS_BOARD, TASKS_PLUGIN } from "@/lib/core-plugin-links";
 
 import { type SrsDocument, type SrsItem, srsCommentsQuery, srsDiffQuery, srsDocumentQuery } from "./api";
 import { CodeChip, KindTag, VersionBadge } from "./badges";
-import { Banner } from "./banner";
 import { CommentForm, ThreadView } from "./comments";
 import { rulesOf } from "./content-model";
 import { useSrsViewer } from "./hooks";
 import { ItemBody, type ItemLinks } from "./item-body";
 import { compareHref, documentHref, itemHref } from "./links";
-import { canWrite, findItem, pathOf, shownNumber, threadsOf, versionOf } from "./model";
+import { canWrite, CODED_KINDS, findItem, pathOf, shownNumber, threadsOf, versionOf } from "./model";
 import { TraceCard } from "./trace-card";
 import { VersionMenu } from "./version-menu";
 
@@ -61,6 +63,7 @@ function ItemView({ project, latest, item, items, shown, asked }: { project: str
   const tState = useTranslations("srs.versionState");
   const viewer = useSrsViewer(project);
   const writer = canWrite(viewer);
+  const tasksOn = usePluginPageOn(project, TASKS_PLUGIN, TASKS_BOARD);
   const slug = latest.slug;
   const newest = latest.latest_version;
   const diff = useQuery({ ...srsDiffQuery(browserApi, project, slug, shown, newest ?? shown), enabled: Boolean(newest && newest > shown), retry: false });
@@ -102,6 +105,14 @@ function ItemView({ project, latest, item, items, shown, asked }: { project: str
                 </Link>
               </Button>
             ) : null}
+            {writer && tasksOn && item.code && CODED_KINDS.has(item.kind) ? (
+              <Button asChild variant="secondary">
+                <Link href={newTaskHref(project, { link: item.code })} data-testid="srs-item-create-task">
+                  <Plus aria-hidden="true" />
+                  {t("createTask")}
+                </Link>
+              </Button>
+            ) : null}
           </>
         }
         testId="srs-item-head"
@@ -137,7 +148,7 @@ function ItemView({ project, latest, item, items, shown, asked }: { project: str
           <ItemComments project={project} slug={slug} items={items} item={item} version={shown} writer={writer} />
         </div>
         <div className="flex min-w-0 flex-col gap-4">
-          <TraceCard project={project} item={item} />
+          <TraceCard project={project} item={item} tasksOn={tasksOn} />
         </div>
       </div>
     </div>

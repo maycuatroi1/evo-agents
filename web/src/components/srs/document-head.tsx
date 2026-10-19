@@ -7,6 +7,7 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
 
 import { Tag } from "@/components/data/identifier";
+import { TabNav } from "@/components/data/tab-nav";
 import { useVisibilityName } from "@/components/data/visibility";
 import { useWriteFailure } from "@/components/feedback/notice";
 import { notify, notifyFailure } from "@/components/feedback/toast";
@@ -19,7 +20,6 @@ import { CodeChip } from "./badges";
 import { signInAgainOn401 } from "./hooks";
 import { compareHref, commentsHref, documentHref, reviewHref, versionsHref } from "./links";
 import { inReview } from "./model";
-import { TabNav } from "./tabs";
 
 export type DocumentTab = "read" | "versions" | "review" | "comments";
 
@@ -149,7 +149,7 @@ export function DocumentHead({
         }
         testId="srs-document-head"
       />
-      <TabNav label={t("tabs.label", { title: doc.title })} tabs={tabs} current={current} testId="srs-document-tabs" />
+      <TabNav label={t("tabs.label", { title: doc.title })} tabs={tabs} current={current} testId="srs-document-tabs" tabTestId="srs-tab" />
     </div>
   );
 }

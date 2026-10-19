@@ -5,7 +5,7 @@ import { agentPath, agentsPath, createAgentByApi, putAvatarByApi } from "./suppo
 import { agentAnswers, chatPath, chatWorker, claimChatRun, createChatByApi, reactByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, isDeployed, type Member, test } from "./support/fixtures";
 import { seedCurator } from "./support/curator";
-import { ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
+import { type Account, ADMIN_ACCOUNT, HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
 import { seedInsights } from "./support/insights";
 import { graphReady, grantOn, HUB_NODE, kgPath, nodePath, sharedKg } from "./support/kg";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -40,8 +40,22 @@ import {
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
 import { putSecretByApi, secretValue } from "./support/secrets";
-import { documentPath, editItem, enableSrs, importSample, itemPath, SAMPLE_SLUG, SAMPLE_SRS, srsPath, submitVersion, USE_CASE } from "./support/srs";
+import {
+  documentPath,
+  editItem,
+  enableSrs,
+  enableTasks,
+  importSample,
+  itemPath,
+  RULE,
+  SAMPLE_SLUG,
+  SAMPLE_SRS,
+  srsPath,
+  submitVersion,
+  USE_CASE,
+} from "./support/srs";
 import { packSkill, publishSkill } from "./support/skills";
+import { createSprintByApi, createTaskByApi, SAMPLE_TASKS, taskPath, tasksPath } from "./support/tasks";
 import { CHECKOUTS, heartbeat, registerWorker, RUNTIMES } from "./support/workers";
 
 /**
@@ -205,6 +219,37 @@ async function seedHome(me: Member) {
   const { live, waiting } = await seedRuns(me);
   await claimRun(live);
   await startRun(live, waiting.id);
+}
+
+/**
+ * Tasks in a project of `owner`, an admin of it, for the Tasks pages: srs and tasks enabled, the sample SRS imported,
+ * the runs plan and a run of its step 2, the active Sprint 7, and four tasks in it, one per column but the backlog;
+ * T-1 links a use case, a business rule, the plan step, the run and a pull request, has `other` as its assignee and a
+ * comment; T-4 is cancelled, off the board.
+ */
+async function seedTasks(owner: Account, project: string, other: string) {
+  await enableSrs(owner, project);
+  await enableTasks(owner, project);
+  await importSample(owner, project);
+  await seedRunPlan(owner, project);
+  const [run] = await dispatch(owner, project, ["2"]);
+  await createSprintByApi(owner, project, "Sprint 7", "active");
+  await createTaskByApi(owner, project, {
+    title: "Checkout places the order",
+    description_md: "Customers place an order from the cart.\n\n- The cart is kept for a day.",
+    status: "in_progress",
+    priority: "urgent",
+    due_on: "2026-10-24",
+    sprint: "Sprint 7",
+    assignees: [other],
+    roles: { ba: [owner.login], qa: [other] },
+    links: { use_cases: [USE_CASE.code, RULE.code], steps: [`${RUN_PLAN}#2`], runs: [run.id], pulls: ["https://github.com/example-org/api/pull/7"] },
+  });
+  await createTaskByApi(owner, project, { title: "Test cases for the cart", status: "todo", priority: "high", sprint: "Sprint 7", assignees: [owner.login, other] });
+  await createTaskByApi(owner, project, { title: "Totals round the wrong way", type: "bug", status: "in_review", priority: "low", sprint: "Sprint 7" });
+  await createTaskByApi(owner, project, { title: "Dropped idea", status: "cancelled", priority: "low", sprint: "Sprint 7" });
+  const api = await apiOf(owner);
+  await api.POST("/v1/x/tasks/{project}/tasks/{ref}/comments", { params: { path: { project, ref: "T-1" } }, body: { body: "Is a day **long enough**?" } });
 }
 
 const PAGES: Entry[] = [
@@ -1333,6 +1378,81 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("srs-read-only")).toBeVisible();
       await page.locator("#main").getByTestId("srs-toc-disclosure").locator("summary").click();
       await expect(page.locator("#main").getByTestId("srs-toc-disclosure").getByRole("navigation")).toBeVisible();
+    },
+  },
+  {
+    name: "the Tasks board with its cards, and the backlog with the new sprint dialog",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      const mai = newAccount("tasks-mai");
+      const hub = new HubAdmin();
+      await hub.grant(project, me.login, "admin", "customer");
+      await hub.grant(project, mai.login, "writer", "customer");
+      await seedTasks(me, project, mai.login);
+      await open(page, tasksPath(project));
+      await expect(page.locator("#main").getByTestId("task-board")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("task-card").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "Tasks board");
+      await open(page, tasksPath(project, "mine"));
+      await expect(page.locator("#main").getByTestId("mine-open-table")).toBeVisible();
+      await expectNoSeriousViolations(page, "My work");
+      await open(page, tasksPath(project, "backlog"));
+      await expect(page.locator("#main").getByTestId("tasks-table").first()).toBeVisible();
+      await expectNoSeriousViolations(page, "Tasks backlog");
+      await page.locator("#main").getByTestId("sprint-new").click();
+      await expect(page.getByTestId("sprint-new-form")).toBeVisible();
+    },
+  },
+  {
+    name: "a task's page with its links, history and comments, and its editor",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await seedTasks(me, project, me.login);
+      await open(page, taskPath(project, "T-1"));
+      await expect(page.locator("#main").getByTestId("task-links")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("task-comment")).toBeVisible();
+      await expectNoSeriousViolations(page, "task page");
+      await page.locator("#main").getByTestId("task-edit").click();
+      await expect(page.locator("#main").getByTestId("task-editor")).toBeVisible();
+    },
+  },
+  {
+    name: "a new task linked to a use case, and the import of tasks with its preview",
+    open: async ({ page, me }) => {
+      const project = me.projects[0];
+      await new HubAdmin().grant(project, me.login, "admin", "customer");
+      await enableSrs(me, project);
+      await enableTasks(me, project);
+      await importSample(me, project);
+      await open(page, `${tasksPath(project, "board/new")}?link=${encodeURIComponent(USE_CASE.code)}`);
+      await expect(page.locator("#main").getByTestId("task-new-form")).toBeVisible();
+      await expectNoSeriousViolations(page, "new task");
+      await open(page, tasksPath(project, "import"));
+      await page.locator("#main").getByTestId("tasks-import-json").fill(SAMPLE_TASKS);
+      await page.locator("#main").getByTestId("tasks-import-preview-run").click();
+      await expect(page.locator("#main").getByTestId("tasks-import-preview")).toBeVisible();
+    },
+  },
+  {
+    name: "Tasks pages on a small screen, read as a reader",
+    open: async ({ page, me }) => {
+      const project = me.projects[1];
+      const owner = newAccount("tasks-owner");
+      const hub = new HubAdmin();
+      await hub.grant(project, owner.login, "admin", "customer");
+      await hub.grant(project, me.login, "reader", "customer");
+      await seedTasks(owner, project, me.login);
+      await page.setViewportSize({ width: 375, height: 812 });
+      await open(page, tasksPath(project));
+      await expect(page.locator("#main").getByTestId("tasks-read-only")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("task-board")).toBeVisible();
+      await expectNoSeriousViolations(page, "Tasks board at 375 px");
+      await open(page, taskPath(project, "T-1"));
+      await expect(page.locator("#main").getByTestId("task-details")).toBeVisible();
+      await expectNoSeriousViolations(page, "task page at 375 px");
+      await open(page, tasksPath(project, "backlog"));
+      await expect(page.locator("#main").getByTestId("tasks-table").first()).toHaveAttribute("data-layout", "list");
     },
   },
   {

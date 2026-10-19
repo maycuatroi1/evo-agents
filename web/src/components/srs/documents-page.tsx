@@ -8,6 +8,7 @@ import { useMemo } from "react";
 import { DataCard } from "@/components/data/data-card";
 import { CellMain, DataTable, dataTableColumns } from "@/components/data/data-table";
 import { NAME_LINK, Tag } from "@/components/data/identifier";
+import { TabNav } from "@/components/data/tab-nav";
 import { When } from "@/components/data/when";
 import { PageHeader } from "@/components/shell/page-header";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
@@ -22,7 +23,6 @@ import { ReaderNote } from "./banner";
 import { useSrsViewer } from "./hooks";
 import { documentHref, documentsHref, importHref, settingsHref } from "./links";
 import { canWrite } from "./model";
-import { TabNav } from "./tabs";
 
 const NARROW_HIDDEN = { kind: "hidden md:table-cell", created_by: "hidden lg:table-cell", created_at: "hidden sm:table-cell" };
 
@@ -33,7 +33,7 @@ export function SrsTabs({ project, current, writer }: { project: string; current
     { id: "documents", label: t("tabDocuments"), href: documentsHref(project), icon: FileText },
     ...(writer || current === "import" ? [{ id: "import", label: t("tabImport"), href: importHref(project), icon: Upload }] : []),
   ];
-  return <TabNav label={t("tabsLabel")} tabs={tabs} current={current} testId="srs-tabs" />;
+  return <TabNav label={t("tabsLabel")} tabs={tabs} current={current} testId="srs-tabs" tabTestId="srs-tab" />;
 }
 
 function VersionCell({ number, state, none }: { number: number | null; state: SrsDocumentSummary["latest_state"] | null; none: string }) {
