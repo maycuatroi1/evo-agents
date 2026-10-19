@@ -8,7 +8,9 @@ that person is not a writer on the profile's project, when the chat's budget is 
 can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in
 its inbox; one that ended done is gone on from by a new run, pinned to its worker, in its session, with the message in
 its inbox; else a new session starts on the person's worker the profile allows, with the most of the project's repos
-checked out first, on the branch ``chat/<run>``.
+checked out first, on the branch ``chat/<run>``. The profile of an agent type that routes its chat runs to its
+``run_as`` (``chat_route``) takes the worker of that member instead, who must hold writer on the project, and its run's
+row is dispatched by them; the person stays the origin the hub's chat code acts for (``ChatRun.dispatcher_id``).
 
 A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) put the agent's reaction on the message that
 started it by rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
@@ -31,12 +33,14 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.author import harness_repo
 from evo_agents.hub.server.chat_access import ChatAccess, agent_projects, label_reader
 from evo_agents.hub.server.chat_notices import notice_mention
+from evo_agents.hub.server.chat_route import Route, origin, route_of
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.run_events import write_user_message
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.runs.service.worker_fit import unfit_worker, workers_of
+from evo_agents.hub.server.security import MACHINE
 
 log = logging.getLogger(__name__)
 
@@ -48,7 +52,8 @@ AGENT_REPLY_REFUSAL = f"an agent's @ in a message hands no work: it uses `{rules
 class Hand:
     """What one mention asks: work of ``profile`` for ``dispatcher_id`` (``dispatcher``), the person at the origin of
     the chain, at ``hop``, in the thread of ``root_id`` of ``chat``, woken by message ``message_id`` that ``author``
-    wrote, with the credential kind ``via`` (runs.dispatched_via)."""
+    wrote, with the credential kind ``via`` (runs.dispatched_via). ``route`` is set by ``hand_work`` for a profile
+    whose agent type sends its chat runs to the workers of its run_as."""
 
     chat: ChatAccess
     message_id: int
@@ -60,6 +65,21 @@ class Hand:
     hop: int
     author: str
     body: str
+    route: Route | None = None
+
+    @property
+    def owner_id(self) -> int:
+        """The member the run's row is dispatched by, whose worker takes it."""
+        return self.route.user_id if self.route is not None else self.dispatcher_id
+
+    @property
+    def owner(self) -> str:
+        return self.route.login if self.route is not None else self.dispatcher
+
+    @property
+    def run_via(self) -> str:
+        """The credential kind of the run's row: the person's, or machine for a run that goes under run_as."""
+        return MACHINE if self.route is not None else self.via
 
 
 # The chat's budget
@@ -100,26 +120,39 @@ async def project_repos(conn: AsyncConnection, project_id: int) -> list[str]:
     return list(dict.fromkeys([*([harness] if harness else []), *names]))
 
 
-async def pick_worker(conn: AsyncConnection, hand: Hand):
-    """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher, fit for the
-    profile (``unfit_worker``), the one with a checkout of the most repos of the project, then the most free slots."""
-    profile = hand.profile
-    rows = (await conn.execute(workers_of(hand.dispatcher_id, profile.project_id))).all()
-    if not rows:
-        return None, (
+def _no_worker(hand: Hand) -> str:
+    profile, route = hand.profile, hand.route
+    if route is None:
+        return (
             f"{hand.dispatcher} has no worker that takes runs of project {profile.project}, which @{profile.handle} "
             "works in: join one, or add the project to one"
         )
+    named = f" among those its agent type names ({', '.join(route.workers)})" if route.workers else ""
+    return (
+        f"@{profile.handle} runs on the workers of {route.login}, who has no worker{named} that takes runs of project "
+        f"{profile.project}: {route.login} joins one or adds the project to one, or an admin names other workers"
+    )
+
+
+async def pick_worker(conn: AsyncConnection, hand: Hand):
+    """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher, or of the run_as
+    of the agent's type among the workers it names (``hand.route``), fit for the profile (``unfit_worker``), the one
+    with a checkout of the most repos of the project, then the most free slots."""
+    profile = hand.profile
+    rows = (await conn.execute(workers_of(hand.owner_id, profile.project_id))).all()
+    rows = [row for row in rows if hand.route is None or hand.route.named(row.name)]
+    if not rows:
+        return None, _no_worker(hand)
     repos = await project_repos(conn, profile.project_id)
     fit, unfit = [], []
     for row in rows:
-        why = unfit_worker(row, profile, hand.via)
+        why = unfit_worker(row, profile, hand.run_via)
         if why is None:
             fit.append(row)
         else:
             unfit.append(f"{row.name} {why}")
     if not fit:
-        return None, f"no worker of {hand.dispatcher} can take a run of @{profile.handle} now: {'; '.join(unfit)}"
+        return None, f"no worker of {hand.owner} can take a run of @{profile.handle} now: {'; '.join(unfit)}"
 
     def rank(row):
         held = sum(1 for name in repos if f"{profile.project}/{name}" in (row.checkouts or {}))
@@ -133,7 +166,7 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
 
 def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | None = None):
     """The chat runs in the thread of ``root_id`` dispatched by ``dispatcher_id`` (of ``profile_id`` when given), the
-    latest first, with the state of their worker."""
+    latest first, with the state of their worker and the person who wrote the message that started each."""
     r, m, w = tables.runs, tables.chat_messages, tables.workers
     query = (
         select(
@@ -144,6 +177,7 @@ def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | 
             r.c.session_id,
             r.c.usage,
             w.c.revoked_at.is_not(None).label("revoked"),
+            m.c.author_user_id.label("author_id"),
         )
         .select_from(r.join(m, m.c.id == r.c.chat_message_id).outerjoin(w, w.c.id == r.c.worker_id))
         .where(
@@ -158,9 +192,35 @@ def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | 
 
 async def thread_session(conn: AsyncConnection, chat_id: int, root_id: int, dispatcher_id: int) -> int | None:
     """The one agent with a session of ``dispatcher_id`` in the thread of ``root_id``, its profile id; None when there
-    is none or more than one: a message without an @ in a chat of one person goes to it."""
+    is none or more than one: a message without an @ in a chat of one person goes to it. A session that went to the
+    workers of an agent type's run_as counts for the person whose message started it."""
+    r, m = tables.runs, tables.chat_messages
+    started = (
+        select(r.c.profile_id)
+        .join_from(r, m, m.c.id == r.c.chat_message_id)
+        .where(
+            r.c.chat_id == chat_id,
+            func.coalesce(m.c.thread_root_id, m.c.id) == root_id,
+            m.c.author_user_id == dispatcher_id,
+        )
+    )
     found = {row.profile_id for row in await conn.execute(_sessions(chat_id, root_id, dispatcher_id))}
+    found |= set((await conn.execute(started)).scalars())
     return found.pop() if len(found) == 1 else None
+
+
+async def _session(conn: AsyncConnection, hand: Hand):
+    """The latest chat run of ``hand``'s profile in its thread for its person, its row locked; None when there is
+    none. One that went to the workers of run_as (``hand.route``) is the person's when its origin is."""
+    query = _sessions(hand.chat.chat_id, hand.root_id, hand.owner_id, hand.profile.id)
+    if hand.route is None:
+        return (await conn.execute(query.limit(1).with_for_update(of=tables.runs))).one_or_none()
+    for row in (await conn.execute(query)).all():
+        person = row.author_id if row.author_id is not None else await origin(conn, row.id)
+        if (person or hand.owner_id) == hand.dispatcher_id:
+            locked = query.where(tables.runs.c.id == row.id).with_for_update(of=tables.runs)
+            return (await conn.execute(locked)).one()
+    return None
 
 
 async def _to_inbox(conn: AsyncConnection, run_id: int, hand: Hand) -> None:
@@ -194,8 +254,8 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand, left: float) -> in
     """Queue the run that goes on in the session of chat run ``previous`` with the message of ``hand``."""
     budget = rules.run_budget(left + curator.run_cost(previous.usage))  # the claim takes the session's cost off
     values = {
-        "dispatched_by": hand.dispatcher_id,
-        "dispatched_via": hand.via,
+        "dispatched_by": hand.owner_id,
+        "dispatched_via": hand.run_via,
         "chat_message_id": hand.message_id,
         "hop": hand.hop,
         "budget": budget,
@@ -265,8 +325,8 @@ async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
         "kind": "chat",
         "project_id": profile.project_id,
         "title": title,
-        "dispatched_by": hand.dispatcher_id,
-        "dispatched_via": hand.via,
+        "dispatched_by": hand.owner_id,
+        "dispatched_via": hand.run_via,
         "pinned_worker_id": worker.id,
         "requested_runtime": "any",
         "runtime": "any",
@@ -321,15 +381,33 @@ async def _writer_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
     return None
 
 
+async def _run_as_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
+    """Why the run_as of ``hand``'s route takes no run of its profile now: they no longer hold writer on the project."""
+    profile, route, g = hand.profile, hand.route, tables.grants
+    query = select(g.c.role).where(g.c.user_id == route.user_id, g.c.project_id == profile.project_id)
+    role = (await conn.execute(query)).scalar_one_or_none()
+    if has_role(role, "writer"):
+        return None
+    return (
+        f"@{profile.handle} runs on the workers of {route.login}, who holds {role or 'no grant'} on project "
+        f"{profile.project} now, not writer: an admin of the project names another member"
+    )
+
+
 async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str | None]:
     """(the run the mention reached, None) or (None, why it reached none), in the caller's transaction: the session's
     run that is queued or held takes the message in its inbox; one that ended done is gone on from; else a new
-    session starts on a worker of the dispatcher (see the module's docstring)."""
+    session starts on a worker of the dispatcher, or of the run_as of the agent's type when it routes its chat runs
+    there (see the module's docstring)."""
     refusal = await _writer_refusal(conn, hand)
     if refusal is not None:
         return None, refusal
-    query = _sessions(hand.chat.chat_id, hand.root_id, hand.dispatcher_id, hand.profile.id).limit(1)
-    session = (await conn.execute(query.with_for_update(of=tables.runs))).one_or_none()
+    hand = replace(hand, route=await route_of(conn, hand.profile.id))
+    if hand.route is not None:
+        refusal = await _run_as_refusal(conn, hand)
+        if refusal is not None:
+            return None, refusal
+    session = await _session(conn, hand)
     if session is not None and session.state in runs.MESSAGE_STATES:
         await _to_inbox(conn, session.id, hand)
         return session.id, None
@@ -371,7 +449,9 @@ async def hand_mentions(conn: AsyncConnection, hand: Hand, kept: list[dict]) -> 
 @dataclass(frozen=True)
 class ChatRun:
     """What the hub needs of a chat run: its chat, the message that started it, the thread it answers in, its
-    profile, its dispatcher and hop."""
+    profile, its dispatcher (the person at the origin of the chain, whom the agent acts for) and hop, and
+    ``dispatched_by``, the member its row is dispatched by: the dispatcher, or the run_as of an agent type that sends
+    its chat runs to that member's workers (``chat_route``)."""
 
     run_id: int
     chat_id: int
@@ -383,6 +463,7 @@ class ChatRun:
     via: str
     hop: int
     error: str | None
+    dispatched_by: int
 
 
 async def chat_run(conn: AsyncConnection, run_id: int) -> ChatRun | None:
@@ -393,19 +474,30 @@ async def chat_run(conn: AsyncConnection, run_id: int) -> ChatRun | None:
             r.c.id,
             r.c.chat_id,
             r.c.chat_message_id,
-            func.coalesce(m.c.thread_root_id, m.c.id),
+            func.coalesce(m.c.thread_root_id, m.c.id).label("root_id"),
             r.c.profile_id,
             r.c.dispatched_by,
             u.c.login,
-            func.coalesce(r.c.dispatched_via, "machine"),
+            func.coalesce(r.c.dispatched_via, "machine").label("via"),
             r.c.hop,
             r.c.error,
+            m.c.author_user_id,
+            m.c.run_id.label("asked_by_run"),
         )
         .select_from(r.join(m, m.c.id == r.c.chat_message_id).join(u, u.c.id == r.c.dispatched_by))
         .where(r.c.id == run_id, r.c.kind == "chat")
     )
     row = (await conn.execute(query)).one_or_none()
-    return None if row is None else ChatRun(*row)
+    if row is None:
+        return None
+    person = row.author_user_id
+    if person is None and row.asked_by_run is not None:  # an agent's message: the origin of that agent's run
+        person = await origin(conn, row.asked_by_run)
+    person, login = person or row.dispatched_by, row.login
+    if person != row.dispatched_by:  # the run went to the workers of its agent type's run_as
+        login = (await conn.execute(select(u.c.login).where(u.c.id == person))).scalar_one()
+    head = (row.id, row.chat_id, row.chat_message_id, row.root_id, row.profile_id)
+    return ChatRun(*head, person, login, row.via, row.hop, row.error, row.dispatched_by)
 
 
 async def agent_access(conn: AsyncConnection, chat_id: int, profile: Profile, dispatcher_id: int) -> ChatAccess | None:
@@ -546,7 +638,7 @@ async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str 
         return None
     spent, budget = await chat_spend(conn, found.chat_id)
     values = {
-        "dispatched_by": found.dispatcher_id,
+        "dispatched_by": found.dispatched_by,
         "dispatched_via": found.via,
         "chat_message_id": found.message_id,
         "hop": found.hop,
@@ -572,9 +664,13 @@ def _message(row, profiles_by_id: dict) -> dict:
     return {"id": row.id, "author": author, "at": row.created_at, "body": row.body}
 
 
+def _clearers(found: ChatRun) -> list[int]:
+    return list(dict.fromkeys([found.dispatcher_id, found.dispatched_by]))
+
+
 async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, repos: list) -> str:
     """The prompt of chat run ``run_id`` as its worker claims it (``chat_runs.build_chat_prompt``): the snapshot holds
-    the messages its dispatcher clears the label of."""
+    the messages its dispatcher clears the label of, and the member whose worker runs it too."""
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
@@ -587,9 +683,10 @@ async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, re
     before = message_select().where(cm.c.chat_id == found.chat_id, cm.c.thread_root_id.is_(None), cm.c.id < root_id)
     before = before.order_by(cm.c.id.desc()).limit(rules.BEFORE_MESSAGES + 1)
     rows = [*reversed((await conn.execute(before)).all()), *(await conn.execute(thread.order_by(cm.c.seq))).all()]
-    reader = await label_reader(conn, found.dispatcher_id, [row.label for row in rows])
+    # the dispatcher clears what the prompt shows, and so does the member whose worker runs it, when another
+    readers = [await label_reader(conn, user_id, [row.label for row in rows]) for user_id in _clearers(found)]
     authors = await profiles_by_id(conn, [row.author_profile_id for row in rows if row.author_profile_id])
-    shown = {row.id: _message(row, authors) for row in rows if reader.sees(row.label)}
+    shown = {row.id: _message(row, authors) for row in rows if all(reader.sees(row.label) for reader in readers)}
     trigger = shown.pop(found.message_id, None) or {"id": found.message_id, "author": found.dispatcher, "body": ""}
     root = shown.pop(root_id, None) if root_id != found.message_id else None
     blocks = rules.snapshot(

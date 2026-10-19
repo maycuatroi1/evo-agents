@@ -855,6 +855,14 @@
           ],
           "description": "Who hands its profile work by mentioning it in a group chat: the writers of the project (writer, the default), or its admins alone (admin); a member the type does not take work from gets a refusal in the thread."
         },
+        "chat_runs": {
+          "type": "string",
+          "enum": [
+            "mentioner",
+            "run_as"
+          ],
+          "description": "Where the chat runs of its profile go: a worker of the member who mentions it (mentioner, the default), or a worker of the member the project enabled the type under (run_as), among the workers the type names, whoever mentions it."
+        },
         "jobs": {
           "type": "array",
           "items": {

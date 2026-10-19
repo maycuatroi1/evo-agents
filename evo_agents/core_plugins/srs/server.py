@@ -2,9 +2,9 @@
 (the hub checks both first, ``evo_agents.hub.server.plugin_routes``; a project that did not enable it answers 404).
 
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
-between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them,
-review them (never one they wrote a version of since the one approved last) and comment; dropping a coded item takes
-an admin. Approving a version queues a build of the project's knowledge graph, which reads the approved versions. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error
+between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (a
+version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
+the one approved last) and comment; dropping a coded item takes an admin. Approving a version queues a build of the project's knowledge graph, which reads the approved versions. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error
 body, with the problems that refused it (or a conflict's two texts) in ``detail``.
 """
 
@@ -17,6 +17,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.srs import checks, edits, imports, markdown, reviews, store
+from evo_agents.core_plugins.srs.auto_review import review_entered
 from evo_agents.core_plugins.srs.diff import diff, lines_between
 from evo_agents.core_plugins.srs.doc import SrsError
 from evo_agents.core_plugins.srs.models import (
@@ -36,6 +37,7 @@ from evo_agents.core_plugins.srs.models import (
     comment_model,
     detail_model,
     diff_model,
+    edit_changes,
     item_detail_model,
     preview_model,
     summary_model,
@@ -242,19 +244,6 @@ async def import_document(
     return await _answer(request, work)
 
 
-def _changes(body: SrsSave) -> list[edits.Change]:
-    found = []
-    for change in body.changes:
-        new = None
-        if change.new is not None:
-            values = change.new.model_dump()
-            level = values.pop("heading_level")
-            new = edits.NewItem(**values, level=level)
-        refs = [(ref.rel, ref.to) for ref in change.refs] if change.refs is not None else None
-        found.append(edits.Change(change.key, change.title, change.body, change.steps, refs, change.retire, new))
-    return found
-
-
 @router.post("/{project}/documents/{slug}/versions", response_model=SrsVersionDetail, status_code=201)
 async def save_version(
     request: Request, project: ProjectName, slug: Slug, body: SrsSave, user: CurrentUser, sink: Sink = None
@@ -269,7 +258,7 @@ async def save_version(
         latest = await store.snapshot(conn, await store.version(conn, doc))
         base = latest if body.base_version == latest.version.number else None
         base = base or await store.snapshot(conn, await store.version(conn, doc, body.base_version))
-        content = edits.edited(latest, base, _changes(body), body.preamble)
+        content = edits.edited(latest, base, edit_changes(body.changes), body.preamble)
         await give_screen_codes(conn, access.project_id, content)
         writer = Writer(access.project_id, doc.id, user.user_id, has_role(access.role, "admin"))
         template = (await store.settings(conn, access)).template
@@ -283,12 +272,15 @@ async def save_version(
 async def submit_version(
     request: Request, project: ProjectName, slug: Slug, number: Number, user: CurrentUser, sink: Sink = None
 ):
-    """Send a draft to review, once it has no error."""
+    """Send a draft to review, once it has no error. The first time a version goes to review, @ba reviews it when the
+    project enabled the agent type ba; its comments block nothing."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
-        return version_model(await reviews.submit(conn, access, doc, number, await store.settings(conn, access)))
+        sent = await reviews.submit(conn, access, doc, number, await store.settings(conn, access))
+        await review_entered(conn, access, doc, sent)
+        return version_model(sent)
 
     return await _answer(request, work)
 

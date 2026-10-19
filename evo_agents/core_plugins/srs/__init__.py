@@ -22,14 +22,23 @@ carrying its label, the project's by default. The version of each document appro
 knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the ids a mention of their
 codes gets.
 
+The plugin contributes the agent type ``ba`` (criterion a7): the profile @ba with the pack ``srs/ba`` (``packs/ba``:
+its instructions and the skills srs-writing and srs-review), which a project's writers mention in a group chat. Its
+agent reads, searches and compares documents and proposes and comments with the plugin's tools on the hub's /mcp
+(``agent``): a proposal is the document's next version, in review at once, written as the person who mentioned @ba,
+who therefore never approves it. The type declares ``chat_runs: run_as``: every run of @ba goes to a worker of the
+member the project enabled the type under, and each version that enters review for the first time is reviewed by @ba
+in a task run on that worker (``auto_review``), whose comments are advice and block nothing.
+
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
 ``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
 comments, ``diff`` compares two versions, ``models`` and ``server`` are the API, ``kg`` gives the knowledge graph its
-approved versions.
+approved versions, ``agent`` and ``auto_review`` are @ba's.
 """
 
 SERVER = "evo_agents.core_plugins.srs.server"
 KG = "evo_agents.core_plugins.srs.kg"
+AGENT = "evo_agents.core_plugins.srs.agent"
 TEMPLATES = ("srs-basic",)
 ROLES = ("ba", "qa", "dev")  # evo_agents.hub.tables_srs.REVIEW_ROLES
 CODED_KINDS = ("use_case", "business_rule", "screen", "nfr", "cbr")
@@ -79,6 +88,146 @@ CONFIG = {
     },
 }
 
+# @ba, the agent type (``agent``, ``auto_review``, ``packs/ba``)
+BA = "ba"
+BA_INSTRUCTIONS = (
+    "You are @ba, the business analyst agent of this project's SRS documents on the evo-agents hub. You read, search, "
+    "draft and review them with the tools srs__read, srs__search, srs__diff, srs__propose and srs__comment, and make "
+    "tasks of their items with tasks__create when the project has it. A change is a proposal: a version in review that "
+    "members approve. You never approve, return, drop or renumber anything. Follow the instructions of your pack."
+)
+_SLUG = {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,99}$", "description": "the document's slug"}
+_VERSION = {"type": "integer", "minimum": 1, "description": "a version's number; the latest when left out"}
+_REF = {"type": "string", "minLength": 1, "maxLength": 100, "description": "an item's code, an alias or its key"}
+READ_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "properties": {
+        "document": {**_SLUG, "description": "the document's slug; left out: the documents of the project"},
+        "version": _VERSION,
+        "item": {**_REF, "description": "an item's code, an alias or its key: that item and the items under it"},
+    },
+}
+SEARCH_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["query"],
+    "properties": {
+        "query": {"type": "string", "minLength": 1, "maxLength": 200, "description": "a code, an alias or words"},
+        "document": {**_SLUG, "description": "one document's slug; left out: every document"},
+        "kinds": {
+            "type": "array",
+            "items": {"enum": ["section", "use_case", "business_rule", "screen", "nfr", "cbr", "glossary"]},
+            "maxItems": 7,
+            "description": "the kinds of item to keep",
+        },
+    },
+}
+DIFF_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["document", "from", "to"],
+    "properties": {
+        "document": _SLUG,
+        "from": {"type": "integer", "minimum": 1},
+        "to": {"type": "integer", "minimum": 1},
+    },
+}
+_NEW_ITEM = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["kind", "title"],
+    "properties": {
+        "kind": {"enum": ["section", "use_case", "business_rule", "screen", "nfr", "cbr", "glossary"]},
+        "title": {"type": "string", "minLength": 1, "maxLength": 500},
+        "body": {"type": "string", "maxLength": 200_000},
+        "code": {"type": "string", "minLength": 1, "maxLength": 100, "description": "a new code the template allows"},
+        "parent": {"type": "string", "description": "the key of its parent"},
+        "after": {"type": "string", "description": "the key of the sibling it follows"},
+        "heading_level": {"type": "integer", "minimum": 1, "maximum": 6},
+        "steps": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
+    },
+}
+_CHANGE = {
+    "type": "object",
+    "additionalProperties": False,
+    "description": "a change of the item key (its title, body, steps or links), or a new item",
+    "properties": {
+        "key": {"type": "string", "minLength": 1, "maxLength": 64, "description": "the key of the item it changes"},
+        "title": {"type": "string", "minLength": 1, "maxLength": 500},
+        "body": {"type": "string", "maxLength": 200_000, "description": "the item's whole Markdown body"},
+        "steps": {"type": "array", "items": {"type": "string"}, "maxItems": 50},
+        "refs": {
+            "type": "array",
+            "maxItems": 100,
+            "items": {
+                "type": "object",
+                "additionalProperties": False,
+                "required": ["rel", "to"],
+                "properties": {
+                    "rel": {"enum": ["uses_screen", "refines", "relates"]},
+                    "to": {"type": "string", "minLength": 1, "maxLength": 100},
+                },
+            },
+            "description": "the item's links, the whole list",
+        },
+        "new": _NEW_ITEM,
+    },
+}
+PROPOSE_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["document", "base_version", "summary", "changes"],
+    "properties": {
+        "document": _SLUG,
+        "base_version": {"type": "integer", "minimum": 1, "description": "the version the changes were made on"},
+        "summary": {"type": "string", "minLength": 1, "maxLength": 500, "description": "what it changes and why"},
+        "changes": {"type": "array", "minItems": 1, "maxItems": 200, "items": _CHANGE},
+    },
+}
+COMMENT_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["document", "body"],
+    "properties": {
+        "document": _SLUG,
+        "body": {"type": "string", "minLength": 1, "maxLength": 20_000},
+        "version": {"type": "integer", "minimum": 1, "description": "the version it is about"},
+        "item": {**_REF, "description": "the item it is about: its code, an alias or its key"},
+        "parent_id": {"type": "integer", "minimum": 1, "description": "the comment it answers"},
+    },
+}
+TOOLS = (
+    (
+        "read",
+        "Read the SRS documents",
+        "Read a BA document of the project: without document, the list of documents; with it, a version as Markdown "
+        "(the latest unless version names one) with its state; with item, that item and the items under it.",
+        READ_SCHEMA,
+    ),
+    (
+        "search",
+        "Search the SRS items",
+        "Find items of the latest version of each document by code, alias or words of their title or body.",
+        SEARCH_SCHEMA,
+    ),
+    ("diff", "Compare two versions", "What changed between two versions of a document, item by item.", DIFF_SCHEMA),
+    (
+        "propose",
+        "Propose a new version",
+        "Propose changes of a document's items as its next version, which goes to review at once and which members "
+        "approve. Only the agent of a chat run of @ba may call it; it never drops an item or changes a code.",
+        PROPOSE_SCHEMA,
+    ),
+    (
+        "comment",
+        "Comment on a document",
+        "Comment on a document, a version or an item, as the member the run works for, marked as drafted by the run. "
+        "Only the agent of a run of @ba may call it; a comment is advice and blocks no approval.",
+        COMMENT_SCHEMA,
+    ),
+)
+
 TABLES = (
     ("srs_documents", "A project's BA documents and the label each carries"),
     ("srs_versions", "Each save of a document, never changed after, and its state"),
@@ -110,6 +259,33 @@ MANIFEST = {
     "plugin_api": 1,
     "config": CONFIG,
     "contributes": {
+        "agent_packs": [
+            {
+                "name": BA,
+                "title": "BA",
+                "description": "Writing and reviewing SRS documents to their template, keeping every code.",
+            }
+        ],
+        "agent_types": [
+            {
+                "name": BA,
+                "title": "BA",
+                "description": "Drafts, reviews and checks the SRS documents for the project's writers; members approve.",
+                "mentioned_by": "writer",
+                "chat_runs": "run_as",
+                "packs": [BA],
+                "profile": {
+                    "handle": BA,
+                    "name": "BA",
+                    "description": "Drafts and reviews the SRS documents; every change is a version members approve.",
+                    "instructions": BA_INSTRUCTIONS,
+                },
+            }
+        ],
+        "mcp_tools": [
+            {"name": name, "title": title, "description": text, "python": f"{AGENT}:{name}", "input_schema": schema}
+            for name, title, text, schema in TOOLS
+        ],
         "routes": [{"name": "documents", "title": "The BA documents of a project", "python": f"{SERVER}:router"}],
         "kg_sources": [
             {"name": "documents", "title": "The approved version of each document", "python": f"{KG}:kg_source"}
