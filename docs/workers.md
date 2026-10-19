@@ -21,11 +21,11 @@ the log and diff the worker uploads; `evo_agents/hub/server/terminal.py` relays 
 close codes `evo_agents/hub/terminal.py` holds for the api and the daemon alike. `evo_agents/worker` is the daemon,
 `evo-agents worker` (see [The daemon](#the-daemon)), with an adapter for each of the three runtimes in
 `evo_agents/worker/runtimes` and its end of the web terminal. `evo_agents/worker/runner` holds a run on the machine:
-each kind of run (step, plan, review, judge, author, chat, task) in a module of its own, which composes the parts the kinds share
-rather than inheriting them, and the decisions that need no I/O as pure functions in `runner/transitions.py`;
-`evo_agents/worker/run.py` keeps the names the daemon imports. The daemon has its own command group because
-`evo-agents hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md` describes
-how decisions and notices reach a member.
+each kind of run (step, plan, review, judge, author, chat, task, replay) in a module of its own, which composes the
+parts the kinds share rather than inheriting them, and the decisions that need no I/O as pure functions in
+`runner/transitions.py`; `evo_agents/worker/run.py` keeps the names the daemon imports. The daemon has its own command
+group because `evo-agents hub worker` is already the server's job worker (see `docs/hub.md`). `docs/notifications.md`
+describes how decisions and notices reach a member.
 
 ## Entities
 
@@ -34,7 +34,7 @@ how decisions and notices reach a member.
 | worker | a machine its owner registered: a name unique per owner, host facts (hostname, OS, arch, daemon version), 1 to 16 slots, labels, the plugins whose runtimes it takes, the runtimes and checkouts it reports, whether it allows the web terminal, who may dispatch to it (`dispatch_from`), whether its version is locked, the commit of evo-agents its daemon runs and what the daemon reports of updating itself; its owner changes its name, slots, labels, plugins and version lock after it joined | `workers` |
 | worker project | a project the worker may take runs of, chosen at registration | `worker_projects` |
 | pairing | a one-time code the web creates so a machine can join without a machine token | `worker_pairings` |
-| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`) and judge runs (kind `judge`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
+| run | one attempt at one plan step on one worker (kind `step`), or one session on one worker that does every step of a plan not done yet (kind `plan`); the night shift of a project's charter also queues the Curator's review runs (kind `review`), judge runs (kind `judge`) and replay runs (kind `replay`), `docs/curator.md`; an author run (kind `author`) writes or revises a plan from a member's request, and a chat run (kind `chat`) is one turn of an agent mentioned in a group chat ([Chat runs](#chat-runs)), and a task run (kind `task`) one turn of a plugin's agent type on a task the plugin handed it ([Task runs](#task-runs)); every run since schema 0030 goes under an agent profile, its project's default unless the dispatch named one | `runs` |
 | run event | one entry of a run's log, numbered within the run | `run_events` |
 | inbox message | a message from the owner to the run's agent, waiting for the worker | `run_inbox` |
 | decision | a question a plan run's or an author run's agent asks its owner, with 2 to 6 options | `decisions` |
@@ -670,7 +670,9 @@ needs a daemon whose last heartbeat listed `session_per_step` in `features`: an 
 one session. A review run (kind `review`, the
 Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) needs a checkout of every repo in its
 `repos` and a daemon whose last heartbeat listed `review` in `run_kinds`, and a judge run (kind `judge`, see
-[A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`. The
+[A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`, and a
+replay run (kind `replay`, see [A replay run on the machine](#a-replay-run-on-the-machine)) a checkout of each of its
+repos and `replay` in `run_kinds`. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
@@ -683,10 +685,12 @@ for a run that goes on from a parked one), and null otherwise. A run of one step
 as the plan it was
 dispatched from has it (a list of one command, or empty), whose programs the daemon looks for before the agent starts
 (see [Preflight and failure causes](#preflight-and-failure-causes)); null for any other kind, and absent from an older
-hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, or a
-plan run of a plan the Curator made) has `curator`: its `role` (`reviewer`, `builder` or `judge`), the charter's `protected_paths`, and for a
-Builder or a Judge the change, its branch, its forge (`github` or `gitlab`), the default branch, the pull request, and
-for a Judge the commit to judge and the run's own key (`judge_key`); null for any other run. A run under an agent profile
+hub, whose daemon then checks no program of a run of one step. A run of the Curator (a review run, a judge run, a
+replay run, or a plan run of a plan the Curator made) has `curator`: its `role` (`reviewer`, `builder`, `judge` or
+`replay`), the charter's `protected_paths`, and for a Builder, a Judge or a replay the change, its branch, its forge
+(`github` or `gitlab`), the default branch, the pull request, for a Judge the commit to judge and the run's own key
+(`judge_key`), and for a replay the change's head, `replay` (the replay, its task and the change's repo) and the run's
+own key (`replay_key`); null for any other run. A run under an agent profile
 ([hub.md](hub.md), Agent profiles) is claimed only by a worker the profile's worker axis names by name or label, with
 a runtime its runtime axis allows (a run asking for `any` takes the first of the worker's it allows), and, when the
 profile limits tools, skills or models or has instructions, only by a daemon whose last heartbeat listed
@@ -717,7 +721,7 @@ it holds:
   "free_slots": 1,
   "runs": [12],
   "agent_version": "0.3.0",
-  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task"],
+  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task", "replay"],
   "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs",
                "chat_decisions", "kg_sync"],
   "agent_commit": "<40 or 64 hex>",
@@ -1748,9 +1752,9 @@ refused, and the run fails with `push_conflict`.
 ### Runs of the night shift
 
 The night shift of a project's charter (`docs/curator.md`) queues its runs on the charter's worker on duty, as that
-worker's owner, headless and with approval `auto`: the night's review run, judge runs and Builders of the Curator, and
-plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon enforces (`budget` in the claim,
-`evo_agents.hub.curator`):
+worker's owner, headless and with approval `auto`: the night's review run, judge runs, replay runs and Builders of the
+Curator, and plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon enforces (`budget`
+in the claim, `evo_agents.hub.curator`):
 
 - `max_usd`, the most the run may cost. Claude Code gets what is left of it once the session the run goes on in has
   cost what the claim's `spent_usd` says, as `max_budget_usd`, so the CLI stops the session there. opencode and Codex
@@ -1770,7 +1774,7 @@ from the web only passes over every run of the night shift (`dispatched_via` `sc
 
 A plan run of `night_plans` is a plan run of its owner's own plan: it gets the leases any plan run of its owner gets
 and pushes as its plan says (see [A plan run on the machine](#a-plan-run-on-the-machine)). Only a review run, a judge
-run and a plan run of a plan the Curator made are runs of the Curator, which the sections below and
+run, a replay run and a plan run of a plan the Curator made are runs of the Curator, which the sections below and
 [The Curator's runs on the machine](#the-curators-runs-on-the-machine) describe.
 
 ### Keeping the graph fresh
@@ -1868,6 +1872,38 @@ the merge base, the results, the signs and the paths the diff touches (`POST /v1
 decides whether the change passed. The run then ends `done`, pushing nothing (`gitops.check_push` refuses every push
 of a judge run). `evo-agents worker step`, `ask`, `notify`, `finding` and `propose` refuse inside a judge run.
 
+### A replay run on the machine
+
+A replay run (kind `replay`) does one step of the project's history again, to measure a change of the Curator
+(`docs/hub.md`, "The Curator's replays"). Its claim names the replay and its task (the plan and step, the repo, the
+title, what and verify, the commits the step made, and its base commit once a replay read it), the change's repo,
+branch and head, and hands the daemon the run's own key (`replay_key`), which it keeps as a judge run's key and sends
+with `POST /v1/worker/runs/{id}/replay` (`X-Evo-Replay-Key`). The daemon takes its leases (a token of the Curator's App
+that reads only), and its preflight looks for the program of the step's verify on the PATH that command runs with. It
+fetches origin in the checkouts of the task's repo and the change's, with no hook or fsmonitor of either, and reads:
+the base commit, the first parent of the oldest of the step's commits; the tip of origin's default branch and the
+change's head; and the files the change touches since their merge base that are part of a harness (an AGENTS.md or
+CLAUDE.md file, or a file under `skills/<skill>/`), with every file of each such skill. A task none of whose commits
+the checkout has, or whose oldest has no parent, is refused as unusable; a change that touches no such file is refused
+too; either way the run ends `done` without an agent and the hub fails the replay.
+
+Each arm then gets a directory of its own under the run's (`a/`, `b/`): a new repository of the task's repo, which
+fetches the base commit from the checkout and so holds the history up to it and nothing after it, checked out there;
+the change's files as the arm's commit has them (arm `a` origin's default branch, arm `b` the change's head), committed
+on top as one commit when the change is in that repo, else written alone in a folder named as the change's repo; and
+each skill the change touches, whole, under `.claude/skills/` of the directory, where Claude Code loads it. The agent
+starts there in a new session on the step's prompt (`replay.replay_prompt`: do the step in the repository, push
+nothing, end the turn with what it did), with half the run's cost cap and half its agent time from where the run
+stands, its turns cap, and none of the hub's MCP tools; `evo-agents worker step`, `plan`, `ask` and the others refuse
+inside it. When its turn is over, or is cut short, which the arm notes as its error, the daemon runs the step's verify
+in the repository as code it does not trust, as a judge run runs its checks (on `/bin/sh -s`, in a session of its own,
+without the worker's variables or any credential, every process it left killed), and posts the arm: passed when every
+command exited 0, the commit and files of the harness, the exit codes, the cost of the session, its turns, its tool
+calls and those that failed, its largest context and the agent's time. The run ends `done` with both arms' usage
+added up, pushing nothing (`gitops.check_push` refuses every push of a replay run); its directory goes with the
+cleanup of runs older than 7 days. The watchdog of the Curator's runs compares no protected path for it, only its caps:
+its repositories are its own.
+
 ### An author run on the machine
 
 An author run (kind `author`, Author runs above) runs headless on Claude Code only; the daemon fails it otherwise. Its
@@ -1910,9 +1946,9 @@ until the cleanup of runs older than 7 days removes them.
 
 ### The Curator's runs on the machine
 
-A run whose claim names `curator` (a review run, a judge run, or a Builder: a plan run of a plan the Curator made) is
-watched. After each heartbeat the daemon lists what changed in each of its worktrees since it started (committed,
-staged, changed and untracked files; `.evo-run/` left out, and the other paths under `RUN_COMMIT_EXCLUDES` while no
+A run whose claim names `curator` (a review run, a judge run, a replay run, or a Builder: a plan run of a plan the
+Curator made) is watched. After each heartbeat the daemon lists what changed in each of its worktrees since it started
+(committed, staged, changed and untracked files; `.evo-run/` left out, and the other paths under `RUN_COMMIT_EXCLUDES` while no
 commit holds them, since no commit of the run will) and compares it with the charter's protected paths, and the
 run's agent time and cost (the session's running cost as the agent's usage events say it) with its caps: a protected
 file changed, or a cap passed, stops the run, which fails with "the watchdog of the Curator's runs stopped it: ...",

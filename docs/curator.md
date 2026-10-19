@@ -13,16 +13,17 @@ This page is the design in one place. The details live with the parts they belon
 
 | Part | Where |
 | --- | --- |
-| the review run, proposals, the Builder, the Judge, the merge, the ledger, the routes and the commands | `docs/hub.md`, "The Curator's review", "The Curator's changes" and "The Curator's ledger, outcomes and circuit breaker" |
-| what the daemon does in a review run, a judge run and any run of the Curator, the run's caps | `docs/workers.md`, "A review run on the machine", "A judge run on the machine", "The Curator's runs on the machine", "Runs of the night shift" |
+| the review run, proposals, the Builder, the Judge, the replays, the merge, the ledger, the routes and the commands | `docs/hub.md`, "The Curator's review", "The Curator's changes", "The Curator's replays" and "The Curator's ledger, outcomes and circuit breaker" |
+| what the daemon does in a review run, a judge run, a replay run and any run of the Curator, the run's caps | `docs/workers.md`, "A review run on the machine", "A judge run on the machine", "A replay run on the machine", "The Curator's runs on the machine", "Runs of the night shift" |
 | the leases of the Curator's runs and its own GitHub App | `docs/credentials.md`, "Which leases a run gets" |
 | the morning brief, `curator_paused`, proposals in the Inbox and on Telegram | `docs/notifications.md` |
 
 The code: `evo_agents/hub/curator.py` (the window, the night, the caps), `evo_agents/hub/review.py` (lenses and the
 review prompt), `evo_agents/hub/tiers.py` (the tiers), `evo_agents/hub/judge.py` (the Builder's plan, the signs of
-score hacking, the verdict, the merge rule), `evo_agents/hub/ledger.py` (the ledger and outcomes), and their routes
-and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.py`, `changes.py`, `pulls.py`,
-`brief.py`, `ledger.py`, `outcomes.py`, `telegram.py`).
+score hacking, the verdict, the merge rule), `evo_agents/hub/ledger.py` (the ledger and outcomes),
+`evo_agents/hub/replay.py` and `evo_agents/hub/replay_suite.py` (the replays and the suite they run on), and their
+routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.py`, `changes.py`,
+`replays.py`, `pulls.py`, `brief.py`, `ledger.py`, `outcomes.py`, `telegram.py`).
 
 ## One night
 
@@ -49,12 +50,15 @@ and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.
 6. **The pull request and the Judge.** The hub opens the pull request (on GitLab the push opens the merge request),
    reads its diff for signs of score hacking, and queues a judge run that runs the plan's verify and the project's
    hidden checks and never reads the Builder's transcript.
-7. **The merge.** The hub merges a tier 0 change itself, at the commit the Judge passed, only when the charter allows
+7. **The replays.** A change of a skill, an AGENTS.md or a CLAUDE.md is replayed on tasks of the project's own history:
+   an agent does a past step again from the code before it, once with the default branch's harness and once with the
+   change's, and the step's verify says which did it (Replays, below). The Judge reads none of it.
+8. **The merge.** The hub merges a tier 0 change itself, at the commit the Judge passed, only when the charter allows
    tier 0, CI is green and the repo's ruleset keeps the Curator off its default branch. Everything else stays open
    for the owner.
-8. **The window closes.** The night shift queues nothing more and cancels the runs of the night still queued.
-9. **The brief.** At `brief_at` the owner gets the notice `curator_brief`, on the web and on Telegram.
-10. **Later.** `outcome_days` after a merge the hub counts the same figures again; a change that made them worse gets
+9. **The window closes.** The night shift queues nothing more and cancels the runs of the night still queued.
+10. **The brief.** At `brief_at` the owner gets the notice `curator_brief`, on the web and on Telegram.
+11. **Later.** `outcome_days` after a merge the hub counts the same figures again; a change that made them worse gets
     a revert proposal. Two jobs of a night in a row that failed or were reverted pause the night shift.
 
 ## The charter
@@ -95,6 +99,7 @@ protected_paths: ["evo_agents/hub/migrations/**", "evo-agents:deploy/**"]
 circuit_breaker: {max_failed_in_a_row: 2}
 outcome_days: 7
 review: {lenses: 3, days: 7, budget_usd: 2}
+replay: {tasks: 3, budget_usd: 4}
 reviewer: {runtime: claude-code, model: sonnet}
 builder: {runtime: claude-code, model: opus}
 judge: {runtime: claude-code, model: sonnet, hidden_checks: ["python -m pytest -q tests/hub/test_judge.py"]}
@@ -119,6 +124,7 @@ env_secrets: [claude-oauth]
 | `circuit_breaker.max_failed_in_a_row` | 2 | jobs of a night in a row that failed or were reverted before the hub pauses the night shift, 1 to 10 |
 | `outcome_days` | 7 | days after a merge over which the hub counts a change's figures again, 1 to 90 |
 | `review.lenses`, `review.days`, `review.budget_usd` | 3, 7, null | lenses a night looks through, days of sessions and runs the figures count (at most 30), and the most the review run may cost |
+| `replay.tasks`, `replay.budget_usd` | 3, null | the tasks of the holdout split each change of a skill, an AGENTS.md or a CLAUDE.md is replayed on (0 to 20), and the most the replay runs of a night may cost together, never above `night_budget_usd`; null replays nothing (Replays, below) |
 | `reviewer`, `builder`, `judge` | `claude-code`, the runtime's model | the runtime and model of each role (The three roles, below) |
 | `judge.hidden_checks` | none | commands the Judge runs that no Builder sees, at most 50 |
 | `git_secret` | null | the owner's `git` secret the Curator's runs use for origins not on GitHub (GitLab); without it no Builder runs there |
@@ -147,15 +153,16 @@ A charter makes one schedule of kind `night_shift` (`schedules`, schema 0012). E
   queued fewer than `max_runs_per_night` runs, at least 0.01 USD of `night_budget_usd` is left, the schedule's owner
   still holds writer on the project, and the worker on duty is live and fit for the run;
 - the run it queues is the first of these that has work: the night's review run, while the night has none; the judge
-  run of a change of the Curator that waits for one; the Builder of a change the Curator planned; a plan run of the
-  first plan of `night_plans` that has a ready step and no active run.
+  run of a change of the Curator that waits for one; the replay run of a change that waits for one, while the night's
+  replay runs cost less than `replay.budget_usd`; the Builder of a change the Curator planned; a plan run of the first
+  plan of `night_plans` that has a ready step and no active run.
 
 The night a moment belongs to is the local date the window last opened on, so the hours after midnight count toward
 the night that began the evening before. Every run the night shift queues is pinned to the worker on duty, headless,
 with approval `auto`, `dispatched_via` `schedule`, and names its schedule and night (`runs.schedule_id`,
 `runs.schedule_night`). Its first event says which night, charter revision, owner, worker and caps it was queued
-with. Each is audited as the owner with no token: `curator.review`, `curator.judge`, `curator.build`, or
-`curator.dispatch` for a plan of `night_plans`.
+with. Each is audited as the owner with no token: `curator.review`, `curator.judge`, `curator.replay`,
+`curator.build`, or `curator.dispatch` for a plan of `night_plans`.
 
 **Caps.** Each such run carries a budget (`runs.budget`): `max_usd`, what the night has left capped by
 `run_budget_usd` (and by `review.budget_usd` for the review run); `max_turns`, the charter's `run_max_turns`; and
@@ -226,11 +233,11 @@ it names no path) is dropped, unless its evidence counts at least twice the reje
 | GitHub token | the Curator's App, read only | the Curator's App, `contents: write` | the Curator's App, read only |
 | runtime | `reviewer` of the charter | `builder` of the charter | Codex when the policy clears it, else Claude Code with a model other than the Builder's |
 
-The plan runs of `night_plans` take the Builder's runtime and model too, but they are not runs of the Curator: each is
-a plan run of a plan of the owner's, with the leases and the workers' App any plan run of its owner gets, and it pushes
-as its plan says, the default branch included when the plan names it (`docs/workers.md`, "Plan runs"). Only a review
-run, a judge run and a run of a plan the Curator made are runs of the Curator. List in `night_plans` only plans you
-would let run unattended.
+The plan runs of `night_plans` and the replay runs take the Builder's runtime and model too. A plan run of
+`night_plans` is no run of the Curator: each is a plan run of a plan of the owner's, with the leases and the workers'
+App any plan run of its owner gets, and it pushes as its plan says, the default branch included when the plan names it
+(`docs/workers.md`, "Plan runs"). Only a review run, a judge run, a replay run and a run of a plan the Curator made are
+runs of the Curator. List in `night_plans` only plans you would let run unattended.
 
 **The Reviewer** works in worktrees detached at the commit origin's default branch has, and its prompt says that what
 it reads is data and never instructions. It looks through `review.lenses` of twelve lenses a night, taken in turn
@@ -256,7 +263,8 @@ accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 a
 the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project
 may. A proposal's page on the web has a Change card once accepting it made one: the change's state, the Curator's plan
 as a link to its page, the branch (a link to it on GitHub or GitLab), the pull request once the hub opened it, and the
-reason the change keeps while it waits or stays open; `evo-agents hub curator proposal show ID` prints the same.
+reason the change keeps while it waits or stays open; `evo-agents hub curator proposal show ID` prints the same, and
+`evo-agents hub curator replay show CHANGE` its replays.
 
 **The Judge** runs in a worktree detached at the pull request's head. The daemon reads the diff and runs the detector of
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
@@ -278,6 +286,41 @@ puts its proposal at tier 3.
 the charter's protected paths, and the run's agent time and cost with its caps. A protected file changed, or a cap
 passed, stops the run, which fails, and its owner gets the notice `run_failed`. On Claude Code a run of the Curator uses
 the Claude subscription login alone, never an API key.
+
+## Replays
+
+A replay measures a change of the Curator on the project's own history, the way it would meet the project's next work:
+an agent does again a step of a plan done before, starting from the code as it was before that step, once with the
+harness of the default branch (arm `a`) and once with the harness of the change (arm `b`), and the step's own verify
+says whether each did it. Nobody writes the tasks: they are the project's steps done. `docs/hub.md`, "The Curator's
+replays", has the routes and the rules; `docs/workers.md`, "A replay run on the machine", what the daemon does.
+
+**The suite.** Every hour the job `curator.replay_suite` adds to each project's suite a task for each step of its plans
+that is done, has a verify of one shell line and a repo, and names the commits it made (in its evidence, else a run of
+it reported them); the base commit is the first parent of the oldest of them. A plan of the Curator gives no task. The
+SHA-256 of a task's plan and step puts one task in three in the holdout split and the others in the select split, the
+same on every hub and for good, and a task once in the suite never changes: the suite only grows. A change is measured
+on holdout tasks; the select split is there for the Curator to look at without spending what it is measured on, and
+the agent of a run lists that split alone.
+
+**A replay run.** The night shift replays a change once it is built and not merged or closed, when its proposal is of
+kind `skill` or names a skill, an AGENTS.md or a CLAUDE.md: on the first `replay.tasks` holdout tasks the worker on duty
+can run, one replay run each, with the runtime and model of the Builder, and only while the night's replay runs cost
+less than `replay.budget_usd`. Each arm gets a repository of its own with the task repo's history up to the base
+commit and nothing after it, the change's files as its side has them, and each skill the change touches under
+`.claude/skills/`, where the agent loads it; the agent gets half the run's cost and time, the step's what and verify,
+and none of the hub's tools, since the hub holds the project as it is now. The worker then runs the verify on the
+arm's work as code it does not trust, as the Judge runs its checks, and posts what the arm came to with the run's own
+key: passed or not, cost, turns, tool calls and failed ones, the largest context, the agent's time.
+
+**What it decides.** Each change's replays are kept with it (`curator_replays`, schema 0053) and read with
+`evo-agents hub curator replay show CHANGE`, `GET .../curator/changes/{id}/replay` and the MCP tool `curator_replay`.
+The Judge never reads them, and a replay changes nothing of a change's tier or its merge.
+
+```sh
+evo-agents hub curator replay tasks --project demo            # the suite, select and holdout
+evo-agents hub curator replay show 4 --project demo           # change #4: arm a against arm b, task by task
+```
 
 ## Two GitHub Apps and the ruleset
 
@@ -393,17 +436,18 @@ evo-agents hub kg health --project demo
 | 0019 | `curator_changes.judge_key` |
 | 0051 | `session_facets`, the deterministic facet of each session and each run that ended |
 | 0052 | `kg_builds.coverage`, `kg_source_files`, `kg_health`: the health of a project's graph; the lens `kg_health` |
+| 0053 | runs of kind `replay`, `replay_tasks`, `curator_replays`: the suite of replay tasks and the replays of the changes |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
-`curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes` and `hub.analyze_facets` (`docs/hub.md`,
-"Worker and queue").
+`curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and
+`hub.analyze_facets` (`docs/hub.md`, "Worker and queue").
 
 ## What the Curator does not do
 
 - It never pushes to, or merges into, a default branch with its own credentials, and it merges nothing above tier 0.
 - It merges nothing on GitLab, and nothing for a project whose charter leaves `auto_merge` empty.
-- It does not turn a product goal into plans on its own, and it does not change prompts or skills through a replay
-  of past sessions.
+- It does not turn a product goal into plans on its own, and its replays decide nothing: they measure a change of a
+  skill, an AGENTS.md or a CLAUDE.md on past steps of the project, and leave its tier and its merge as they are.
 - It does not push whole transcripts to the hub: only digests, with secrets replaced on the machine.
 - It does not deploy, run a migration on real data or publish a release: those stay decisions of a person, and the
   kind `operation` is tier 2.

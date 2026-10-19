@@ -93,7 +93,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}` (Session transcripts, below) |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -105,18 +105,19 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict,replay}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 23 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 24 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
 `ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
-`digest_list`, `digest_show`, `run_events` and `decision_list`; they follow the same rules as the REST routes.
-`tools/list` shows the agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, any
-other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
+`digest_list`, `digest_show`, `run_events`, `decision_list` and `curator_replay` (the replays of the Curator's
+changes, `docs/curator.md`, Replays); they follow the same rules as the REST routes. `tools/list` shows the agent of a
+run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run none, any other run all
+but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
 the `kg_*` tools from the list and the graph's paragraph from the instructions, those of `initialize` and those of
 `server/discover`, where a client of MCP 2026-07-28 such as Claude Code 2.1.296 reads them, so the session sees each
@@ -676,7 +677,10 @@ no worker is locked there, and a heartbeat neither takes nor keeps a commit or a
 `workers.kg_sync`, what the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift
 it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0049 drops it, and a
 heartbeat no longer keeps it. Schema 0051 (session facets) and schema 0052 (the health of a graph) are described under
-Memories, skills and knowledge graphs below.
+Memories, skills and knowledge graphs below. Schema 0053 adds the replay run (a run of kind `replay`, on the plan of
+the change it measures, which only the night shift queues and of which a project has one active at a time),
+`replay_tasks` and `curator_replays` (The Curator's replays, below); going back to 0052 deletes the replay runs and
+drops the two tables.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1009,6 +1013,55 @@ run reads, and posts its verdict with `POST /v1/worker/runs/{id}/verdict`, both 
 keeps its SHA-256 (`curator_changes.judge_key`, schema 0019) and forgets it with the verdict, so the worker token alone,
 which code on the worker's machine can read, gets 403 there. A worker token gets 403 on the charter's routes, as on
 every route of a project.
+
+## The Curator's replays
+
+A replay measures a change of the Curator on the project's own history (schema 0053, `evo_agents/hub/replay.py`,
+`evo_agents/hub/replay_suite.py`, `evo_agents/hub/server/replays.py`): the agent does a step of a plan done before
+twice, from the code as it was before that step, once with the harness of the default branch (arm `a`) and once with
+the harness of the change (arm `b`), and the worker runs the step's verify on each arm's work.
+
+**The suite.** Every hour the job `curator.replay_suite` reads the plans of each project that has a charter and adds to
+`replay_tasks` a task for each step that is done, has a verify of one line and a repo (its own, or the plan's only
+one), and names the commits it made in its evidence; a step whose evidence names none takes the commits a run of it
+reported (a run of that step that ended done, else the step reports of plan runs while their events are kept). A plan
+of the Curator gives no task. A task keeps the step's title, what and verify, its commits, the plan's label, and its
+split, `select` or `holdout`, which the SHA-256 of its plan and step fixes: one task in three is held out, on every hub
+and for good. A task once in the suite is never changed by the job, so the suite only grows; its base commit, the first
+parent of the oldest of its commits, is set once, by the first replay that reads it, and a task whose commits are on
+no origin is marked unusable and never replayed again.
+
+**The night shift.** After a judge run that waits, the night shift queues the replay run of the oldest change it may
+replay: built (its Builder ran and its branch is on origin), not merged or closed, of a proposal of kind `skill` or one
+that names a skill, an AGENTS.md or a CLAUDE.md, with no run of its plan active. Each change gets the charter's
+`replay.tasks` replays (3 by default, 0 to 20), one replay run each, on the tasks of the holdout split in the order they
+came in, those not unusable whose repos the worker on duty has. A replay run runs with the runtime and model of the
+charter's Builder, pinned to the worker on duty, as the schedule's owner, and its cost cap keeps the night's replay
+runs within `replay.budget_usd`; a charter without it replays nothing. One that ends without both arms is replayed
+again, two runs in all, then the replay fails with why; one whose worker refused the task fails at once. Each is
+audited as curator.replay, `<project>/<plan> run:<id> change:<id> task:<id>`.
+
+**The run's side.** The claim of a replay run names its replay, its task and the change's repo, branch and head, and
+hands the daemon the run's own key (`curator.replay_key`), whose SHA-256 alone the hub keeps
+(`curator_replays.replay_key`). The worker posts each arm, and the refusal of a task it cannot replay, with
+`POST /v1/worker/runs/{id}/replay` and that key in `X-Evo-Replay-Key`: the worker token alone gets 403, a second post
+of one arm 409. What happens on the machine is `docs/workers.md`, A replay run on the machine. The agent of a replay
+run gets none of the hub's MCP tools: they hold the project as it is now, the graph of the default branch and the
+plans with the evidence of the very step it does again.
+
+**Reading.** `GET /v1/projects/{p}/curator/replay/tasks` lists the suite, of `?split=` when given, and `GET
+.../curator/changes/{id}/replay` a change's replays, each task with arm `a` and arm `b`: whether the verify passed, the
+commit of the harness, the files of the change it ran with, the verify's exit codes, the cost, turns, tool calls and
+failed ones, the largest context and the agent's time; and `arms`, both arms added up (`replay.compare`). Both are for
+readers of the project, through its hub sink by the plan's label (the proposal's for the change). The MCP tool
+`curator_replay` answers both, and lists the agent of a run (the Reviewer, a Builder) the select split alone, so the
+holdout split a change is measured on stays out of what shapes it. The Judge reads none of it: neither its prompt nor its tools hold a replay, and a
+replay decides nothing of a change's tier or merge.
+
+```sh
+evo-agents hub curator replay tasks --split holdout   # the project's suite of replay tasks
+evo-agents hub curator replay show 4                  # change #4's replays, arm a against arm b
+```
 
 ## The Curator's ledger, outcomes and circuit breaker
 
@@ -1678,8 +1731,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   how many (`audit pruned`, with `deleted` and `days`).
 - `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
-  owner: the night's review run first, then the judge run of a change of the Curator that waits for one, the
-  Builder of a change it planned, and plan runs of the charter's `night_plans`; and it cancels the runs it queued
+  owner: the night's review run first, then the judge run of a change of the Curator that waits for one, the replay
+  run of a change it may replay (The Curator's replays, above), the Builder of a change it planned, and plan runs of
+  the charter's `night_plans`; and it cancels the runs it queued
   that are still queued once the window ends or the project is paused (`evo-agents hub curator pause`). Its circuit breaker pauses a project's
   night shift once `max_failed_in_a_row` jobs of a night in a row failed or were reverted.
 - `curator.collect`, every minute: measures the knowledge graph of each project with a night shift, 6 hours after its
@@ -1687,6 +1741,9 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   inside each charter's window, counts the night's figures of the project once, without any model, and queues the
   night's review run; and opens again the proposals deferred until a moment that has passed (The Curator's review,
   above).
+- `curator.replay_suite`, hourly at minute 41, one pass at a time: adds to the suite of each project with a charter a
+  replay task for each step of its plans that is done, has a verify of one line and names its commits, with its fixed
+  split, and changes none it has (The Curator's replays, above).
 - `curator.brief`, every minute: at each charter's `brief_at`, in its time zone, sends the owner of the project's
   schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
   review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and
