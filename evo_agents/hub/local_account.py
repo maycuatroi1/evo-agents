@@ -1,10 +1,14 @@
 """The Claude account a local session runs as: its email and, when it can be told, the claude-profiles profile.
 
-Claude Desktop runs a session of its Code tab with ``CLAUDE_CODE_USER_EMAIL`` (the account),
-``CLAUDE_CODE_ACCOUNT_UUID`` and ``CLAUDE_CODE_EXECPATH`` (the claude binary it started, under ``<data folder>/
-claude-code/``) in the environment, which the hooks inherit. claude-profiles starts each profile's Desktop with
-``--user-data-dir``, so the data folder that holds that binary is the profile's; failing that, the one with records of
-that account, ``<data folder>/claude-code-sessions/<account>/<org>/local_<id>.json``. The folders are those of
+Claude Desktop runs a session of its Code tab with ``CLAUDE_CODE_USER_EMAIL`` (the account) and
+``CLAUDE_CODE_ACCOUNT_UUID`` in the environment, which the hooks inherit; ``CLAUDE_CODE_EXECPATH``, when set, is a
+claude binary under ``<data folder>/claude-code/``. claude-profiles starts each profile's Desktop with
+``--user-data-dir``, and each data folder keeps the records of its one account,
+``<data folder>/claude-code-sessions/<account>/<org>/local_<id>.json``, so the only folder with records of that account
+is the profile's; failing that, the one that holds the binary, if it has no records of another account. On
+binhna-macbook-m4 (2026-10-19) a Desktop started from inside a Claude Code session kept that session's
+``CLAUDE_CODE_EXECPATH``, and so did the CLI it started and the hooks under it (the session's tools see the CLI's own):
+a binary of the default profile, which filed a session of another profile under it. The folders are those of
 claude-profiles (``profiles.json`` in its application support folder, read by what it holds under any of a few key
 names, since its format is not ours; a profile with a name and no folder is Desktop's own) and Desktop's own
 (``~/Library/Application Support/Claude``), and the profile is the name claude-profiles gave the folder.
@@ -166,19 +170,29 @@ def _inside(path: str, folder: Path) -> bool:
     return os.path.realpath(path).startswith(os.path.realpath(folder) + os.sep)
 
 
+def _accounts(folder: Path) -> set[str]:
+    """The accounts whose session records the data folder keeps."""
+    with contextlib.suppress(OSError):
+        return {path.name for path in (folder / SESSIONS).iterdir() if path.is_dir()}
+    return set()
+
+
 def running_profile(env: Mapping[str, str], folders: list[tuple[str | None, Path]]) -> str | None:
-    """The profile whose Desktop runs this session: the data folder holding the claude binary Desktop started, else
-    the only one with records of the session's account; None when neither says."""
+    """The profile whose Desktop runs this session: the only data folder with records of the session's account, else
+    the one holding the claude binary in the environment unless it keeps records of another account; None when
+    neither says."""
+    account = env.get(ACCOUNT_VARIABLE, "").strip()
+    if "/" in account or account in (".", ".."):
+        account = ""
+    holding = [name for name, folder in folders if account and (folder / SESSIONS / account).is_dir()]
+    if len(holding) == 1:
+        return holding[0]
     binary = env.get(BINARY_VARIABLE)
-    if binary:
-        for name, folder in folders:
-            if _inside(binary, folder / BINARIES):
-                return name
-    account = env.get(ACCOUNT_VARIABLE)
-    if account and "/" not in account and account not in (".", ".."):
-        holding = {name for name, folder in folders if (folder / SESSIONS / account).is_dir()}
-        if len(holding) == 1:
-            return holding.pop()
+    for name, folder in folders if binary else ():
+        if _inside(binary, folder / BINARIES):
+            accounts = _accounts(folder)
+            # else the binary is that of the session Desktop was started from, in another profile's folder
+            return name if not account or account in accounts or not (holding or accounts) else None
     return None
 
 
@@ -196,14 +210,20 @@ def cli_email(env: Mapping[str, str], home: Path) -> str | None:
     return None
 
 
+def desktop_email(env: Mapping[str, str]) -> str | None:
+    """The account Desktop names in the environment of a session of its Code tab, None for any other session."""
+    email = env.get(EMAIL_VARIABLE, "").strip()
+    return email if "@" in email and len(email) <= 320 else None
+
+
 def read_account(session_id: str, env: Mapping[str, str] | None = None, home: Path | None = None) -> Account:
     """The account of the session, ``Account('unknown')`` when nothing says; never raises."""
     env = os.environ if env is None else env
     home = Path.home() if home is None else home
     try:
         folders = data_folders(env, home)
-        email = env.get(EMAIL_VARIABLE, "").strip()
-        if "@" in email and len(email) <= 320:  # Desktop says whose session it is
+        email = desktop_email(env)
+        if email:  # Desktop says whose session it is
             return Account(email, running_profile(env, folders))
         found = desktop_account(session_id, folders)
         if found is not None:  # the CLI's account is not a Desktop profile's: no fallback to it

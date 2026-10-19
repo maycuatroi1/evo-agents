@@ -5,7 +5,8 @@ registered as a run of kind ``local`` (``evo_agents.hub.server.local_runs``) at 
 current:
 
 - ``user-prompt`` (UserPromptSubmit): registers the session (``PUT .../local-runs/<session id>``, which says again that
-  it is there when it is) and reports ``running``;
+  it is there when it is) and reports ``running``; a Desktop session whose account now reads otherwise
+  (``local_account``) registers again with the new one;
 - ``local-tool`` (PostToolUse of every tool): the words the agent wrote since the last hook and the tool that ran, as
   the log of the run, redacted here as the digest is (``evo_agents.hub.redact``, this machine's hub token among the
   values replaced);
@@ -450,6 +451,18 @@ class Delivery:
             rec["seq"] = view["last_seq"]  # the hub has events of an earlier life of this session
         prune(_now())
 
+    def moved(self) -> bool:
+        """Whether a Desktop session's account reads otherwise than the one it registered with (read before Desktop's
+        variables were, or by an earlier evo-ak); the next register sends the new one. Other sessions keep theirs."""
+        if local_account.desktop_email(os.environ) is None:
+            return False
+        found = local_account.read_account(self.sid)
+        account = {"email": found.email, "profile": found.profile}
+        if account == self.rec.get("account"):
+            return False
+        self.rec["account"] = account
+        return True
+
     def state_post(self, wanted: str) -> None:
         for attempt in range(2):
             try:
@@ -598,7 +611,7 @@ class Delivery:
         if rec["project"] is None:
             rec["events"] = []
             return
-        if rec["run_id"] is None:
+        if rec["run_id"] is None or (self.hook == "user-prompt" and self.moved()):
             self.register(title)
         if wanted == "ended" and due:
             self.flush()
