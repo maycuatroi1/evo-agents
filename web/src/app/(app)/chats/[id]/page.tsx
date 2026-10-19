@@ -2,13 +2,14 @@ import { dehydrate } from "@tanstack/react-query";
 import type { Metadata } from "next";
 import { getTranslations } from "next-intl/server";
 
-import { ChatView } from "@/components/chats/chat-view";
 import { NotFoundState } from "@/components/states/states";
 import { HydrationBoundary } from "@/lib/api/hydration-boundary";
 import { getQueryClient, prefetch } from "@/lib/api/prefetch";
 import { serverApi } from "@/lib/api/server";
 import { chatKeys, chatPageQuery } from "@/lib/chat-queries";
 import type { ChatPage } from "@/lib/chats";
+
+import { ChatWithDecisions } from "./chat-with-decisions";
 
 type Props = { params: Promise<{ id: string }> };
 
@@ -37,7 +38,7 @@ export default async function ChatRoute({ params }: Props) {
   if (page) client.setQueryData(chatKeys.one(id), page.chat);
   return (
     <HydrationBoundary state={dehydrate(client)}>
-      <ChatView chatId={id} initialError={error} />
+      <ChatWithDecisions chatId={id} initialError={error} />
     </HydrationBoundary>
   );
 }

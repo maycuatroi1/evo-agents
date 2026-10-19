@@ -613,6 +613,27 @@ def test_a_verify_command_that_exits_non_zero_fails_the_run_and_nothing_is_pushe
     finished_cleanly(stack, proc)
 
 
+def test_a_worktree_on_another_branch_fails_the_run_with_branch_mismatch_naming_both_refs(make_stack):
+    stack = make_stack()
+    stack.scenarios(
+        {
+            "2": [
+                {"write": {"f.txt": "f\n"}},
+                {"sh": "git checkout -q -b elsewhere"},
+                {"result": {"verify_commands": ["test -f f.txt"]}},
+            ]
+        }
+    )
+    stack.register()
+    proc = stack.start_daemon()
+    run_id = stack.dispatch([2])[0]["id"]
+    run = stack.wait_state(run_id, "done", "failed")
+    assert run["state"] == "failed" and run["failure_cause"] == "branch_mismatch", run["error"]
+    assert "is on refs/heads/elsewhere, not refs/heads/" in run["error"], run["error"]
+    assert stack.origin_rev(f"refs/heads/{BRANCH}") is None, "nothing was pushed"
+    finished_cleanly(stack, proc)
+
+
 # Around them
 
 

@@ -803,7 +803,13 @@ Shared pieces built on them:
   message that starts it, a line with the count, its replies and a composer that answers in it; a column of 26 rem
   beside the chat from 2xl (where the sidebar and the list leave it room), a sheet from the right below; it reads the
   whole thread once opened. `?thread=ID` opens one, and `?message=ID`, where a notice links, shows that message
-  marked (`surface-selected`) and focused, in its thread when it is a reply or older than the page read. The composer
+  marked (`surface-selected`) and focused, in its thread when it is a reply or older than the page read. A chat run (the triage agent of a
+  failed run) that asks ends its turn with a decision open: the kit's DecisionCard (`where="run"`) shows right under the
+  agent's last message of that run, in the chat or in its thread, so one click answers it. The page composes it
+  (`app/(app)/chats/[id]/chat-with-decisions.tsx`; the chats folder does not import the inbox): the decisions of the
+  latest 12 agent runs are read, the newest 3 every 3 seconds while the chat has not ended. In the Inbox and on Home a
+  decision of category `triage` reads "Triage run #N" and "project, triage of a failed run" where an author run's reads
+  "Author run #N", and a `run_failed` notice that links to the thread opens it (Open triage thread). The composer
   (`composer.tsx`) is the kit's Composer with Send and Cmd or Ctrl with Enter; typing `@` opens the suggestions above
   the box (`mention-menu.tsx`: a listbox the text area drives through `aria-activedescendant`, grouped Agents,
   Projects, People, each with its face; the arrows move, Enter or Tab puts the name in with a space, Escape closes it, a
@@ -988,7 +994,12 @@ Shared pieces built on them:
   over, the diff with its `+12 −3`, Rerun), and a menu behind `Ellipsis` with the rest in the kit's order, Cancel run
   last in `danger` behind a separator; under 768 px Take over is in the menu, as a phone does not take over a
   terminal. The phases (`RunTimeline`, bare) show under the head only while the run waits for a worker (queued,
-  leased) or when it ended before running. Then notes (`RunNotes`, `run-notes.tsx`), the decision a plan run waits on
+  leased) or when it ended before running. Then notes (`RunNotes`, `run-notes.tsx`), for a step, plan or author run
+  that failed the triage section (`RunTriage`, `run-triage.tsx`): the failure cause as a mono `Tag` with a line of its
+  own (`runs.detail.triage.cause`), a `Guess` tag in `attention` with a note when `cause_inferred` is true, Open triage
+  thread (outline, to the hub's `/chats/ID?message=ID`) or a line saying no thread was opened, and, for the run's owner
+  only (the hub answers nobody else), the step 3 candidates in a closed `details`: Workers, Agents and Other projects,
+  each row with a `Fit` or `No fit` tag (a word and an icon, never colour alone) and the hub's reasons; the decision a plan run waits on
   (`RunDecisions`, always shown: it needs the owner), and the session (tabs, trace, composer), flat on the page with
   no frame: the tab bar's rule is its only line, and only the composer, an input, has an edge. From xl (1280 px) the
   page is one window tall and the session fills it down to its bottom gutter (`fill` on `RunLogCard`, `AgentTrace`,

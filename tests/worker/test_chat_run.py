@@ -244,3 +244,89 @@ def test_the_chat_commands_refuse_outside_a_run_and_in_a_review_run(machine, mon
 
     with_daemon(machine, body)
     assert runs.SESSION_KINDS == ("plan", "author", "chat")
+
+
+def test_a_chat_runs_agent_asks_a_triage_decision_waits_for_the_answer_and_goes_on_in_its_session(machine):  # noqa: F811
+    ask = {
+        "cli": [
+            "ask",
+            "--category",
+            runs.CHAT_DECISION_CATEGORY,
+            "--question",
+            "Retry the flaky test or skip it?",
+            "--option",
+            "retry=Retry",
+            "--option",
+            "skip=Skip",
+            "--recommended",
+            "retry",
+        ]
+    }
+    machine.scenarios({"chat": [ask, {"say": "I asked you in decision #1."}], "chat/2": [{"say": "Retrying it."}]})
+
+    async def body(hub, daemon):
+        assert runs.CHAT_DECISIONS in runs.WORKER_FEATURES
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "waiting", "done", "failed", timeout=WAIT) == "waiting", hub.texts(run_id)
+        assert runs.CHAT_DECISIONS in hub.last_heartbeat["features"]
+        assert (hub.decisions[1]["run_id"], hub.decisions[1]["category"]) == (run_id, "triage")
+        assert hub.answer(1, "retry") == run_id
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert chat_posts(hub, run_id) == ["I asked you in decision #1.", "Retrying it."]
+        assert hub.moves(run_id) == ["leased", "running", "waiting", "running", "verifying", "done"]
+
+    with_daemon(machine, body)
+    first, second = machine.starts()
+    assert second["resume"] == first["session"], "the answer goes on in the agent's session"
+    assert "Chosen option: retry." in second["prompt"]
+
+
+def test_the_triage_commands_of_a_chat_run_rerun_and_edit_the_plan_inside_the_frame(machine):  # noqa: F811
+    machine.scenarios(
+        {
+            "chat": [
+                {"cli": ["triage", "rerun", "--reason", "git is installed now", "--confirm-cause"]},
+                {"cli": ["triage", "rerun", "--reason", "try it", "--worker", "nowhere"]},
+                {
+                    "cli": [
+                        "triage",
+                        "plan",
+                        "2",
+                        "--if-revision",
+                        "3",
+                        "--verify",
+                        "make check && make lint",
+                        "--reason",
+                        "the lint was missing",
+                        "--rerun",
+                    ]
+                },
+                {"say": "Done."},
+            ],
+            "review": [{"cli": ["triage", "rerun", "--reason", "x"]}, {"result": {"summary": "Reviewed."}}],
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        rerun, refused, edited = [e for e in machine.commands() if e["run"] == run_id]
+        assert rerun["exit"] == 0 and "Ran the failed run again as run #" in rerun["stdout"]
+        assert refused["exit"] == 1 and "the owner has no worker nowhere" in refused["stderr"]
+        assert edited["exit"] == 0 and "Wrote revision 4 of the plan and ran the failed run again" in edited["stdout"]
+        first, second, third = hub.chat_calls
+        assert (first["route"], first["reason"], first["cause_confirmed"]) == (
+            "triage/rerun",
+            "git is installed now",
+            True,
+        )
+        assert third["route"] == "triage/plan" and third["rerun"] is True and third["if_revision"] == 3
+        assert (third["step"], third["verify"]) == ("2", "make check && make lint") and "what" not in third
+
+        review = hub.queue_review_run(["alpha"])
+        assert await hub.wait_state(review, "done", "failed", timeout=WAIT) == "done", hub.texts(review)
+        (bad,) = [e for e in machine.commands() if e["run"] == review]
+        assert bad["exit"] == 1 and "is a review run, whose agent does not talk in chats" in bad["stderr"]
+        assert len(hub.chat_calls) == 3
+
+    with_daemon(machine, body)

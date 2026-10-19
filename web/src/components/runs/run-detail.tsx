@@ -29,7 +29,7 @@ import { useRunViewer } from "./hooks";
 import { useRepoWeb } from "./links";
 import { CHAT_TAB, chatKey, decisionAnchor, isActiveState, LIVE_REFRESH_MS, openDecisionsQuery, type Run, RUN_VIEW_PARAM, runKey, runQuery } from "./queries";
 import { RunActions } from "./run-actions";
-import { RunNotes } from "./run-notes";
+import { RunNotices } from "./run-notes";
 import { RunChatPanel } from "./run-chat";
 import { RunComposer } from "./run-composer";
 import { LocalRunDetails } from "./local-run-details";
@@ -40,9 +40,9 @@ import { taskBranch } from "./model";
 import { runControls } from "./run-model";
 import { useDescribeMove, useSessionTab, useTraceScreen } from "./run-page-state";
 import { RunSide } from "./run-side";
-import { RunTerminalPanel } from "./run-terminal";
 import { RunTimeline } from "./run-timeline";
 import { TracePreview } from "./trace-preview";
+import { RunTerminalPanel } from "./run-terminal-lazy";
 import { terminalAccess } from "./terminal-model";
 import { logSignal, useRunLog } from "./use-run-log";
 
@@ -338,7 +338,7 @@ function RunPage({ run }: { run: Run }) {
           )}
         </RunActions>
       )}
-      {screen || local ? null : <RunNotes run={run} controls={controls} />}
+      {screen || local ? null : <RunNotices run={run} controls={controls} />}
       {!screen && !local && showTimeline ? <RunTimeline run={run} moves={log.moves} bare /> : null}
       {/* Under 768 px: the decision, the trace's latest rows, then the details as flat sections, in the page's order. */}
       {overview ? decisionCard : null}

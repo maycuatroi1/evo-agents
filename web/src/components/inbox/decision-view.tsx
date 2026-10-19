@@ -104,7 +104,7 @@ export function DecisionWhere({ decision, link, className }: { decision: Decisio
       <span className="font-mono">{decision.project}</span>
       {" / "}
       {decision.plan_id === null ? (
-        <span data-testid="decision-run-title">{title ?? t("authorRun", { id: decision.run_id })}</span>
+        <span data-testid="decision-run-title">{title ?? t(decision.category === "triage" ? "triageRun" : "authorRun", { id: decision.run_id })}</span>
       ) : (
         <>
           <Link href={planHref(decision.project, decision.plan_id)} className={cn(link, "font-mono font-normal")} data-testid="decision-plan-link">
@@ -145,7 +145,7 @@ function DecisionHead({ decision, where, access, parksAt }: { decision: Decision
       {where === "inbox" ? (
         <>
           <Link href={runHref(decision.project, decision.run_id)} className={cn(HEAD_LINK, "tabular-nums")} data-testid="decision-run-link">
-            {decision.plan_id === null ? t("authorRunLink", { id: decision.run_id }) : t("runLink", { id: decision.run_id })}
+            {decision.category === "triage" ? t("triageRunLink", { id: decision.run_id }) : decision.plan_id === null ? t("authorRunLink", { id: decision.run_id }) : t("runLink", { id: decision.run_id })}
           </Link>
           <DecisionWhere decision={decision} link={HEAD_LINK} className="min-w-0" />
         </>

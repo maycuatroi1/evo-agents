@@ -46,11 +46,13 @@ def client(hub_db, tmp_path, github, s3):
 @pytest.fixture
 def hub(client, github, hub_db) -> dict:
     """The members of ``tests.hub.test_runs``, owner an admin of the project, and plugin sandbox 1.0.0 installed with
-    its pack review, not enabled yet."""
+    its pack review, not enabled yet; the triage of failed runs is off."""
     headers = members(client, github)
     granted = client.put(f"/v1/admin/projects/{PROJECT}/grants/{OWNER}", json=ADMIN_GRANT, headers=headers["admin"])
     assert granted.status_code == 200, granted.text
     headers["plugin_id"] = install(hub_db, contributes={"agent_packs": [REVIEW]})
+    with live.engine(hub_db).begin() as conn:  # a run that fails here is no thread for the triage chat to claim
+        conn.execute(update(tables.projects).values(triage_enabled=False))
     return headers
 
 

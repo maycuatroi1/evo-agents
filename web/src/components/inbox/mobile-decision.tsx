@@ -83,7 +83,7 @@ function ScreenTop({ decision }: { decision: Decision | null }) {
           className="block min-w-0 truncate rounded-xs px-1 text-base leading-11 font-semibold text-foreground tabular-nums"
           data-testid="decision-screen-run"
         >
-          {tDecision(decision.plan_id === null ? "authorRunLink" : "runLink", { id: decision.run_id })}
+          {tDecision(decision.category === "triage" ? "triageRunLink" : decision.plan_id === null ? "authorRunLink" : "runLink", { id: decision.run_id })}
         </Link>
       ) : null}
       <div className="ml-auto flex shrink-0 items-center">

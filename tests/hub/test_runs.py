@@ -1207,8 +1207,15 @@ def test_a_failed_report_keeps_its_cause_which_the_run_and_its_list_show(client,
     failed = report(client, worker, first, "failed", error=error, failure_cause="missing_tool")
     assert failed.status_code == 200, failed.text
     assert (failed.json()["state"], failed.json()["failure_cause"]) == ("failed", "missing_tool")
-    # a daemon that sends no cause still ends its run; a cause that is no name is refused
-    assert report(client, worker, second, "failed", error="the agent gave up").json()["failure_cause"] is None
+    # a daemon that sends no cause still ends its run, with the cause the hub reads in its error (a guess the log
+    # says so); a cause that is no name is refused
+    assert report(client, worker, second, "failed", error="the agent gave up").json()["failure_cause"] == "other"
+    guesses = [
+        event["body"]
+        for event in client.get(f"/v1/projects/{PROJECT}/runs/{second}/events", headers=hub["reader"]).json()["events"]
+        if event["kind"] == "system" and event["body"].get("failure_cause_inferred")
+    ]
+    assert [guess["failure_cause"] for guess in guesses] == ["other"] and "guessed other" in guesses[0]["message"]
     bad = report(client, worker, third, "failed", error="x", failure_cause="Not A Cause")
     assert bad.status_code == 422, bad.text
     # a newer worker's own cause is kept; with a move that is not failed, a cause is ignored
@@ -1221,11 +1228,15 @@ def test_a_failed_report_keeps_its_cause_which_the_run_and_its_list_show(client,
     listed = client.get(f"/v1/projects/{PROJECT}/runs", headers=hub["reader"]).json()["runs"]
     assert {run["id"]: run["failure_cause"] for run in listed} == {
         first: "missing_tool",
-        second: None,
+        second: "other",
         third: "disk_full",
     }
     assert of_run(hub_db, first, "failure_cause") == [("missing_tool",)]
     assert step(client, hub["owner"], 2)["status"] == "pending"
+    # a cause the worker sent is not a guess: no such event for the first and the third run
+    for run_id in (first, third):
+        events = client.get(f"/v1/projects/{PROJECT}/runs/{run_id}/events", headers=hub["reader"]).json()["events"]
+        assert not [e for e in events if e["body"].get("failure_cause_inferred")]
 
 
 def test_a_step_run_its_preflight_failed_sends_its_owner_run_failed_with_the_cause(client, hub, hub_db):
@@ -1359,7 +1370,8 @@ def test_a_daemon_of_0_9_0_claims_beats_and_ends_its_runs_with_this_hub(client, 
     assert step(client, hub["owner"], 2)["status"] == "done"
     moved(client, worker, failed_id, "running")
     failed = moved(client, worker, failed_id, "failed", error=RUN_9_ERROR)
-    assert (failed["state"], failed["error"], failed["failure_cause"]) == ("failed", RUN_9_ERROR, None)
+    # an old daemon sends no cause: the hub reads it in the error
+    assert (failed["state"], failed["error"], failed["failure_cause"]) == ("failed", RUN_9_ERROR, "credentials")
     assert step(client, hub["owner"], 4)["status"] == "pending"
 
     # Its run lost (the laptop slept), the next attempt waits until its heartbeats, sent as 0.9.0 sends them, are

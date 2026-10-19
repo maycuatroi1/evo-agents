@@ -505,6 +505,31 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
+A chat run's agent can ask its owner decisions too, of the category `triage` alone, on a daemon with the feature
+`chat_decisions` (`docs/notifications.md`, "A decision of a chat run"). Its turn ends with the decision open and the run
+goes `waiting`, on its slot and its lease, until every decision has an answer or the owner writes in the thread; the
+answer goes to the run's inbox and the agent goes on in the same session. After 10 minutes of waiting the reaper parks
+the run, and the answer or a reply then queues a chat run on the same worker that resumes the session, the worktrees
+and the branch. A chat run that asks nothing ends after its turn.
+
+### Failure triage
+
+When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PLAN" (of the project when
+the run has no plan) and mentions the project's default agent, which makes a chat run for the run's owner
+(`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent). The agent reads
+the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
+`evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
+`triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
+
+| Command | Route | What |
+| --- | --- | --- |
+| `evo-agents worker triage rerun --reason TEXT [--worker NAME] [--runtime NAME] [--account NAME] [--confirm-cause]` | `POST /v1/worker/runs/{id}/triage/rerun` | run the failed step again for its owner, on a fit candidate, for a cause with an automatic rerun: 201 with `run_id` and the `Decision:` line's `message_id`; 422 for another cause, a guessed cause not confirmed or a worker, runtime or account that is no fit; 409 when the chain has 2 reruns, the cause was rerun once in it, the run was rerun by its agent, or the chat's budget is spent; 404 for a run that is not the chat run of a triage thread |
+| `evo-agents worker triage plan STEP --if-revision N [--verify TEXT] [--what TEXT] --reason TEXT [--rerun]` | `POST .../triage/plan` | write a revision of the failed run's plan under the owner's name that changes the `verify` (no command fewer) or narrows the `what` of a step that is `pending` and of the run's repos; 422 for anything else (a step that is `done`, a key other than those two, `acceptance`, `goal`, `non_goals`, a step of another repo); with `--rerun` the rerun follows in the same transaction and a refused rerun leaves the plan as it was; `verify_failed` is rerun only this way |
+| `evo-agents worker triage invite HANDLE --reason TEXT` | `POST .../triage/invite` | invite the agent of another project that the failed run's error names (`rerun-candidates` lists it under `other_projects` with the owner's role there) into the thread's chat, so a mention (`worker chat mention`, hop 3 at most) hands it work; the owner needs the writer role on that project and every person in the chat must clear the label it brings (the group chat's own rule, 409), otherwise the hub says so in the thread, in the agent's name, and invites no one; 422 for an agent of a project the error does not name or the owner holds no grant on |
+
+Each success posts a line that starts with `Decision:` in the thread, in the agent's name, with the reason and how to
+undo it, and writes an audit row (`run.triage_rerun`, `run.triage_plan_edit`, `run.triage_invite`) that names the failed run, the agent and
+the chat run. The agent acts as the owner only: another member's chat run is refused (403).
 ## Task runs
 
 A task run (kind `task`, `evo_agents.hub.task_runs`) is one turn of an agent type of a plugin on a task the plugin
@@ -883,6 +908,7 @@ For members, with a web session or a machine token. `{p}` is a project, and run 
 | `POST .../runs/{id}/finish` | owner | end the chat of an author run: it ends done |
 | `POST .../runs/{id}/takeover`, `/handback` | owner | switch between headless and interactive |
 | `POST .../runs/{id}/cancel`, `/approve`, `/rerun` | owner | stop, approve a run in review, run the step again |
+| `GET .../runs/{id}/rerun-candidates` | owner | who could run a failed run again: each of the owner's workers and each agent profile of the project with why it fits or not, ranked, and the owner's accounts bound to the project |
 | websocket `/v1/projects/{p}/runs/{id}/terminal` | owner, on a worker of theirs | the browser's end of the terminal |
 
 ### Dispatching and the owner's controls
@@ -919,6 +945,24 @@ evidence the run got when it went to review. `.../rerun` queues the step of a ru
 current revision, with the same requested runtime, model, mode, approval, timeout and pinned worker, the account picked
 by hand for the old run unless its body names another one (`account`) or asks the rules (`account_by_rule`), attempt 1
 and `parent_run_id` naming the old run; the step must be ready again. Approve and rerun need the writer role.
+
+`.../rerun-candidates` (`evo-agents hub run candidates RUN [--json]`) answers, for a run that failed (409 otherwise, 403
+for another member), who could run it again, computed by the hub from its rows with no model. Each worker of the owner
+that serves the project has `fit`, a `rank` (1 is best; null when it is no fit) and `reasons`: what makes it fit, or
+each thing that makes it not. A worker is fit when it is online, not draining, runs the run's kind, takes the way the run
+was dispatched, has a free slot (runs queued for it count), has a checkout of every repo of the run, has a runtime the
+run's agent profile allows, is one the profile allows, and, when the owner bound any account to the project, has one
+ready on it (not expired, paused or cooling). The fit workers are ranked by the run's `failure_cause`: the worker the
+run was on first for `missing_tool`, `checkout` and `branch_mismatch`, last for `worker_stopped`, `lease_lost` and
+`runtime`; a worker with an account the run did not use first for `rate_limit` and `account_auth`; then the most
+checkouts of the run's repos, the most free slots, the smallest id. Each agent profile of the project has `fit`, `rank`
+and `reasons` too: it is fit when the owner is a writer of the project, a worker can take a chat run of it, and, for
+`missing_tool`, it lets the agent run shell commands; the project's default comes first among the fit ones. The worker
+rules are the ones a chat run goes by (`pick_worker`, [Chat runs](#chat-runs)), kept in one place.
+The answer also says `cause_inferred` (true when `failure_cause` was guessed by the hub from the run's error text, as the
+system event `failure_cause_inferred` records, and no worker named it) and `triage` (`chat_id`, `root_message_id` and
+`link`, the web page `/chats/ID?message=ID` of the thread the hub opened for the run; null when it opened none). The
+run's page in the web shows both over its trace (web/DESIGN.md, Run detail).
 
 ### Reading runs
 
@@ -1939,12 +1983,15 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `checkout` | the fetch, or the worktree, went wrong for another reason |
 | `runtime` | the worker has no adapter for the runtime, cannot run it interactive, has no login the run may use, or cannot apply the run's agent profile |
 | `worker_stopped` | the daemon was stopped, or failed, while it held the run |
+| `branch_mismatch` | the worktree is on another branch than the run's: the worker compares full refs (`refs/heads/<branch>`), so a tag with the branch's name is no mismatch, and the error names both refs |
 | `rate_limit` | the agent's account hit its usage limit and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 | `account_auth` | the agent's account failed to authenticate (the API refused its token, a 401) and the run could not move to another account ([An account's usage limit](#an-accounts-usage-limit)) |
 
-A run that fails for another reason (the agent's own error, the watchdog of the Curator) carries no cause, and neither
-does one an older daemon or the hub ended (a lost lease, a revoked worker); the Curator's figures read the cause of
-those from their error (`evo_agents.hub.review.run_cause`).
+Every run of kind step, plan, author or chat that ends `failed` carries a `failure_cause`: the worker's when it sent
+one; otherwise (the agent's own error, an older daemon, a failure the hub ended: a revoked worker, a lost lease on the
+last attempt) the hub reads it from the error the way the Curator's figures do (`evo_agents.hub.review.run_cause`) and
+writes a `system` event in the run's log saying the cause is a guess (`failure_cause_inferred: true`). A review or judge
+run keeps the cause its worker sent, and the Curator's figures read the rest from the error as before.
 
 ### An account's usage limit
 

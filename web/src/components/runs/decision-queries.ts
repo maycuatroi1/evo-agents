@@ -40,3 +40,19 @@ export const openDecisionsQuery = (api: ApiSource, project: string, runId: numbe
         }),
       ),
   });
+
+/** The most decisions a run's chat reads of one run, `MAX_LIST` of the API's list. */
+const MAX_CHAT_DECISIONS = 200;
+
+/** Every decision of one run, in any state, newest first: an author run's chat shows them all. */
+export const runDecisionsQuery = (api: ApiSource, project: string, runId: number) =>
+  queryOptions({
+    queryKey: ["projects", project, "decisions", { run: runId }] as const,
+    queryFn: ({ signal }) =>
+      call(
+        api().GET("/v1/projects/{project}/decisions", {
+          params: { path: { project }, query: { run_id: runId, limit: MAX_CHAT_DECISIONS } },
+          signal,
+        }),
+      ),
+  });
