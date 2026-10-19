@@ -6,8 +6,10 @@ gives a task (``replay.task_of``) and has none yet: a step done, with a verify o
 names the commits it made. A step whose evidence names none takes the commits the runs of it reported: a run of that one
 step that ended done, or a step report of a plan run (``step_report`` of its events, while they are kept). A task once
 in the suite is never changed by the job, nor dropped when its plan changes or goes, so the split of the suite holds:
-new tasks are only ever added, each with the split its plan and step give, and the plan's label then. At most
-MAX_NEW_TASKS are added to a project in one pass; the next pass adds the rest.
+new tasks are only ever added, each with the split its plan and step give under the hub's session secret
+(``replay.split_of``), and the plan's label then. At most MAX_NEW_TASKS are added to a project in one pass; the next
+pass adds the rest. A hub without EVO_HUB_SESSION_SECRET adds none, since a split without the secret could be
+computed from the code.
 
 It lives outside ``evo_agents.hub.server``, so ``hub worker`` runs it without importing the server.
 """
@@ -78,31 +80,33 @@ async def run_commits(conn: AsyncConnection, project_id: int) -> dict[tuple[str,
     return found
 
 
-def new_tasks(plans: Iterable, known: set[tuple[str, str]], commits: dict) -> list[dict]:
-    """The tasks of ``plans`` (rows of plan_id, body and label) that ``known`` does not have yet, in plan order."""
+def new_tasks(plans: Iterable, known: set[tuple[str, str]], commits: dict, secret: str) -> list[dict]:
+    """The tasks of ``plans`` (rows of plan_id, body and label) that ``known`` does not have yet, in plan order, split
+    under ``secret``."""
     found = []
     for plan in plans:
         steps = plan.body.get("steps") if isinstance(plan.body, dict) else None
         for index, step in enumerate(steps if isinstance(steps, list) else []):
             if (plan.plan_id, step_key(step, index)) in known:
                 continue
-            task = replay.task_of(
-                plan.plan_id, plan.body, index, commits.get((plan.plan_id, step_key(step, index)), ())
-            )
+            done = commits.get((plan.plan_id, step_key(step, index)), ())
+            task = replay.task_of(plan.plan_id, plan.body, index, done, secret=secret)
             if task is not None:
                 found.append({**task, "label": plan.label})
     return found
 
 
-async def build_suite(conn: AsyncConnection, project_id: int) -> int:
-    """Add the new tasks of project ``project_id`` to its suite, at most MAX_NEW_TASKS; how many were added."""
+async def build_suite(conn: AsyncConnection, project_id: int, secret: str) -> int:
+    """Add the new tasks of project ``project_id`` to its suite, split under ``secret``, at most MAX_NEW_TASKS; how
+    many were added."""
     pl = tables.plans
     plans = (
         await conn.execute(
             select(pl.c.plan_id, pl.c.body, pl.c.label).where(pl.c.project_id == project_id).order_by(pl.c.plan_id)
         )
     ).all()
-    tasks = new_tasks(plans, await _known(conn, project_id), await run_commits(conn, project_id))[:MAX_NEW_TASKS]
+    known, commits = await _known(conn, project_id), await run_commits(conn, project_id)
+    tasks = new_tasks(plans, known, commits, secret)[:MAX_NEW_TASKS]
     if not tasks:
         return 0
     t = tables.replay_tasks
@@ -115,16 +119,20 @@ async def build_suite(conn: AsyncConnection, project_id: int) -> int:
     return len((await conn.execute(statement)).all())
 
 
-async def build_suites(engine: AsyncEngine) -> dict:
-    """One pass of curator.replay_suite over each project that has a charter, each in a transaction of its own; how
-    many projects it read and how many tasks it added."""
+async def build_suites(engine: AsyncEngine, secret: str | None) -> dict:
+    """One pass of curator.replay_suite over each project that has a charter, each in a transaction of its own, its
+    tasks split under ``secret`` (the hub's session secret); how many projects it read and how many tasks it added.
+    Without the secret it reads none."""
+    if not secret:
+        log.warning("replay suites not built: EVO_HUB_SESSION_SECRET keys their split and is not set")
+        return {"projects": 0, "added": 0, "failed": 0}
     async with engine.begin() as conn:
         projects = [row.project_id for row in await conn.execute(_projects())]
     added = failed = 0
     for project_id in projects:
         try:
             async with engine.begin() as conn:
-                added += await build_suite(conn, project_id)
+                added += await build_suite(conn, project_id, secret)
         except Exception:  # one project failing leaves the others their turn
             log.exception("a project's replay suite was not built", extra={"project_id": project_id})
             failed += 1

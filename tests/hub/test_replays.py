@@ -11,6 +11,7 @@ unusable never replayed again; the Judge reading none of it) and a13 (the comman
 
 from __future__ import annotations
 
+from datetime import date
 from functools import partial
 from types import SimpleNamespace
 
@@ -24,7 +25,7 @@ if not pg.DSN:
 import psycopg
 from sqlalchemy import func, select, update
 
-from evo_agents.hub import replay, tables
+from evo_agents.hub import history_index, replay, tables
 from evo_agents.hub.mcp_tools import JUDGE_TOOLS, REPLAY_TOOLS, TOOLS, offered
 from evo_agents.hub.replay_suite import build_suites
 from evo_agents.hub.server.app import create_app
@@ -42,8 +43,9 @@ from tests.hub.test_curator_changes import (  # noqa: F401 (world is a fixture)
     review_run,
     world,
 )
+from tests.hub.test_facet_job import analyzed, later
 from tests.hub.test_migrate import move_to
-from tests.hub.test_review_runs import MCP_HEADERS
+from tests.hub.test_review_runs import MCP_HEADERS, second_review
 from tests.hub.test_run_cli import as_json, cli, ok, write_credentials
 from tests.hub.test_run_stream import serving
 from tests.hub.test_runs import claim, moved
@@ -52,6 +54,10 @@ HISTORY = "history"
 REPLAY = {"tasks": 2, "budget_usd": 1.0}
 AGENTS = [{"repo": "evo-agents", "path": "AGENTS.md"}]
 BASE = "a" * 40
+# The secret the tests' suites are split under, as the job splits them under the hub's session secret: chosen so the
+# 15 steps of history_plan split as they did before the split was keyed, which the numbers of these tests were written
+# for (12 select and holdout tasks here, 6 holdout ones of 15 in test_replay_merge).
+SPLIT_KEY = "replay-split-key-of-the-tests-105204"
 
 
 def sha7(key: int) -> str:
@@ -90,11 +96,11 @@ def owner(world) -> dict:
 
 
 def built(world) -> dict:
-    return world.client.portal.call(partial(build_suites, world.app.state.engine))
+    return world.client.portal.call(partial(build_suites, world.app.state.engine, SPLIT_KEY))
 
 
 def holdout(steps: int = 12) -> list[str]:
-    return [str(key) for key in range(1, steps + 1) if replay.split_of(HISTORY, str(key)) == "holdout"]
+    return [str(key) for key in range(1, steps + 1) if replay.split_of(HISTORY, str(key), SPLIT_KEY) == "holdout"]
 
 
 def named(world, statement) -> list[SimpleNamespace]:
@@ -166,7 +172,7 @@ def test_replay_suite_adds_each_done_step_once_with_its_fixed_split_and_only_gro
     assert built(world) == {"projects": 1, "added": 6, "failed": 0}
     first = suite(world)
     assert [row.step_key for row in first] == ["1", "2", "3", "4", "5", "6"]  # the pending step gives none
-    assert [row.split for row in first] == [replay.split_of(HISTORY, row.step_key) for row in first]
+    assert [row.split for row in first] == [replay.split_of(HISTORY, row.step_key, SPLIT_KEY) for row in first]
     assert built(world)["added"] == 0
     put_history(world, history_plan(8, {2: "The step written again."}), revision=1)
     assert built(world)["added"] == 2
@@ -177,6 +183,15 @@ def test_replay_suite_adds_each_done_step_once_with_its_fixed_split_and_only_gro
     (task,) = named(world, select(t.c.commits, t.c.source, t.c.repo, t.c.verify, t.c.label).where(t.c.step_key == "1"))
     assert (task.commits, task.source, task.repo) == ([sha7(1)], "evidence", "evo-agents")
     assert task.verify == "python -m pytest -q tests/test_1.py" and isinstance(task.label, dict)
+
+
+def test_replay_suite_is_built_only_under_the_hubs_secret_which_keys_its_split(world):
+    written(world.client, owner(world), curator_charter())
+    put_history(world, history_plan(6))
+    unkeyed = world.client.portal.call(partial(build_suites, world.app.state.engine, None))
+    assert unkeyed == {"projects": 0, "added": 0, "failed": 0} and suite(world) == []
+    assert built(world)["added"] == 6
+    assert [row.split for row in suite(world)] == [replay.split_of(HISTORY, str(key), SPLIT_KEY) for key in range(1, 7)]
 
 
 def test_replay_suite_is_read_through_the_api_and_the_command_line(world, tmp_path, monkeypatch, capsys):
@@ -384,6 +399,51 @@ def test_replay_the_agent_of_a_review_run_lists_the_select_split_alone(world):
     assert shown is None or shown.isdisjoint(holdout())
     refused = listed({"split": "holdout"})
     assert refused.get("isError") and "the select split of the replay suite alone" in refused["content"][0]["text"]
+
+
+def test_replay_the_agent_of_a_run_reads_no_changes_replays_nor_a_replay_run(world):
+    change = replay_world(world)
+    spec = replay_run(world)
+    moved(world.client, world.worker, spec["id"], "running")
+    said = {"content": {"type": "text", "text": "Doing the held out step of the quokka queue."}}
+    stamp = sql(world.db, select(func.now()))[0][0].isoformat()
+    sent = {"events": [{"seq": 1, "at": stamp, "kind": "agent_message_chunk", "body": said}]}
+    posted = world.client.post(f"/v1/worker/runs/{spec['id']}/events", json=sent, headers=world.worker["headers"])
+    assert posted.status_code == 200, posted.text
+    moved(world.client, world.worker, spec["id"], "failed", error="stopped")
+    state = world.app.state
+    world.client.portal.call(partial(history_index.index_history, state.engine, state.blobs, now=later(world.db)))
+    assert analyzed(world.client, later(world.db)).get("events", 0) >= 1
+    member = {**owner(world), **MCP_HEADERS, "X-Evo-Project": PROJECT}
+    found = world.client.get(path("history", "search"), params={"q": "quokka", "source": "run"}, headers=owner(world))
+    assert [hit["run_id"] for hit in found.json()["hits"]] == [spec["id"]]  # a member reads it
+
+    r = tables.runs
+    reviewed = sql(world.db, select(r.c.id).where(r.c.kind == "review").order_by(r.c.id))[0][0]
+    agent = second_review(world, reviewed, date(2026, 10, 11))
+
+    def call(name: str, arguments: dict, headers: dict) -> dict:
+        message = {"jsonrpc": "2.0", "id": 5, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+        message["params"]["_meta"] = {"evo-agents/data": True}
+        response = world.client.post("/mcp", json=message, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()["result"]
+
+    as_agent = {"Authorization": world.worker["headers"]["Authorization"], "X-Evo-Run": str(agent), **MCP_HEADERS}
+    assert not call("curator_replay", {"change_id": change["id"]}, member).get("isError")
+    refused = call("curator_replay", {"change_id": change["id"]}, as_agent)
+    assert refused.get("isError") and "reads no change's replays" in refused["content"][0]["text"]
+    events = call("run_events", {"run_id": spec["id"]}, as_agent)
+    assert events.get("isError") and f"has no run {spec['id']}" in events["content"][0]["text"]
+    assert not call("run_events", {"run_id": spec["id"]}, member).get("isError")
+    hits = call("history_search", {"query": "quokka", "sources": ["run"]}, as_agent)["structuredContent"]["hits"]
+    assert hits == [], "the words of a replay run name its holdout task"
+
+    def runs_listed(headers: dict) -> list[int]:
+        found = call("history_sessions", {"kind": "run"}, headers)["structuredContent"]
+        return [item["run_id"] for item in found["items"]]
+
+    assert spec["id"] not in runs_listed(as_agent) and spec["id"] in runs_listed(member)
 
 
 def test_replay_the_judge_reads_no_replay(world):

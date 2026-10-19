@@ -25419,7 +25419,7 @@
             "transcripts"
           ],
           "summary": "Transcript Usage",
-          "description": "What the project's transcripts come to in the blob store, per member, with the retention.",
+          "description": "What the project's transcripts come to in the blob store, per member, with the retention: for a reader who\nreads the project's default label through the sink (the project's hub sink by default), as the night's figures\nare.",
           "operationId": "transcript_usage_v1_projects__project__transcripts_usage_get",
           "parameters": [
             {
@@ -25430,6 +25430,22 @@
                 "type": "string",
                 "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
                 "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
               }
             }
           ],

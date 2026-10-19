@@ -34,10 +34,12 @@ from tests.hub.test_facet_job import analyzed, ended_local_run, later
 from tests.hub.test_history_runs import FIRST, SECOND, lab, upload  # noqa: F401 (lab is a fixture)
 from tests.hub.test_migrate import INFO_TABLES as INFO
 from tests.hub.test_migrate import move_to
+from tests.hub.test_plans import registration
 from tests.hub.test_review_runs import collected
 from tests.hub.test_run_cli import as_json, cli, ok, write_credentials
 from tests.hub.test_run_stream import serving
 from tests.hub.test_runs import OTHER, OWNER, PROJECT, claim, moved
+from tests.hub.test_session_digests import SINKS
 from tests.hub.test_session_transcripts import parts_of, records, send, statuses, transcript
 
 MCP_HEADERS = {"Accept": "application/json", "Content-Type": "application/json", "MCP-Protocol-Version": "2025-11-25"}
@@ -330,6 +332,74 @@ def test_the_agent_of_a_review_run_reads_the_history_through_the_hubs_tools(lab)
     assert refused["isError"] is True and "is not a day" in refused["content"][0]["text"]
     bad = agent_call(lab, run_id, "transcript_lines", {"session_id": FIRST})
     assert bad["isError"] is True and "bad arguments for transcript_lines" in bad["content"][0]["text"]
+
+
+def member_call(lab, name: str, arguments: dict, sink: str | None = None) -> dict:
+    """A tool call of the owner's own session (its machine token, no run), through ``sink`` when given."""
+    message = {"jsonrpc": "2.0", "id": 8, "method": "tools/call", "params": {"name": name, "arguments": arguments}}
+    headers = {**lab.headers["owner"], **MCP_HEADERS, mcp_tools.PROJECT_HEADER: PROJECT}
+    if sink:
+        headers[mcp_tools.SINK_HEADER] = sink
+    response = lab.client.post("/mcp", json=message, headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["result"]
+
+
+def night_talk(lab) -> dict:
+    """Night talk, the owner's chat with someone-else and the project's agent, where someone-else wrote of a dial
+    timeout; the chat."""
+    chat = chat_created(lab.client, lab.headers["owner"], "Night talk", people=[OTHER], agents=[PROJECT])
+    chat_sent(lab.client, lab.headers["other"], chat["id"], "the review keeps hitting a dial timeout")
+    return chat
+
+
+def test_the_agent_of_a_run_searches_no_group_chat_and_reads_a_local_run_as_the_reviewer_alone(lab):
+    two_sessions(lab)
+    chat = night_talk(lab)
+    mine = ended_local_run(lab.client, lab.headers["owner"], "0199a3c1-0000-7000-8000-00000000c005", "dial tcp mine")
+    assert indexed(lab.client, now=later(lab.db))["runs"] == 1
+    assert analyzed(lab.client, later(lab.db))["events"] == 1
+    owners = search(lab, q="dial")  # the owner's own session reads the chat it is in and its local run
+    assert sorted((hit["source"], hit["run_id"]) for hit in owners["hits"]) == [("chat", None), ("run", mine)]
+
+    review = held_review(lab)  # its agent is the owner, the charter's, with the run's scope
+    found = agent_call(lab, review, "history_search", {"query": "dial"})["structuredContent"]
+    assert found["sources"] == ["transcript", "run"], "what it reads lands in its run's events, which others read"
+    assert [(hit["source"], hit["run_id"]) for hit in found["hits"]] == [("run", mine)]  # the owner's local session
+    asked = agent_call(lab, review, "history_search", {"query": "dial", "sources": ["chat"]})
+    assert asked["isError"] is True and "searches no group chat" in asked["content"][0]["text"]
+    assert not agent_call(lab, review, "run_events", {"run_id": mine}).get("isError")
+    moved(lab.client, lab.worker, review, "verifying", "done")
+
+    chat_sent(lab.client, lab.headers["owner"], chat["id"], f"@{PROJECT} what does the history say of it?")
+    spec = claim(lab.client, lab.worker)
+    assert spec["kind"] == "chat"
+    moved(lab.client, lab.worker, spec["id"], "running")
+    talk = agent_call(lab, spec["id"], "history_search", {"query": "dial"})["structuredContent"]
+    assert (talk["sources"], talk["hits"]) == (["transcript", "run"], []), "neither the chats nor the local runs"
+    refused = agent_call(lab, spec["id"], "history_search", {"query": "dial", "sources": ["chat", "run"]})
+    assert refused["isError"] is True
+    runs_listed = agent_call(lab, spec["id"], "history_sessions", {"kind": "run"})["structuredContent"]
+    assert mine not in [item["run_id"] for item in runs_listed["items"]]
+    events = agent_call(lab, spec["id"], "run_events", {"run_id": mine})
+    assert events["isError"] is True and f"has no run {mine}" in events["content"][0]["text"]
+    assert search(lab, q="dial")["total"] == 2, "the member reads as before"
+
+
+def test_chat_hits_and_the_clusters_read_through_the_callers_sink(lab):
+    registered = lab.client.put(f"/v1/projects/{PROJECT}", json=registration(SINKS), headers=lab.headers["admin"])
+    assert registered.status_code == 200, registered.text
+    night_talk(lab)
+    assert search(lab, q="dial timeout", source="chat")["total"] == 1  # through the project's hub sink
+    narrow = {**lab.headers["owner"], "X-Evo-Sink": "codex@openai"}  # clears public, below the default label
+    path = f"/v1/projects/{PROJECT}/curator/history"
+    through = lab.client.get(f"{path}/search", params={"q": "dial timeout", "source": "chat"}, headers=narrow)
+    assert through.status_code == 200, through.text
+    assert through.json()["total"] == 0, "a chat's message reads through the sink as a transcript does"
+    assert lab.client.get(f"{path}/clusters", headers=narrow).status_code == 404
+    refused = member_call(lab, "history_clusters", {}, sink="codex@openai")
+    assert refused["isError"] is True and "you may read through this sink" in refused["content"][0]["text"]
+    assert not member_call(lab, "history_clusters", {}).get("isError")  # through claude-code@anthropic
 
 
 # The command line

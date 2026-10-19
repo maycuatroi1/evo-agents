@@ -12,6 +12,7 @@ the worker's command, never written anew. Criterion a13: only additions to the c
 
 from __future__ import annotations
 
+import json
 from datetime import date
 
 import pytest
@@ -21,7 +22,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.server.app import create_app
@@ -222,6 +223,17 @@ def test_the_next_review_prompt_holds_earlier_findings_rejected_proposals_and_th
     assert item["evidence"] == [f"transcript:{FIRST}:5"]
     assert [p["id"] for p in shown["rejected"]] == [made["id"]]
     assert [f["id"] for f in earlier_of(lab, status="open")["findings"]] == [left["id"]]
+
+
+def test_earlier_findings_show_only_the_proposals_their_reader_reads_by_label(lab):
+    first = first_night(lab)
+    p, made = tables.proposals, first["proposal"]
+    (label,) = sql(lab.db, select(p.c.label).where(p.c.id == made["id"]))[0]
+    sql(lab.db, update(p).values(label={**label, "level": "secret"}).where(p.c.id == made["id"]))  # above the hub sink
+    shown = earlier_of(lab, lens="environment")
+    (item,) = shown["findings"]
+    assert (item["id"], item["proposals"], item["status"], item["closed"]) == (first["closed"]["id"], [], "open", False)
+    assert shown["rejected"] == [] and "the remote is fine" not in json.dumps(shown)
 
 
 def test_a_finding_like_a_closed_one_is_recorded_again_only_with_new_evidence(lab):

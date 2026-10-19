@@ -26,8 +26,8 @@ harness alone (``evo_agents.hub.server.change_tiers``).
 GET /v1/projects/{p}/curator/replay/tasks (reader) lists the project's suite, of ``split`` when given, the tasks of
 plans the caller may read through the project's hub sink; GET .../curator/changes/{id}/replay (reader) a change's
 replays with what each arm found, ``replay.compare`` of them and ``replay.verdict`` at the head of its pull request,
-whether they won. The MCP tool curator_replay answers both
-(``mcp_answer``), the suite's select split alone to the agent of a run.
+whether they won. The MCP tool curator_replay answers both (``mcp_answer``); to the agent of a run, the suite's
+select split alone and no change's replays, and no replay run reads for it either (``views.agent_reads``).
 """
 
 from __future__ import annotations
@@ -65,6 +65,10 @@ log = logging.getLogger(__name__)
 REPLAY = "curator.replay"  # the night shift queued a replay run: "<project>/<plan> run:<id> change:<id> task:<id>"
 MAX_TASKS_LISTED = 200
 HARNESS_KINDS = ("skill",)  # the kinds of proposal replayed whatever the paths they name
+AGENT_NO_CHANGE = (
+    "the agent of a run reads no change's replays: they are of the holdout split, which changes are measured on; a "
+    "member reads them with `evo-agents hub curator replay show CHANGE`"
+)
 
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
@@ -631,9 +635,12 @@ def _arm_text(item: dict | None) -> str:
 
 async def mcp_answer(request: Request, project: str, user: Principal, arguments: dict, *, sink: str | None):
     """(text, data) of the MCP tool curator_replay. The agent of a run (the Reviewer, a Builder) lists the select split
-    of the suite alone: the holdout split, which changes are measured on, stays out of what shapes them."""
+    of the suite alone, and reads no change's replays, which are all of holdout tasks: the holdout split, which changes
+    are measured on, stays out of what shapes them."""
     split = arguments.get("split")
-    if user.scope is not None and "change_id" not in arguments:
+    if user.scope is not None:
+        if "change_id" in arguments:
+            raise HTTPException(403, AGENT_NO_CHANGE)
         if split == "holdout":
             raise HTTPException(403, "the agent of a run lists the select split of the replay suite alone")
         split = "select"

@@ -29,7 +29,8 @@ by session, member, machine, runtime and ``since`` (updated at or after); GET ..
 session's with their parts. Reading needs a grant on the project and goes through the read rule with the
 transcript's label, through the sink X-Evo-Sink names, else the project's hub sink, as digests are read; a list
 examines at most SCAN_ROWS rows. GET .../transcripts/usage counts what the project holds: sessions, transcripts,
-parts, bytes, per member, and the retention; it needs a grant and reveals counts only.
+parts, bytes, per member, and the retention; it needs a grant whose reach takes the project's default label through
+that sink (404 otherwise, as the night's figures), and reveals counts only.
 
 DELETE .../transcripts/{session_id} and DELETE .../transcripts delete the content of one session's transcripts or of
 all the project's, for an admin of the project, with an audit row (``evo_agents.hub.transcript_prune``). The rows
@@ -509,13 +510,22 @@ async def list_transcripts(
 
 
 @router.get("/{project}/transcripts/usage", response_model=TranscriptUsage, responses=READ_REFUSALS)
-async def transcript_usage(request: Request, project: ProjectName, user: CurrentUser) -> TranscriptUsage:
-    """What the project's transcripts come to in the blob store, per member, with the retention."""
+async def transcript_usage(
+    request: Request,
+    project: ProjectName,
+    user: CurrentUser,
+    sink: Annotated[str | None, Header(alias=plan_routes.SINK_HEADER)] = None,
+) -> TranscriptUsage:
+    """What the project's transcripts come to in the blob store, per member, with the retention: for a reader who
+    reads the project's default label through the sink (the project's hub sink by default), as the night's figures
+    are."""
     t, u, b = tables.session_transcripts, tables.users, tables.blobs
     live = t.c.deleted_at.is_(None)
     async with request.app.state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _reader(access)
+        if not access.visible(access.rules.default_label, plan_routes._sink(access, sink)):
+            raise HTTPException(404, f"project {project} has no usage of transcripts you may read through this sink")
         totals = select(
             func.count(func.distinct(t.c.session_id)).filter(live).label("sessions"),
             func.count().filter(live).label("transcripts"),

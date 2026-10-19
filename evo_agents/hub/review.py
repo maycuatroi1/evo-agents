@@ -337,7 +337,7 @@ def _rules(project: str) -> list[str]:
         "tools (the evo-hub server of this run): curator_figures (the night's figures, whole), history_sessions (the "
         "sessions and runs of the whole history by time, member, runtime, outcome or cluster, each with the numbers "
         "of its facet), history_clusters (the clusters of the facets and their representative sessions), "
-        "history_search (words in the transcripts, the run logs and the group chats you may read), transcript_lines "
+        "history_search (words in the transcripts and the run logs; not the group chats), transcript_lines "
         "(the lines of a transcript around one line), digest_list and digest_show (session digests), run_events (the "
         "trace of a run, event by event), run_tool_stats, decision_list, curator_findings (what earlier nights found, "
         "and what became of it), curator_playbook, plan_list, plan_show and the kg_* tools. They answer for project "

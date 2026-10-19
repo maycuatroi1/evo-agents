@@ -22,7 +22,13 @@ Each needs a grant on the project and reads what the caller may read, as the hub
 transcript and a facet of a session by their label through the sink X-Evo-Sink names (else the project's hub sink); a
 run as ``runs.service.views.readable_run`` reads it (a local run its member's alone, a run on no plan through the
 project's default label, a run of a plan the caller may read); a chat's message when the caller is in the chat now,
-clears its label now (``chat_access``) and cleared the message's (``LabelReader``), and the message names the project.
+clears its label now (``chat_access``) and cleared the message's (``LabelReader``), and the message names the project
+with a part of its label visible through that sink.
+
+The agent of a run (the caller of the hub's MCP tools with a ``RunScope``) reads less than its owner, since what it
+reads lands in its run's events and in what it writes (a finding, a chat's reply), which readers who are not the
+owner read: no group chat (AGENT_SOURCES; asking for one is 403), no replay run, and a local run only in a review run,
+whose Reviewer reads the local sessions of the charter's owner (``views.agent_reads``).
 """
 
 from __future__ import annotations
@@ -46,10 +52,11 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.history import cluster_rows
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.protection import need_reader
-from evo_agents.hub.server.runs.service.views import sees_unplanned, visible_plans
+from evo_agents.hub.server.runs.service.views import agent_reads, sees_unplanned, visible_plans
 from evo_agents.hub.server.security import CurrentUser, Principal
 
 SOURCES = ("transcript", "run", "chat")
+AGENT_SOURCES = ("transcript", "run")  # what the agent of a run searches: never a group chat (see the module)
 KINDS = ("session", "run")
 SCAN_ROWS = 5000  # facets one list examines
 SCAN_HITS = 200  # hits each source answers before they are merged
@@ -58,6 +65,10 @@ MAX_SEARCH = 50
 MAX_AROUND = 100  # lines before and after the one asked for
 HEADLINE = "MaxWords=35, MinWords=12, MaxFragments=2, FragmentDelimiter= ... , StartSel=«, StopSel=»"
 QUERY_CHARS = 500
+NO_CHAT = (
+    "the agent of a run searches no group chat: what it reads lands in its run's events and in what it writes, which "
+    "readers of the project who are not in the chat read; search the transcripts and the runs"
+)
 
 router = APIRouter(prefix="/v1/projects", tags=["history"], responses={401: {"model": ErrorBody}})
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 422)}
@@ -163,6 +174,8 @@ class RunReader:
         self.user, self.plans, self.unplanned = user, frozenset(plans), unplanned
 
     def reads(self, kind: str | None, plan_id: str | None, dispatched_by: int | None) -> bool:
+        if not agent_reads(self.user, kind):
+            return False
         if kind == "local":
             return dispatched_by == self.user.user_id
         if plan_id is None:
@@ -171,10 +184,12 @@ class RunReader:
 
     def clause(self, r):
         """The same rule in SQL, on ``r``, the runs table."""
-        local_run = and_(r.c.kind == "local", r.c.dispatched_by == self.user.user_id)
+        mine = agent_reads(self.user, "local")
+        local_run = and_(r.c.kind == "local", r.c.dispatched_by == self.user.user_id, true() if mine else false())
         unplanned = and_(r.c.kind != "local", r.c.plan_id.is_(None), true() if self.unplanned else false())
         planned = and_(r.c.kind != "local", r.c.plan_id.in_(sorted(self.plans) or [""]))
-        return or_(local_run, unplanned, planned)
+        kept = [] if agent_reads(self.user, "replay") else [r.c.kind != "replay"]
+        return and_(or_(local_run, unplanned, planned), *kept)
 
 
 async def run_reader(conn: AsyncConnection, user: Principal, access: ProjectAccess, sink: str | None) -> RunReader:
@@ -470,7 +485,14 @@ async def _run_hits(conn, access, runs_read: RunReader, query, since, until, log
     ]
 
 
-async def _chat_hits(conn, user: Principal, access, query, since, until, login) -> list[HistoryHit]:
+def _through_sink(access: ProjectAccess, label, through: str | None) -> bool:
+    """Whether the project's part of a chat message's label (``chat_access.LabelProject.label``) is visible through
+    ``through``, the sink the caller reads through."""
+    named = [item for item in label or [] if isinstance(item, dict) and item.get("projects") == [access.name]]
+    return through is not None and len(named) == 1 and access.visible(named[0], through)
+
+
+async def _chat_hits(conn, user: Principal, access, through, query, since, until, login) -> list[HistoryHit]:
     m, cm, c, u, ap = (tables.chat_messages, tables.chat_members, tables.chats, tables.users, tables.agent_profiles)
     vector = history_index.vector(m.c.body)
     rank = func.ts_rank(vector, query)
@@ -513,7 +535,7 @@ async def _chat_hits(conn, user: Principal, access, query, since, until, login) 
                 cleared[row.chat_id] = True
             except HTTPException:
                 cleared[row.chat_id] = False
-        if not cleared[row.chat_id] or not reader.sees(row.label):
+        if not cleared[row.chat_id] or not reader.sees(row.label) or not _through_sink(access, row.label, through):
             continue
         found.append(
             HistoryHit(
@@ -553,18 +575,21 @@ async def search_history(
     offset: int = 0,
 ) -> HistorySearch:
     """The hits of ``text`` in the project's history ``user`` may read, best first (see the module)."""
-    asked = [source for source in SOURCES if source in (sources or SOURCES)]
+    agent = user.scope is not None
+    if agent and "chat" in (sources or ()):
+        raise HTTPException(403, NO_CHAT)
+    asked = [source for source in SOURCES if source in (sources or (AGENT_SOURCES if agent else SOURCES))]
     query = history_index.tsquery(text)
     start, end = _day(since), _day(until)
+    through = plan_routes._sink(access, sink)
     hits: list[HistoryHit] = []
     if "transcript" in asked:
-        through = plan_routes._sink(access, sink)
         hits += await _transcript_hits(conn, access, through, query, start, end, login, runtime)
     if "run" in asked:
         runs_read = await run_reader(conn, user, access, sink)
         hits += await _run_hits(conn, access, runs_read, query, start, end, login, runtime)
     if "chat" in asked and runtime is None:  # a chat has no runtime
-        hits += await _chat_hits(conn, user, access, query, start, end, login)
+        hits += await _chat_hits(conn, user, access, through, query, start, end, login)
     floor = datetime.min.replace(tzinfo=UTC)
     hits.sort(key=lambda hit: (-hit.rank, -(hit.at or floor).timestamp()))
     return HistorySearch(

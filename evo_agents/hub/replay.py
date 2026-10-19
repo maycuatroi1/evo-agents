@@ -8,8 +8,10 @@ A task (``task_of``) is a step of a plan of the project that is done, whose veri
 known (its own, or the plan's only one), and whose evidence names the commits it made (``handoff.commits_of``), or
 else a run of it reported one. Its base commit is the first parent of the oldest of those commits: the code as it was
 before the step. A plan of the Curator gives no task, since its steps change the harness under test. A task's split
-(``split_of``) comes from the SHA-256 of its plan and step: one task in HOLDOUT_EVERY is held out. It is the same on
-every hub and for every run of the job; once in the suite a task keeps its split, and the suite only grows.
+(``split_of``) comes from the HMAC-SHA256 of its plan and step under a secret of the hub (EVO_HUB_SESSION_SECRET): one
+task in HOLDOUT_EVERY is held out. Without the secret nobody can tell from the code which tasks are held out, the
+agents of the runs the replays measure among them. It is the same for every run of the job on a hub; once in the suite
+a task keeps its split, so a new secret splits only the tasks added after it, and the suite only grows.
 
 A replay runs one task for one change, twice, each time in a new directory with a repository of the task's repo that
 holds the history up to the base commit and nothing after it: arm ``a`` with the harness of the default branch of the
@@ -31,6 +33,7 @@ files of one skill, AGENTS.md and CLAUDE.md files, nothing else. A change of suc
 from __future__ import annotations
 
 import hashlib
+import hmac
 import re
 from collections.abc import Iterable
 from pathlib import PurePosixPath
@@ -40,7 +43,8 @@ from evo_agents.hub.plans import step_key
 from evo_agents.hub.runs import MAX_PROMPT_BYTES, clip
 
 SPLITS = ("select", "holdout")  # the tasks the Curator may look at, and those it is measured on
-HOLDOUT_EVERY = 3  # one task in three, by the SHA-256 of its plan and step, is held out
+HOLDOUT_EVERY = 3  # one task in three, by the HMAC-SHA256 of its plan and step, is held out
+SPLIT_PURPOSE = b"evo-agents replay split"  # keeps the secret's MAC of a task apart from its other uses
 ARMS = ("a", "b")  # the harness of the default branch, and the harness of the change's branch
 STATES = ("queued", "running", "done", "failed")  # a replay of one task for one change
 SOURCES = ("evidence", "run")  # where a task's commits were read: the step's evidence, else a run of the step
@@ -64,9 +68,11 @@ SHA = re.compile(r"^[0-9a-f]{40}([0-9a-f]{24})?$")
 SHORT_SHA = re.compile(r"^[0-9a-f]{7,64}$")
 
 
-def split_of(plan_id: str, key: str) -> str:
-    """``holdout`` for one task in HOLDOUT_EVERY, by the SHA-256 of ``<plan>#<step>``; ``select`` for the others."""
-    digest = hashlib.sha256(f"{plan_id}#{key}".encode()).digest()
+def split_of(plan_id: str, key: str, secret: str) -> str:
+    """``holdout`` for one task in HOLDOUT_EVERY, by the HMAC-SHA256 of ``<plan>#<step>`` under ``secret``, the hub's;
+    ``select`` for the others."""
+    message = SPLIT_PURPOSE + b"\0" + f"{plan_id}#{key}".encode()
+    digest = hmac.new(secret.encode(), message, hashlib.sha256).digest()
     return SPLITS[1] if int.from_bytes(digest[:8], "big") % HOLDOUT_EVERY == 0 else SPLITS[0]
 
 
@@ -107,9 +113,10 @@ def _one_line(value, limit: int) -> str | None:
     return text[:limit] if text else None
 
 
-def task_of(plan_id: str, body: dict, index: int, run_commits: Iterable[str] = ()) -> dict | None:
+def task_of(plan_id: str, body: dict, index: int, run_commits: Iterable[str] = (), *, secret: str) -> dict | None:
     """The task step ``index`` of the plan ``body`` gives (see the module's docstring), its commits those its evidence
-    names, else ``run_commits``, those the runs of the step reported; None when it gives none."""
+    names, else ``run_commits``, those the runs of the step reported, split under ``secret``; None when it gives
+    none."""
     steps = body.get("steps") if isinstance(body.get("steps"), list) else []
     step = steps[index] if 0 <= index < len(steps) else None
     if plan_id.startswith(CURATOR_PLAN_PREFIX) or not isinstance(step, dict) or step.get("status") != "done":
@@ -136,7 +143,7 @@ def task_of(plan_id: str, body: dict, index: int, run_commits: Iterable[str] = (
         "verify": verify.strip(),
         "commits": commits[:MAX_COMMITS],
         "source": source,
-        "split": split_of(plan_id, step_key(step, index)),
+        "split": split_of(plan_id, step_key(step, index), secret),
     }
 
 
