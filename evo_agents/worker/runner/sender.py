@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 from typing import TYPE_CHECKING
 
-from evo_agents.worker.hubapi import Backoff, Outdated, Refused, Unreachable
+from evo_agents.worker.hubapi import Backoff, HubProblem, Outdated, Refused, Unreachable
 from evo_agents.worker.runner.common import HARD_STOP_TRIES, log, wait_or
 from evo_agents.worker.spool import Spool
 
@@ -15,10 +15,17 @@ if TYPE_CHECKING:
 FLUSH_DEBOUNCE = 0.2  # seconds of events gathered into one batch
 
 
+def transient(problem: HubProblem) -> bool:
+    """Whether a failed call of the events may succeed later: no answer, a 5xx or 429, or a 404 that is not the hub's
+    own. A proxy answers 404 for a moment while the hub is redeployed; only the hub's own 404 says the run is gone or
+    not this worker's."""
+    return isinstance(problem, Unreachable) or (problem.status == 404 and not problem.from_hub)
+
+
 class Sender:
     """Sends a spool's events to the hub in batches, from ``ack_seq + 1``, until it is closed and empty. A failed
-    call is tried again with the backoff; a hub that will not take the run's events (404, the run's 20,000) ends
-    the sending and drops what is left."""
+    call is tried again with the backoff (``transient``); a hub that will not take the run's events (its own 404, the
+    run's 20,000) ends the sending and drops what is left."""
 
     def __init__(self, daemon: Daemon, spool: Spool):
         self.daemon = daemon
@@ -64,7 +71,22 @@ class Sender:
             batch = self.spool.batch()
             try:
                 answer = await self.daemon.hub.events(run_id, batch)
-            except Unreachable as exc:
+            except (Unreachable, Refused) as exc:
+                if not transient(exc):
+                    if isinstance(exc, Outdated) or exc.status in (401, 403):
+                        self.daemon.fatal(exc)
+                    self.gave_up = str(exc)
+                    log.warning(
+                        "the hub does not take this run's events; dropping them",
+                        extra={
+                            "run_id": run_id,
+                            "status": exc.status,
+                            "dropped": self.spool.pending,
+                            "error": str(exc),
+                        },
+                    )
+                    self.spool.drop_all()
+                    return
                 delay = exc.retry_after if exc.retry_after is not None else backoff.next()
                 if self._failures_logged < 3 or backoff.failures % 10 == 0:
                     log.warning(
@@ -73,6 +95,7 @@ class Sender:
                             "run_id": run_id,
                             "pending": self.spool.pending,
                             "retry_in_s": round(delay, 1),
+                            "status": exc.status,
                             "error": str(exc),
                         },
                     )
@@ -82,16 +105,6 @@ class Sender:
                     return
                 await wait_or(self.daemon.hard_stop, delay)
                 continue
-            except Refused as exc:
-                if isinstance(exc, Outdated) or exc.status in (401, 403):
-                    self.daemon.fatal(exc)
-                self.gave_up = str(exc)
-                log.warning(
-                    "the hub does not take this run's events; dropping them",
-                    extra={"run_id": run_id, "status": exc.status, "dropped": self.spool.pending, "error": str(exc)},
-                )
-                self.spool.drop_all()
-                return
             if self._failures_logged:
                 log.info("events sent again after the hub answered", extra={"run_id": run_id})
                 self._failures_logged = 0
