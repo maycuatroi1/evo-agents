@@ -327,7 +327,12 @@ def test_the_prompt_of_a_review_run_says_it_reads_only_and_treats_what_it_reads_
 def test_the_commands_the_prompt_of_a_review_run_names_are_in_the_contract():
     prompt = review.build_review_prompt("evo-agents", date(2026, 10, 8), ["tool_errors"], ["evo-agents"], {})
     found = [item.text for item in find_commands(prompt, "prompt")]
-    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"finding", "propose"}
+    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"finding", "propose", "playbook"}
+    assert {" ".join(text.split()[2:4]) for text in found if text.split()[2] == "playbook"} == {
+        "playbook add",
+        "playbook helpful",
+        "playbook retire",
+    }  # harmful is named beside helpful, in the same sentence
     assert {text: check_command(commands(), text) for text in found} == {text: [] for text in found}
 
 
