@@ -18,8 +18,8 @@ acts for the person who dispatched the run, the origin of the chain: it writes o
 - POST .../chats: a new chat of the agent and the origin of the chain, with the people named, each of whom must hold a
   grant that clears the label of the agent's project; the origin and each person get the notice chat_added.
 - POST .../chat/pulls: the worker pushed the run's branch of a repo (chat runs only): the hub opens a draft pull
-  request of it on GitHub with the workers' App, or finds the one open, and the agent's message in the thread links
-  it; a repo elsewhere, or a hub without the App, gets the message without one.
+  request of it on GitHub with the workers' App, or finds the one open, titled as the session (its first run), and the
+  agent's message in the thread links it; a repo elsewhere, or a hub without the App, gets the message without one.
 - POST .../chat/repos: the worker opened a repo of the project in the chat run, as its agent asked (``evo-agents
   worker repo open``, a daemon of ``runs.LAZY_CHAT_REPOS``; chat runs only): the hub adds it to the run's repos, on
   the run's branch, so the run's leases (``credentials``) and ``chat/pulls`` take it, and the runs after it in the
@@ -436,8 +436,9 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
     """The worker pushed the chat run's branch of a repo: its draft pull request, linked in the thread."""
     async with request.app.state.engine.begin() as conn:
         run, found, origin = await _pushed_run(conn, user, run_id, body)
-        r = tables.runs
-        title = (await conn.execute(select(r.c.title).where(r.c.id == run_id))).scalar_one() or body.branch
+        r = tables.runs  # the session's title: its first run's, which the branch names
+        first = rules.session_of(body.branch) or run_id
+        title = (await conn.execute(select(r.c.title).where(r.c.id == first))).scalar_one_or_none() or body.branch
     target = github_repo(origin) if origin else None
     app = request.app.state.github_app
     url, number, opened, problem, draft = None, None, False, None, True

@@ -151,6 +151,19 @@ def test_chat_run_rules_of_hops_budgets_branches_and_the_inbox():
     )
 
 
+def test_a_turn_of_a_chat_session_is_titled_by_its_message_and_its_branch_names_the_first_run():
+    from evo_agents.hub import chat_runs
+
+    assert [chat_runs.session_of(name) for name in ("chat/41", "chat/0", "chat/x", "main", None)] == [41] + [None] * 4
+    assert chat_runs.turn_title("reviewer", "Release talk", "and\n the docs?") == (
+        "@reviewer in Release talk: and the docs?"
+    )
+    assert len(chat_runs.turn_title("reviewer", "Release talk", "y" * 500)) == runs.SHORT_BYTES
+    taken = chat_runs.inbox_text("owner", 9, "also:\nthe retries")
+    assert chat_runs.woken_text(taken) == "also:\nthe retries"
+    assert chat_runs.woken_text("skip it, from the run's page") == "skip it, from the run's page"
+
+
 @pytest.mark.parametrize(
     ("texts", "named"),
     [

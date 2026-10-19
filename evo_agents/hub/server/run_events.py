@@ -640,7 +640,8 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
         if resumes:
             from evo_agents.hub.server.decisions import resume_parked  # it reads runs through this module
 
-            inbox_run = await resume_parked(conn, user, run_id, f"as {user.login} replied in its chat")
+            why = f"as {user.login} replied in its chat"
+            inbox_run = await resume_parked(conn, user, run_id, why, woken_by=body.text)
         inbox = tables.run_inbox
         left = (
             insert(inbox)

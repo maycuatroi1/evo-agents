@@ -11594,6 +11594,26 @@ export interface components {
              */
             hop?: number | null;
             /**
+             * Session Run Id
+             * @description a chat run's session: the id of its first run, which its branch chat/<id> names (the run's own id for the first); null for any other run
+             */
+            session_run_id?: number | null;
+            /**
+             * Session Turn
+             * @description a chat run's turn in its session: 1 for its first run, one more for each after it; null for any other run
+             */
+            session_turn?: number | null;
+            /**
+             * Session Turns
+             * @description the runs of a chat run's session so far; null for another run
+             */
+            session_turns?: number | null;
+            /**
+             * Session Title
+             * @description the title of a chat run's session, its first run's, which the pull requests of its branch take; each run after it is titled by the message that woke it. Null for any other run
+             */
+            session_title?: string | null;
+            /**
              * Machine
              * @description a local run's machine, as its hub login names it; null otherwise
              */
@@ -20921,6 +20941,10 @@ export interface operations {
                 q?: string | null;
                 limit?: number;
                 offset?: number;
+                /** @description only the runs of the chat session this run started (Run.session_run_id) */
+                session_run_id?: number | null;
+                /** @description session: each chat session once, as its latest run, listed when any of its runs matches the search; the state filter, the counts and the total read that run's state. Every other run as it is */
+                group?: "session" | null;
             };
             header?: {
                 "X-Evo-Sink"?: string | null;

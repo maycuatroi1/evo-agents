@@ -900,3 +900,117 @@ def test_a_lazy_chat_run_opens_a_repo_its_leases_pulls_and_next_turn_take(client
     assert step["kind"] == "step"
     refused = opened(client, studio, step["id"], "evo-agents")
     assert refused.status_code == 404 and "only a chat run's agent opens a repo here" in refused.json()["message"]
+
+
+# The turns of a session (criteria a5 and a6 of chat-runs-start-fast)
+
+FIRST_ASK = "@reviewer please fix the flaky wait test"
+
+
+def runs_listed(client, headers, **params) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/runs", params=params, headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def turn_of(run: dict) -> tuple:
+    return (run["title"], run["session_run_id"], run["session_turn"], run["session_turns"], run["session_title"])
+
+
+def taken_and_ended(client, worker: dict, run_id: int) -> None:
+    """The agent of running chat run ``run_id`` takes the messages of its inbox, and its turn ends done."""
+    taken = client.post(f"/v1/worker/runs/{run_id}/inbox", json={}, headers=worker["headers"]).json()["messages"]
+    client.post(f"/v1/worker/runs/{run_id}/inbox", json={"ack": taken[-1]["id"]}, headers=worker["headers"])
+    ended(client, worker, run_id)
+
+
+def three_turns(client, hub, worker: dict, chat: dict) -> tuple:
+    """A session of @reviewer in ``chat`` that ``worker`` runs: its first run woken by the mention, its second by a
+    message left in the first one's inbox, its third by a message in the thread once the second ended; the third
+    claimed and running. (mention, the ids of the three runs)."""
+    mention, spec = started(client, hub, worker, chat, FIRST_ASK)
+    first = spec["id"]
+    sent(client, hub["owner"], chat["id"], "@reviewer one more thing: the retries", mention["id"])  # in its inbox
+    ended(client, worker, first)
+    second = claim(client, worker)["id"]
+    moved(client, worker, second, "running")
+    taken_and_ended(client, worker, second)
+    later = sent(client, hub["owner"], chat["id"], "@reviewer and the docs?", mention["id"])
+    third = later["mentions"][0]["run_id"]
+    assert claim(client, worker)["id"] == third
+    moved(client, worker, third, "running")
+    return mention, (first, second, third)
+
+
+def test_each_turn_of_a_chat_session_is_titled_by_its_message_and_the_pull_request_by_the_session(
+    client, hub, hub_db, github
+):
+    """Criterion a5: a run that goes on in a session is titled by the message that woke it, the person's or the first
+    one the run before left in its inbox, not by the session's first run; the API says of each chat run the first run
+    of its session and its turn; the pull request of the session's branch keeps the first run's title."""
+    credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
+    github.add_repo(MINE, "evo-agents")
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    _, (first, second, third) = three_turns(client, hub, worker, chat)
+    session = f"@reviewer in Release talk: {FIRST_ASK}"
+    assert [turn_of(run_of(client, hub["owner"], run_id)) for run_id in (first, second, third)] == [
+        (session, first, 1, 3, session),
+        ("@reviewer in Release talk: @reviewer one more thing: the retries", first, 2, 3, session),
+        ("@reviewer in Release talk: @reviewer and the docs?", first, 3, 3, session),
+    ]
+    # the third turn pushes the session's branch: its pull request has the session's title, not the turn's
+    branch = f"chat/{first}"
+    github.push(MINE, "evo-agents", branch, "1" * 40)
+    body = {"repo": "evo-agents", "branch": branch, "head": "1" * 40}
+    assert in_chats(client, worker, third, "chat/pulls", body).status_code == 201
+    assert github.pull_of(MINE, "evo-agents", branch).title == session
+    # a run of another kind, and a chat session of one run, say so
+    chat_worker(client, hub["other"], "laptop")
+    other = sent(client, hub["other"], chat["id"], "@reviewer what about mine?")
+    alone = run_of(client, hub["other"], other["mentions"][0]["run_id"])
+    assert turn_of(alone)[1:] == (alone["id"], 1, 1, alone["title"])
+
+
+def test_the_runs_list_groups_a_chat_sessions_turns_as_its_latest_and_counts_and_pages_them(client, hub, hub_db):
+    """Criterion a6 on the API's side: with group=session the list holds a chat session once, as its latest turn, its
+    state that turn's for the state filter, the counts and the total; a search that finds any turn lists the session;
+    session_run_id lists the turns of one session. Without group, every run is listed as before."""
+    worker = chat_worker(client, hub["owner"], "studio", slots=2)
+    chat = created(client, hub["owner"], people=[OTHER])
+    _, (first, second, third) = three_turns(client, hub, worker, chat)
+    taken_and_ended(client, worker, third)
+    fourth = sent(client, hub["owner"], chat["id"], "@reviewer last one, the changelog")["mentions"][0]["run_id"]
+    assert run_of(client, hub["owner"], fourth)["session_turn"] == 1  # a new thread: a new session
+    plan = {"body": credentials_api.plan_body()}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}", json=plan, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    body = {"plan_id": credentials_api.PLAN, "steps": [1]}
+    (step,) = client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"]).json()
+    assert turn_of(run_of(client, hub["owner"], step["id"]))[1:] == (None, None, None, None)
+
+    every = runs_listed(client, hub["owner"])
+    assert [run["id"] for run in every["runs"]] == [step["id"], fourth, third, second, first]
+    assert (every["total"], every["counts"]["done"], every["counts"]["queued"]) == (5, 3, 2)
+
+    grouped = runs_listed(client, hub["owner"], group="session")
+    assert [run["id"] for run in grouped["runs"]] == [step["id"], fourth, third]
+    assert (grouped["total"], grouped["counts"]["done"], grouped["counts"]["queued"]) == (3, 1, 2)
+    assert [run["session_turns"] for run in grouped["runs"]] == [None, 1, 3]
+    done = runs_listed(client, hub["owner"], group="session", state="done")
+    assert ([run["id"] for run in done["runs"]], done["total"]) == ([third], 1)
+    paged = runs_listed(client, hub["owner"], group="session", limit=2, offset=2)
+    assert ([run["id"] for run in paged["runs"]], paged["total"]) == ([third], 3)
+
+    # the search finds the session by an earlier turn, and lists it as its latest
+    found = runs_listed(client, hub["owner"], group="session", q="one more thing")
+    assert ([run["id"] for run in found["runs"]], found["total"], found["counts"]["done"]) == ([third], 1, 1)
+    by_number = runs_listed(client, hub["owner"], group="session", q=f"#{first}")
+    assert [run["id"] for run in by_number["runs"]] == [third]
+    assert runs_listed(client, hub["owner"], q="one more thing")["total"] == 1  # ungrouped: the turn alone
+
+    turns = runs_listed(client, hub["owner"], session_run_id=first)
+    assert ([run["id"] for run in turns["runs"]], turns["total"]) == ([third, second, first], 3)
+    assert runs_listed(client, hub["owner"], session_run_id=step["id"])["total"] == 0
+    refused = client.get(f"/v1/projects/{PROJECT}/runs", params={"group": "plan"}, headers=hub["owner"])
+    assert refused.status_code == 422

@@ -13,6 +13,9 @@ run ends ``done`` with its agent's turn; it never waits, so no run holds a slot 
 agent's last message of its turn is its reply in the thread. A message to the agent in the thread while its run works
 goes to that run's inbox, and the worker hands it to the agent; one the run did not take before it ended wakes the
 session again. In a chat of one person, a message in a thread whose session is that person's wakes it without an @.
+Each run of a session is a turn of it, titled by the message that woke it (``turn_title``): the person's, the first
+one the run before left untaken in its inbox (``woken_text``), or the answer or reply that went on from a parked run.
+The first run's title is the session's, which its pull requests take, and the branch names that run (``session_of``).
 A run that failed because the remote declined the push at its end (``GO_ON_AFTER``) is gone on from as one that ended
 done (``goes_on``): its commits wait on the session's branch in the worktree, for the next run to push. After any other
 failure, the next message opens a new session.
@@ -52,7 +55,7 @@ from __future__ import annotations
 import re
 from datetime import datetime
 
-from evo_agents.hub.runs import MAX_MESSAGE_BYTES, MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip
+from evo_agents.hub.runs import MAX_MESSAGE_BYTES, MAX_PROMPT_BYTES, RESULT_DIR, RESULT_FILE, clip, step_title
 
 MAX_RUNS_PER_MESSAGE = 3  # agents one message hands work to; the ones after are refused in the thread
 MAX_HOPS = 3  # a person's mention is hop 1, each agent's mention one more
@@ -70,6 +73,9 @@ BRANCH = re.compile(r"^chat/[1-9][0-9]{0,18}$")
 DRAFT_TITLE = "[Draft]"  # what the title of a chat run's pull request starts with on a repo that takes no draft
 CUT_MARK = "[{left} older message(s) of the chat are left out of this prompt]"
 INBOX_TEXT = "{author} wrote in the thread (message #{id}):\n{body}"
+INBOX_HEAD = re.compile(r"[^\n]* wrote in the thread \(message #[0-9]+\):\n")  # the first line of INBOX_TEXT
+# The first run's id of a chat branch (BRANCH) as SQL's substring(branch, pattern) takes it, within a bigint.
+SESSION_PATTERN = r"^chat/([1-9][0-9]{0,17})$"
 REPOS_BYTES = 3 * 1024
 # The failure causes (runs.FAILURE_CAUSES) of a chat run whose session the next message goes on in, as after one that
 # ended done: the remote declined the push at its end, and the commits are still on the session's branch.
@@ -105,6 +111,23 @@ def branch_of(root_run_id: int) -> str:
 
 def is_chat_branch(name: str | None) -> bool:
     return isinstance(name, str) and BRANCH.fullmatch(name) is not None
+
+
+def session_of(branch: str | None) -> int | None:
+    """The id of the first run of the session whose branch is ``branch`` (``branch_of``); None for any other."""
+    return int(branch[len(BRANCH_PREFIX) :]) if is_chat_branch(branch) else None
+
+
+def turn_title(handle: str, chat: str, text: str) -> str | None:
+    """The title of a run of agent ``handle`` in chat ``chat`` that ``text`` woke, the run of a session's turn: one line
+    of at most SHORT_BYTES characters (``runs.step_title``)."""
+    return step_title({"title": f"@{handle} in {chat}: {text}"})
+
+
+def woken_text(message: str) -> str:
+    """What a message of a run's inbox says: the body of one from the thread (``inbox_text``), any other whole."""
+    head = INBOX_HEAD.match(message)
+    return message[head.end() :] if head else message
 
 
 def goes_on(state: str, failure_cause: str | None) -> bool:
