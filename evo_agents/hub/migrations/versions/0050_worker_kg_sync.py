@@ -1,7 +1,7 @@
 """What a worker on duty for a night shift last did to keep the project's knowledge graph fresh.
 
-Revision ID: 0049
-Revises: 0048
+Revision ID: 0050
+Revises: 0049
 Create Date: 2026-10-19
 
 workers.kg_sync is what the worker's last heartbeat said of the projects whose night shift names it: for each, when its
@@ -11,7 +11,7 @@ that heartbeat said nothing of it, as an older daemon or one whose sync is off d
 the night's figures of the project name it (``evo_agents.hub.server.collect``). Every statement is an Alembic operation
 on SQLAlchemy Core expressions, as ``evo_agents.hub.tables`` describes the table.
 
-Going back drops the column, which is the schema that schema 0048 runs on: its heartbeat neither takes nor keeps what
+Going back drops the column, which is the schema that schema 0049 runs on: its heartbeat neither takes nor keeps what
 a worker did for a project's graph.
 """
 
@@ -19,8 +19,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0049"
-down_revision = "0048"
+revision = "0050"
+down_revision = "0049"
 branch_labels = None
 depends_on = None
 

@@ -1,5 +1,5 @@
 """The routes the worker on duty pushes a project's graph through (``evo_agents.hub.server.kg_worker``), the projects
-the heartbeat names to it (``kg_duties``), the report it keeps on the worker (workers.kg_sync, schema 0049) and in the
+the heartbeat names to it (``kg_duties``), the report it keeps on the worker (workers.kg_sync, schema 0050) and in the
 night's figures, against a real hub: Postgres, moto's S3 and the hub's build job in this process.
 
 Checked: only the worker that serves the project and that its night shift names reaches the routes, a machine token

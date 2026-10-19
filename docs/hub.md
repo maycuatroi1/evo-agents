@@ -671,9 +671,10 @@ what its daemon reports of its install: `workers.version_locked`, the lock its o
 evo-agents the worker's last heartbeat said its install was built from, `workers.self_update`, what that heartbeat said
 of updating itself to the tag nightly, and `workers.self_update_since`, when the hub first got that state in an
 unbroken line of heartbeats (`docs/workers.md`, Updating itself to nightly). Going back to 0047 drops the four columns:
-no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating. Schema 0049 adds
+no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating. Schema 0049
+(session transcripts) is described under Memories, skills and knowledge graphs below. Schema 0050 adds
 `workers.kg_sync`, what the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift
-it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0048 drops it, and a
+it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0049 drops it, and a
 heartbeat no longer keeps it.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
@@ -1263,7 +1264,7 @@ that its night shift names gets through (403 otherwise, and a machine token the 
 owner, whose writer role the push needs, as for any member. It never sends the knowledge config, so its runs go into
 the config a member pushed, and a project with none answers 422. The hub builds the graph from its runs as from any push;
 `kg_ingests.pushed_by` names the owner, and the `kg.ingest` audit row names the worker's token. `GET /v1/workers/{id}`
-shows what the worker last said of each project (`kg_sync`, schema 0049): the time of its look, what stopped it, and
+shows what the worker last said of each project (`kg_sync`, schema 0050): the time of its look, what stopped it, and
 for each git source its status (`ok`, `failed` or `skipped`), the commit it holds and the error of a sync that
 failed. The night's figures of the project repeat it (The Curator's review).
 

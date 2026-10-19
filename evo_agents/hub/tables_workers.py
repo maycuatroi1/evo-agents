@@ -7,7 +7,7 @@ dispatch_from, version_locked) and when it was drained or revoked (``evo_agents.
 0048 keep the daemon's own updating: version_locked, its owner's lock on the version its daemon runs (false by
 default); agent_commit, the commit of evo-agents its last heartbeat said it runs; self_update, what that heartbeat said
 of updating itself to the tag nightly; self_update_since, when the hub first got the state self_update holds, in an
-unbroken line of heartbeats that said it. kg_sync (0049) is what its last heartbeat said of keeping fresh the graphs of
+unbroken line of heartbeats that said it. kg_sync (0050) is what its last heartbeat said of keeping fresh the graphs of
 the projects whose night shift it is on duty for (``evo_agents.worker.kg_sync``). worker_projects lists the projects a
 worker takes runs of; worker_pairings holds the pairing codes a member creates for a machine to join with.
 """
@@ -80,7 +80,7 @@ def workers_table(metadata: MetaData) -> Table:
         Column("agent_commit", Text),  # 0048
         Column("self_update", JSONB),  # 0048
         _when("self_update_since"),  # 0048
-        Column("kg_sync", JSONB),  # 0049
+        Column("kg_sync", JSONB),  # 0050
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
         ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
         PrimaryKeyConstraint("id", name="workers_pkey"),

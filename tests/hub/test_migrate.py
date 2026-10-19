@@ -1091,8 +1091,8 @@ def test_0048_holds_every_worker_unlocked_checks_the_commit_and_the_report_and_g
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0048") :]
 
 
-def test_0049_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(hub_db):
-    move_to(hub_db, "0048")
+def test_0050_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(hub_db):
+    move_to(hub_db, "0049")
     workers = hub_tables.workers
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1100,7 +1100,7 @@ def test_0049_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(h
             conn, _token(ids, kind="worker", token_hash="5" * 64, host="mac").returning(hub_tables.tokens.c.id)
         )
         worker = one(conn, _worker_row(ids, token_id, "mac", 1))
-    move_to(hub_db, "0049")
+    move_to(hub_db, "0050")
     assert "kg_sync" in columns(hub_db, "workers")
     shown = select(workers.c.kg_sync).where(workers.c.id == worker)
     assert query(hub_db, shown) == [(None,)]
@@ -1111,9 +1111,9 @@ def test_0049_keeps_a_workers_kg_sync_report_an_object_and_going_back_drops_it(h
     with live.connect(hub_db) as conn:
         conn.execute(update(workers).values(kg_sync=report).where(workers.c.id == worker))
     assert query(hub_db, shown) == [(report,)]
-    move_to(hub_db, "0048", down=True)
+    move_to(hub_db, "0049", down=True)
     assert "kg_sync" not in columns(hub_db, "workers")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0049") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0050") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

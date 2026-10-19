@@ -501,7 +501,7 @@ Index(
 
 # Workers and runs (0009, 0010, 0011, 0012, 0014, 0017)
 
-workers, worker_projects, worker_pairings = tables_workers.worker_tables(metadata)  # 0009 to 0049
+workers, worker_projects, worker_pairings = tables_workers.worker_tables(metadata)  # 0009 to 0050
 
 runs = Table(
     "runs",
