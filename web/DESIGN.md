@@ -467,7 +467,10 @@ Shared pieces built on them:
   admin): the tile, the name, then the role, "Visibility: Internal", the repos and the active plans in `caption`
   `fg-subtle`, and the open decisions as an `attention` count said in words. The counts come from
   `GET /v1/me/overview`, read when the switcher opens; a hub admin's project without a grant shows "No role" and its
-  repos. The current project is `surface-selected` and `aria-current`. Down from the field enters the list, the arrows,
+  repos. The current project is `surface-selected` and `aria-current`. Outside `/p/<project>` the trigger and the
+  sidebar's project group never sit empty while the visitor can open a project: `useSelectedProject` stands in with
+  the project last opened in this browser (localStorage `hub.shell.project`) while it is still listed, else the first
+  with a grant, else the first listed. Down from the field enters the list, the arrows,
   Home and End move in it, up from the first goes back to the field; the first Escape empties the field, the next
   closes. Home sits at its foot.
 - `components/palette`, the kit's CommandPalette. The top bar's field (`palette-trigger.tsx`) reads "Search or jump
@@ -502,8 +505,8 @@ Shared pieces built on them:
   shows that key after its meta (G I on Inbox, G P and G R on the page's project's Plans and Runs, D on Dispatch a
   step there), and once something typed names it, a Help group offers Keyboard shortcuts.
 - `components/shell/shortcuts.tsx`: the registry of every key the web answers to (`SHORTCUTS`) and the shell's own
-  keys. G then H, I, P, R or W within a second goes to Home, Inbox, the Plans and Runs of the page's project (or of
-  the visitor's only project; with several and none shown, a note says to open one), and Workers; after 400 ms
+  keys. G then H, I, P, R or W within a second goes to Home, Inbox, the Plans and Runs of the project the sidebar
+  shows (`useSelectedProject`; with none to open, a note says so), and Workers; after 400 ms
   without a second key a hint at the foot of the screen names them (for the eye, `aria-hidden`; under 768 px none).
   D opens Dispatch on a project's pages for a writer: the page's own where it registers one (`useDispatchShortcut`:
   the runs page's button, a ready step's Run this step), else the shell's, fetched at the first D. `?` opens the
