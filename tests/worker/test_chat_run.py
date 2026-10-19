@@ -8,9 +8,16 @@ while it worked starts another turn in the same session; at its end the daemon c
 the branch of each repo it changed, never a default branch, never forced, and tells the hub of each push for the draft
 pull request; the next run of the session goes on in the worktrees and the session of the one before; Claude Code
 gets the prompt verbatim and no question tool; and the agent's commands in chats (``evo-agents worker chat
-post|react|create|mention``) work inside a chat run, a plan run too, and refuse outside one."""
+post|react|create|mention``) work inside a chat run, a plan run too, and refuse outside one.
+
+Criterion a2 of the chat-runs-start-fast plan: a push origin refuses at the end of a chat run fails the run, with git's
+words in its error (the hub says it in the thread), and leaves the commit on chat/<first run> in the worktree, which
+the next run of the session goes on in and pushes. What that next run asks of the origins before its agent starts is
+in ``tests.worker.test_preflight``."""
 
 from __future__ import annotations
+
+import shlex
 
 import pytest
 
@@ -141,6 +148,62 @@ def test_the_next_chat_run_goes_on_in_the_worktrees_and_session_of_the_run_befor
     old = machine.home.load_run(first)
     assert old["resumed_by"] == later and old["dir"] is None, "the cleanup of the first run leaves them alone"
     assert any(f"Goes on from run #{first} in {directory}" in text for text in hub.texts(later))
+
+
+def test_a_push_origin_refuses_fails_the_chat_run_and_the_next_run_of_its_session_pushes_the_commit(machine):  # noqa: F811
+    refuse = machine.tmp / "refuse-pushes"
+    refuse.write_text("on\n", encoding="utf-8")
+    hook = machine.origins["alpha"] / "hooks" / "pre-receive"
+    hook.write_text(
+        f"#!/bin/sh\nif [ -e {shlex.quote(str(refuse))} ]; then echo 'no write access to alpha' >&2; exit 1; fi\n",
+        encoding="utf-8",
+    )
+    hook.chmod(0o755)
+    machine.scenarios(
+        {
+            "chat": [{"write": {"alpha/a.txt": "one\n"}}, {"say": "Wrote a.txt."}],
+            "chat/resume": [{"say": "Pushed a.txt this time."}],
+        }
+    )
+    found = {}
+
+    async def body(hub, daemon):
+        first = hub.queue_chat_run(["alpha"])
+        assert await hub.wait_state(first, "done", "failed", timeout=WAIT) == "failed", hub.texts(first)
+        await wait_for(lambda: not daemon.runs, "the first run to let go of its slot")
+        branch = f"chat/{first}"
+        worktree = machine.directory(first) / "alpha"
+        # the commit stays on the session's branch in the worktree, which origin has not got
+        found.update(
+            error=hub.runs[first]["error"],
+            cause=hub.runs[first].get("failure_cause"),
+            on=git("symbolic-ref", "--short", "HEAD", cwd=worktree),
+            subject=git("log", "--format=%s", "-1", cwd=worktree),
+            commit=git("rev-parse", "HEAD", cwd=worktree),
+            status=git("status", "--porcelain", cwd=worktree),
+            pushed=machine.origin_rev("alpha", f"refs/heads/{branch}"),
+        )
+        refuse.unlink()
+        session = machine.home.load_run(first)["session_id"]
+        later = hub.queue_chat_run(["alpha"], resume_of=first, session_id=session, branch=branch)
+        hub.thread_reply(later, "owner wrote in the thread (message #14):\npush it again, please")
+        assert await hub.wait_state(later, "done", "failed", timeout=WAIT) == "done", hub.texts(later)
+        found.update(hub=hub, first=first, later=later, branch=branch)
+
+    with_daemon(machine, body)
+    hub, first, later, branch = found["hub"], found["first"], found["later"], found["branch"]
+    assert hub.moves(first) == ["leased", "running", "verifying", "failed"], hub.texts(first)
+    assert chat_posts(hub, first) == ["Wrote a.txt."], "the reply went to the thread before the push"
+    assert found["error"].startswith(f"git push of alpha to {branch} failed: "), found["error"]
+    assert "no write access to alpha" in found["error"]
+    assert found["cause"] is None
+    assert found["pushed"] is None and found["status"] == ""
+    assert found["on"] == branch and found["subject"].startswith(f"run #{first}: ")
+    head = machine.origin_rev("alpha", f"refs/heads/{branch}")
+    assert head == found["commit"], "the next run of the session pushed the commit the first one left"
+    assert machine.origin("alpha", "log", "--format=%s", branch).splitlines() == [found["subject"], "first commit"]
+    assert pulls(hub) == [(later, "alpha", branch, head)]
+    assert chat_posts(hub, later) == ["Pushed a.txt this time."]
 
 
 def test_a_chat_run_pushes_only_its_chat_branch(machine):  # noqa: F811

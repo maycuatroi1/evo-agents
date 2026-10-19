@@ -5,7 +5,12 @@ The daemon takes the run's leases for the repos of its project it has a checkout
 so), checks it can read each, and makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a writable
 worktree of each, on the run's branch ``chat/<id>`` (the id of the first run of the session), from origin's branch when
 the session pushed it already, else from origin's default branch; a run that goes on in the session of an earlier one
-adopts that run's directory, worktrees and session instead (``Conversation.adopt``). The agent works in EVO_RUN_KIND
+adopts that run's directory, worktrees and session instead (``Conversation.adopt``). Such a run takes leases of its own
+too, but asks no origin before its agent starts: the fetch of each worktree's checkout it adopted, several at a time,
+is the check that git reads it (``BranchWork.fetch_adopted``), and only the push at its end asks git to push; a repo
+whose worktree is no longer here gets a new one, its origin asked first as on the first turn. A push origin refuses
+fails the run, whose error the hub says in the thread, and leaves the commit on the run's branch in the worktree, for
+the run that goes on in it to push. The agent works in EVO_RUN_KIND
 ``chat``, its turn's last message going to the hub as its reply in the thread (``conversation.post_last_message``);
 the messages people wrote to it in the thread while it worked start another turn in the same session
 (``chat_runs.REPLY_PROMPT``). When no message is left, the run ends: the daemon commits what the agent left in each
@@ -82,9 +87,9 @@ class ChatRun:
             self.conversation.adopt()
         held = self.work.held_repos(repos)
         names = [entry["repo"] for entry in held]
-        await access.take_credentials(run, names)
+        await access.take_credentials(run, names)  # the leases are the run's own, a run going on in a session too
         run.check()
-        await access.check(run, names, path=access.run_path(run))
+        await access.check(run, names, path=access.run_path(run), fetched=self.work.adopted(names))
         run.check()
         await self.work.prepare(held)
         prompt, session_id = await self.conversation.first_turn(self.prompt())

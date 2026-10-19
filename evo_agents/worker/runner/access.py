@@ -6,7 +6,10 @@ pushes) with what the run holds, each program its verify commands call is on the
 claim names can run its agent here (``environment_problems``: a container engine that answers and the image, for a
 plugin's environment). The origins of the run's repos are asked several at a time (``parallel``). A check that does
 not pass fails the run before the agent starts, with its cause (the report's ``failure_cause``: origin, credentials,
-missing_tool or environment).
+missing_tool or environment). The origin of a repo whose worktree the run goes on in (``fetched``: a chat run that
+adopted the worktrees of the run before it in its session) is not asked: the fetch of that worktree's checkout is the
+check that git reads it, failing the run with cause credentials or checkout (``origin.fetch``), and git is asked to
+push only by the push itself.
 
 The leases stay in the daemon's memory (``credentials.RunCredentials``): the run's git gets them through
 ``credentials.ticketed``, its agent through ``Agent.env``, each event goes through ``credentials.scrub`` before the
@@ -69,11 +72,13 @@ async def check(
     pushes: Collection[str] = (),
     verify: Collection[str] = (),
     hidden: list[str] | None = None,
+    fetched: Collection[str] = (),
 ) -> None:
     """The preflight of the run (``preflight``): each of ``repos`` has an origin in the project and one git reads with
     what the run holds, and pushes to for those of ``pushes``; each program ``verify`` and ``hidden`` (a judge run's
     hidden checks) call is on ``path``. The origins are asked several at a time (``parallel.each``), each problem in
-    the order of ``repos``. RunFailed with every problem found, the cause of the first: the agent does not start."""
+    the order of ``repos``; those of ``fetched`` are not asked, the fetch of their worktrees reads them. RunFailed with
+    every problem found, the cause of the first: the agent does not start."""
     names = repo_names(repos)
     problems: list[preflight.Problem] = []
     unlisted = run.credentials.unlisted
@@ -86,7 +91,7 @@ async def check(
                     "the repo with its origin to the harness and run `evo-agents hub project register` again",
                 )
             )
-    asked = [name for name in names if name not in unlisted]
+    asked = [name for name in names if name not in unlisted and name not in fetched]
     reached = await parallel.each(run, asked, lambda name: reach(run, name, push=name in pushes))
     problems += [found for found in reached if found is not None]
     problems += preflight.verify_problems(verify, path)
@@ -97,6 +102,9 @@ async def check(
             run.note(f"Preflight: {problem.message}.", cause=problem.cause)
         raise RunFailed(cut(preflight.summary(problems), MAX_ERROR_CHARS), cause=problems[0].cause)
     checked = [f"{len(names)} repo(s)"]
+    left = sum(1 for name in names if name in fetched)
+    if left:
+        checked[0] += f" ({left} left to their fetch: the run goes on in their worktrees)"
     if verify or hidden:
         checked.append(f"the programs of {len(verify) + len(hidden or [])} command(s)")
     if run.agent.environment.container:

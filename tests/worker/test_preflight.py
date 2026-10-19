@@ -11,7 +11,11 @@ Criterion a1 of the chat-runs-start-fast plan: the preflight asks the origins of
 run of several repos (chat, task, plan, review, author) fetches them and makes their worktrees several at a time, at
 most ``parallel.GIT_AT_ONCE`` at once (``parallel.each``). With a git that takes a second for each ls-remote and fetch,
 ten repos pass the preflight in under 3 seconds and have their worktrees in under 3 seconds; the record keeps the
-run's order of its repos, and each repo's notes keep their order in the log."""
+run's order of its repos, and each repo's notes keep their order in the log.
+
+Criterion a2 of the same plan: a chat run that goes on in the session of the one before, in the worktrees it adopted,
+takes leases of its own and asks no origin (no ls-remote, no push --dry-run); it fetches each repo once, several at a
+time, and a fetch git refuses fails it with cause credentials before its agent starts."""
 
 from __future__ import annotations
 
@@ -513,3 +517,86 @@ def test_a_run_cancelled_while_its_preflight_asks_the_origins_starts_no_more_and
     assert not any(text.startswith(("Fetching origin", "Preflight passed")) for text in texts), texts
     starts = ten.starts() if ten.starts_path.exists() else []
     assert [item for item in starts if item["run"] == run_id] == [], "the agent never started"
+
+
+# The next run of a chat session (criterion a2 of chat-runs-start-fast)
+
+
+def test_the_next_chat_run_of_a_session_asks_no_origin_and_fetches_the_worktrees_it_goes_on_in(ten, monkeypatch):
+    ten.scenarios({"chat": [{"say": "Plugins add commands."}], "chat/resume": [{"say": "And skills."}]})
+    checked: list[float] = []
+    prepared: list[float] = []
+    timed(monkeypatch, access, "check", checked)
+    timed(monkeypatch, BranchWork, "prepare", prepared)
+    found = {}
+
+    async def body(hub, daemon):
+        first = hub.queue_chat_run(list(TEN))
+        assert await hub.wait_state(first, "done", "failed", timeout=WAIT) == "done", hub.texts(first)
+        await wait_for(lambda: not daemon.runs, "the first run to let go of its slot")
+        before = len(ten.slow_log.read_text(encoding="utf-8").split())
+        session = ten.home.load_run(first)["session_id"]
+        later = hub.queue_chat_run(list(TEN), resume_of=first, session_id=session, branch=f"chat/{first}")
+        hub.thread_reply(later, "owner wrote in the thread (message #4):\nand skills?")
+        assert await hub.wait_state(later, "done", "failed", timeout=WAIT) == "done", hub.texts(later)
+        await wait_for(lambda: not daemon.runs, "the run to let go of its slot")
+        found.update(hub=hub, first=first, later=later, before=before)
+
+    with_daemon(ten, body)
+    hub, first, later = found["hub"], found["first"], found["later"]
+    asked = ten.slow_log.read_text(encoding="utf-8").split()
+    assert asked[: found["before"]] == ["ls-remote"] * 10 + ["fetch"] * 10, "the first turn ran the preflight"
+    assert asked[found["before"] :] == ["fetch"] * 10, "the next turn asks no origin: it fetches each repo once"
+    assert len(checked) == 2 and checked[1] < SLOW, checked
+    # the fetch of the ten adopted worktrees, at most parallel.GIT_AT_ONCE (8) at once: two rounds of a second
+    assert len(prepared) == 2 and 2 * SLOW <= prepared[1] < 3, prepared
+    assert ("ask", later) in hub.credential_calls, "the run takes leases of its own"
+
+    texts = hub.texts(later)
+    assert f"Goes on from run #{first} in {ten.directory(first)}, with its worktrees of {', '.join(TEN)}." in texts
+    assert "Preflight passed: 10 repo(s) (10 left to their fetch: the run goes on in their worktrees)." in texts
+    assert "Fetching origin of the 10 repos the run goes on in, 8 at a time." in texts
+    assert not any(text.startswith(("Worktree ", "Making the worktrees")) for text in texts), "no new worktree"
+    notes = [event["body"] for event in hub.runs[later]["events"] if event["kind"] == "system"]
+    for name in TEN:
+        said = [note["text"] for note in notes if note.get("repo") == name and note["text"].startswith("Fetch")]
+        assert said == [f"Fetching origin in {ten.checkouts[name]}."], said
+    record = ten.home.load_run(later)
+    assert [item["repo"] for item in record["repos"]] == list(TEN), "the record keeps the run's order of its repos"
+    one, two = ten.starts()
+    assert two["run"] == later and two["resume"] == one["session"]
+
+
+def test_the_next_chat_run_of_a_session_whose_fetch_git_refuses_fails_with_cause_credentials(machine, hermetic):  # noqa: F811
+    machine.scenarios({"chat": [{"say": "First answer."}], "chat/resume": [{"say": "Never said."}]})
+    with GitHttp(machine.tmp, "oauth2", "never-given") as server:
+        machine.env.update(server.env)
+        url = server.repo_url("alpha.git")
+        found = {}
+
+        async def body(hub, daemon):
+            first = hub.queue_chat_run(["alpha"])
+            assert await hub.wait_state(first, "done", "failed", timeout=WAIT) == "done", hub.texts(first)
+            await wait_for(lambda: not daemon.runs, "the first run to let go of its slot")
+            git("remote", "set-url", "origin", url, cwd=machine.checkouts["alpha"])
+            session = machine.home.load_run(first)["session_id"]
+            later = hub.queue_chat_run(["alpha"], resume_of=first, session_id=session, branch=f"chat/{first}")
+            hub.leases[later] = {"leases": [], "missing": [{"repo": "alpha", "origin": url, "reason": "no secret"}]}
+            hub.thread_reply(later, "owner wrote in the thread (message #6):\none more thing")
+            assert await hub.wait_state(later, "done", "failed", timeout=WAIT) == "failed", hub.texts(later)
+            found.update(hub=hub, first=first, later=later)
+
+        with_daemon(machine, body)
+        served = list(server.requests)
+    hub, first, later = found["hub"], found["first"], found["later"]
+    run = hub.runs[later]
+    assert hub.moves(later) == ["leased", "failed"], hub.texts(later)
+    assert run["failure_cause"] == "credentials"
+    assert run["error"].startswith(f"git fetch in {machine.checkouts['alpha']} failed: "), run["error"]
+    assert "could not read Username" in run["error"]
+    texts = hub.texts(later)
+    assert "Preflight passed: 1 repo(s) (1 left to their fetch: the run goes on in their worktrees)." in texts
+    assert not any(text.startswith("Preflight: ") for text in texts), "the preflight asked no origin"
+    assert served and all(path.endswith("/info/refs") for _, path, _, _ in served), "the fetch asked, refused"
+    assert [item for item in machine.starts() if item["run"] == later] == [], "the agent never started"
+    assert (machine.directory(first) / "alpha").is_dir(), "the worktree stays for the next run of the session"
