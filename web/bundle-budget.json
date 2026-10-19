@@ -181,6 +181,38 @@
       "kB": 297.4,
       "reason": "An isolated plugin's page in its sandboxed frame, and the bridge evo-plugin/1 that answers it with the viewer's session (hub-agent-plugins step 7). The merge of main's local sessions (0.17.0) into hub-agent-plugins (step 9) grows the chunks this page shares with other routes. The run page built around its trace (run-page-mobile): its en and vi messages (the head's status lines, the trace's group rows and phone preview, the Details toggle) are shared by every page."
     },
+    "/p/[project]/x/srs/documents": {
+      "kB": 312.3,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a project's BA documents in one table, with the tabs of the plugin's pages and the import for writers."
+    },
+    "/p/[project]/x/srs/documents/[slug]": {
+      "kB": 353.5,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a document's contents, its headings as a tree beside the open item drawn by its kind, the item's editor that saves the next version, and the version's facts, checks and threads; an item's text is Markdown, so the safe Markdown renderer loads with it, as on a memory's page."
+    },
+    "/p/[project]/x/srs/documents/[slug]/comments": {
+      "kB": 346.1,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a document's threads with answers and Resolve; comments are Markdown, so the safe Markdown renderer loads with them."
+    },
+    "/p/[project]/x/srs/documents/[slug]/compare": {
+      "kB": 303.7,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): two versions compared item by item, the counts in one strip and each item's lines unified or side by side."
+    },
+    "/p/[project]/x/srs/documents/[slug]/items/[ref]": {
+      "kB": 353.1,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a use case's or a requirement's page with its fields, steps, business rules, screens, threads and its trace read from the knowledge graph; its text is Markdown, so the safe Markdown renderer loads with it."
+    },
+    "/p/[project]/x/srs/documents/[slug]/versions": {
+      "kB": 313.9,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a document's versions with their states, authors and reviews in one table, and a form that compares two."
+    },
+    "/p/[project]/x/srs/documents/[slug]/versions/[number]": {
+      "kB": 308.3,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): a version's review: the approval slots of the policy, the reviewer's form, what it approves, its checks and its history."
+    },
+    "/p/[project]/x/srs/import": {
+      "kB": 317.3,
+      "reason": "The native pages of the core plugin srs (srs-tasks-plugins step 5): Markdown imported as a document or its next version, after the hub's dry run previews what it holds and what is wrong."
+    },
     "/secrets": {
       "kB": 320.5,
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs. The run page built around its trace (run-page-mobile): its en and vi messages (the head's status lines, the trace's group rows and phone preview, the Details toggle) are shared by every page."
@@ -194,8 +226,8 @@
       "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7). Local sessions on the hub (local-sessions-on-hub step 5): the regenerated API schema, the idle and ended states, the local kind and account filters and the en and vi messages are shared by these pages; the local run UI loads with the routes that show runs. The run page built around its trace (run-page-mobile): its en and vi messages (the head's status lines, the trace's group rows and phone preview, the Details toggle) are shared by every page."
     },
     "/workers": {
-      "kB": 319.8,
-      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7). The run page built around its trace (run-page-mobile): its en and vi messages (the head's status lines, the trace's group rows and phone preview, the Details toggle) are shared by every page."
+      "kB": 320.6,
+      "reason": "The sidebar gains an Accounts entry (claude-account-rotation step 4), loaded on every page. The sidebar gains an Agents entry, and the chunks shared with the new Agents pages are regrouped (agent-profiles-group-chat step 4). The sidebar gains a Chats entry with the visitor's unread chat messages, loaded on every page (agent-profiles-group-chat step 7). The shell reads the hub's branding and which features are on, and leaves out the menu entries a hub admin turned off (hub-agent-plugins step 6). The project's menu lists the pages its enabled plugins add, read from the project's plugins, with their icons in a chunk loaded only when a plugin adds one (hub-agent-plugins step 7). The run page built around its trace (run-page-mobile): its en and vi messages (the head's status lines, the trace's group rows and phone preview, the Details toggle) are shared by every page. The SRS pages (srs-tasks-plugins step 5) share the table, form and select parts with the other pages, and Turbopack regroups those shared chunks, which adds 0.8 kB to this route."
     },
     "/workers/[id]": {
       "kB": 322.9,

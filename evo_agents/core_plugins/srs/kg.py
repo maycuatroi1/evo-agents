@@ -13,11 +13,16 @@ in its section, which keeps the document's label and which search finds by them.
 ``defines`` it (a table row's heading, for a row), a business rule is ``child_of`` the use case above it, and a use
 case ``mentions`` the section of each screen it uses.
 
+A document links its page on the hub's web (``uri``, ``document_url``) when the hub knows its public URL
+(``EVO_HUB_PUBLIC_URL``), so its node and its sections' evidence lead a member from the graph to the document.
+
 The identifiers are the template's code patterns of use cases and requirements (the config's ``code_patterns`` where
 they replace them), turned into patterns that find a code inside text (``mention_pattern``).
 """
 
 from __future__ import annotations
+
+from urllib.parse import quote
 
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -111,13 +116,22 @@ def _graph(doc: Document, item_id: str) -> dict:
     return {"nodes": nodes, "edges": edges}
 
 
-def document_item(source: str, row: store.DocumentRow, snapshot: store.Snapshot) -> dict:
-    """The kg/1 item of a document's approved version, as the hub finishes it (see the module)."""
+def document_url(base_url: str, project: str, slug: str) -> str:
+    """A document's page on the hub's web (web/src/app/(app)/p/[project]/x/srs/documents/[slug])."""
+    return f"{base_url.rstrip('/')}/p/{quote(project, safe='')}/x/srs/documents/{quote(slug, safe='')}"
+
+
+def document_item(
+    source: str, row: store.DocumentRow, snapshot: store.Snapshot, page: tuple[str, str] | None = None
+) -> dict:
+    """The kg/1 item of a document's approved version, as the hub finishes it (see the module). With ``page`` (the
+    hub's public URL and the project's name), its ``uri`` is the document's page on the hub's web, which its sections'
+    evidence links to; the document's label covers it, so a node a lower label shows never carries it."""
     item_id = f"{source}:{DOCUMENT}:{row.slug}"
     version = snapshot.version
     decided = version.decided_at or version.created_at
     props = {"document": row.slug, "version": version.number, "template": row.template, "srs_kind": row.kind}
-    return {
+    item = {
         "id": item_id,
         "kind": "doc",
         "title": row.title,
@@ -126,24 +140,33 @@ def document_item(source: str, row: store.DocumentRow, snapshot: store.Snapshot)
         "props": {**props, "graph": _graph(snapshot.doc, item_id)},
         "label": row.label,
     }
+    if page is not None:
+        item["uri"] = document_url(page[0], page[1], row.slug)
+    return item
 
 
-async def read(conn: AsyncConnection, source: str, project_id: int, project: str) -> dict:
-    """The answer of the source: an item per document with an approved version, and the identifiers."""
+async def read(conn: AsyncConnection, source: str, project_id: int, project: str, base_url: str | None = None) -> dict:
+    """The answer of the source: an item per document with an approved version, and the identifiers; each document
+    links its page on the hub's web when the hub knows its public URL (``base_url``)."""
     settings = await store.project_settings(conn, project_id, project)
+    page = (base_url, project) if base_url else None
     items = []
     for row in await store.approved_documents(conn, project_id):
         version = await store.version(conn, row, row.approved_version)
-        items.append(document_item(source, row, await store.snapshot(conn, version)))
+        items.append(document_item(source, row, await store.snapshot(conn, version), page))
     return {"items": items, "identifiers": identifiers(settings.template)}
 
 
 async def kg_source(params: dict, context: CoreContext) -> dict:
-    """The contribution ``documents``: ``params`` names the source and the project (``evo_agents.hub.kg_sources``)."""
+    """The contribution ``documents``: ``params`` names the source and the project (``evo_agents.hub.kg_sources``);
+    the hub's config, when the call carries it, gives the public URL its documents' pages are at."""
     if context.engine is None or context.project_id is None:
         return {"items": [], "identifiers": []}
+    base_url = getattr(context.config, "public_url", None)
+    base_url = base_url if isinstance(base_url, str) else None
     async with context.engine.begin() as conn:
-        return await read(conn, params["source"], context.project_id, context.project or params["project"])
+        project = context.project or params["project"]
+        return await read(conn, params["source"], context.project_id, project, base_url)
 
 
-__all__ = ["document_item", "identifiers", "kg_source", "mention_pattern", "read"]
+__all__ = ["document_item", "document_url", "identifiers", "kg_source", "mention_pattern", "read"]

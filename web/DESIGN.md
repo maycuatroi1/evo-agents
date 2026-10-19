@@ -258,6 +258,9 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | The hub's branding; its features, on or off | `Palette`; `ToggleRight` |
 | Plugins, the store and a project's; a plugin enabled in a project; disabled there; a task run, a task a plugin handed an agent type | `Puzzle`; `Plug`; `Unplug`; `Puzzle` |
 | A plugin's tier: isolated, core; a core plugin of the hub's image; a page's sandbox | `Box`, `Cpu`; `PackageCheck`; `ShieldCheck` |
+| SRS, a project's BA documents; Import Markdown; a version's review; a document's comments; an item's page | `FileText`; `Upload`; `ClipboardCheck`; `MessageSquareText`; `ArrowUpRight` |
+| An SRS item's kind: section, use case, business rule, screen, NFR, common rule, glossary, approval page, revision history | `Heading`, `Route`, `Scale`, `AppWindow`, `Gauge`, `BookCheck`, `BookA`, `Signature`, `History` |
+| An SRS version: draft, in review, approved, superseded; an item added, changed, removed, moved | `CircleDashed`, `Eye`, `CircleCheck`, `CircleMinus`; `Plus`, `PencilLine`, `Minus`, `MoveRight` |
 | A permission a plugin asks for; an upgrade waiting; the trusted publishers | `KeyRound`; `ArrowUpCircle`; `BadgeCheck` |
 | Sidebar toggle | `PanelLeft` |
 | Done, failed, lost, cancelled | `CircleCheck`, `CircleX`, `Unplug`, `Ban` |
@@ -1304,6 +1307,32 @@ Shared pieces built on them:
     session and `X-Evo-Plugin: <plugin>`, which the hub checks against the plugin's grant too, and refuses the rest with
     `not_granted` before the hub is asked; a read that finds the plugin off takes its page away. It posts the viewer's
     theme, so a page can follow light and dark. A plugin's page draws itself: this file binds the frame around it, not what it holds.
+- `components/srs`, the native pages of the core plugin srs (plan srs-tasks-plugins; docs/plugins.md, Core plugins), under
+  `app/(app)/p/[project]/x/srs/` with a layout that calls `requirePlugin("srs", project, "documents")`, so a project
+  that has not enabled it has neither the SRS menu item (its manifest's page `documents`) nor the pages, as the API
+  answers 404. Its words are the `srs` namespace of both message files. The documents (`/documents`) are one `DataCard`
+  table: title over slug, kind, the approved and the latest version as a `v8` chip beside its state, who created it;
+  the tabs Documents and Import (writers) sit under the head, with Settings (the plugin's page in the project) and
+  Import Markdown in the actions. A document's pages share `DocumentHead`: the title, the slug as a chip, the kind, one
+  line with template, visibility and the approved, in-review and latest versions, Compare and Export (a `.md` the
+  browser saves), then the tabs Read, Versions, Review vN and Comments with the open threads counted. Read
+  (`/documents/{slug}?v=&s=&edit=`) shows the approved version unless a version is picked (a menu of links, not a
+  select), its headings as a tree in a 240 px column from lg (a dot in `review-solid` marks what changed since the
+  approved version; a disclosure on narrower screens), the open item in a card drawn by its kind (a use case as facts,
+  its Activity flow as a table whose codes link, its business rules and screens; a table row as its cells), and the
+  version, its checks and the open threads in an 18 rem column from xl. A writer edits an item of the latest version in
+  place, which saves the next version as a draft; a 409 keeps the editor open with the other writer's text above it,
+  to merge by hand and save on the newer version. A draft carries a banner with Submit for review, which says the
+  problems that refuse it. An item's page (`/items/{code}`) heads with the code as a chip before the h1, the kind and
+  the version's state, a `review` banner when a newer version changes it, its threads, and the Traceability card read
+  from the knowledge graph (tasks, plan steps, commits and pull requests, tests; the build it read, or why there is
+  none). The review (`/versions/{n}`) shows the approval slots of the policy in the effective config, the reviewer's
+  form (Approve or Request changes, which needs a note) or why the visitor cannot review (a reader, an author of a
+  version since the approved one, admins too), what approving approves, the checks and the review history. Compare
+  (`/compare?from=&to=`) counts the items that changed in one `MetricStrip` and draws each item's lines as a plan's
+  diff does, unified or side by side from md. Import (`/x/srs/import`, a page without a menu item) previews the hub's
+  dry run (counts, problems with their lines, what a next version adds, changes and drops, the outline) before Import,
+  which a problem in a code refuses. Readers see a note that they only read, and no control that writes.
 - `components/data/markdown.tsx` (`SafeMarkdown`, re-exported from `components/memories/markdown.tsx`): Markdown written
   by people and agents (memory bodies, decisions, chat messages) through react-markdown without
   raw HTML: tags show as text, only listed elements render, links keep http(s), mailto and anchors, images are

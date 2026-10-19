@@ -14,7 +14,9 @@ template imports as a document or as its next version, and a version exports as 
 codes.
 
 The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
-readers read, writers write, admins drop coded items. ``evo-agents hub srs list|show|import|export|submit|approve``
+readers read, writers write, admins drop coded items. The hub's web shows them on the plugin's native pages
+(``PAGES``): the documents, a document's contents with each section read and edited in place, an item's page with
+the trace the knowledge graph holds, the versions, the comparison of two versions, the review and the comments. ``evo-agents hub srs list|show|import|export|submit|approve``
 is their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migration 0046), every row of a document
 carrying its label, the project's by default. The version of each document approved last is a source of the project's
 knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the ids a mention of their
@@ -89,6 +91,14 @@ TABLES = (
     ("srs_comments", "Comments on a document, a version or an item"),
 )
 
+# The native pages of the hub's web (web/src/app/(app)/p/[project]/x/srs, web/src/components/srs): the documents,
+# with a document's contents, items, versions, comparisons and reviews under it, in the project's menu; the import,
+# reached from the documents.
+PAGES = {
+    "documents": {"title": "SRS", "icon": "file-text", "description": "The project's BA documents"},
+    "import": {"title": "Import SRS", "icon": "file-text", "menu": False},
+}
+
 MANIFEST = {
     "id": "srs",
     "version": "1.0.0",
@@ -105,5 +115,6 @@ MANIFEST = {
             {"name": "documents", "title": "The approved version of each document", "python": f"{KG}:kg_source"}
         ],
         "tables": [{"name": name, "title": title} for name, title in TABLES],
+        "pages": [{"name": name, **page} for name, page in PAGES.items()],
     },
 }
