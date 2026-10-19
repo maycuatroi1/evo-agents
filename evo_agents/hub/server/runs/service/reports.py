@@ -1,6 +1,7 @@
-"""What a worker reports: its heartbeat (POST /v1/worker/heartbeat), which records the machine, extends the leases
-of the runs it holds and answers what to do with each, the worker's settings and, for a daemon that runs them, the
-runtimes of the plugins its owner accepted (``plugin_runtimes.offered``); and the move of a run it holds (POST
+"""What a worker reports: its heartbeat (POST /v1/worker/heartbeat), which records the machine, the commit its daemon
+runs and what the daemon found of updating itself, extends the leases of the runs it holds and answers what to do
+with each, the worker's settings (its version lock among them) and, for a daemon that runs them, the runtimes of the
+plugins its owner accepted (``plugin_runtimes.offered``); and the move of a run it holds (POST
 /v1/worker/runs/{id}/state), checked against the transition table with the worker as actor."""
 
 from __future__ import annotations
@@ -10,7 +11,7 @@ from dataclasses import replace
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, case, exists, func, or_, select, update
+from sqlalchemy import and_, case, exists, func, null, or_, select, update
 
 from evo_agents.hub import runs, tables
 from evo_agents.hub.server.run_state import evidence, move_run, run_step, settle
@@ -38,6 +39,22 @@ def _steady_since():
     w = tables.workers
     late = or_(w.c.steady_since.is_(None), w.c.last_heartbeat_at.is_(None), ~beating(w))
     return case((late, func.now()), else_=w.c.steady_since)
+
+
+def _self_update(body: HeartbeatRequest) -> dict:
+    """What a heartbeat sets of the daemon's install: the commit it runs and what it found of updating itself, each as
+    this heartbeat says, none clearing it; self_update_since moves to now when the state differs from the one before
+    (which the SET reads as the row was), and stays otherwise."""
+    w = tables.workers
+    report = body.self_update
+    if report is None:
+        return {"agent_commit": body.agent_commit, "self_update": null(), "self_update_since": None}  # SQL NULL
+    same = w.c.self_update["state"].astext == report.state
+    return {
+        "agent_commit": body.agent_commit,
+        "self_update": report.model_dump(mode="json"),
+        "self_update_since": case((same, func.coalesce(w.c.self_update_since, func.now())), else_=func.now()),
+    }
 
 
 def _extend(worker_id: int, run_ids: list[int], lease: timedelta):
@@ -99,9 +116,10 @@ async def record_heartbeat(
                 agent_version=func.coalesce(body.agent_version, w.c.agent_version),
                 run_kinds=None if body.run_kinds is None else [k for k in body.run_kinds if k in runs.RUN_KINDS],
                 features=None if body.features is None else [k for k in body.features if k in runs.HUB_FEATURES],
+                **_self_update(body),
             )
             .where(w.c.id == worker_id)
-            .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins)
+            .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
         )
         settings = WorkerSettings(**held.one()._mapping)
         declared = []

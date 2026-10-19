@@ -6,7 +6,7 @@
     "evo_agents/hub/run_cli.py": 1003,
     "evo_agents/hub/server/changes.py": 1568,
     "evo_agents/hub/server/curator.py": 1375,
-    "evo_agents/hub/tables.py": 1281,
+    "evo_agents/hub/tables.py": 1213,
     "evo_agents/worker/cli.py": 1255,
     "evo_agents/worker/interactive.py": 1378
   },

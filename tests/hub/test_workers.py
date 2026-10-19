@@ -18,7 +18,11 @@ and a machine token gets 403 there.
 
 And step 1 of the worker-settings-web plan: only the owner, from a web session or with their machine token, changes
 a worker's slots (up to 16), labels and name with PATCH /v1/workers/{id}; each change is audited, the values it has
-change nothing, and the next heartbeat answer carries them."""
+change nothing, and the next heartbeat answer carries them.
+
+And step 1 of the auto-update-nightly plan: the owner locks a worker's version the same way, the heartbeat answer
+carries the lock, and the hub keeps and shows the commit a daemon runs and what it found of updating itself, which a
+daemon that sends neither leaves empty."""
 
 import hashlib
 import hmac
@@ -700,11 +704,12 @@ def test_a_heartbeat_answer_carries_the_settings_the_owner_patched(client, hub, 
         assert response.status_code == 200, response.text
         return response.json()
 
-    assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"], "plugins": []}
+    settings = {"plugins": [], "version_locked": False}
+    assert beat(2)["settings"] == {"slots": 2, "name": "mac-mini", "labels": ["mac"], **settings}
     patched = client.patch(f"/v1/workers/{worker_id}", json={"slots": 6, "name": "big-mac"}, headers=hub["owner"])
     assert patched.status_code == 200, patched.text
     first = beat(2)  # what the daemon held before it read the answer
-    assert first["settings"] == {"slots": 6, "name": "big-mac", "labels": ["mac"], "plugins": []}
+    assert first["settings"] == {"slots": 6, "name": "big-mac", "labels": ["mac"], **settings}
     assert first["drain"] is False and first["runs"] == []
     assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 2
     beat(6)
@@ -713,6 +718,164 @@ def test_a_heartbeat_answer_carries_the_settings_the_owner_patched(client, hub, 
     client.patch(f"/v1/workers/{worker_id}", json={"slots": 1}, headers=hub["owner"])
     assert beat(6)["settings"]["slots"] == 1
     assert client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()["free_slots"] == 1
+
+
+# The version lock, and what a daemon says of its install and of updating itself
+
+COMMIT = "ca3e9af" + "0" * 33
+NIGHTLY = "f" * 40
+
+
+def locked_of(db, worker_id: int) -> bool:
+    workers = tables.workers
+    return sql(db, select(workers.c.version_locked).where(workers.c.id == worker_id))[0][0]
+
+
+def test_the_owner_locks_the_worker_version_with_a_patch_audited_once_and_the_heartbeat_answer_carries_the_lock(
+    client, hub, hub_db, github
+):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+    # every worker starts unlocked: one that joined, and one its owner registered with a machine token
+    assert answer["worker"]["version_locked"] is False
+    body = {"name": "build-box", "projects": ["demo"], **HOST}
+    registered = client.post("/v1/workers", json=body, headers=hub["owner"])
+    assert registered.status_code == 201 and registered.json()["worker"]["version_locked"] is False
+
+    def beat() -> dict:
+        response = client.post("/v1/worker/heartbeat", json={"free_slots": 1}, headers=headers)
+        assert response.status_code == 200, response.text
+        return response.json()["settings"]
+
+    assert beat()["version_locked"] is False
+
+    locked = client.patch(path, json={"version_locked": True}, headers=owner_web)
+    assert locked.status_code == 200, locked.text
+    assert locked.json()["version_locked"] is True and locked_of(hub_db, worker_id) is True
+    target = f"worker:{worker_id} name=mac-mini owner={OWNER}"
+    assert audit_rows(hub_db, "worker.update") == [(f"{target} version_locked=false->true", OWNER)]
+    assert beat()["version_locked"] is True
+    assert client.get(path, headers=hub["owner"]).json()["version_locked"] is True
+    shown = {w["id"]: w["version_locked"] for w in client.get("/v1/workers", headers=hub["owner"]).json()}
+    assert shown == {worker_id: True, registered.json()["worker"]["id"]: False}
+
+    # the lock it has already changes nothing and writes no audit row, from either credential
+    for credential in (owner_web, hub["owner"]):
+        same = client.patch(path, json={"version_locked": True, "slots": 1}, headers=credential)
+        assert same.status_code == 200 and same.json()["version_locked"] is True, same.text
+    assert len(audit_rows(hub_db, "worker.update")) == 1
+
+    # the owner's machine token unlocks it, with another setting in the same change
+    unlocked = client.patch(path, json={"version_locked": False, "slots": 2}, headers=hub["owner"])
+    assert unlocked.status_code == 200, unlocked.text
+    assert (unlocked.json()["version_locked"], unlocked.json()["slots"]) == (False, 2)
+    assert (f"{target} slots=1->2 version_locked=true->false", OWNER) in audit_rows(hub_db, "worker.update")
+    assert beat() == {"slots": 2, "name": "mac-mini", "labels": [], "plugins": [], "version_locked": False}
+
+
+def test_a_patch_of_the_version_lock_is_refused_to_all_but_its_owner_and_for_bad_values(client, hub, hub_db, github):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id = answer["worker"]["id"]
+    path = f"/v1/workers/{worker_id}"
+    owner_web = web_writes(client, github, OWNER, OWNER_ID)
+    lock = {"version_locked": True}
+
+    for headers in (hub["admin"], web_writes(client, github, ADMIN, ADMIN_ID)):
+        refused = client.patch(path, json=lock, headers=headers)
+        assert refused.status_code == 403 and f"only {OWNER}, who owns worker {worker_id}" in refused.json()["message"]
+    for headers in (hub["other"], web_writes(client, github, OTHER, OTHER_ID)):
+        assert client.patch(path, json=lock, headers=headers).status_code == 404
+    assert client.patch(path, json=lock, headers=worker_headers(answer["token"])).status_code == 403
+    for body in ({"version_locked": "maybe"}, {"version_locked": None}, {"version_locked": [True]}):
+        refused = client.patch(path, json=body, headers=owner_web)
+        assert refused.status_code == 422, (body, refused.text)
+    assert locked_of(hub_db, worker_id) is False
+    assert audit_rows(hub_db, "worker.update") == []
+
+    assert client.post(f"{path}/revoke", headers=hub["owner"]).status_code == 200
+    gone = client.patch(path, json=lock, headers=owner_web)
+    assert gone.status_code == 409 and "revoked" in gone.json()["message"]
+    assert locked_of(hub_db, worker_id) is False
+
+
+def test_a_heartbeat_keeps_the_commit_and_the_self_update_state_and_the_worker_views_show_them(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    path, w = f"/v1/workers/{worker_id}", tables.workers
+    assert (answer["worker"]["agent_commit"], answer["worker"]["self_update"]) == (None, None)
+
+    def beat(**body) -> None:
+        response = client.post("/v1/worker/heartbeat", json={"free_slots": 1, **body}, headers=headers)
+        assert response.status_code == 200, response.text
+
+    def shown() -> dict:
+        one = client.get(path, headers=hub["owner"]).json()
+        listed = [x for x in client.get("/v1/workers", headers=hub["owner"]).json() if x["id"] == worker_id]
+        assert listed == [one]
+        return one
+
+    checked = "2026-10-19T10:00:00+00:00"
+    waiting = {"state": "waiting", "nightly_commit": NIGHTLY, "checked_at": checked}
+    beat(agent_commit=COMMIT, self_update=waiting)
+    worker = shown()
+    assert worker["agent_commit"] == COMMIT
+    report = worker["self_update"]
+    since = report.pop("since")
+    assert report == {**waiting, "checked_at": "2026-10-19T10:00:00Z", "reason": None, "error": None, "error_at": None}
+    assert since is not None
+
+    # the same state keeps since, however many heartbeats say it; another state moves it to now
+    hour_ago = datetime.now(UTC) - timedelta(hours=1)
+    sql(hub_db, update(w).values(self_update_since=hour_ago).where(w.c.id == worker_id))
+    failed = {**waiting, "error": "uv tool install failed (2): no network", "error_at": "2026-10-19T10:05:00+00:00"}
+    beat(agent_commit=COMMIT, self_update=failed)
+    report = shown()["self_update"]
+    assert datetime.fromisoformat(report["since"]) == hour_ago
+    assert (report["error"], report["error_at"]) == (failed["error"], "2026-10-19T10:05:00Z")
+    beat(agent_commit=COMMIT, self_update={"state": "unsupported", "reason": "an editable install of evo-ak"})
+    report = shown()["self_update"]
+    assert (report["state"], report["reason"], report["error"]) == (
+        "unsupported",
+        "an editable install of evo-ak",
+        None,
+    )
+    assert datetime.fromisoformat(report["since"]) > hour_ago
+
+    # a state this hub does not know is kept as named; a commit of a SHA-256 repository is taken
+    beat(agent_commit="a" * 64, self_update={"state": "paused_by_owner"})
+    worker = shown()
+    assert (worker["agent_commit"], worker["self_update"]["state"]) == ("a" * 64, "paused_by_owner")
+
+    # a heartbeat that says neither, as an older daemon's, clears both
+    beat()
+    worker = shown()
+    assert (worker["agent_commit"], worker["self_update"]) == (None, None)
+    kept = sql(hub_db, select(w.c.agent_commit, w.c.self_update, w.c.self_update_since).where(w.c.id == worker_id))
+    assert kept == [(None, None, None)]
+
+
+def test_a_heartbeat_with_a_malformed_commit_or_self_update_is_422_and_changes_nothing(client, hub, hub_db):
+    answer = joined(client, paired(client, hub["owner"])["code"])
+    worker_id, headers = answer["worker"]["id"], worker_headers(answer["token"])
+    good = {"free_slots": 1, "agent_commit": COMMIT, "self_update": {"state": "current", "nightly_commit": COMMIT}}
+    assert client.post("/v1/worker/heartbeat", json=good, headers=headers).status_code == 200
+    for bad in (
+        {"agent_commit": "ca3e9af"},
+        {"agent_commit": COMMIT.upper()},
+        {"self_update": {}},
+        {"self_update": {"state": "Not A State"}},
+        {"self_update": {"state": "unsupported", "reason": ""}},
+        {"self_update": {"state": "unsupported", "reason": "r" * 501}},
+        {"self_update": {"state": "waiting", "error": "e" * 2001}},
+        {"self_update": {"state": "waiting", "nightly_commit": "nightly"}},
+        {"self_update": {"state": "waiting", "error_at": "yesterday"}},
+    ):
+        refused = client.post("/v1/worker/heartbeat", json={"free_slots": 1, **bad}, headers=headers)
+        assert refused.status_code == 422, (bad, refused.text)
+    worker = client.get(f"/v1/workers/{worker_id}", headers=hub["owner"]).json()
+    assert (worker["agent_commit"], worker["self_update"]["state"]) == (COMMIT, "current")
 
 
 def seed_plan(db, project: str = "demo") -> dict:

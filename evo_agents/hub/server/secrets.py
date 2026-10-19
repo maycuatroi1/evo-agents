@@ -59,7 +59,7 @@ from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.sealing import Sealer, secret_aad
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.server.workers import LINE, WORKER_NAME
+from evo_agents.hub.server.worker_models import LINE, WORKER_NAME
 
 log = logging.getLogger(__name__)
 

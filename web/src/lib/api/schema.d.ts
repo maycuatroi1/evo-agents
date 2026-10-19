@@ -1265,8 +1265,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels, name or plugins: its owner only, from a web session or with their machine
-         *     token.
+         * @description Change the worker's slots, labels, name, plugins or version lock: its owner only, from a web session or with
+         *     their machine token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -8111,6 +8111,13 @@ export interface components {
              * @description what the daemon does besides its kinds of run: session_per_step, a plan run with a session for each step; author_decisions, an author run whose agent asks decisions and waits for the answers of a turn; agent_profiles, a run whose agent profile limits tool, skill or model, or has instructions, applied in the agent session; plugin_runtimes, a run of a plugin's runtime through its adapter of ACP; environments, a run whose agent runs in a container of a plugin's environment. One that says none takes no such run, and its author run's agent asks in the chat alone. A feature this hub does not know is left out
              */
             features?: string[] | null;
+            /**
+             * Agent Commit
+             * @description the commit of evo-agents the daemon's install was built from; none for an install that names no commit (PyPI, a local checkout) and from an older daemon. Each heartbeat sets what the hub shows
+             */
+            agent_commit?: string | null;
+            /** @description what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the hub shows, so a daemon sends it every time once it has one */
+            self_update?: components["schemas"]["SelfUpdateReport"] | null;
         };
         /** HeldBy */
         HeldBy: {
@@ -12842,6 +12849,42 @@ export interface components {
             created: boolean;
         };
         /**
+         * SelfUpdateReport
+         * @description What the daemon last found of updating itself to the tag nightly of evo-agents.
+         */
+        SelfUpdateReport: {
+            /**
+             * State
+             * @description current, it runs the commit nightly points to; waiting, nightly points to another one and it waits until every daemon of its install is idle; updating, it is installing that commit and restarts on it; locked, its owner locked the worker's version; unsupported, it cannot update itself (reason says why). A state this hub does not know is kept as named (runs.SELF_UPDATE_STATES)
+             */
+            state: string;
+            /**
+             * Reason
+             * @description why, with unsupported above all
+             */
+            reason?: string | null;
+            /**
+             * Nightly Commit
+             * @description the commit nightly pointed to when the daemon last read it
+             */
+            nightly_commit?: string | null;
+            /**
+             * Checked At
+             * @description when the daemon last read where nightly points
+             */
+            checked_at?: string | null;
+            /**
+             * Error
+             * @description the last attempt that failed: reading the tag, installing, or the new install not starting
+             */
+            error?: string | null;
+            /**
+             * Error At
+             * @description when that attempt failed
+             */
+            error_at?: string | null;
+        };
+        /**
          * SessionDigest
          * @description The digest of one session, as ``evo_agents.hub.digest.build`` makes it.
          */
@@ -15544,6 +15587,11 @@ export interface components {
             arch: string;
             /** Agent Version */
             agent_version: string;
+            /**
+             * Agent Commit
+             * @description the commit of evo-agents its daemon's install was built from, as its last heartbeat said; null when that heartbeat named none: an older daemon, or an install from PyPI or a local checkout
+             */
+            agent_commit: string | null;
             /** Slots */
             slots: number;
             /** Labels */
@@ -15553,6 +15601,13 @@ export interface components {
              * @description the plugins whose runtimes and environments it takes, as its owner set them
              */
             plugins: string[];
+            /**
+             * Version Locked
+             * @description its owner locked its version: its daemon stays on the evo-agents it runs and does not update itself to the tag nightly
+             */
+            version_locked: boolean;
+            /** @description what its daemon last said of updating itself to the tag nightly; null when its last heartbeat said nothing of it, as an older daemon does */
+            self_update: components["schemas"]["WorkerSelfUpdate"] | null;
             /** Projects */
             projects: string[];
             /**
@@ -15722,6 +15777,47 @@ export interface components {
              */
             allow_web_terminal: boolean;
         };
+        /**
+         * WorkerSelfUpdate
+         * @description What a worker's daemon last said of updating itself to the tag nightly, as the hub keeps it.
+         */
+        WorkerSelfUpdate: {
+            /**
+             * State
+             * @description current, it runs the commit nightly points to; waiting, nightly points to another one and it waits until every daemon of its install is idle; updating, it is installing that commit and restarts on it; locked, its owner locked the worker's version; unsupported, it cannot update itself (reason says why). A state this hub does not know is kept as named (runs.SELF_UPDATE_STATES)
+             */
+            state: string;
+            /**
+             * Reason
+             * @description why, with unsupported above all
+             */
+            reason?: string | null;
+            /**
+             * Nightly Commit
+             * @description the commit nightly pointed to when the daemon last read it
+             */
+            nightly_commit?: string | null;
+            /**
+             * Checked At
+             * @description when the daemon last read where nightly points
+             */
+            checked_at?: string | null;
+            /**
+             * Error
+             * @description the last attempt that failed: reading the tag, installing, or the new install not starting
+             */
+            error?: string | null;
+            /**
+             * Error At
+             * @description when that attempt failed
+             */
+            error_at?: string | null;
+            /**
+             * Since
+             * @description when the hub first got this state, in an unbroken line of heartbeats that said it: how long the daemon has been waiting, for one
+             */
+            since: string | null;
+        };
         /** WorkerSettings */
         WorkerSettings: {
             /**
@@ -15738,6 +15834,11 @@ export interface components {
              * @description the plugins whose runtimes and environments the worker takes; a hub before 0039 sends none
              */
             plugins?: string[];
+            /**
+             * Version Locked
+             * @description its owner locked its version: the daemon stays on the evo-agents it runs and does not update itself; a hub before 0048 sends none, and a daemon that got none does not update itself either
+             */
+            version_locked: boolean;
         };
         /**
          * WorkerUpdate
@@ -15761,6 +15862,11 @@ export interface components {
              * @description the plugins whose runtimes and environments it takes; [] for none
              */
             plugins?: string[] | null;
+            /**
+             * Version Locked
+             * @description true: its daemon stays on the evo-agents it runs; false: it updates itself to the tag nightly again, once idle
+             */
+            version_locked?: boolean | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
