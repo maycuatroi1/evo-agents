@@ -11,9 +11,10 @@ gets the prompt verbatim and no question tool; and the agent's commands in chats
 post|react|create|mention``) work inside a chat run, a plan run too, and refuse outside one.
 
 Criterion a2 of the chat-runs-start-fast plan: a push origin refuses at the end of a chat run fails the run, with git's
-words in its error (the hub says it in the thread), and leaves the commit on chat/<first run> in the worktree, which
-the next run of the session goes on in and pushes. What that next run asks of the origins before its agent starts is
-in ``tests.worker.test_preflight``."""
+words in its error (the hub says it in the thread), cause push_declined for a hook that declined it (the hub then goes
+on in the session at the next message, ``tests.hub.test_chat_runs``) and the usage of its turns, and leaves the commit
+on chat/<first run> in the worktree, which the next run of the session goes on in and pushes. What that next run asks
+of the origins before its agent starts is in ``tests.worker.test_preflight``."""
 
 from __future__ import annotations
 
@@ -161,7 +162,11 @@ def test_a_push_origin_refuses_fails_the_chat_run_and_the_next_run_of_its_sessio
     hook.chmod(0o755)
     machine.scenarios(
         {
-            "chat": [{"write": {"alpha/a.txt": "one\n"}}, {"say": "Wrote a.txt."}],
+            "chat": [
+                {"write": {"alpha/a.txt": "one\n"}},
+                {"usage": {"total_cost_usd": 0.25}},
+                {"say": "Wrote a.txt."},
+            ],
             "chat/resume": [{"say": "Pushed a.txt this time."}],
         }
     )
@@ -177,6 +182,7 @@ def test_a_push_origin_refuses_fails_the_chat_run_and_the_next_run_of_its_sessio
         found.update(
             error=hub.runs[first]["error"],
             cause=hub.runs[first].get("failure_cause"),
+            usage=hub.runs[first].get("usage"),
             on=git("symbolic-ref", "--short", "HEAD", cwd=worktree),
             subject=git("log", "--format=%s", "-1", cwd=worktree),
             commit=git("rev-parse", "HEAD", cwd=worktree),
@@ -196,7 +202,9 @@ def test_a_push_origin_refuses_fails_the_chat_run_and_the_next_run_of_its_sessio
     assert chat_posts(hub, first) == ["Wrote a.txt."], "the reply went to the thread before the push"
     assert found["error"].startswith(f"git push of alpha to {branch} failed: "), found["error"]
     assert "no write access to alpha" in found["error"]
-    assert found["cause"] is None
+    assert found["error"].endswith("(origin declined it: pre-receive hook declined)"), found["error"]
+    assert found["cause"] == "push_declined", "the hub goes on in the session at the next message (chat_runs.goes_on)"
+    assert (found["usage"] or {}).get("total_cost_usd") == 0.25, "the failed run's turns count in the chat's budget"
     assert found["pushed"] is None and found["status"] == ""
     assert found["on"] == branch and found["subject"].startswith(f"run #{first}: ")
     head = machine.origin_rev("alpha", f"refs/heads/{branch}")

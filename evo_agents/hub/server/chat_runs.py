@@ -6,11 +6,12 @@ follow the run.
 (``chat_agents``): the run of the profile's agent for the person at the origin of the chain. Refused, with why, when
 that person is not a writer on the profile's project, when the chat's budget is spent, or when no worker of the person
 can take it now. Each (thread, agent, person) is one session: a run of it that is queued or held takes the message in
-its inbox; one that ended done is gone on from by a new run, pinned to its worker, in its session, with the message in
-its inbox; else a new session starts on the person's worker the profile allows, with the most of the project's repos
-checked out first, on the branch ``chat/<run>``. The profile of an agent type that routes its chat runs to its
-``run_as`` (``chat_route``) takes the worker of that member instead, who must hold writer on the project, and its run's
-row is dispatched by them; the person stays the origin the hub's chat code acts for (``ChatRun.dispatcher_id``).
+its inbox; one that ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by
+a new run, pinned to its worker, in its session, with the message in its inbox; else a new session starts on the
+person's worker the profile allows, with the most of the project's repos checked out first, on the branch
+``chat/<run>``. The profile of an agent type that routes its chat runs to its ``run_as`` (``chat_route``) takes the
+worker of that member instead, who must hold writer on the project, and its run's row is dispatched by them; the person
+stays the origin the hub's chat code acts for (``ChatRun.dispatcher_id``).
 
 A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) put the agent's reaction on the message that
 started it by rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
@@ -176,6 +177,7 @@ def _sessions(chat_id: int, root_id: int, dispatcher_id: int, profile_id: int | 
             r.c.worker_id,
             r.c.session_id,
             r.c.usage,
+            r.c.failure_cause,
             w.c.revoked_at.is_not(None).label("revoked"),
             m.c.author_user_id.label("author_id"),
         )
@@ -262,7 +264,8 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand, left: float) -> in
     }
     new_id = (await conn.execute(_continue_run(previous.id, values))).scalar_one()
     await _to_inbox(conn, new_id, hand)
-    shown = f"goes on in the session of run #{previous.id}, as {hand.author} wrote in the thread"
+    failed = f" (failed: {previous.failure_cause})" if previous.state == "failed" else ""
+    shown = f"goes on in the session of run #{previous.id}{failed}, as {hand.author} wrote in the thread"
     await write_event(conn, new_id, {"text": shown, "resume_of_run_id": previous.id})
     await notify_queued(conn, new_id)
     return new_id
@@ -396,9 +399,9 @@ async def _run_as_refusal(conn: AsyncConnection, hand: Hand) -> str | None:
 
 async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str | None]:
     """(the run the mention reached, None) or (None, why it reached none), in the caller's transaction: the session's
-    run that is queued or held takes the message in its inbox; one that ended done is gone on from; else a new
-    session starts on a worker of the dispatcher, or of the run_as of the agent's type when it routes its chat runs
-    there (see the module's docstring)."""
+    run that is queued or held takes the message in its inbox; one that ended done, or failed because the remote
+    declined its push, is gone on from; else a new session starts on a worker of the dispatcher, or of the run_as of
+    the agent's type when it routes its chat runs there (see the module's docstring)."""
     refusal = await _writer_refusal(conn, hand)
     if refusal is not None:
         return None, refusal
@@ -418,7 +421,12 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
         new_id = await go_on_parked(conn, session.id, f"as {hand.author} wrote in the thread")
         await _to_inbox(conn, new_id, hand)
         return new_id, None
-    if session is not None and session.state == "done" and session.session_id and not session.revoked:
+    if (
+        session is not None
+        and rules.goes_on(session.state, session.failure_cause)
+        and session.session_id
+        and not session.revoked
+    ):
         return await _go_on(conn, session, hand, budget - spent), None
     worker, why = await pick_worker(conn, hand)
     if worker is None:

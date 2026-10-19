@@ -107,6 +107,9 @@ FAILURE_CAUSES = (
     "rate_limit",  # the agent's account hit its usage limit and the run could not move to another one
     "account_auth",  # the agent's account failed to authenticate (its token refused) and the run could not move
     "environment",  # preflight: the worker cannot run the agent in the environment its claim names (no container engine)
+    # the remote declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset),
+    # not for its credential nor because the branch moved on: the run's commits are still in its worktree
+    "push_declined",
 )
 PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not

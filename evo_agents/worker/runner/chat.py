@@ -10,7 +10,9 @@ too, but asks no origin before its agent starts: the fetch of each worktree's ch
 is the check that git reads it (``BranchWork.fetch_adopted``), and only the push at its end asks git to push; a repo
 whose worktree is no longer here gets a new one, its origin asked first as on the first turn. A push origin refuses
 fails the run, whose error the hub says in the thread, and leaves the commit on the run's branch in the worktree, for
-the run that goes on in it to push. The agent works in EVO_RUN_KIND
+the run that goes on in it to push; one origin declined by a rule of its own (a hook, a protected branch, a ruleset)
+fails it with cause push_declined, after which the hub goes on in the session at the next message of the thread, as
+after a run done (``chat_runs.goes_on``). The agent works in EVO_RUN_KIND
 ``chat``, its turn's last message going to the hub as its reply in the thread (``conversation.post_last_message``);
 the messages people wrote to it in the thread while it worked start another turn in the same session
 (``chat_runs.REPLY_PROMPT``). When no message is left, the run ends: the daemon commits what the agent left in each
@@ -100,10 +102,13 @@ class ChatRun:
         await self.conversation.ensure_running()
         await run.reports.report("verifying")
         run.check()
-        diffstat = await self.work.push_repos()
-        await run.reports.end(
-            "done", diffstat=diffstat, summary=run.summary, usage=run.outcome.usage if run.outcome else None
-        )
+        usage = run.outcome.usage if run.outcome else None
+        try:
+            diffstat = await self.work.push_repos()
+        except RunFailed as exc:  # its turns cost what they cost: the chat's budget and the next run count it
+            exc.fields.setdefault("usage", usage)
+            raise
+        await run.reports.end("done", diffstat=diffstat, summary=run.summary, usage=usage)
 
     # The turns
 

@@ -358,6 +358,85 @@ def test_a_chat_run_done_with_messages_untaken_resumes_its_session_with_them(cli
     assert held == [(next_id,)]
 
 
+DECLINED = (
+    "git push of evo-agents to chat/{id} failed: git push failed (1): remote: no write access error: failed to push "
+    "some refs to 'https://github.com/maycuatroi1/evo-agents.git' (origin declined it: pre-receive hook declined)"
+)
+
+
+def test_a_chat_run_whose_push_origin_declined_goes_on_in_its_session_and_another_failure_starts_a_new_one(
+    client, hub, hub_db
+):
+    """Criterion a2 of chat-runs-start-fast: the commits of a run whose push the remote declined wait on chat/<first
+    run> in its worktree, so the next message of the session goes on in it, on its worker, for that run to push them;
+    a run that failed of any other cause leaves the next message a new session."""
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"], people=[OTHER])
+    mention, spec = started(client, hub, worker, chat)
+    first = spec["id"]
+    error = DECLINED.format(id=first)
+    moved(
+        client,
+        worker,
+        first,
+        "verifying",
+        "failed",
+        error=error,
+        failure_cause="push_declined",
+        usage={"total_cost_usd": 0.4},
+    )
+    assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(CROSS, ["reviewer"])]
+    said = thread(client, hub["owner"], chat["id"], mention["id"])[-1]
+    assert (said["author"]["kind"], said["body"]) == ("hub", f"Run #{first} of @reviewer failed: {error}")
+    assert len(chat_runs_of(hub_db)) == 1, "a failed run wakes nothing by itself"
+
+    # the next message goes on in the session, on its worker and branch, the session key unchanged
+    again = sent(client, hub["owner"], chat["id"], "@reviewer push it again, please", mention["id"])
+    ((_, _, _, _, owner_id), (second, state, resume_of, hop, by)) = chat_runs_of(hub_db)
+    assert (again["mentions"][0]["run_id"], state, resume_of, hop, by) == (second, "queued", first, 1, owner_id)
+    run = run_of(client, hub["owner"], second)
+    assert (run["pinned_worker_id"], run["session_id"], run["branch"], run["chat_message_id"]) == (
+        worker["id"],
+        "sess-1",
+        f"chat/{first}",
+        again["id"],
+    )
+    assert {entry["branch"] for entry in run["repos"]} == {f"chat/{first}"}
+    assert run["budget"]["max_usd"] == pytest.approx(5.0 - 0.4 + 0.4)  # what is left, plus the session's cost
+    goes_on = claim(client, worker)
+    assert (goes_on["id"], goes_on["resume_of_run_id"], goes_on["session_id"]) == (second, first, "sess-1")
+    assert goes_on["budget"]["spent_usd"] == pytest.approx(0.4)
+    held = client.post(f"/v1/worker/runs/{second}/inbox", json={}, headers=worker["headers"]).json()["messages"]
+    assert [item["text"].splitlines()[-1] for item in held] == ["@reviewer push it again, please"]
+
+    # another person's mention in the thread still starts a session of their own
+    theirs = chat_worker(client, hub["other"], "laptop")
+    other = sent(client, hub["other"], chat["id"], "@reviewer and mine", mention["id"])
+    mine = run_of(client, hub["other"], other["mentions"][0]["run_id"])
+    assert (mine["dispatched_by"], mine["pinned_worker_id"], mine["resume_of_run_id"]) == (OTHER, theirs["id"], None)
+
+    # a run of the session that fails of another cause leaves the next message a new session
+    moved(client, worker, second, "running", session_id="sess-1")
+    moved(client, worker, second, "failed", error="claude-code stopped at the run's time cap", failure_cause="time_cap")
+    fresh = sent(client, hub["owner"], chat["id"], "@reviewer once more", mention["id"])
+    run = run_of(client, hub["owner"], fresh["mentions"][0]["run_id"])
+    assert (run["resume_of_run_id"], run["session_id"], run["pinned_worker_id"]) == (None, None, worker["id"])
+    assert run["branch"] == f"chat/{run['id']}"
+
+
+def test_a_chat_run_that_failed_without_a_declined_push_starts_a_new_session(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = created(client, hub["owner"])
+    for cause in (None, "credentials", "checkout"):
+        mention, spec = started(client, hub, worker, chat)
+        report_body = {"error": "git push of evo-agents to chat/1 failed: no luck"}
+        moved(client, worker, spec["id"], "failed", **report_body, **({"failure_cause": cause} if cause else {}))
+        later = sent(client, hub["owner"], chat["id"], "@reviewer again", mention["id"])
+        run = run_of(client, hub["owner"], later["mentions"][0]["run_id"])
+        assert (run["resume_of_run_id"], run["branch"]) == (None, f"chat/{run['id']}"), cause
+        moved(client, worker, claim(client, worker)["id"], "running", "failed", error="stop here")
+
+
 def test_a_chat_reply_without_a_mention_wakes_the_session_in_a_chat_of_one_person_only(client, hub, hub_db):
     worker = chat_worker(client, hub["owner"], "studio", slots=2)
     alone = created(client, hub["owner"], title="Just me")

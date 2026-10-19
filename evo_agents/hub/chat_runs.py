@@ -13,6 +13,9 @@ run ends ``done`` with its agent's turn; it never waits, so no run holds a slot 
 agent's last message of its turn is its reply in the thread. A message to the agent in the thread while its run works
 goes to that run's inbox, and the worker hands it to the agent; one the run did not take before it ended wakes the
 session again. In a chat of one person, a message in a thread whose session is that person's wakes it without an @.
+A run that failed because the remote declined the push at its end (``GO_ON_AFTER``) is gone on from as one that ended
+done (``goes_on``): its commits wait on the session's branch in the worktree, for the next run to push. After any other
+failure, the next message opens a new session.
 
 The run's prompt is the hub's (``build_chat_prompt``): the rules, the chat and its members, the run's repos, a bounded
 snapshot of the chat (``snapshot``: the first message of the thread, at most THREAD_MESSAGES of the thread and
@@ -62,6 +65,9 @@ DRAFT_TITLE = "[Draft]"  # what the title of a chat run's pull request starts wi
 CUT_MARK = "[{left} older message(s) of the chat are left out of this prompt]"
 INBOX_TEXT = "{author} wrote in the thread (message #{id}):\n{body}"
 REPOS_BYTES = 3 * 1024
+# The failure causes (runs.FAILURE_CAUSES) of a chat run whose session the next message goes on in, as after one that
+# ended done: the remote declined the push at its end, and the commits are still on the session's branch.
+GO_ON_AFTER = ("push_declined",)
 
 POST_COMMAND = "evo-agents worker chat post"
 REACT_COMMAND = "evo-agents worker chat react"
@@ -90,6 +96,12 @@ def branch_of(root_run_id: int) -> str:
 
 def is_chat_branch(name: str | None) -> bool:
     return isinstance(name, str) and BRANCH.fullmatch(name) is not None
+
+
+def goes_on(state: str, failure_cause: str | None) -> bool:
+    """Whether the next message of a session goes on in it after its latest run ended ``state``, failed of
+    ``failure_cause``: after one done, or one that failed of a cause of GO_ON_AFTER."""
+    return state == "done" or (state == "failed" and failure_cause in GO_ON_AFTER)
 
 
 def run_budget(left_usd: float) -> dict:
