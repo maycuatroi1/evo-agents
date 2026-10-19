@@ -18,7 +18,8 @@ the runs, by cause (``review.environment_cause``); the runs that failed or were 
 reported (runs.failure_cause), else the one read in the error (``review.run_cause``); the commands run again and again
 across sessions; the turns of the person that correct the agent; the open items of the plans (tech_debt, debt,
 open_questions); the steps of active plans that have not moved for STUCK_DAYS; the runs, sessions and decisions of the
-span. Each entry names evidence a finding can cite as it is (``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned
+span; and what the worker on duty last said of keeping the project's graph fresh (``kg_sync_figures``), a sync that
+failed with its error. Each entry names evidence a finding can cite as it is (``session:ID:FIELD:INDEX``, ``run:ID:SEQ``). Learned
 skills waiting for review and the open items of reports live in files, not on the hub: the worker counts them in the
 review run's worktrees (``evo_agents.worker.run.ReviewRun``). A digest, a plan, and the runs of a plan, that the
 schedule's owner may not read through the project's hub sink are left out. The review run counts as one of the night's
@@ -406,6 +407,27 @@ async def compute_figures(conn: AsyncConnection, access: ProjectAccess, since: d
     }
 
 
+async def kg_sync_figures(conn: AsyncConnection, worker_id: int, project: str) -> dict | None:
+    """What the worker on duty last said of keeping the project's graph fresh (workers.kg_sync): when it looked, what
+    stopped it, each git source with its commit, how far behind it was, when it was read and pushed and the error of a
+    sync that failed, and how many failed; None when it said nothing of the project."""
+    w = tables.workers
+    row = (await conn.execute(select(w.c.name, w.c.kg_sync).where(w.c.id == worker_id))).one_or_none()
+    report = row.kg_sync if row is not None and isinstance(row.kg_sync, dict) else {}
+    entry = next((item for item in _list(report.get("projects")) if item.get("project") == project), None)
+    if entry is None:
+        return None
+    sources = [item for item in _list(entry.get("sources")) if isinstance(item, dict)]
+    failed = sum(1 for item in sources if item.get("status") == "failed") + (1 if entry.get("error") else 0)
+    return {
+        "worker": row.name,
+        "checked_at": entry.get("checked_at"),
+        "error": entry.get("error"),
+        "failed": failed,
+        "sources": sources[:TOP],
+    }
+
+
 # The night's row
 
 
@@ -432,6 +454,7 @@ async def ensure_figures(conn: AsyncConnection, due, night: date, access: Projec
         "since": since.isoformat(),
         "until": until.isoformat(),
         **figures,
+        "kg_sync": await kg_sync_figures(conn, due.worker_id, due.project),
     }
     cf = tables.curator_figures
     values = {"project_id": due.project_id, "schedule_id": due.id, "night": night, "since": since, "until": until}

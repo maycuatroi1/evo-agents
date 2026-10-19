@@ -588,6 +588,62 @@ class SelfUpdateReport(BaseModel):
     error_at: datetime | None = Field(None, description="when that attempt failed")
 
 
+KG_PROJECT = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project's name, as evo_agents.hub.server.admin.PROJECT_NAME
+KgSyncError = Annotated[str, Field(min_length=1, max_length=runs.KG_SYNC_ERROR_CHARS)]
+
+
+class KgSyncSource(BaseModel):
+    """What the daemon last did for one git source of a project whose night shift it is on duty for."""
+
+    source: str = Field(min_length=1, max_length=200, pattern=LINE, description="the source's id in knowledge.yaml")
+    status: str = Field(
+        pattern=RUN_KIND,
+        description="ok, the source was read, or found at the commit it read last, and every run of it is on the hub; "
+        "failed, reading it, merging the hub's runs of it or pushing went wrong (error says how); skipped, the worker "
+        "does not read it (error says why). A status this hub does not know is kept as named (runs.KG_SYNC_STATES)",
+    )
+    error: KgSyncError | None = None
+    ref: str | None = Field(None, min_length=1, max_length=255, pattern=LINE, description="the ref it reads")
+    commit: str | None = Field(None, pattern=OBJECT_NAME, description="the commit its last ok read read")
+    behind: int | None = Field(
+        None, ge=0, description="commits of the remote's default branch that commit lacked when it was read"
+    )
+    checked_at: datetime | None = Field(None, description="when the daemon last looked at the source")
+    read_at: datetime | None = Field(None, description="when the commit it holds was last read")
+    pushed_at: datetime | None = Field(None, description="when it last pushed a run of the source")
+    pulled: int = Field(0, ge=0, description="runs of other machines the last look merged from the hub")
+    pushed: int = Field(0, ge=0, description="runs the last look pushed")
+
+
+class KgSyncProject(BaseModel):
+    """What the daemon last did for one project whose night shift it is on duty for."""
+
+    project: str = Field(pattern=KG_PROJECT)
+    checked_at: datetime = Field(description="when the daemon last looked at the project")
+    error: KgSyncError | None = Field(
+        None,
+        description="what stopped the look before any source: no checkout of the harness here, a knowledge.yaml that "
+        "does not load, or a hub that refused the push",
+    )
+    sources: list[KgSyncSource] = Field(default_factory=list, max_length=runs.MAX_KG_SYNC_SOURCES)
+
+
+class KgSyncReport(BaseModel):
+    """What a daemon of feature kg_sync last did to keep the graphs of the projects it is on duty for fresh."""
+
+    projects: list[KgSyncProject] = Field(default_factory=list, max_length=runs.MAX_KG_SYNC_PROJECTS)
+
+
+class KgDuty(BaseModel):
+    """A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it."""
+
+    project: str
+    received_at: datetime | None = Field(
+        description="when the hub last took a run of the project's graph, from any machine: a daemon that saw an "
+        "earlier time merges the hub's runs and looks at the project's sources again; null when it holds none"
+    )
+
+
 class HeartbeatRequest(BaseModel):
     runtimes: dict[RuntimeName, RuntimeReport] = Field(
         default_factory=dict,
@@ -632,6 +688,11 @@ class HeartbeatRequest(BaseModel):
         None,
         description="what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the "
         "hub shows, so a daemon sends it every time once it has one",
+    )
+    kg_sync: KgSyncReport | None = Field(
+        None,
+        description="for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each "
+        "heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off",
     )
 
     def stored(self) -> tuple[dict, dict]:
@@ -708,6 +769,11 @@ class HeartbeatAnswer(BaseModel):
         default_factory=list,
         description="for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a "
         "project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise",
+    )
+    kg_sync: list[KgDuty] = Field(
+        default_factory=list,
+        description="for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph "
+        "is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise",
     )
 
 

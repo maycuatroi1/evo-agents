@@ -283,6 +283,21 @@ class WorkerHome:
     def remove_agent(self, run_id: int) -> None:
         self.agent_path(run_id).unlink(missing_ok=True)
 
+    # The graphs it keeps fresh
+
+    def kg_sync(self) -> list[dict]:
+        """What the daemon's last look at each project whose graph it keeps fresh found (``evo_agents.worker.kg_sync``),
+        as its heartbeat reports it, by project."""
+        from evo_agents.worker.kg_sync import shown_state
+
+        return shown_state(self.root)
+
+    def kg_sync_lines(self) -> list[str]:
+        """The same, as ``evo-agents worker status`` prints it."""
+        from evo_agents.worker.kg_sync import status_lines
+
+        return status_lines(self.kg_sync())
+
     # The daemon's pid
 
     def read_pid(self) -> int | None:

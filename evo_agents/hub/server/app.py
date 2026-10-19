@@ -250,9 +250,19 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_events.ChatStreams(app.state.listener),
     )
 
-    from evo_agents.hub.server import curator, decisions, digests, local_runs, notifications, overview, proposals
+    from evo_agents.hub.server import (
+        curator,
+        decisions,
+        digests,
+        kg_worker,
+        local_runs,
+        notifications,
+        overview,
+        proposals,
+    )
 
     for routes in (
+        kg_worker.worker_router,  # the graph pushes of the worker on duty for a night shift
         decisions.router,
         decisions.worker_router,
         local_runs.router,

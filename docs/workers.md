@@ -718,9 +718,13 @@ it holds:
   "runs": [12],
   "agent_version": "0.3.0",
   "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task"],
-  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs"],
+  "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs",
+               "chat_decisions", "kg_sync"],
   "agent_commit": "<40 or 64 hex>",
-  "self_update": {"state": "current", "nightly_commit": "<40 or 64 hex>", "checked_at": "..."}
+  "self_update": {"state": "current", "nightly_commit": "<40 or 64 hex>", "checked_at": "..."},
+  "kg_sync": {"projects": [{"project": "evo-agents", "checked_at": "...", "sources": [
+    {"source": "evo-agents", "status": "ok", "ref": "origin/main", "commit": "<40 hex>", "behind": 0,
+     "checked_at": "...", "read_at": "...", "pushed_at": "...", "pulled": 0, "pushed": 1}]}]}
 }
 ```
 
@@ -742,8 +746,9 @@ with a new agent session for each step, `author_decisions`, an author run whose 
 decisions; without it, the rules of a chat alone), and `agent_profiles`, a daemon whose adapters apply a run's agent
 profile (tools, skills and model in the session, the instructions in its system prompt), `plugin_runtimes`, a daemon
 that runs the runtimes of plugins through its adapter of ACP, `environments`, a daemon that runs a run's agent in
-the environment its claim names, a container of a plugin's environment, and `agent_packs`, a daemon that builds the
-agent packs a run's profile attaches ([Agent packs](#agent-packs)). This daemon sends every kind of `runs.RUN_KINDS` and
+the environment its claim names, a container of a plugin's environment, `agent_packs`, a daemon that builds the
+agent packs a run's profile attaches ([Agent packs](#agent-packs)), and `kg_sync`, a daemon that keeps fresh the
+graphs of the projects whose night shift it is on duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)). This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -756,7 +761,12 @@ makes the whole heartbeat 422, so the daemon clips the text and leaves a field o
 heartbeat replaces both with what it carries, and one without them clears them, as `run_kinds` and `features` work; the
 hub notes when a state began (`since`, by its own clock: the first heartbeat of an unbroken line that reported that
 state). `GET /v1/workers` and `GET /v1/workers/{id}` show them as `agent_commit` and `self_update` (with `since`), and
-both null for an older daemon, which sends neither.
+both null for an older daemon, which sends neither. `kg_sync`, optional, is what a daemon of feature `kg_sync` last
+did for each project of the answer's `kg_sync`: the project, when it looked (`checked_at`, required), what stopped
+the look (`error`), and for each source at most 50, its `source`, `status` (a name as `state` above; this daemon sends
+one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled` and
+`pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
+(`workers.kg_sync`, schema 0049), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that
@@ -780,7 +790,9 @@ For each run: whether to `cancel` (the owner asked for it), `takeover`, `handbac
 whether to `drain` and its `settings` as the hub holds them (`slots`, `name`, `labels`, `plugins`, and
 `version_locked`, which a hub before schema 0048 does not send), which the owner may change with `PATCH
 /v1/workers/{id}`; for a daemon that lists `plugin_runtimes`, the declarations of the runtimes of
-those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon). When they differ from `config.json`, the daemon takes them in memory, writes
+those plugins in the projects the worker serves (`plugin_runtimes`, empty for any other daemon); for a daemon that
+lists `kg_sync`, the projects whose graph it keeps fresh, `[{"project", "received_at"}]`, `received_at` being when the
+hub last took a run of the project's graph from any machine (`kg_sync`, empty for any other daemon). When they differ from `config.json`, the daemon takes them in memory, writes
 `config.json` again (atomically, mode 0600, its other fields as they are on disk) and logs the old and new values. More
 slots are claimed at the next turn of the claim loop, without a restart; fewer stop no run, and the daemon only
 claims nothing until it holds fewer runs than the new slots. The hub counts the runs a worker holds against its slots
@@ -896,6 +908,8 @@ For the worker, with an `evw_` token and the version header:
 | `DELETE /v1/worker/runs/{id}/credentials` | gives back every lease it holds of the run; the hub revokes the GitHub tokens |
 | `POST /v1/worker/runs/{id}/rate-limit` | reports what the agent's CLI said of the usage limit of the account behind a lease of the run, or that the account failed to authenticate (`unauthorized`); on a limit hit or a refused token, answers `failover` (the run moved to another account) or `stop` ([An account's usage limit](#an-accounts-usage-limit)) |
 | websocket `/v1/worker/runs/{id}/terminal` | the worker's end of the terminal |
+| `GET /v1/worker/kg/{p}/runs[?source=S]`, `GET .../runs/{run_id}/log` | for the worker on duty for `p`'s night shift: the runs of `p`'s graph the hub holds, and where to fetch the log of one ([Keeping the graph fresh](#keeping-the-graph-fresh)) |
+| `POST /v1/worker/kg/{p}/runs`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` | for the same worker: pushes a run of `p`'s graph as `hub kg push` does, kinds `kg-blob` and `kg-log` alone, no config |
 
 For members, with a web session or a machine token. `{p}` is a project, and run routes sit under
 `/v1/projects/{p}/runs/{id}`:
@@ -1201,7 +1215,7 @@ page's own origin, under the CSP's `connect-src 'self'`.
 | `evo-agents worker service install` | keeps the daemon running in the background, now and at each login (see [In the background](#in-the-background)) |
 | `evo-agents worker service uninstall` | stops the daemon and removes the service; the worker stays registered |
 | `evo-agents worker service status [--json]` | whether the service is installed and the daemon runs, its pid and last exit |
-| `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool |
+| `evo-agents worker status [--json]` | the worker as this machine and the hub see it: runtimes, tmux and whether the web terminal is allowed, checkouts, the daemon's pid, runs kept, the spool, and what the last look at each graph it keeps fresh found (`kg_sync`, [Keeping the graph fresh](#keeping-the-graph-fresh)) |
 | `evo-agents worker doctor [--json]` | what the machine holds or allows that a worker should not (another administrator, a readable home, the owner's long-lived credentials, a PATH others write), each finding with a code, a severity, what was found and how to fix it; exits 2 when a finding is high (see [Checking a worker machine](credentials.md#checking-a-worker-machine)) |
 | `evo-agents worker attach N` | puts this terminal on the tmux session `evo-run-N` of an interactive run (`tmux attach`, or `switch-client` from inside tmux on the same server) |
 | `evo-agents worker selftest --runtime NAME [--model M] [--effort E] [--timeout S] [--keep] [--background]` | runs the runtime's adapter for real on a tiny prompt in a scratch git repository, prints each event and how many of each kind came, and exits 0 when the turn completed and the agent wrote the file it was asked for (it spends a little of the owner's quota; Claude Code and Codex run at effort `low` unless `--effort` says otherwise); `--background` (claude-code only) checks that the session waits for a command run in the background: the agent starts `sleep 20 && date -u` that way, ends its turn, and writes the file once the command ended |
@@ -1232,7 +1246,8 @@ decisions its agent asked, `decisions.jsonl`, the commits `evo-agents worker ste
 `agent.json`: the pid and the
 process group of the agent the run started last, and when its leader started as `ps` prints it; and, while the run
 holds leases, `cred.sock` (0600), the socket the daemon hands them through, to its own uid only); `worktrees/` the
-runs' worktrees, and each plan run's directory. No lease value is ever written under it. The daemons that run from
+runs' worktrees, and each plan run's directory; `kg/` the harness views, corpora and `state.json` of the graphs it
+keeps fresh ([Keeping the graph fresh](#keeping-the-graph-fresh)). No lease value is ever written under it. The daemons that run from
 one install of evo-agents also share `~/.evo/installs/<install>/` ([Updating itself to nightly](#updating-itself-to-nightly)).
 
 ### Runtimes and checkouts
@@ -1757,6 +1772,45 @@ A plan run of `night_plans` is a plan run of its owner's own plan: it gets the l
 and pushes as its plan says (see [A plan run on the machine](#a-plan-run-on-the-machine)). Only a review run, a judge
 run and a plan run of a plan the Curator made are runs of the Curator, which the sections below and
 [The Curator's runs on the machine](#the-curators-runs-on-the-machine) describe.
+
+### Keeping the graph fresh
+
+The worker on duty for a project's night shift also keeps the project's knowledge graph on the hub fresh, with no
+model and no run (`evo_agents/worker/kg_sync.py`). The heartbeat answer names the projects (`kg_sync`): those the
+worker serves whose night shift names it and whose graph is on. The daemon looks at each one every 15 minutes, day and
+night, and at once when the answer says the hub took a run of the project's graph since its last look, one project at
+a time in a thread. A look:
+
+1. Reads the project's `harness.yaml` and `knowledge.yaml` as the harness's default branch on origin has them,
+   fetched first, from its checkout of the harness (a checkout of the project with `harness.yaml` at its root), never
+   from that checkout's working tree. It writes them to `~/.evo/worker/kg/harness/<project>/`, with each repo's path
+   pointing at its checkout here and `knowledge.yaml` byte for byte, so each source's lineage is the one a member's
+   machine computes. The corpus is `~/.evo/worker/kg/home/<project>/`.
+2. Takes the git sources whose `ref` is `origin/<branch>` and that name a `repo:` of `harness.yaml`. The `harness`
+   source and `exec` connectors are read on members' machines alone and are left out. A git source with no `ref`, with
+   another ref or with `path:` is reported `skipped`, with the reason. One whose repo has no checkout here is `failed`.
+3. For each source, merges first the runs of it that the hub holds and the corpus here lacks, which other machines
+   pushed (`GET /v1/worker/kg/{project}/runs?source=`, then each log, checked against its SHA-256 and size). The
+   deletions its own run derives from its complete listing then cover every file the hub holds, and its records take
+   the epoch of the hub's newest runs of the source. Then it syncs the source as `fetch: true` reads it, holding the
+   daemon's lock of the checkout as a run does. A source still at the commit it read last is not read again, unless
+   the runs merged changed what the source holds alive since this worker last read it: then it reads the commit again,
+   so the hub's state becomes that commit's whatever an older or partial run of a laptop left there.
+4. Pushes the runs here that the hub lacks through `/v1/worker/kg/{project}/...` with the worker's token
+   (`docs/hub.md`, Memories, skills and knowledge graphs), leaving the knowledge config as the members sent it. When
+   nothing was read and every run is on the hub, nothing is pushed; the push still asks what the hub holds once a day.
+
+A laptop and the worker pushing one source in turn therefore leave the graph with the files of the newest commit of
+the branch once the worker has looked after the laptop's push. That holds even for a laptop pushing from a clone it
+could not fetch, or a file only the worker's runs named. What a look found goes to `~/.evo/worker/kg/state.json` and
+into every heartbeat (`kg_sync`): for each project when the daemon looked and what stopped it (no checkout of the
+harness, a `knowledge.yaml` that does not load, a hub that refused), and for each source its status (`ok`, `failed`,
+`skipped`), the commit it holds, how far behind the default branch that commit was, when it was read and pushed, and
+the error. A fetch that failed counts as `failed`: the commit read may lag the remote. Every error is cut to 500
+characters with anything that looks like a secret masked. `evo-agents worker status` prints it, `GET
+/v1/workers/{id}` shows it, and the night's figures of the project name it. `EVO_WORKER_KG_SYNC=off` turns the sync
+off: the daemon then neither says the feature nor sends the report. `EVO_WORKER_KG_SYNC_SECONDS` changes the 15
+minutes.
 
 ### A review run on the machine
 

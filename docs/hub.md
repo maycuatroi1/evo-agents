@@ -86,7 +86,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
-| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood` |
+| knowledge graphs | `/v1/kg/{project}/config`, `.../runs`, `.../blobs/check`, `.../builds`, `.../tools/{tool}`, and the web's `.../graph`, `.../nodes`, `.../node`, `.../neighbourhood`; the worker on duty's are under worker protocol |
 | workers | `POST /v1/workers/pairings`, `GET /v1/workers/pairings/{id}`, `POST /v1/worker/join`, `GET` and `POST /v1/workers`, `GET` and `PATCH /v1/workers/{id}`, `POST /v1/workers/{id}/{drain,undrain,dispatch-from,revoke}` |
 | secrets | `GET /v1/secrets`, `PUT` and `DELETE /v1/secrets/{name}`, the caller's own only (`docs/credentials.md`) |
 | accounts | `GET /v1/accounts`, `GET` and `PATCH /v1/accounts/{name}`, `GET /v1/account-policies`, `GET`, `PUT` and `DELETE /v1/account-policies/{project}`, the caller's own only, never a value (`docs/credentials.md`, section "Accounts") |
@@ -105,7 +105,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}` |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
@@ -671,7 +671,10 @@ what its daemon reports of its install: `workers.version_locked`, the lock its o
 evo-agents the worker's last heartbeat said its install was built from, `workers.self_update`, what that heartbeat said
 of updating itself to the tag nightly, and `workers.self_update_since`, when the hub first got that state in an
 unbroken line of heartbeats (`docs/workers.md`, Updating itself to nightly). Going back to 0047 drops the four columns:
-no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating.
+no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating. Schema 0049 adds
+`workers.kg_sync`, what the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift
+it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0048 drops it, and a
+heartbeat no longer keeps it.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -848,7 +851,9 @@ and per program, the failures that come from the environment by cause (a command
 answering 5xx, the network, rate limits, credentials, a tool missing), the runs that failed or were lost by cause (the
 one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
-steps that have not moved for 3 days, each with evidence a finding can cite. Then the night shift queues the review
+steps that have not moved for 3 days, each with evidence a finding can cite, and what the worker on duty last said of
+keeping the project's graph fresh (`kg_sync`: each git source with the commit it holds, how far behind it was, when it
+was read and pushed, and the error of a sync that failed, with how many failed; null when it said nothing). Then the night shift queues the review
 run on the worker on duty, before any plan run of the night, once that worker's daemon says it runs review runs.
 
 A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the
@@ -1242,6 +1247,26 @@ sources the member can see) show it. `evo-agents hub kg build --project demo --w
 build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a build succeeded, `evo-agents kg
 serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule.
 
+**The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
+project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
+graph follows the default branch while every laptop is off (`docs/workers.md`, Keeping the graph fresh). No model is
+involved. The heartbeat answer names those projects (`kg_sync`) to a daemon that says the feature `kg_sync`: the
+projects the worker serves whose night shift names it and whose feature `kg` is on, each with when the hub last took a
+run of its graph. The worker pushes through `/v1/worker/kg/{project}/...`, the same steps as a member's push: `POST
+.../runs`, `.../blobs/uploads` (kind `kg-blob` and `kg-log` alone), `.../blobs/commit`, `.../runs/{run_id}/commit` and
+`.../blobs/check`. Before it reads a source it merges the runs other machines pushed of it, which `GET
+.../runs?source=` lists and `GET .../runs/{run_id}/log` hands out (the log's source, SHA-256 and size, and a presigned
+GET of it). The deletions its run derives then cover every file the hub holds, and its records take the epoch of the
+hub's newest runs of the source, so a laptop and the worker pushing one source in turn leave the graph with the files
+of the newest commit, once the worker has looked after the laptop's push. Only a worker that serves the project and
+that its night shift names gets through (403 otherwise, and a machine token the guard's 403). The worker acts as its
+owner, whose writer role the push needs, as for any member. It never sends the knowledge config, so its runs go into
+the config a member pushed, and a project with none answers 422. The hub builds the graph from its runs as from any push;
+`kg_ingests.pushed_by` names the owner, and the `kg.ingest` audit row names the worker's token. `GET /v1/workers/{id}`
+shows what the worker last said of each project (`kg_sync`, schema 0049): the time of its look, what stopped it, and
+for each git source its status (`ok`, `failed` or `skipped`), the commit it holds and the error of a sync that
+failed. The night's figures of the project repeat it (The Curator's review).
+
 A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
 the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
 therefore uploads nothing: it points at that artifact, and `artifact_reused_from` names the build that uploaded it.
@@ -1492,7 +1517,7 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 | --- | --- | --- |
 | `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 |
 | `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
-| `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` answers 404 and the `kg_*` tools of `/mcp` return that error |
+| `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` and the worker's `/v1/worker/kg/{project}...` answer 404, the `kg_*` tools of `/mcp` return that error, and the heartbeat names the project to no worker for its graph |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |
 
 A feature is on until a layer turns it off. A project's layer, where it sets a feature, wins over the hub's, so a hub

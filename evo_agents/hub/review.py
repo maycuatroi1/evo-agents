@@ -85,6 +85,7 @@ FIGURE_KEYS = (
     "runs",
     "sessions",
     "decisions",
+    "kg_sync",
 )
 
 # The causes of the failures the figures count, in the order a text is tried against them: the first that matches.

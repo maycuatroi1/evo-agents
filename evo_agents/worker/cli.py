@@ -351,8 +351,7 @@ def cmd_status(args) -> int:
     found = discover(config)
     records = home.load_runs()
     pid = home.read_pid()
-    hub_view = None
-    hub_error = None
+    hub_view = hub_error = None
     member = _member_hub(config.url)
     if member is not None:
         try:
@@ -376,6 +375,7 @@ def cmd_status(args) -> int:
         "runs": [{k: r.get(k) for k in ("id", "state", "worktree", "finished_at")} for r in records],
         "hub": hub_view,
         "hub_error": hub_error,
+        "kg_sync": home.kg_sync(),
         "state_dir": str(home.root),
     }
     if args.json:
@@ -410,7 +410,7 @@ def cmd_status(args) -> int:
         print("  no checkout of the worker's projects found")
     unfinished = [r for r in records if not r.get("finished_at")]
     print(f"  runs kept here: {len(records)} ({len(unfinished)} not ended); spool: {status['spool_bytes']} bytes")
-    print(f"  state: {home.root}")
+    print(*(f"  {line}" for line in [*home.kg_sync_lines(), f"state: {home.root}"]), sep="\n")
     return 0
 
 
