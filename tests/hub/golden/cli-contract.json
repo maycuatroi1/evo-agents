@@ -6472,6 +6472,405 @@
         ]
       }
     },
+    "hub srs approve": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--request-changes"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--comment"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--role"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "ba",
+            "qa",
+            "dev"
+          ]
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "parent_number",
+          "state",
+          "round",
+          "author",
+          "drafted_by_run",
+          "summary",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "reviews"
+        ],
+        "schema": "SrsVersion"
+      }
+    },
+    "hub srs export": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--no-anchors"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--output",
+            "-o"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
+    "hub srs import": {
+      "positionals": [
+        {
+          "name": "file",
+          "metavar": "FILE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--doc"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--slug"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--title"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--kind"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false,
+          "choices": [
+            "srs",
+            "spec"
+          ],
+          "default": "srs"
+        },
+        {
+          "flags": [
+            "--summary"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "document",
+          "created",
+          "version",
+          "dry_run",
+          "preview"
+        ],
+        "schema": "SrsImportResult"
+      }
+    },
+    "hub srs list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "slug",
+          "title",
+          "kind",
+          "template",
+          "approved_version",
+          "latest_version",
+          "latest_state",
+          "label",
+          "created_by",
+          "created_at",
+          "archived_at"
+        ],
+        "schema": "SrsDocumentSummary"
+      }
+    },
+    "hub srs show": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--version"
+          ],
+          "value": "integer",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--item"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "slug",
+          "title",
+          "kind",
+          "template",
+          "approved_version",
+          "latest_version",
+          "latest_state",
+          "label",
+          "created_by",
+          "created_at",
+          "archived_at",
+          "versions",
+          "shown"
+        ],
+        "schema": "SrsDocument",
+        "with": {
+          "--item": {
+            "kind": "object",
+            "keys": [
+              "key",
+              "kind",
+              "code",
+              "aliases",
+              "title",
+              "parent",
+              "heading_level",
+              "fields",
+              "body",
+              "refs",
+              "document",
+              "version",
+              "path",
+              "children"
+            ],
+            "schema": "SrsItemDetail"
+          }
+        }
+      }
+    },
+    "hub srs submit": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "parent_number",
+          "state",
+          "round",
+          "author",
+          "drafted_by_run",
+          "summary",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "reviews"
+        ],
+        "schema": "SrsVersion"
+      }
+    },
     "hub token list": {
       "positionals": [],
       "options": [
@@ -7118,7 +7517,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.17.0"
+      "version": "0.20.0"
     },
     "paths": {
       "/v1/health": {
@@ -22161,6 +22560,1856 @@
                 }
               },
               "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Documents",
+          "description": "The BA documents of the project the caller sees, by slug, each with its latest version.",
+          "operationId": "list_documents_v1_x_srs__project__documents_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SrsDocumentSummary"
+                    },
+                    "title": "Response List Documents V1 X Srs  Project  Documents Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Document",
+          "description": "A document with every version, the newest first, and one version whole: the latest, or ``version``.",
+          "operationId": "show_document_v1_x_srs__project__documents__slug__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a version's number; the latest when left out",
+                "title": "Version"
+              },
+              "description": "a version's number; the latest when left out"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsDocument"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/versions": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Versions",
+          "description": "Every version of a document, the newest first, with its reviews.",
+          "operationId": "list_versions_v1_x_srs__project__documents__slug__versions_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SrsVersion"
+                    },
+                    "title": "Response List Versions V1 X Srs  Project  Documents  Slug  Versions Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Save Version",
+          "description": "Save changes made on version ``base_version`` as the document's next version, built on its latest; 409 with\nboth texts of an item that changed since ``base_version``.",
+          "operationId": "save_version_v1_x_srs__project__documents__slug__versions_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsSave"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsVersionDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/versions/{number}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Version",
+          "description": "A version whole: its items and what is wrong with it.",
+          "operationId": "show_version_v1_x_srs__project__documents__slug__versions__number__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Number"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsVersionDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/items/{ref}": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Show Item",
+          "description": "An item of a version (the latest unless asked), by code, alias or key, with its children.",
+          "operationId": "show_item_v1_x_srs__project__documents__slug__items__ref__get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "ref",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "description": "the item's code, an alias or its key",
+                "title": "Ref"
+              },
+              "description": "the item's code, an alias or its key"
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a version's number; the latest when left out",
+                "title": "Version"
+              },
+              "description": "a version's number; the latest when left out"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsItemDetail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/diff": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Compare Versions",
+          "description": "What changed from version ``from`` to version ``to``, item by item.",
+          "operationId": "compare_versions_v1_x_srs__project__documents__slug__diff_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "from",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "From"
+              }
+            },
+            {
+              "name": "to",
+              "in": "query",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "To"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsDiff"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/export": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Export Version",
+          "description": "A version (the latest unless asked) as Markdown, in the template's structure, with the same codes.",
+          "operationId": "export_version_v1_x_srs__project__documents__slug__export_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "version",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "a version's number; the latest when left out",
+                "title": "Version"
+              },
+              "description": "a version's number; the latest when left out"
+            },
+            {
+              "name": "anchors",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "write each screen's code as a comment after its heading",
+                "default": true,
+                "title": "Anchors"
+              },
+              "description": "write each screen's code as a comment after its heading"
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsExport"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/import": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Import Document",
+          "description": "Import Markdown as a new document, or as the next version of ``document``, after a preview; ``dry_run`` stops\nat the preview.",
+          "operationId": "import_document_v1_x_srs__project__import_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsImport"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsImportResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/versions/{number}/submit": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Submit Version",
+          "description": "Send a draft to review, once it has no error.",
+          "operationId": "submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Number"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsVersion"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/versions/{number}/reviews": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Review Version",
+          "description": "Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews\nit, and the agent of a run never does.",
+          "operationId": "review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Number"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsReviewIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsVersion"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/comments": {
+        "get": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "List Comments",
+          "description": "The comments of a document, oldest first.",
+          "operationId": "list_comments_v1_x_srs__project__documents__slug__comments_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/SrsComment"
+                    },
+                    "title": "Response List Comments V1 X Srs  Project  Documents  Slug  Comments Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Add Comment",
+          "description": "Comment on a document, a version of it or an item, or answer a comment.",
+          "operationId": "add_comment_v1_x_srs__project__documents__slug__comments_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsCommentIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/comments/{comment_id}/resolve": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Resolve Comment",
+          "description": "Close the thread of a comment.",
+          "operationId": "resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "comment_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Comment Id"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsComment"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
             },
             "422": {
               "content": {
@@ -48670,6 +50919,1747 @@
             "url"
           ],
           "title": "SourceRead"
+        },
+        "SrsChange": {
+          "properties": {
+            "key": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 64,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Key"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "body": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Body"
+            },
+            "steps": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps"
+            },
+            "refs": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/SrsRefIn"
+                  },
+                  "type": "array",
+                  "maxItems": 100
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Refs"
+            },
+            "retire": {
+              "type": "boolean",
+              "title": "Retire",
+              "default": false
+            },
+            "new": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsNewItem"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "SrsChange",
+          "description": "A change of the item ``key`` (title, body, steps, links, or drop it with ``retire``), or a ``new`` item."
+        },
+        "SrsComment": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            },
+            "item": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item",
+              "description": "the key of the item"
+            },
+            "item_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item Code"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "resolved_by": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resolved By"
+            },
+            "resolved_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Resolved At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "version",
+            "item",
+            "item_code",
+            "parent_id",
+            "author",
+            "run_id",
+            "body",
+            "created_at",
+            "resolved_by",
+            "resolved_at"
+          ],
+          "title": "SrsComment"
+        },
+        "SrsCommentIn": {
+          "properties": {
+            "body": {
+              "type": "string",
+              "maxLength": 20000,
+              "minLength": 1,
+              "title": "Body"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version"
+            },
+            "item": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item",
+              "description": "the code or key of the item"
+            },
+            "parent_id": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Id",
+              "description": "the comment it answers"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "body"
+          ],
+          "title": "SrsCommentIn"
+        },
+        "SrsDiff": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "from_version": {
+              "type": "integer",
+              "title": "From Version"
+            },
+            "to_version": {
+              "type": "integer",
+              "title": "To Version"
+            },
+            "preamble": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Preamble",
+              "description": "a unified diff of the text before the first heading; empty when the same"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/SrsDiffItem"
+              },
+              "type": "array",
+              "title": "Items"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "from_version",
+            "to_version",
+            "preamble",
+            "items"
+          ],
+          "title": "SrsDiff"
+        },
+        "SrsDiffItem": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "section",
+                "use_case",
+                "business_rule",
+                "screen",
+                "nfr",
+                "cbr",
+                "glossary",
+                "approval_page",
+                "revision_history"
+              ],
+              "title": "Kind"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "change": {
+              "type": "string",
+              "enum": [
+                "added",
+                "removed",
+                "changed",
+                "moved"
+              ],
+              "title": "Change"
+            },
+            "title_from": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title From"
+            },
+            "title_to": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title To"
+            },
+            "lines": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Lines",
+              "description": "a unified diff of the item's Markdown"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "kind",
+            "code",
+            "change",
+            "title_from",
+            "title_to",
+            "lines"
+          ],
+          "title": "SrsDiffItem"
+        },
+        "SrsDocument": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "srs",
+                "spec"
+              ],
+              "title": "Kind"
+            },
+            "template": {
+              "type": "string",
+              "title": "Template"
+            },
+            "approved_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Approved Version",
+              "description": "the version approved last"
+            },
+            "latest_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest Version"
+            },
+            "latest_state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "in_review",
+                    "approved",
+                    "superseded"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest State"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label",
+              "description": "the label every row of the document carries"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At"
+            },
+            "versions": {
+              "items": {
+                "$ref": "#/components/schemas/SrsVersion"
+              },
+              "type": "array",
+              "title": "Versions"
+            },
+            "shown": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/SrsVersionDetail"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "title",
+            "kind",
+            "template",
+            "approved_version",
+            "latest_version",
+            "latest_state",
+            "label",
+            "created_by",
+            "created_at",
+            "archived_at",
+            "versions",
+            "shown"
+          ],
+          "title": "SrsDocument",
+          "description": "A document with every version, the newest first, and one of them whole (the latest unless asked)."
+        },
+        "SrsDocumentSummary": {
+          "properties": {
+            "slug": {
+              "type": "string",
+              "title": "Slug"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "srs",
+                "spec"
+              ],
+              "title": "Kind"
+            },
+            "template": {
+              "type": "string",
+              "title": "Template"
+            },
+            "approved_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Approved Version",
+              "description": "the version approved last"
+            },
+            "latest_version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest Version"
+            },
+            "latest_state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "draft",
+                    "in_review",
+                    "approved",
+                    "superseded"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Latest State"
+            },
+            "label": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Label",
+              "description": "the label every row of the document carries"
+            },
+            "created_by": {
+              "type": "string",
+              "title": "Created By"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "archived_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Archived At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "slug",
+            "title",
+            "kind",
+            "template",
+            "approved_version",
+            "latest_version",
+            "latest_state",
+            "label",
+            "created_by",
+            "created_at",
+            "archived_at"
+          ],
+          "title": "SrsDocumentSummary",
+          "description": "A BA document of a project, with its latest version."
+        },
+        "SrsExport": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "markdown": {
+              "type": "string",
+              "title": "Markdown"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "version",
+            "markdown"
+          ],
+          "title": "SrsExport"
+        },
+        "SrsImport": {
+          "properties": {
+            "markdown": {
+              "type": "string",
+              "maxLength": 4194304,
+              "minLength": 1,
+              "title": "Markdown"
+            },
+            "document": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Document",
+              "description": "the document whose next version this is"
+            },
+            "slug": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^[a-z0-9][a-z0-9-]{0,99}$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Slug",
+              "description": "the slug of a new document; from its title if left out"
+            },
+            "title": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 300,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Title"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "srs",
+                "spec"
+              ],
+              "title": "Kind",
+              "default": "srs"
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 500,
+              "title": "Summary",
+              "default": ""
+            },
+            "label": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/LabelIn"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a new document's label, an admin's choice; the project's if not"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "markdown"
+          ],
+          "title": "SrsImport"
+        },
+        "SrsImportResult": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "created": {
+              "type": "boolean",
+              "title": "Created",
+              "description": "whether the import created the document"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "the version saved; null for a dry run"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run"
+            },
+            "preview": {
+              "$ref": "#/components/schemas/SrsPreview"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "created",
+            "version",
+            "dry_run",
+            "preview"
+          ],
+          "title": "SrsImportResult"
+        },
+        "SrsItem": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "section",
+                "use_case",
+                "business_rule",
+                "screen",
+                "nfr",
+                "cbr",
+                "glossary",
+                "approval_page",
+                "revision_history"
+              ],
+              "title": "Kind"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "aliases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Aliases"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent"
+            },
+            "heading_level": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Heading Level"
+            },
+            "fields": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Fields"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "refs": {
+              "items": {
+                "$ref": "#/components/schemas/SrsRef"
+              },
+              "type": "array",
+              "title": "Refs"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "kind",
+            "code",
+            "aliases",
+            "title",
+            "parent",
+            "heading_level",
+            "fields",
+            "body",
+            "refs"
+          ],
+          "title": "SrsItem",
+          "description": "An item of a version: its key (fixed), kind, code and aliases, title, parent (key), heading level (null for a\ntable row), the fields its kind holds, its Markdown body and its links."
+        },
+        "SrsItemDetail": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "section",
+                "use_case",
+                "business_rule",
+                "screen",
+                "nfr",
+                "cbr",
+                "glossary",
+                "approval_page",
+                "revision_history"
+              ],
+              "title": "Kind"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "aliases": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Aliases"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent"
+            },
+            "heading_level": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Heading Level"
+            },
+            "fields": {
+              "additionalProperties": true,
+              "type": "object",
+              "title": "Fields"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "refs": {
+              "items": {
+                "$ref": "#/components/schemas/SrsRef"
+              },
+              "type": "array",
+              "title": "Refs"
+            },
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "version": {
+              "type": "integer",
+              "title": "Version"
+            },
+            "path": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Path",
+              "description": "the titles of the items above it, the top first"
+            },
+            "children": {
+              "items": {
+                "$ref": "#/components/schemas/SrsItem"
+              },
+              "type": "array",
+              "title": "Children"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "kind",
+            "code",
+            "aliases",
+            "title",
+            "parent",
+            "heading_level",
+            "fields",
+            "body",
+            "refs",
+            "document",
+            "version",
+            "path",
+            "children"
+          ],
+          "title": "SrsItemDetail",
+          "description": "An item of a version, with the items above it and those under it."
+        },
+        "SrsNewItem": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "section",
+                "use_case",
+                "business_rule",
+                "screen",
+                "nfr",
+                "cbr",
+                "glossary",
+                "approval_page",
+                "revision_history"
+              ],
+              "title": "Kind"
+            },
+            "title": {
+              "type": "string",
+              "maxLength": 500,
+              "minLength": 1,
+              "title": "Title"
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 200000,
+              "title": "Body",
+              "default": ""
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 100,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the key of its parent"
+            },
+            "after": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "After",
+              "description": "the key of the sibling it follows"
+            },
+            "heading_level": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "maximum": 6.0,
+                  "minimum": 1.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Heading Level"
+            },
+            "steps": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string"
+                  },
+                  "type": "array",
+                  "maxItems": 50
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Steps",
+              "description": "a business rule's steps of its use case"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "kind",
+            "title"
+          ],
+          "title": "SrsNewItem"
+        },
+        "SrsPreview": {
+          "properties": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/SrsPreviewItem"
+              },
+              "type": "array",
+              "title": "Items"
+            },
+            "counts": {
+              "additionalProperties": {
+                "type": "integer"
+              },
+              "type": "object",
+              "title": "Counts",
+              "description": "items per kind"
+            },
+            "problems": {
+              "items": {
+                "$ref": "#/components/schemas/SrsProblem"
+              },
+              "type": "array",
+              "title": "Problems"
+            },
+            "added": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Added",
+              "description": "the codes (or titles) of the items an import adds to the document"
+            },
+            "changed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Changed"
+            },
+            "removed": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array",
+              "title": "Removed"
+            }
+          },
+          "type": "object",
+          "required": [
+            "items",
+            "counts",
+            "problems",
+            "added",
+            "changed",
+            "removed"
+          ],
+          "title": "SrsPreview"
+        },
+        "SrsPreviewItem": {
+          "properties": {
+            "kind": {
+              "type": "string",
+              "enum": [
+                "section",
+                "use_case",
+                "business_rule",
+                "screen",
+                "nfr",
+                "cbr",
+                "glossary",
+                "approval_page",
+                "revision_history"
+              ],
+              "title": "Kind"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "level": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Level"
+            },
+            "parent": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent",
+              "description": "the index of its parent in items"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "kind",
+            "code",
+            "title",
+            "level",
+            "parent",
+            "line"
+          ],
+          "title": "SrsPreviewItem"
+        },
+        "SrsProblem": {
+          "properties": {
+            "level": {
+              "type": "string",
+              "enum": [
+                "error",
+                "warning"
+              ],
+              "title": "Level"
+            },
+            "check": {
+              "type": "string",
+              "title": "Check"
+            },
+            "message": {
+              "type": "string",
+              "title": "Message"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "item": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Item",
+              "description": "the key of the item"
+            },
+            "line": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Line",
+              "description": "the line of the Markdown it came from"
+            }
+          },
+          "type": "object",
+          "required": [
+            "level",
+            "check",
+            "message",
+            "code",
+            "item",
+            "line"
+          ],
+          "title": "SrsProblem"
+        },
+        "SrsRef": {
+          "properties": {
+            "rel": {
+              "type": "string",
+              "enum": [
+                "uses_screen",
+                "refines",
+                "relates"
+              ],
+              "title": "Rel"
+            },
+            "to": {
+              "type": "string",
+              "title": "To",
+              "description": "the key of the item it links to"
+            },
+            "to_code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "To Code"
+            }
+          },
+          "type": "object",
+          "required": [
+            "rel",
+            "to",
+            "to_code"
+          ],
+          "title": "SrsRef"
+        },
+        "SrsRefIn": {
+          "properties": {
+            "rel": {
+              "type": "string",
+              "enum": [
+                "uses_screen",
+                "refines",
+                "relates"
+              ],
+              "title": "Rel"
+            },
+            "to": {
+              "type": "string",
+              "maxLength": 100,
+              "minLength": 1,
+              "title": "To",
+              "description": "the code or key of the item it links to"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "rel",
+            "to"
+          ],
+          "title": "SrsRefIn"
+        },
+        "SrsReview": {
+          "properties": {
+            "reviewer": {
+              "type": "string",
+              "title": "Reviewer"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ba",
+                    "qa",
+                    "dev"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "the role the review counts for"
+            },
+            "decision": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "request_changes"
+              ],
+              "title": "Decision"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            },
+            "round": {
+              "type": "integer",
+              "title": "Round"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "reviewer",
+            "role",
+            "decision",
+            "body",
+            "round",
+            "created_at"
+          ],
+          "title": "SrsReview"
+        },
+        "SrsReviewIn": {
+          "properties": {
+            "decision": {
+              "type": "string",
+              "enum": [
+                "approve",
+                "request_changes"
+              ],
+              "title": "Decision"
+            },
+            "role": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "ba",
+                    "qa",
+                    "dev"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Role",
+              "description": "the role it counts for; one the reviewer holds"
+            },
+            "body": {
+              "type": "string",
+              "maxLength": 10000,
+              "title": "Body",
+              "default": ""
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "decision"
+          ],
+          "title": "SrsReviewIn"
+        },
+        "SrsSave": {
+          "properties": {
+            "base_version": {
+              "type": "integer",
+              "minimum": 1.0,
+              "title": "Base Version",
+              "description": "the version the changes were made on"
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 500,
+              "title": "Summary",
+              "default": ""
+            },
+            "preamble": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Preamble"
+            },
+            "changes": {
+              "items": {
+                "$ref": "#/components/schemas/SrsChange"
+              },
+              "type": "array",
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Changes"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "base_version",
+            "changes"
+          ],
+          "title": "SrsSave"
+        },
+        "SrsVersion": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "parent_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Number",
+              "description": "the version it was built on"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "approved",
+                "superseded"
+              ],
+              "title": "State"
+            },
+            "round": {
+              "type": "integer",
+              "title": "Round",
+              "description": "how many times it was submitted"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "drafted_by_run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drafted By Run",
+              "description": "the run of the agent that drafted it, when one did"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "submitted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted At"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "reviews": {
+              "items": {
+                "$ref": "#/components/schemas/SrsReview"
+              },
+              "type": "array",
+              "title": "Reviews"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "parent_number",
+            "state",
+            "round",
+            "author",
+            "drafted_by_run",
+            "summary",
+            "created_at",
+            "submitted_at",
+            "decided_at",
+            "reviews"
+          ],
+          "title": "SrsVersion",
+          "description": "A version of a document, never changed after it was saved, and the reviews of each round."
+        },
+        "SrsVersionDetail": {
+          "properties": {
+            "number": {
+              "type": "integer",
+              "title": "Number"
+            },
+            "parent_number": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Parent Number",
+              "description": "the version it was built on"
+            },
+            "state": {
+              "type": "string",
+              "enum": [
+                "draft",
+                "in_review",
+                "approved",
+                "superseded"
+              ],
+              "title": "State"
+            },
+            "round": {
+              "type": "integer",
+              "title": "Round",
+              "description": "how many times it was submitted"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author"
+            },
+            "drafted_by_run": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Drafted By Run",
+              "description": "the run of the agent that drafted it, when one did"
+            },
+            "summary": {
+              "type": "string",
+              "title": "Summary"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            },
+            "submitted_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Submitted At"
+            },
+            "decided_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decided At"
+            },
+            "reviews": {
+              "items": {
+                "$ref": "#/components/schemas/SrsReview"
+              },
+              "type": "array",
+              "title": "Reviews"
+            },
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "preamble": {
+              "type": "string",
+              "title": "Preamble"
+            },
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/SrsItem"
+              },
+              "type": "array",
+              "title": "Items"
+            },
+            "problems": {
+              "items": {
+                "$ref": "#/components/schemas/SrsProblem"
+              },
+              "type": "array",
+              "title": "Problems"
+            }
+          },
+          "type": "object",
+          "required": [
+            "number",
+            "parent_number",
+            "state",
+            "round",
+            "author",
+            "drafted_by_run",
+            "summary",
+            "created_at",
+            "submitted_at",
+            "decided_at",
+            "reviews",
+            "document",
+            "preamble",
+            "items",
+            "problems"
+          ],
+          "title": "SrsVersionDetail",
+          "description": "A version with its content and what is wrong with it."
         },
         "StateCounts": {
           "properties": {

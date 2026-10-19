@@ -89,6 +89,20 @@ PLUGIN_POINT_TABLES = frozenset({"plugin_deliveries"})
 AGENT_TYPE_TABLES = frozenset({"project_agent_types"})
 # migration 0043: the proposals of @builder, which an admin approves before the hub applies them
 BUILDER_TABLES = frozenset({"builder_proposals"})
+# migration 0044: the BA documents of the core plugin srs, their versions, items, codes, reviews and comments
+SRS_TABLES = frozenset(
+    {
+        "srs_documents",
+        "srs_versions",
+        "srs_texts",
+        "srs_items",
+        "srs_codes",
+        "srs_item_versions",
+        "srs_refs",
+        "srs_reviews",
+        "srs_comments",
+    }
+)
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
