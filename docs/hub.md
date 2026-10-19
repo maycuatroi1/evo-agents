@@ -664,7 +664,13 @@ worker hold up to 16 runs at once: the CHECKs of `workers.slots`, `workers.free_
 from 8 to 16, and the owner changes a worker's slots, labels and name with `PATCH /v1/workers/{id}` (`docs/workers.md`,
 Routes); going back to 0025 narrows them to 8 again and refuses, naming them, while a worker not revoked or a pairing
 neither used nor expired holds more than 8 slots. Schema 0030 (agent profiles), and 0031 and 0032 (group chats and
-the chat run), are described under Agent profiles and Group chats above.
+the chat run), are described under Agent profiles and Group chats above. Schema 0048 adds a worker's version lock and
+what its daemon reports of its install: `workers.version_locked`, the lock its owner sets with `PATCH
+/v1/workers/{id}` (false for every worker there is and every new one), `workers.agent_commit`, the commit of
+evo-agents the worker's last heartbeat said its install was built from, `workers.self_update`, what that heartbeat said
+of updating itself to the tag nightly, and `workers.self_update_since`, when the hub first got that state in an
+unbroken line of heartbeats (`docs/workers.md`, Updating itself to nightly). Going back to 0047 drops the four columns:
+no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

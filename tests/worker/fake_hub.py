@@ -72,6 +72,8 @@ class FakeHub:
         self.settings: dict | None = None
         # the declarations of plugins' runtimes each heartbeat answer carries (plugin_runtimes); empty: the key left out
         self.plugin_runtimes: list[dict] = []
+        self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol
+        self.heartbeat_bodies: list[dict] = []  # every heartbeat the worker sent, in order
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
         self.blob_reads: list[str] = []
         self._ids = itertools.count(101)
@@ -137,7 +139,7 @@ class FakeHub:
     async def _auth(self, request: web.Request, handler):
         if request.path.startswith("/blobs/"):  # a presigned GET: the URL is the credential
             return await handler(request)
-        if request.headers.get(runs.PROTOCOL_HEADER) != runs.PROTOCOL_VERSION:
+        if request.headers.get(runs.PROTOCOL_HEADER) != runs.PROTOCOL_VERSION or self.outdated:
             return _error(426, "upgrade_required", "the worker protocol header is missing")
         if request.headers.get("Authorization") != f"Bearer {TOKEN}":
             return _error(401, "unauthorized", "not a worker token")
@@ -548,6 +550,7 @@ class FakeHub:
         body = await request.json()
         self.heartbeats += 1
         self.last_heartbeat = body
+        self.heartbeat_bodies.append(body)
         controls = []
         for run_id in body.get("runs") or []:
             run = self.runs.get(run_id)

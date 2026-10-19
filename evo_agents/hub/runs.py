@@ -280,6 +280,14 @@ DELIVERY_STATES = ("pending", "delivered", "failed")  # of one notification on o
 MAX_DELIVERY_ATTEMPTS = 5
 
 WORKER_STATUSES = ("online", "offline", "draining", "revoked")
+# What a daemon says of updating itself to the tag nightly (self_update.state of its heartbeat): current, it runs the
+# commit nightly points to; waiting, nightly points to another one and it waits until every daemon of its install is
+# idle; updating, it is installing that commit and restarts on it; locked, its owner locked the worker's version;
+# unsupported, it cannot update itself, and self_update.reason says why. The hub keeps a state it does not know as the
+# daemon names it.
+SELF_UPDATE_STATES = ("current", "waiting", "updating", "locked", "unsupported")
+SELF_UPDATE_REASON_CHARS = 500  # the most characters of self_update.reason a heartbeat carries
+SELF_UPDATE_ERROR_CHARS = 2000  # and of self_update.error
 
 ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
     "agent_message_chunk",
