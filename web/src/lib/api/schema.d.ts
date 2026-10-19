@@ -2985,7 +2985,9 @@ export interface paths {
         };
         /**
          * Transcript Usage
-         * @description What the project's transcripts come to in the blob store, per member, with the retention.
+         * @description What the project's transcripts come to in the blob store, per member, with the retention: for a reader who
+         *     reads the project's default label through the sink (the project's hub sink by default), as the night's figures
+         *     are.
          */
         get: operations["transcript_usage_v1_projects__project__transcripts_usage_get"];
         put?: never;
@@ -28702,7 +28704,9 @@ export interface operations {
     transcript_usage_v1_projects__project__transcripts_usage_get: {
         parameters: {
             query?: never;
-            header?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
             path: {
                 project: string;
             };

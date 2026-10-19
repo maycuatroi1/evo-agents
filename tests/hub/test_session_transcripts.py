@@ -269,6 +269,10 @@ def test_the_usage_of_a_project_counts_its_transcripts_per_member_with_the_reten
     assert found_["retention_days"] == 365
     assert [m["login"] for m in found_["members"]] == [OWNER, "someone-else"]
     assert get(hub, "stranger", "/usage").status_code == 404
+    # who sends transcripts, how many and how much, is the project's: read through its default label, as the figures
+    assert get(hub, "reader", "/usage", sink="codex@openai").status_code == 404  # a sink that clears public alone
+    assert get(hub, "public", "/usage").status_code == 404  # a grant up to public
+    assert get(hub, "reader", "/usage", sink="claude-code@anthropic").status_code == 200
 
 
 # Deleting and the retention

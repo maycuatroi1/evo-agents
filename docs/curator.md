@@ -42,8 +42,8 @@ and their routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect
    its default branch on GitHub, what the builds covered, the retrieval score, and what agents got from the graph
    (`docs/hub.md`, "The graph's health").
 2. **The Reviewer.** The night shift queues the night's review run on the worker on duty. Its agent reads the
-   figures, then the project's whole history where they point (its sessions and runs, the words of its transcripts,
-   run logs and group chats, the clusters), the traces of runs and the project's code, knowing what earlier nights
+   figures, then the project's whole history where they point (its sessions and runs, the words of its transcripts
+   and run logs, the clusters), the traces of runs and the project's code, knowing what earlier nights
    found and the playbook, and writes findings, proposals and deltas of the playbook, each with evidence the hub can
    find. It pushes nothing and opens no pull request. Right after it comes the night's
    history run, in which a cheap model writes a facet of each session and run that has none and names the new
@@ -280,7 +280,7 @@ it names no path) is dropped, unless its evidence counts at least twice the reje
 | | Reviewer | Builder | Judge |
 | --- | --- | --- | --- |
 | run | a run of kind `review`, one a night, first | a plan run of a plan the Curator made | a run of kind `judge`, one per pull request |
-| reads | the night's figures, the whole history (sessions, transcripts, run logs, group chats, clusters), digests, traces, decisions, earlier findings, the playbook, the project's code at the default branch's commit | its plan and its repo | the proposal, the diff, the plan's verify, the hidden checks |
+| reads | the night's figures, the whole history (sessions, transcripts, run logs, the owner's local runs, clusters), digests, traces, decisions, earlier findings, the playbook, the project's code at the default branch's commit | its plan and its repo | the proposal, the diff, the plan's verify, the hidden checks |
 | writes | findings, proposals and deltas of the playbook (`evo-agents worker finding`, `propose`, `playbook`) | commits on `curator/<proposal>-<slug>` | a verdict, `{"verdict": "pass" or "fail", "reasons": "..."}` |
 | GitHub token | the Curator's App, read only | the Curator's App, `contents: write` | the Curator's App, read only |
 | runtime | `reviewer` of the charter | `builder` of the charter | Codex when the policy clears it, else Claude Code with a model other than the Builder's |
@@ -302,8 +302,8 @@ owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project; a
 yet is kept, `unmatched`, since a graph may lag its branch). A proposal carries a draft plan in outcome steps, each
 with `verify` and `acceptance`. It reads in two tiers, the numbers first (the figures, the sessions and runs of the
 whole history with the numbers of their facets, the clusters), then the words only where they point (a search of the
-transcripts, the run logs and the group chats, and the lines of a transcript around one), through the hub's MCP
-tools, which the worker's adapter gives a run of the Curator whatever the worker's machine has configured. Its
+transcripts and the run logs, and the lines of a transcript around one), through the hub's MCP tools, which the
+worker's adapter gives a run of the Curator whatever the worker's machine has configured. Its
 prompt holds what earlier nights found through its lenses with what became of it, the proposals the owner rejected
 lately, and the project's playbook (Memory, below); the hub refuses a finding like a closed one without new evidence. The review run's figures come from what the
 plugin and the daemon feed the hub: the facet of each session (`docs/hub.md`, "Session facets"), made from the
@@ -365,10 +365,12 @@ replays", has the routes and the rules; `docs/workers.md`, "A replay run on the 
 **The suite.** Every hour the job `curator.replay_suite` adds to each project's suite a task for each step of its plans
 that is done, has a verify of one shell line and a repo, and names the commits it made (in its evidence, else a run of
 it reported them); the base commit is the first parent of the oldest of them. A plan of the Curator gives no task. The
-SHA-256 of a task's plan and step puts one task in three in the holdout split and the others in the select split, the
-same on every hub and for good, and a task once in the suite never changes: the suite only grows. A change is measured
-on holdout tasks; the select split is there for the Curator to look at without spending what it is measured on, and
-the agent of a run lists that split alone.
+HMAC-SHA256 of a task's plan and step under the hub's session secret (EVO_HUB_SESSION_SECRET) puts one task in three
+in the holdout split and the others in the select split, so nobody can tell from the code which tasks are held out; a
+hub without the secret builds no suite. A task once in the suite never changes, whatever becomes of the secret: the
+suite only grows. A change is measured on holdout tasks; the select split is there for the Curator to look at without
+spending what it is measured on. The agent of a run lists that split alone, and reads neither a change's replays nor
+a replay run, which all name holdout tasks; a member reads them.
 
 **A replay run.** The night shift replays a change once it is built and not merged or closed, when its proposal is of
 kind `skill` or names a skill, an AGENTS.md or a CLAUDE.md: on the first `replay.tasks` holdout tasks the worker on duty
@@ -451,9 +453,14 @@ evo-agents hub curator history clusters --project demo   # the clusters of 3 ses
 What the Reviewer reads besides the night's figures is the project's whole history, on the hub and in Postgres alone
 (`docs/hub.md`, "The project's history"): the sessions and runs of the facets, with their numbers, by time, member,
 runtime, outcome or cluster; the words of every transcript part and every run that ended, which the job
-`hub.index_history` indexes once for Postgres full-text search, and of the group chats the charter's owner is in; and
+`hub.index_history` indexes once for Postgres full-text search, the local runs of the charter's owner among them; and
 the lines of a transcript around one. A finding cites a line as `transcript:ID:LINE`. The prompt asks for two tiers: the
 numbers to find where something goes wrong often or costs much, then the words there alone.
+
+The Reviewer reads no group chat, though a member searches the chats they are in with the same command. What the agent
+of a run reads lands in its run's events, which every reader of the project reads, and in its findings: a chat's
+messages are for the chat's members alone. For the same reason no agent of a run reads a replay run, and only the
+Reviewer reads a local run, its owner's.
 
 ```sh
 evo-agents hub curator history sessions --project demo --outcome failed   # the numbers first

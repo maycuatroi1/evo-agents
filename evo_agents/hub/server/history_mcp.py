@@ -154,12 +154,13 @@ async def _lines(request: Request, project: str, user: Principal, arguments: dic
 async def _clusters(request: Request, project: str, user: Principal, arguments: dict, sink) -> tuple[str, dict]:
     limit = arguments.get("limit", 20)
     async with request.app.state.engine.begin() as conn:
-        access = await project_access(conn, user, project)
         if arguments.get("key"):
+            access = await project_access(conn, user, project)
             found = await history_search.list_history(conn, user, access, sink, cluster=arguments["key"], limit=limit)
             head = f"{len(found.items)} of {found.total} sessions and runs of cluster {arguments['key']}, the latest first:"
             data = {**found.model_dump(mode="json"), "summary": f"cluster {arguments['key']}"}
             return "\n".join([head, *(item_line(item) for item in found.items)]), data
+        access = await history.reader_access(conn, user, project, sink)  # as GET .../curator/history/clusters reads
         kept, hidden, counted = await history.clusters_of(conn, access.project_id)
     lines = [
         f"{len(kept)} clusters of {history_model.MIN_CLUSTER_SESSIONS} sessions or more in project {project}, the "

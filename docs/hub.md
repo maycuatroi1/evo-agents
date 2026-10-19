@@ -1094,8 +1094,10 @@ the harness of the change (arm `b`), and the worker runs the step's verify on ea
 one), and names the commits it made in its evidence; a step whose evidence names none takes the commits a run of it
 reported (a run of that step that ended done, else the step reports of plan runs while their events are kept). A plan
 of the Curator gives no task. A task keeps the step's title, what and verify, its commits, the plan's label, and its
-split, `select` or `holdout`, which the SHA-256 of its plan and step fixes: one task in three is held out, on every hub
-and for good. A task once in the suite is never changed by the job, so the suite only grows; its base commit, the first
+split, `select` or `holdout`, which the HMAC-SHA256 of its plan and step under the hub's `EVO_HUB_SESSION_SECRET` fixes:
+one task in three is held out, and nobody without the secret can tell which from the code. A hub without the secret
+builds no suite, and a new secret splits only the tasks added after it. A task once in the suite is never changed by
+the job, so the suite only grows; its base commit, the first
 parent of the oldest of its commits, is set once, by the first replay that reads it, and a task whose commits are on
 no origin is marked unusable and never replayed again.
 
@@ -1122,8 +1124,9 @@ plans with the evidence of the very step it does again.
 commit of the harness, the files of the change it ran with, the verify's exit codes, the cost, turns, tool calls and
 failed ones, the largest context and the agent's time; and `arms`, both arms added up (`replay.compare`). Both are for
 readers of the project, through its hub sink by the plan's label (the proposal's for the change). The MCP tool
-`curator_replay` answers both, and lists the agent of a run (the Reviewer, a Builder) the select split alone, so the
-holdout split a change is measured on stays out of what shapes it. The Judge reads none of it: neither its prompt nor
+`curator_replay` answers both, but the agent of a run (the Reviewer, a Builder) lists the select split alone and reads
+no change's replays (403), nor a replay run's events, facet or words, so the holdout split a change is measured on
+stays out of what shapes it. The Judge reads none of it: neither its prompt nor
 its tools hold a replay. The change's replays also come with `verdict` (`replay.verdict`) at the head of its pull
 request: `won`, `reason`, `tasks` (the holdout tasks with both arms at that head), each arm's tasks passed and mean
 cost and turns, `saving` (arm b's share lower) and the harness `paths` arm b ran with.
@@ -1242,7 +1245,13 @@ rows go with the run.
 transcript and a session's facet by their label through the sink `X-Evo-Sink` names, else the project's hub sink; a
 run as its events read (a local run its member's alone, a run on no plan through the project's default label, a run
 of a plan the caller may read); a group chat's message when the caller is in the chat now and clears its label, and
-the message names the project.
+the message names the project with a part of its label visible through that sink.
+
+The agent of a run, which calls the MCP tools with its run's scope, reads less than its owner: what it reads lands in
+its run's events, which the project's readers read, and in what it writes. It searches no group chat (the default
+sources are the transcripts and the runs, and asking for the chats is 403), reads no replay run, and reads a local run
+only in a review run, whose Reviewer reads the local sessions of the charter's owner; `run_events` refuses it the same
+runs.
 
 - `GET /v1/projects/{p}/curator/history/sessions` lists the sessions and runs of the project's facets, the latest
   first, by `kind`, `since` and `until` (UTC days), `login`, `runtime`, `outcome` (what the cheap model wrote of it,
@@ -1250,14 +1259,16 @@ the message names the project.
   numbers of its facet (messages, tool errors, corrections, tokens, context peak, cost), what the model wrote of it, its
   cluster and the evidence that names it.
 - `GET .../curator/history/search?q=` finds words (`websearch_to_tsquery`: words, `"a phrase"`, `-excluded`) in the
-  transcripts, the run logs and the group chats, best first (`ts_rank`), by `source`, `since`, `until`, `login` and
+  transcripts, the run logs and the group chats the caller is in, best first (`ts_rank`), by `source`, `since`,
+  `until`, `login` and
   `runtime`, each hit with a few words around the match (`ts_headline`) and the evidence that names it
   (`transcript:ID[:FILE]:LINE` or `run:ID:SEQ`; a chat's message has none).
 - `GET /v1/projects/{p}/transcripts/{session}/lines?line=` reads the lines of one transcript file (`file`, `main` by
   default) around a line (`before` and `after`, 10 by default, 100 at most) from the blob store, each as its entries.
 
 The MCP tools `history_sessions`, `history_search`, `transcript_lines` and `history_clusters` answer the same, the
-numbers before the words, and so does the command line:
+numbers before the words (`history_clusters` through the project's default label and the sink, as its route), and so
+does the command line:
 
 ```sh
 evo-agents hub curator history sessions --outcome failed --since 2026-10-01   # the numbers first
@@ -1270,7 +1281,8 @@ evo-agents hub curator history lines SESSION 120 --before 5 --after 5           
 What the review runs of a project remember of it (schema 0057, `evo_agents/hub/server/earlier.py`,
 `evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook.py`).
 
-**Earlier nights.** A finding's status comes from the proposals that name it, their changes and their ledgers:
+**Earlier nights.** A finding's status comes from the proposals that name it whose label the reader reads through the
+sink, their changes and their ledgers:
 `merged` once its change merged, `kept` or `reverted` once the ledger's outcome says so, `rejected` for a proposal the
 owner rejected or one dropped as a repeat, `proposed` otherwise, and `open` with no proposal; it takes the first of
 kept, merged, proposed, reverted and rejected. Kept, merged and rejected are closed. The prompt of a review run holds,
@@ -1433,7 +1445,8 @@ both tables and leaves the blobs as rows of their project. `GET /v1/projects/{pr
 transcripts the caller may read (by session, member, machine, runtime, `since`), and `GET .../transcripts/{session}`
 shows one session's with their parts; both need a grant and go through the read rule with the transcript's label and
 the sink, as digests do. `GET .../transcripts/usage` counts what the project holds: sessions, transcripts, parts,
-bytes in the blob store, per member, and the retention (`evo-agents hub sessions usage`, `list`, `show`). An admin of
+bytes in the blob store, per member, and the retention (`evo-agents hub sessions usage`, `list`, `show`), for a reader
+whose grant takes the project's default label through the sink (404 otherwise, as the night's figures). An admin of
 the project deletes the content of one session's transcripts or of all of the project's (`DELETE
 .../transcripts/{session}`, `DELETE .../transcripts`, `evo-agents hub sessions delete SESSION|--all`), with an audit
 row `transcript.delete`; the rows stay, marked deleted and without parts, so no backfill sends them again, and the
@@ -2133,7 +2146,7 @@ is in `docs/hub-deployment.md`. Set the variables in the platform's environment,
 | `EVO_HUB_ADMINS` | api | GitHub logins of hub admins, comma-separated |
 | `EVO_HUB_GITHUB_CLIENT_ID` | api | the OAuth App's client id; without it nobody can sign in |
 | `EVO_HUB_GITHUB_CLIENT_SECRET` | api | the OAuth App's secret, for web sign-in and the App check |
-| `EVO_HUB_SESSION_SECRET` | api | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it |
+| `EVO_HUB_SESSION_SECRET` | api, worker | at least 32 random characters; signs session and CSRF values and keys the hashes of worker pairing codes, which answer 503 without it, and the split of the Curator's replay suites, which the worker's job builds only with it |
 | `EVO_HUB_PUBLIC_URL` | api | the URL browsers use, such as `https://hub.example.org` |
 | `EVO_HUB_S3_ENDPOINT`, `EVO_HUB_S3_BUCKET`, `EVO_HUB_S3_ACCESS_KEY_ID`, `EVO_HUB_S3_SECRET_ACCESS_KEY` | api, worker | the blob store, all four or none; for R2 the endpoint is `https://<account id>.r2.cloudflarestorage.com` |
 | `EVO_HUB_S3_INTERNAL_ENDPOINT` | api, worker | optional: where the hub itself calls the same store, such as `http://seaweedfs:8333` on the platform's network when `EVO_HUB_S3_ENDPOINT` is a public hostname behind a proxy that caps a request's body (Cloudflare takes 100 MB); presigned URLs keep `EVO_HUB_S3_ENDPOINT`; set without the four, the hub does not start |

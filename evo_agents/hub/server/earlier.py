@@ -2,12 +2,12 @@
 what was found through it before, which of it is closed, and which proposals the owner rejected lately, and does not
 record a closed finding again without new evidence.
 
-A finding's status comes from the proposals that name it (``finding_ids``) and their changes and ledgers
-(``proposal_status``): ``merged`` once its change merged (``kept`` or ``reverted`` once the ledger's outcome says so),
-``rejected`` for a proposal its owner rejected or that was dropped as a repeat, ``proposed`` otherwise. A finding takes
-the first of kept, merged, proposed, reverted and rejected its proposals have, and ``open`` with none. CLOSED are the
-statuses whose work is done: a change kept or merged, or a proposal rejected; a reverted change opens its finding
-again.
+A finding's status comes from the proposals that name it (``finding_ids``), those the reader reads by their label
+through the sink alone, and their changes and ledgers (``proposal_status``): ``merged`` once its change merged
+(``kept`` or ``reverted`` once the ledger's outcome says so), ``rejected`` for a proposal its owner rejected or that
+was dropped as a repeat, ``proposed`` otherwise. A finding takes the first of kept, merged, proposed, reverted and
+rejected its proposals have, and ``open`` with none. CLOSED are the statuses whose work is done: a change kept or
+merged, or a proposal rejected; a reverted change opens its finding again.
 
 ``for_prompt`` gives the prompt of a review run (``evo_agents.hub.review.build_review_prompt``), as the run's owner
 reads them through the project's hub sink: for each lens of the night its latest PER_LENS findings with their status,
@@ -152,9 +152,11 @@ def _findings(project_id: int, lenses: list[str] | None):
     return query.order_by(f.c.id.desc()).limit(SCAN)
 
 
-async def _proposals_of(conn: AsyncConnection, project_id: int, ids: list[int]) -> dict[int, list[EarlierProposal]]:
-    """The proposals that name each of findings ``ids``, oldest first."""
-    if not ids:
+async def _proposals_of(
+    conn: AsyncConnection, access: ProjectAccess, through: str | None, ids: list[int]
+) -> dict[int, list[EarlierProposal]]:
+    """The proposals readable through ``through`` that name each of findings ``ids``, oldest first."""
+    if through is None or not ids:
         return {}
     p, c, lg = tables.proposals, tables.curator_changes, tables.curator_ledger
     outcome = (
@@ -172,16 +174,19 @@ async def _proposals_of(conn: AsyncConnection, project_id: int, ids: list[int]) 
             p.c.state,
             p.c.note,
             p.c.finding_ids,
+            p.c.label,
             c.c.state.label("change_state"),
             c.c.merged_at,
             outcome.label("outcome"),
         )
         .select_from(p.outerjoin(c, c.c.proposal_id == p.c.id))
-        .where(p.c.project_id == project_id, p.c.finding_ids.overlap(ids))
+        .where(p.c.project_id == access.project_id, p.c.finding_ids.overlap(ids))
         .order_by(p.c.id)
     )
     found: dict[int, list[EarlierProposal]] = {}
     for row in await conn.execute(query):
+        if not access.visible(row.label, through):
+            continue
         status = proposal_status(row.state, row.change_state, row.merged_at, row.outcome)
         view = EarlierProposal(
             id=row.id,
@@ -231,7 +236,7 @@ async def findings_of(
         for row in await conn.execute(_findings(access.project_id, lenses))
         if through is not None and access.visible(row.label, through)
     ]
-    proposals = await _proposals_of(conn, access.project_id, [row.id for row in rows])
+    proposals = await _proposals_of(conn, access, through, [row.id for row in rows])
     found, per = [], {}
     for row in rows:
         view = _view(row, proposals.get(row.id, []))

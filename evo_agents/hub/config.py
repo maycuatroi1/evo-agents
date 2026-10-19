@@ -37,7 +37,8 @@ in deploy/hub/.env.example.
 EVO_HUB_FORWARDED_ALLOW_IPS lists the addresses or networks of the reverse proxies whose X-Forwarded-For uvicorn
 believes, comma-separated, or ``*``; the client address it yields keys the limit on refused pairing codes. Unset, it
 keeps uvicorn's own default (its FORWARDED_ALLOW_IPS variable, else the loopback addresses), so nothing new is
-trusted. The session secret also keys the hashes of pairing codes, which therefore need it.
+trusted. The session secret also keys the hashes of pairing codes, which therefore need it, and the split of the
+Curator's replay suites (``evo_agents.hub.replay.split_of``), which no hub builds without it.
 
 Credentials of runs (``docs/credentials.md``) are optional configuration too. EVO_HUB_SECRETS_KEY is the AES-256-GCM
 key that seals them (``evo_agents.hub.server.sealing``), 32 bytes in base64url: without it a route that writes a

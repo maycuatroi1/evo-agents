@@ -804,7 +804,10 @@ async def history_ended(conn: AsyncConnection, found: RunStep, new: str, *, reas
 # Reading
 
 
-async def _reader_access(conn: AsyncConnection, user: Principal, project: str, sink: str | None) -> ProjectAccess:
+async def reader_access(conn: AsyncConnection, user: Principal, project: str, sink: str | None) -> ProjectAccess:
+    """The caller's access to ``project`` when it reads the Curator's history of it: a grant, and the project's default
+    label visible through ``sink`` (the project's hub sink when None); 404 otherwise. The routes and the MCP tool
+    history_clusters read the clusters through it."""
     access = await project_access(conn, user, project)
     need_reader(access)
     if not access.visible(access.rules.default_label, plan_routes._sink(access, sink)):
@@ -839,7 +842,7 @@ async def history_status(
 ) -> HistoryStatus:
     """Where the project's history run stands: its cap and model, the facets of the model, its latest runs."""
     async with request.app.state.engine.begin() as conn:
-        access = await _reader_access(conn, user, project, sink)
+        access = await reader_access(conn, user, project, sink)
         ch = tables.charters
         charter = (
             await conn.execute(
@@ -872,7 +875,7 @@ async def list_clusters(
 ) -> FacetClusterList:
     """The clusters of the project's facets of MIN_CLUSTER_SESSIONS sessions or more, as the hub last counted them."""
     async with request.app.state.engine.begin() as conn:
-        access = await _reader_access(conn, user, project, sink)
+        access = await reader_access(conn, user, project, sink)
         kept, hidden, counted = await clusters_of(conn, access.project_id)
     return FacetClusterList(
         project=access.name,
