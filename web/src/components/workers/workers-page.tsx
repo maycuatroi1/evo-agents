@@ -14,13 +14,13 @@ import { NAME_LINK } from "@/components/data/identifier";
 import { MetricStrip } from "@/components/data/metric-strip";
 import { notify } from "@/components/feedback/toast";
 import { SearchField } from "@/components/data/search-field";
-import { useNow } from "@/components/kg/use-now";
 import { PageHeader } from "@/components/shell/page-header";
 import { STATUS_LOOKS, StatusBadge, useStatusText } from "@/components/status/status-badge";
 import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { type ActiveFilter, EmptyState, ListSkeleton, NoResults } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useNow } from "@/hooks/use-now";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 import { cn } from "@/lib/utils";
@@ -43,6 +43,7 @@ import {
 import { type Worker, workerHref, workerKeys, workersQuery } from "./queries";
 import { Ago } from "./ago";
 import { RegisterDialog } from "./register-dialog";
+import { UpdateBadge } from "./update-badge";
 
 const NARROW_HIDDEN = {
   slots: "hidden sm:table-cell",
@@ -134,7 +135,13 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
         id: "status",
         header: () => t("columns.status"),
         sortFn: "basic",
-        cell: (info) => <StatusBadge kind="worker" status={workerView(info.row.original)} />,
+        // The worker's state, then only what went wrong with its updates: nothing while they go as they should.
+        cell: (info) => (
+          <span className="flex flex-wrap items-center gap-1.5 xl:flex-nowrap">
+            <StatusBadge kind="worker" status={workerView(info.row.original)} />
+            <UpdateBadge worker={info.row.original} />
+          </span>
+        ),
       }),
       helper.accessor("held_runs", {
         id: "slots",
@@ -194,7 +201,8 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
       getRowId={(row) => String(row.id)}
       columnClassNames={NARROW_HIDDEN}
       testId="workers-table"
-      // On a phone: the worker's name opening its page, its status, and its slots in use with the machine it runs on.
+      // On a phone: the worker's name opening its page, an update that went wrong as an icon after it, its status, and
+      // its slots in use with the machine it runs on.
       mobile={(worker) => {
         const host = t("hostLine", { hostname: worker.hostname, os: worker.os, arch: worker.arch });
         const meta = t("mobileMeta", { held: worker.held_runs, slots: worker.slots, host });
@@ -203,6 +211,7 @@ function WorkersTable({ workers, caption }: { workers: Worker[]; caption: string
           titleText: worker.name,
           titleClassName: "font-mono text-[13px]",
           href: workerHref(worker.id),
+          tags: <UpdateBadge worker={worker} compact />,
           status: <StatusBadge kind="worker" status={workerView(worker)} />,
           meta,
           metaText: meta,
