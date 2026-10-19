@@ -40,6 +40,7 @@ from evo_agents.kg.pipeline.stages import (
     STRUCTURE_VERSION,
     code_coverage,
     code_extractor,
+    declares,
     frag_unit,
     item_unit,
     map_item,
@@ -194,7 +195,7 @@ def run_pipeline(project: Project, corpus: Corpus, memo: Memo) -> tuple[Graph, d
             {"item": rec.item_id, "hash": r["hash"], "rev": r.get("rev", ""), "source": rec.source, "dirs": dirs},
             lambda r=r, s=rec.source, d=dirs: map_item(r, s, d),
         )
-        if r["kind"] in STRUCTURED_KINDS:
+        if is_structured(r):
             extractor = code_extractor(r, backend)
             if r["kind"] == "code":
                 code_items[rec.source].append((r, extractor))
@@ -448,6 +449,11 @@ def multiple_definitions(graph: Graph, code_kinds: set[str]) -> dict:
         "codes": len(codes),
         "samples": [{"code": code, "places": sorted(places[code])} for code in codes[:DEFINITION_SAMPLES]],
     }
+
+
+def is_structured(record: dict) -> bool:
+    """Whether the structure stage reads an item: one of STRUCTURED_KINDS, or one that declares nodes or edges."""
+    return record["kind"] in STRUCTURED_KINDS or declares(record)
 
 
 def _strongest(current: dict, new: dict) -> None:

@@ -233,6 +233,9 @@
         "kg_connectors": {
           "$ref": "#/$defs/contributions"
         },
+        "kg_sources": {
+          "$ref": "#/$defs/contributions"
+        },
         "tables": {
           "$ref": "#/$defs/tables"
         }

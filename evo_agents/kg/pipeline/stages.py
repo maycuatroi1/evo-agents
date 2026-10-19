@@ -10,6 +10,10 @@ Outputs are lists of facts (JSON-serializable dicts, memoized):
     {"t": "ident", "type", "key", "node", ...}            an identifier the index learns
     {"t": "issue", "message", "unit"}                     reported in coverage, never fatal
 
+An item of any kind may declare nodes and edges of its own in ``props.graph`` (``declared``): a source the hub reads
+itself, such as a core plugin's (``evo_agents.hub.kg_sources``), states what it knows instead of leaving it to the
+link stage, and every such fact is ``declared``.
+
 ``units`` are ownership units: ``<item_id>#<anchor>`` for a fragment, ``<item_id>#`` for the whole item.
 An element is alive while one of its derivations has every unit and every needed element alive.
 
@@ -30,7 +34,7 @@ import yaml
 from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
-MAP_VERSION = "3"
+MAP_VERSION = "4"
 STRUCTURE_VERSION = "9"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
@@ -38,7 +42,14 @@ DIRECTORY_CONNECTORS = {"git", "harness"}
 GRAPHIFY_INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[graphify]'"
 
 # Props of a commit or a pull request item that its node keeps, besides path and repo (``map_item``).
-NODE_PROPS = {"commit": ("sha", "files", "merge"), "pr": ("number", "status", "head", "base", "merge_commit")}
+NODE_PROPS = {
+    "commit": ("sha", "files", "merge"),
+    "pr": ("number", "status", "head", "base", "merge_commit"),
+    "ticket": ("number", "type", "status", "status_group", "priority", "sprint", "assignees", "due_on"),
+}
+DECLARED_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")  # the kind of a node an item declares, as an ontology names one
+DECLARED_REL = re.compile(r"^[a-z][a-z_]*$")  # the relation of an edge it declares
+MAX_DECLARED_ID = 500  # characters of the id of a node an item declares, or of an edge's ends
 
 FRONTMATTER = re.compile(r"\A\ufeff?---[ \t]*\r?\n(.*?)^(?:---|\.\.\.)[ \t]*\r?$", re.S | re.M)
 
@@ -679,8 +690,79 @@ def _tsconfig(record: dict, text: str) -> list[dict]:
     return [{**ident, "base": base, "paths": paths}]
 
 
+def declares(record: dict) -> bool:
+    """Whether an item declares nodes or edges of its own (``props.graph``)."""
+    return isinstance((record.get("props") or {}).get("graph"), dict)
+
+
+def _declared_unit(record: dict, entry: dict, what: str) -> tuple[str | None, dict | None]:
+    """The unit that owns a fact an item declares: the fragment its ``anchor`` names, else the whole item; an issue
+    instead when it names a fragment the item does not have."""
+    anchor = entry.get("anchor")
+    if anchor is None:
+        return item_unit(record["id"]), None
+    if isinstance(anchor, str) and any(f["anchor"] == anchor for f in record.get("fragments", [])):
+        return frag_unit(record["id"], anchor), None
+    message = f"{record['id']}: a declared {what} names fragment {anchor!r}, which the item does not have"
+    return None, {"t": "issue", "message": message, "unit": item_unit(record["id"])}
+
+
+def _declared_id(value) -> bool:
+    return isinstance(value, str) and 0 < len(value) <= MAX_DECLARED_ID
+
+
+def _declared_node(record: dict, entry) -> list[dict]:
+    ok = isinstance(entry, dict) and _declared_id(entry.get("id")) and isinstance(entry.get("name"), str)
+    if not ok or not DECLARED_KIND.match(str(entry.get("kind"))) or not isinstance(entry.get("props", {}), dict):
+        return [{"t": "issue", "message": f"{record['id']}: a declared node is not {{id, kind, name}}", "unit": ""}]
+    unit, issue = _declared_unit(record, entry, "node")
+    if issue is not None:
+        return [issue]
+    return [node(entry["id"], entry["kind"], entry["name"], [unit], props=entry.get("props"), status="declared")]
+
+
+def _declared_edge(record: dict, entry) -> list[dict]:
+    ok = isinstance(entry, dict) and _declared_id(entry.get("src")) and _declared_id(entry.get("dst"))
+    if not ok or not DECLARED_REL.match(str(entry.get("rel"))):
+        return [{"t": "issue", "message": f"{record['id']}: a declared edge is not {{src, rel, dst}}", "unit": ""}]
+    unit, issue = _declared_unit(record, entry, "edge")
+    if issue is not None:
+        return [issue]
+    return [edge(entry["src"], entry["rel"], entry["dst"], [unit], status="declared")]
+
+
+def declared(record: dict) -> list[dict]:
+    """The nodes and edges an item declares in ``props.graph``: ``{"nodes": [{id, kind, name, props?, anchor?}],
+    "edges": [{src, rel, dst, anchor?}]}``. Each is ``declared`` and lives on the fragment its ``anchor`` names, else on
+    the whole item, so it carries that unit's label; an edge also needs both its ends, so one to a node no source gives
+    is dropped as dangling. A node's label is the meet over every derivation of it: a mention of its code in a public
+    document shows it to a sink that clears public, with the name and props of whichever derivation came first. So a
+    source declares of a node what any mention could show (a code), and keeps its content in its own fragments, which
+    keep its label. An entry that is not one is an issue in coverage, never fatal."""
+    graph = (record.get("props") or {}).get("graph")
+    if not isinstance(graph, dict):
+        return []
+    facts: list[dict] = []
+    for entry in graph.get("nodes") or []:
+        facts += _declared_node(record, entry)
+    for entry in graph.get("edges") or []:
+        facts += _declared_edge(record, entry)
+    for fact in facts:
+        if fact["t"] == "issue" and not fact["unit"]:
+            fact["unit"] = item_unit(record["id"])
+    return facts
+
+
 def structure_item(
     record: dict, source_id: str, text: str | None, code_backend: str = "auto", identifiers: Sequence[dict] = ()
+) -> list[dict]:
+    """What one item says beyond its own node: the nodes and edges it declares (``declared``), then what its kind
+    holds."""
+    return declared(record) + _structure_of_kind(record, source_id, text, code_backend, identifiers)
+
+
+def _structure_of_kind(
+    record: dict, source_id: str, text: str | None, code_backend: str, identifiers: Sequence[dict]
 ) -> list[dict]:
     kind = record["kind"]
     item_id = record["id"]
