@@ -13,17 +13,18 @@ This page is the design in one place. The details live with the parts they belon
 
 | Part | Where |
 | --- | --- |
-| the review run, proposals, the Builder, the Judge, the replays, the merge, the ledger, the routes and the commands | `docs/hub.md`, "The Curator's review", "The Curator's changes", "The Curator's replays" and "The Curator's ledger, outcomes and circuit breaker" |
-| what the daemon does in a review run, a judge run, a replay run and any run of the Curator, the run's caps | `docs/workers.md`, "A review run on the machine", "A judge run on the machine", "A replay run on the machine", "The Curator's runs on the machine", "Runs of the night shift" |
+| the review run, proposals, the Builder, the Judge, the replays, the history run, the merge, the ledger, the routes and the commands | `docs/hub.md`, "The Curator's review", "The Curator's changes", "The Curator's replays", "The Curator's history run" and "The Curator's ledger, outcomes and circuit breaker" |
+| what the daemon does in a review run, a judge run, a replay run, a history run and any run of the Curator, the run's caps | `docs/workers.md`, "A review run on the machine", "A judge run on the machine", "A replay run on the machine", "A history run on the machine", "The Curator's runs on the machine", "Runs of the night shift" |
 | the leases of the Curator's runs and its own GitHub App | `docs/credentials.md`, "Which leases a run gets" |
 | the morning brief, `curator_paused`, proposals in the Inbox and on Telegram | `docs/notifications.md` |
 
 The code: `evo_agents/hub/curator.py` (the window, the night, the caps), `evo_agents/hub/review.py` (lenses and the
 review prompt), `evo_agents/hub/tiers.py` (the tiers), `evo_agents/hub/judge.py` (the Builder's plan, the signs of
 score hacking, the verdict, the merge rule), `evo_agents/hub/ledger.py` (the ledger and outcomes),
-`evo_agents/hub/replay.py` and `evo_agents/hub/replay_suite.py` (the replays and the suite they run on), and their
+`evo_agents/hub/replay.py` and `evo_agents/hub/replay_suite.py` (the replays and the suite they run on),
+`evo_agents/hub/history.py` and `evo_agents/hub/excerpts.py` (the history run and what its model reads), and their
 routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.py`, `changes.py`,
-`replays.py`, `pulls.py`, `brief.py`, `ledger.py`, `outcomes.py`, `telegram.py`).
+`replays.py`, `history.py`, `pulls.py`, `brief.py`, `ledger.py`, `outcomes.py`, `telegram.py`).
 
 ## One night
 
@@ -37,7 +38,9 @@ routes and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `pro
    (`docs/hub.md`, "The graph's health").
 2. **The Reviewer.** The night shift queues the night's review run on the worker on duty. Its agent reads the
    figures, the session digests, the traces of runs and the project's code, and writes findings and proposals, each
-   with evidence the hub can find. It pushes nothing and opens no pull request.
+   with evidence the hub can find. It pushes nothing and opens no pull request. Right after it comes the night's
+   history run, in which a cheap model writes a facet of each session and run that has none and names the new
+   clusters those facets fall into (The history run, below).
 3. **The tier.** The hub computes the tier of each proposal, 0 to 3, from the charter, the paths it would change and
    its kind. Tier 2 proposals with the most evidence reach the owner's Inbox, up to the charter's
    `max_decisions_per_day`.
@@ -100,6 +103,7 @@ circuit_breaker: {max_failed_in_a_row: 2}
 outcome_days: 7
 review: {lenses: 3, days: 7, budget_usd: 2}
 replay: {tasks: 3, budget_usd: 4}
+history: {budget_usd: 1}
 reviewer: {runtime: claude-code, model: sonnet}
 builder: {runtime: claude-code, model: opus}
 judge: {runtime: claude-code, model: sonnet, hidden_checks: ["python -m pytest -q tests/hub/test_judge.py"]}
@@ -124,6 +128,7 @@ env_secrets: [claude-oauth]
 | `circuit_breaker.max_failed_in_a_row` | 2 | jobs of a night in a row that failed or were reverted before the hub pauses the night shift, 1 to 10 |
 | `outcome_days` | 7 | days after a merge over which the hub counts a change's figures again, 1 to 90 |
 | `review.lenses`, `review.days`, `review.budget_usd` | 3, 7, null | lenses a night looks through, days of sessions and runs the figures count (at most 30), and the most the review run may cost |
+| `history.budget_usd`, `history.model` | null, null | the most the night's history run may cost, never above `night_budget_usd`; null gives the smaller of 1 USD and a quarter of `night_budget_usd`, and 0 runs none; and the model of the reviewer's runtime it runs on, null for the cheapest the worker on duty reports for that runtime (The history run, below) |
 | `replay.tasks`, `replay.budget_usd` | 3, null | the tasks of the holdout split each change of a skill, an AGENTS.md or a CLAUDE.md is replayed on (0 to 20), and the most the replay runs of a night may cost together, never above `night_budget_usd`; null replays nothing (Replays, below) |
 | `reviewer`, `builder`, `judge` | `claude-code`, the runtime's model | the runtime and model of each role (The three roles, below) |
 | `judge.hidden_checks` | none | commands the Judge runs that no Builder sees, at most 50 |
@@ -152,17 +157,18 @@ A charter makes one schedule of kind `night_shift` (`schedules`, schema 0012). E
 - inside the window it queues at most one run, and only when no run of the schedule is queued or held, the night has
   queued fewer than `max_runs_per_night` runs, at least 0.01 USD of `night_budget_usd` is left, the schedule's owner
   still holds writer on the project, and the worker on duty is live and fit for the run;
-- the run it queues is the first of these that has work: the night's review run, while the night has none; the judge
-  run of a change of the Curator that waits for one; the replay run of a change that waits for one, while the night's
-  replay runs cost less than `replay.budget_usd`; the Builder of a change the Curator planned; a plan run of the first
-  plan of `night_plans` that has a ready step and no active run.
+- the run it queues is the first of these that has work: the night's review run, while the night has none; the
+  night's history run, once the night's review run was queued, while the night has none, an item waits for a facet of
+  the model or a group of facets has no name; the judge run of a change of the Curator that waits for one; the replay
+  run of a change that waits for one, while the night's replay runs cost less than `replay.budget_usd`; the Builder of
+  a change the Curator planned; a plan run of the first plan of `night_plans` that has a ready step and no active run.
 
 The night a moment belongs to is the local date the window last opened on, so the hours after midnight count toward
 the night that began the evening before. Every run the night shift queues is pinned to the worker on duty, headless,
 with approval `auto`, `dispatched_via` `schedule`, and names its schedule and night (`runs.schedule_id`,
 `runs.schedule_night`). Its first event says which night, charter revision, owner, worker and caps it was queued
-with. Each is audited as the owner with no token: `curator.review`, `curator.judge`, `curator.replay`,
-`curator.build`, or `curator.dispatch` for a plan of `night_plans`.
+with. Each is audited as the owner with no token: `curator.review`, `curator.history`, `curator.judge`,
+`curator.replay`, `curator.build`, or `curator.dispatch` for a plan of `night_plans`.
 
 **Caps.** Each such run carries a budget (`runs.budget`): `max_usd`, what the night has left capped by
 `run_budget_usd` (and by `review.budget_usd` for the review run); `max_turns`, the charter's `run_max_turns`; and
@@ -392,6 +398,40 @@ evo-agents hub curator replay tasks --project demo            # the suite, selec
 evo-agents hub curator replay show 4 --project demo           # change #4: arm a against arm b, task by task
 ```
 
+## The history run
+
+The night's figures count what happened in each session without any model (`docs/hub.md`, "Session facets"); the
+history run adds what a model reads in it, the way Clio reads conversations: a facet of each session and run, and
+clusters of those facets, of which only those of 3 sessions or more reach the figures. `docs/hub.md`, "The Curator's
+history run", has the routes and the rules; `docs/workers.md`, "A history run on the machine", what the daemon does.
+
+**What the model writes.** For each session whose transcript the hub holds, and each run that ended (not a local run,
+not a history run), that the charter's owner may read, a summary, the kind of task, its outcome, what got in the way,
+the failure modes of MAST it shows (14 modes in three categories: the specification, the agents' misalignment, the
+verification of the task) and the sentences in which the person corrected the agent. It reads an excerpt, not the
+whole transcript: a long one is cut around its failed tool calls, the errors of the model's API and the person's
+corrections, with its first and last entries, since a model reading a long trace whole finds its faults badly
+(TRAIL). A facet is written once for each content of its item, and again when the item's content or the facet's
+version changes.
+
+**What it costs.** One history run a night, right after the review run, on the reviewer's runtime with the charter's
+`history.model`, else the cheapest model the worker on duty reports for it (`haiku` on Claude Code), within
+`history.budget_usd`: by default the smaller of 1 USD and a quarter of the night's budget. It reads the latest items
+first, in batches, each batch one new session of the agent, and stops at its cap rather than failing on it: what it
+could not read waits for the next night, so the number of items without a facet of the model goes down by what the
+cap allows each night. An item the model gave no facet waits until the next night, and a week after 3 attempts.
+
+**The clusters.** No embedding service groups them: the facets of the model fall into one group per kind of task and
+first failure mode, which `curator.collect` counts again each night; the history run's model names each new group and
+may say it is the same as another, and the two then count as one. A cluster keeps its name from night to night, so the
+nights can be compared. Each has its sessions (a run counts as one), its members and a representative session, the
+latest; one of fewer than 3 sessions stays out of the night's figures.
+
+```sh
+evo-agents hub curator history status --project demo     # the cap and model, the facets of the model, its runs
+evo-agents hub curator history clusters --project demo   # the clusters of 3 sessions or more
+```
+
 ## Two GitHub Apps and the ruleset
 
 The hub uses two GitHub Apps, and the difference between them is what keeps the Curator off default branches:
@@ -511,6 +551,7 @@ evo-agents hub kg health --project demo
 | 0053 | runs of kind `replay`, `replay_tasks`, `curator_replays`: the suite of replay tasks and the replays of the changes |
 | 0054 | the kind `kg_source`, `curator_changes.knowledge`: what a pull request does to knowledge.yaml, key by key |
 | 0055 | the ledger line `skill_release`: a global skill the hub published from a merge whose replays won, or published again |
+| 0056 | runs of kind `history`, the facet of the model on `session_facets`, `history_runs`, `facet_clusters`: the history run and the clusters of its facets |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

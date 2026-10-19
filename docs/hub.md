@@ -93,7 +93,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}` (Session transcripts, below) |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -105,7 +105,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | branding | `GET /v1/branding`, `/v1/branding/logo`, `/v1/branding/favicon`, public; `GET` and `POST /v1/admin/branding`, `.../versions`, `.../rollback`, `PUT /v1/admin/branding/{logo,favicon}`, for hub admins (section Branding and features) |
 | features | `GET /v1/features`; `GET` and `POST /v1/admin/features` and `/v1/admin/projects/{project}/features`, each with `/versions` and `/rollback`, for hub admins (section Branding and features) |
 | overview | `GET /v1/me/overview`: counts, active, recent runs and open decisions over the projects you hold a grant on, and where each project's Curator stands, for the web's Home |
-| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict,replay}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
+| worker protocol | `/v1/worker/{claim,heartbeat}`, `/v1/worker/runs/{id}/{state,events,inbox,uploads,blobs,plan,chat,decisions,notices,credentials,rate-limit,findings,proposals,judge,verdict,replay}`, `/v1/worker/runs/{id}/history/{next,report}` (`plan` is `GET`, and `PUT` for an author run), `/v1/worker/runs/{id}/steps/{key}`, and the graph pushes of the worker on duty, `/v1/worker/kg/{project}/runs` (`GET`, `POST`), `.../runs/{run_id}/log`, `.../runs/{run_id}/commit`, `.../blobs/{check,uploads,commit}` (section Memories, skills and knowledge graphs) |
 
 `/mcp` speaks MCP's Streamable HTTP transport, statelessly: each POST carries one JSON-RPC message and gets one JSON
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
@@ -116,8 +116,8 @@ plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `p
 `ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`, and what the Curator's review run reads: `curator_figures`,
 `digest_list`, `digest_show`, `run_events`, `decision_list` and `curator_replay` (the replays of the Curator's
 changes, `docs/curator.md`, Replays); they follow the same rules as the REST routes. `tools/list` shows the agent of a
-run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run none, any other run all
-but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
+run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run and a history run none,
+any other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
 the `kg_*` tools from the list and the graph's paragraph from the instructions, those of `initialize` and those of
 `server/discover`, where a client of MCP 2026-07-28 such as Claude Code 2.1.296 reads them, so the session sees each
@@ -684,7 +684,10 @@ drops the two tables. Schema 0054 adds the kind of change `kg_source` and `curat
 request of such a change does to knowledge.yaml (The Curator's changes, below); going back to 0053 deletes the
 proposals of kind `kg_source`, their changes with them, and drops the column. Schema 0055 adds the ledger's line
 `skill_release` (The Curator's replays, below); going back to 0054 deletes those lines and leaves the skill versions
-the hub published.
+the hub published. Schema 0056 adds the history run (a run of kind `history`, on no plan and no repo, which only the
+night shift queues and of which a project has one active at a time), the facet of the model on each row of
+`session_facets` (`llm` and its `llm_*` columns), `history_runs` and `facet_clusters` (The Curator's history run,
+below); going back to 0055 drops the tables and the columns and deletes the history runs.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -875,7 +878,9 @@ week (from Monday, UTC, the latest first) over the whole history, the sessions, 
 failures, the failures from the environment, the corrections, the calls of the knowledge graph, the compactions, the
 tokens with cache reads and writes, the cost and the largest context, and `facets`, how far the facets of the project
 are: its sessions with transcripts and those analyzed or waiting, the facets made from digests, the runs that ended
-and those analyzed, and the failed attempts. Counted again from the same data, a night's figures are the same: each
+and those analyzed, the failed attempts, and under `llm` how far the facets of the model are; and `clusters`, the
+groups the facets of the model fall into, counted again that night, those of 3 sessions or more alone (The Curator's
+history run, below). Counted again from the same data, a night's figures are the same: each
 list is ordered by its counts and then by its keys. Then the night shift queues the review
 run on the worker on duty, before any plan run of the night, once that worker's daemon says it runs review runs.
 
@@ -1109,6 +1114,72 @@ evo-agents hub curator replay tasks --split holdout   # the project's suite of r
 evo-agents hub curator replay show 4                  # change #4's replays, arm a against arm b
 ```
 
+## The Curator's history run
+
+Each night, after its review run, the night shift reads the project's sessions and runs with a cheap model, which
+writes a facet of each that has none (schema 0056, `evo_agents/hub/history.py`, `evo_agents/hub/excerpts.py`,
+`evo_agents/hub/server/history.py`), and the hub groups those facets into clusters. The deterministic facets (Session
+facets, below) count what happened; the facet of the model says what the session was about and how it went.
+
+**The items.** An item is the facet of a session whose own transcript the hub holds (`session:ID`), or of a run that
+ended, but a local run, whose session's transcript is the item, and a history run (`run:ID`), that the charter's owner
+may read: a session by its label through the project's hub sink, a run when it is of a plan the owner may read or a
+review run. An item waits while it has no facet of the model of `history.LLM_VERSION` written from its content as it
+is now (`llm_fingerprint`, its facet's fingerprint when the model read it), unless its last attempt failed and its
+`llm_retry_at` has not come. A facet of the model holds a summary of at most two sentences, the kind of task
+(`history.TASK_TYPES`), its outcome (`achieved`, `partial`, `failed`, `abandoned`, `unclear`), at most 5 phrases of
+what got in the way (`friction`), at most 3 failure modes of MAST (Cemri et al. 2025: 14 modes in three categories,
+specification, misalignment and verification, codes `FM-1.1` to `FM-3.3`), and at most 5 sentences in which the person
+corrected the agent (`corrections`). The hub keeps each field within its bounds whatever the model wrote.
+
+**The night shift.** Right after the night's review run, and before anything else of the night, the night shift
+queues the night's history run, one a night, once the night's review run was queued (so never before it), while an
+item waits or a group of facets has no name yet. Its cap is the charter's `history.budget_usd`, by default the smaller
+of 1 USD and a quarter of `night_budget_usd`, under the caps of the next run of the night; 0 queues none. It runs on the
+reviewer's runtime, with the charter's `history.model`, else the cheapest model the worker on duty reports for that
+runtime (by the words `nano`, `lite`, `flash`, `haiku`, `mini`, `small` in its name, in that order; `haiku` on Claude
+Code when it lists none of them), pinned to the worker on duty, as the schedule's owner, a run of the Curator of role
+`history` on no plan and no repo, once a run (`max_attempts` 1). Each is audited as curator.history, `<project>
+run:<id> night=<date>`, and a history run that fails sends its owner the notice `run_failed`.
+
+**The run's side.** The claim of a history run says how it reads its batches (`curator.history`: items and characters
+a batch, turns of the agent on a batch, the share of its caps kept for naming) and hands the daemon the run's own key
+(`curator.history_key`), whose SHA-256 alone the hub keeps (`history_runs.key_digest`). `POST
+/v1/worker/runs/{id}/history/next`, with that key in `X-Evo-History-Key`, hands the next batch: up to 6 waiting items,
+the latest first, within 60,000 characters, each with what it is, the fingerprint it was read at and its excerpt. A
+session's excerpt is read from its own transcript in the blob store, a run's from its log, else its events: the whole
+when it fits in 16,000 characters, else its first entries, the 2 entries before and after each failed tool result, error
+of the model's API and correction of the person (the earliest first, as many as fit), and its last entries, with
+`[... n lines left out ...]` at each cut, each entry `L<line>` of the transcript or `#<seq>` of the run (TRAIL:
+a model reading a long trace whole finds its faults badly). An item whose content cannot be read now waits as a failed
+attempt does. With `{"clusters": true}` the hub groups the facets again first and adds `groups`, those with no name
+yet with some of their facets, and `named`, the groups named before. `POST .../history/report`, with the same key,
+takes `facets` (each `{item, fingerprint, facet}` or `{item, fingerprint, error}`) and `names` (each `{key, name,
+description, same_as}`): a facet of content that changed since it was read, or of an item gone, is left (`stale`); an
+item the model gave none, or a facet without a summary, waits 20 hours, so the next night tries it again, and a week
+after 3 attempts; a group keeps the first name it got. The worker token alone gets 403, a run of another kind or
+another worker 404. What happens on the machine is `docs/workers.md`, A history run on the machine; the agent of a
+history run calls none of the hub's MCP tools.
+
+**The clusters.** The facets of the model fall into groups without any embedding: one per kind of task and first
+failure mode (`<task_type>/<FM-x.y or none>`, `history.cluster_key`). Each night `curator.collect` counts the groups of
+the facets the charter's owner may read again into `facet_clusters`: per group its sessions (a run counts as one, and
+`runs` says how many are runs), the members whose they are and its 3 latest sessions, the latest its representative.
+The history run's model names each new group and may say it is the same as another group, new or named before
+(`same_as`): the two then count as one cluster, under the name of the group it joined. Only a cluster of 3 sessions or
+more enters the night's figures (`clusters`) and the routes below; the others are counted as `hidden`.
+
+**Reading.** `GET /v1/projects/{p}/curator/history` (reader) says where the project's history run stands: its cap,
+runtime and model, how far the facets of the model are (`llm`: items, analyzed, waiting, failed), the latest 10
+history runs with what each wrote and cost, and how many clusters are shown and hidden; `GET
+.../curator/history/clusters` (reader) lists the clusters of 3 sessions or more as the hub last counted them. Both
+answer only a caller whose sink clears the project's default label, as the night's figures do.
+
+```sh
+evo-agents hub curator history status      # the cap and model, the facets of the model, the latest history runs
+evo-agents hub curator history clusters    # the clusters of 3 sessions or more, each with its representative session
+```
+
 ## The Curator's ledger, outcomes and circuit breaker
 
 Each proposal has a ledger the hub only adds to (schema 0018, `evo_agents/hub/ledger.py`,
@@ -1276,7 +1347,9 @@ parsed outside any, and a facet is written with one upsert. A blob store that do
 missing, fails the attempt: the facet made before stays, and the row counts `attempts` with the `error` and waits
 5 minutes before the next one, twice as long after each failure up to a day. A session's facet has no foreign key to its
 transcripts, so deleting their content, by an admin or by the retention, leaves it: the hub keeps facets without a
-limit, until the project goes. Going back to 0050 drops the table, and the job makes the facets again.
+limit, until the project goes. Going back to 0050 drops the table, and the job makes the facets again. Since schema
+0056 a row also holds the facet a cheap model wrote of it (`llm`), which the night's history run writes (The Curator's
+history run, above); a facet made again from other content makes the facet of the model wait to be written again.
 
 **Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
 result out of the model's context. A successful result of Bash, Grep, WebFetch or an MCP tool longer than 10,000
@@ -1781,16 +1854,17 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   how many (`audit pruned`, with `deleted` and `days`).
 - `hub.fire_schedules`, every minute: the night shift of each project with a charter queues its next run inside
   the charter's window and within the night's budget, pinned to the charter's worker and dispatched as that worker's
-  owner: the night's review run first, then the judge run of a change of the Curator that waits for one, the replay
+  owner: the night's review run first, then the night's history run (The Curator's history run, above), then the judge
+  run of a change of the Curator that waits for one, the replay
   run of a change it may replay (The Curator's replays, above), the Builder of a change it planned, and plan runs of
   the charter's `night_plans`; and it cancels the runs it queued
   that are still queued once the window ends or the project is paused (`evo-agents hub curator pause`). Its circuit breaker pauses a project's
   night shift once `max_failed_in_a_row` jobs of a night in a row failed or were reverted.
 - `curator.collect`, every minute: measures the knowledge graph of each project with a night shift, 6 hours after its
   last measure (an hour after one that failed), against the default branches on GitHub (The graph's health, above);
-  inside each charter's window, counts the night's figures of the project once, without any model, and queues the
-  night's review run; and opens again the proposals deferred until a moment that has passed (The Curator's review,
-  above).
+  inside each charter's window, counts the night's figures of the project once, without any model, with the clusters
+  of the facets of the model counted again (The Curator's history run, above), and queues the night's review run;
+  and opens again the proposals deferred until a moment that has passed (The Curator's review, above).
 - `curator.replay_suite`, hourly at minute 41, one pass at a time: adds to the suite of each project with a charter a
   replay task for each step of its plans that is done, has a verify of one line and names its commits, with its fixed
   split, and changes none it has (The Curator's replays, above).

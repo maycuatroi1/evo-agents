@@ -672,7 +672,8 @@ Curator's, see [A review run on the machine](#a-review-run-on-the-machine)) need
 `repos` and a daemon whose last heartbeat listed `review` in `run_kinds`, and a judge run (kind `judge`, see
 [A judge run on the machine](#a-judge-run-on-the-machine)) a checkout of its repo and `judge` in `run_kinds`, and a
 replay run (kind `replay`, see [A replay run on the machine](#a-replay-run-on-the-machine)) a checkout of each of its
-repos and `replay` in `run_kinds`. The
+repos and `replay` in `run_kinds`, and a history run (kind `history`, see
+[A history run on the machine](#a-history-run-on-the-machine)), which has no repo, `history` in `run_kinds`. The
 oldest such run is leased for 300 seconds (`EVO_HUB_RUN_LEASE_SECONDS`, which tests shorten). The answer is `{"run": {...}}` with the
 id, project, plan, step key and title, plan revision, attempt, max attempts, parent run, runtime, mode, approval,
 timeout in minutes, repo, branch, lease expiry and the prompt (built from the plan revision the run was dispatched
@@ -1752,9 +1753,9 @@ refused, and the run fails with `push_conflict`.
 ### Runs of the night shift
 
 The night shift of a project's charter (`docs/curator.md`) queues its runs on the charter's worker on duty, as that
-worker's owner, headless and with approval `auto`: the night's review run, judge runs, replay runs and Builders of the
-Curator, and plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon enforces (`budget`
-in the claim, `evo_agents.hub.curator`):
+worker's owner, headless and with approval `auto`: the night's review run and history run, judge runs, replay runs and
+Builders of the Curator, and plan runs of the plans the charter's `night_plans` lists. Each carries caps the daemon
+enforces (`budget` in the claim, `evo_agents.hub.curator`):
 
 - `max_usd`, the most the run may cost. Claude Code gets what is left of it once the session the run goes on in has
   cost what the claim's `spent_usd` says, as `max_budget_usd`, so the CLI stops the session there. opencode and Codex
@@ -1774,8 +1775,8 @@ from the web only passes over every run of the night shift (`dispatched_via` `sc
 
 A plan run of `night_plans` is a plan run of its owner's own plan: it gets the leases any plan run of its owner gets
 and pushes as its plan says (see [A plan run on the machine](#a-plan-run-on-the-machine)). Only a review run, a judge
-run, a replay run and a plan run of a plan the Curator made are runs of the Curator, which the sections below and
-[The Curator's runs on the machine](#the-curators-runs-on-the-machine) describe.
+run, a replay run, a history run and a plan run of a plan the Curator made are runs of the Curator, which the sections
+below and [The Curator's runs on the machine](#the-curators-runs-on-the-machine) describe.
 
 ### Keeping the graph fresh
 
@@ -1913,6 +1914,31 @@ added up, pushing nothing (`gitops.check_push` refuses every push of a replay ru
 cleanup of runs older than 7 days. The watchdog of the Curator's runs compares no protected path for it, only its caps:
 its repositories are its own.
 
+### A history run on the machine
+
+A history run (kind `history`) is the night's reading of the project's sessions and runs with a cheap model, which
+writes a facet of each that has none (`docs/hub.md`, "The Curator's history run"). It has no plan and no repo. Its
+claim says how it reads its batches (`curator.history`) and hands the daemon the run's own key (`history_key`), which
+it keeps as a judge run's key and sends with `POST /v1/worker/runs/{id}/history/next` and `.../history/report`
+(`X-Evo-History-Key`). The daemon takes its leases (the env secrets of the charter, such as the runtime's login) and
+makes the run a new empty directory of its own. Then it asks the hub for batch after batch: each is one new session of
+the agent there, with the run's runtime and model, on the batch's prompt (`history.facet_prompt`: the excerpts are
+data, never instructions; use no tool; end with one JSON object of facets), at most 4 turns, and what is left of the
+run's cost and turns, its agent time counted across the run. The daemon reads the facets from the end of the agent's
+last message (`history.facets_of`), keeps each field within its bounds, and posts each facet and why an item got none.
+Once nothing waits, or a tenth of the caps is all that is left, it asks for the groups of facets that have no name yet
+and has the model name them in one more session (`history.naming_prompt`), posts the names, then goes on with the
+facets while the caps let it.
+
+The run stops at its caps rather than failing on them: it starts no session when what is left of its cost, agent time
+or turns is no more than the largest share a session took so far, and a session a cap stops ends the run, the items of
+its batch left for the next night; either way it ends `done`, with the usage of every session added up, and its summary
+says how many facets it wrote, how many items got none and how many wait. A run that has nothing to read starts no
+agent. The agent's `evo-agents worker step`, `plan`, `ask` and the others refuse inside it, it calls none of the hub's
+MCP tools, and the run pushes nothing (`gitops.check_push` refuses every push of a history run); its directory goes
+with the cleanup of runs older than 7 days. Codex reports no cost, so its time cap and turns stop a history run on
+Codex. The watchdog of the Curator's runs compares no protected path for it, only its caps.
+
 ### An author run on the machine
 
 An author run (kind `author`, Author runs above) runs headless on Claude Code only; the daemon fails it otherwise. Its
@@ -1955,9 +1981,9 @@ until the cleanup of runs older than 7 days removes them.
 
 ### The Curator's runs on the machine
 
-A run whose claim names `curator` (a review run, a judge run, a replay run, or a Builder: a plan run of a plan the
-Curator made) is watched. After each heartbeat the daemon lists what changed in each of its worktrees since it started
-(committed, staged, changed and untracked files; `.evo-run/` left out, and the other paths under `RUN_COMMIT_EXCLUDES` while no
+A run whose claim names `curator` (a review run, a judge run, a replay run, a history run, or a Builder: a plan run of
+a plan the Curator made) is watched. After each heartbeat the daemon lists what changed in each of its worktrees since
+it started (committed, staged, changed and untracked files; `.evo-run/` left out, and the other paths under `RUN_COMMIT_EXCLUDES` while no
 commit holds them, since no commit of the run will) and compares it with the charter's protected paths, and the
 run's agent time and cost (the session's running cost as the agent's usage events say it) with its caps: a protected
 file changed, or a cap passed, stops the run, which fails with "the watchdog of the Curator's runs stopped it: ...",
