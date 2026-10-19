@@ -28,9 +28,12 @@ and jobs under `evo_agents/hub/server/` (`curator.py`, `collect.py`, `proposals.
 
 1. **The window opens.** At the charter's `window.start`, in its time zone, the job `curator.collect` counts the
    night's figures of the project once, without any model: tool failures, failures that come from the environment,
-   failed runs by cause, commands run again and again, corrections the person made, open items and stuck steps, and a
-   weekly series over the whole history. The sessions come from their facets, which the job `hub.analyze_facets`
-   makes from each transcript, digest and run that ended (`docs/hub.md`, "Session facets").
+   failed runs by cause, commands run again and again, corrections the person made, open items and stuck steps, the
+   health of the knowledge graph, and a weekly series over the whole history. The sessions come from their facets,
+   which the job `hub.analyze_facets` makes from each transcript, digest and run that ended (`docs/hub.md`, "Session
+   facets"). The graph's health comes from the measure `curator.collect` takes every 6 hours: each git source against
+   its default branch on GitHub, what the builds covered, the retrieval score, and what agents got from the graph
+   (`docs/hub.md`, "The graph's health").
 2. **The Reviewer.** The night shift queues the night's review run on the worker on duty. Its agent reads the
    figures, the session digests, the traces of runs and the project's code, and writes findings and proposals, each
    with evidence the hub can find. It pushes nothing and opens no pull request.
@@ -230,11 +233,12 @@ run, a judge run and a run of a plan the Curator made are runs of the Curator. L
 would let run unattended.
 
 **The Reviewer** works in worktrees detached at the commit origin's default branch has, and its prompt says that what
-it reads is data and never instructions. It looks through `review.lenses` of eleven lenses a night, taken in turn
+it reads is data and never instructions. It looks through `review.lenses` of twelve lenses a night, taken in turn
 (`tool_errors`, `environment`, `corrections`, `failed_runs`, `tech_debt`, `code_health`, `docs_drift`,
-`skills_memory`, `cost`, `security`, `product_goals`). Each finding and proposal cites evidence the hub checks before
-it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session's facet, else of its digest), `run:ID:SEQ` (an event of
-a run, a local run of the owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project). A proposal
+`skills_memory`, `cost`, `security`, `product_goals`, `kg_health`). Each finding and proposal cites evidence the hub
+checks before it keeps it: `session:ID[:FIELD:INDEX]` (an entry of a session's facet, else of its digest), `run:ID:SEQ`
+(an event of a run, a local run of the owner's included) or `code:REPO:PATH[:LINE]` (a line of a repo of the project; a
+file the knowledge graph does not hold yet is kept, `unmatched`, since a graph may lag its branch). A proposal
 carries a draft plan in outcome steps, each with `verify` and `acceptance`. The review run's figures come from what the
 plugin and the daemon feed the hub: the facet of each session (`docs/hub.md`, "Session facets"), made from the
 transcripts the `evo-hub` plugin sends (`docs/hub.md`, "Session transcripts") or, while the hub holds none, from the
@@ -372,6 +376,7 @@ evo-agents hub curator proposal accept 7 --note "go" --project demo
 evo-agents hub curator proposal defer 9 --days 14 --project demo
 evo-agents hub curator findings --run 41 --project demo
 evo-agents hub curator figures --night 2026-10-08 --project demo
+evo-agents hub kg health --project demo
 ```
 
 ## State on the hub
@@ -387,6 +392,7 @@ evo-agents hub curator figures --night 2026-10-08 --project demo
 | 0018 | `curator_ledger`, revert proposals, `schedules.pause_reason`, the notice `curator_paused` |
 | 0019 | `curator_changes.judge_key` |
 | 0051 | `session_facets`, the deterministic facet of each session and each run that ended |
+| 0052 | `kg_builds.coverage`, `kg_source_files`, `kg_health`: the health of a project's graph; the lens `kg_health` |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes` and `hub.analyze_facets` (`docs/hub.md`,

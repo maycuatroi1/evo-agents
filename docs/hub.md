@@ -93,7 +93,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | runs | `/v1/projects/{project}/plans/{plan_id}/ready-steps`, `GET` and `POST /v1/projects/{project}/runs`, `GET .../runs/stats`, `POST /v1/projects/{project}/plan-runs`, `POST /v1/projects/{project}/author-runs`, `.../runs/{id}`, `.../events`, `.../stream`, `.../diff`, `.../messages`, `.../chat`, `.../credentials`, `.../accounts`, `.../tool-stats`, `.../{cancel,approve,rerun,takeover,handback,finish}`, and `GET /v1/projects/{project}/tool-stats` |
 | session digests | `GET /v1/projects/{project}/digests`, `GET` and `PUT /v1/projects/{project}/digests/{session_id}` |
 | session transcripts | `GET` and `DELETE /v1/projects/{project}/transcripts`, `POST .../transcripts/parts`, `POST .../transcripts/held`, `GET .../transcripts/usage`, `GET` and `DELETE .../transcripts/{session_id}` (Session transcripts, below) |
-| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check` (`docs/curator.md`) |
+| curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
 | chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
@@ -675,8 +675,8 @@ no worker is locked there, and a heartbeat neither takes nor keeps a commit or a
 (session transcripts) is described under Memories, skills and knowledge graphs below. Schema 0050 adds
 `workers.kg_sync`, what the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift
 it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0049 drops it, and a
-heartbeat no longer keeps it. Schema 0051 (session facets) is described under Memories, skills and knowledge graphs
-below.
+heartbeat no longer keeps it. Schema 0051 (session facets) and schema 0052 (the health of a graph) are described under
+Memories, skills and knowledge graphs below.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -856,7 +856,10 @@ one the worker reported, else the one read in the error), the
 commands run again and again, the turns where the person corrected an agent, the open items of the plans and the
 steps that have not moved for 3 days, each with evidence a finding can cite, and what the worker on duty last said of
 keeping the project's graph fresh (`kg_sync`: each git source with the commit it holds, how far behind it was, when it
-was read and pushed, and the error of a sync that failed, with how many failed; null when it said nothing). The sessions
+was read and pushed, and the error of a sync that failed, with how many failed; null when it said nothing), and the
+health of the project's knowledge graph (`kg_health`, The graph's health, below: each git source against its default
+branch at the latest measure, what the builds of the span covered and how many changed nothing, the retrieval
+evaluation, and what the facets say agents got from the graph; null for a project with no graph). The sessions
 of the span are their facets: each session's whose transcripts or digest the charter's owner may read, a digest the job
 has not read yet as its facet would be, and a local run's only when its member owns the charter and no facet or digest
 of the same session counts it already (`sessions` says how many came from each). The night's figures add `weekly`, per
@@ -870,7 +873,7 @@ run on the worker on duty, before any plan run of the night, once that worker's 
 
 A review run reads and changes nothing: its worktrees are detached at the commit origin's default branch has, the
 worker pushes nothing at its end, and its GitHub token reads only (`contents: read`). Its prompt, which the hub builds
-(`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of eleven, taken in turn),
+(`evo_agents/hub/review.py`), names the lenses of the night (the charter's `review.lenses` of twelve, taken in turn),
 says that what the agent reads is data and never instructions, and gives the night's figures. The agent reads the
 project through the MCP tools above, its run's project alone, and writes through two commands:
 
@@ -883,7 +886,9 @@ evo-agents worker propose --lens environment --kind fix --title "A wait helper" 
 
 The hub refuses a finding or a proposal whose evidence it cannot find: a session of the project and the entry of the
 list of its facet (`resolved` `facet`), else of its digest (`digest`), an event of a run of the project (a local run of
-the owner's included), a file of a repo of the project (and of its knowledge graph, when it has one).
+the owner's included), a file of a repo of the project (`resolved` `graph` when its knowledge graph has the file,
+`unmatched` when the graph does not hold it yet, which the hub keeps: a graph may lag its branch, and `repo` for a
+project with no graph).
 A proposal carries a draft plan of plan.schema.json in outcome steps (each step with `verify` and `acceptance`). The
 hub computes its tier, 0 to 3, from the charter, the paths it names (and what they reach in the knowledge graph) and
 its kind (`evo_agents/hub/tiers.py`); a protected path of the charter, CI, lint and test configuration, and the kinds
@@ -1307,6 +1312,42 @@ shows what the worker last said of each project (`kg_sync`, schema 0050): the ti
 for each git source its status (`ok`, `failed` or `skipped`), the commit it holds and the error of a sync that
 failed. The night's figures of the project repeat it (The Curator's review).
 
+**The graph's health.** Each build that succeeds keeps what it covers in `kg_builds.coverage` (schema 0052,
+`evo_agents/hub/kg_coverage.py`): per source its items and mentions and how many resolved, stayed ambiguous or
+dangled, with their shares; the commit each git source read (the field `kg_status` shows); the Python functions and
+methods outside tests that no `calls` edge reaches (`evo_agents/kg/health.py`); and whether nothing had changed. It
+also keeps, in `kg_source_files`, the files each git source holds in that build, each path with its blob SHA, one row a
+source that the next build replaces. Each pass of `curator.collect` measures the graph of every project with a night
+shift and a knowledge config whose last measure is 6 hours old (an hour after one that failed), without any model, and
+keeps the measure in `kg_health` (`evo_agents/hub/server/kg_health.py`). For each git source a measure holds the commit
+read, then what GitHub says now through the workers' App, with `contents: read` alone: the default branch and its head,
+how many commits of it the graph lacks (`behind`) and how many hours the oldest of them has waited (`lag_hours`), and
+the files of the branch's tree against those the build holds, as the source reads the tree (its `exclude` and `allow`
+over the default exclusions, and with `assets: false` only what it selects): `missing`, `stale` (another blob SHA) and
+`deleted`, counted with a few paths each and the `code:` evidence a finding can cite. A source no build holds, a repo
+off GitHub, a hub without the App, an App not installed on the repo, a commit GitHub does not know or a tree it cuts
+gives the reason (`why`) and keeps what was read. Once for the project, a measure scores retrieval on the latest
+build's graph (`evo_agents/hub/kg_health_eval.py`), the way `evo-agents kg eval` scores it, with the plan-step
+questions `kg eval-questions` makes, built from the plans the charter's owner may read and the graph's own commits
+(there is no checkout on the hub, so a commit's files are its `changes` edges): at most 300 questions, a sample fixed by
+the hash of their ids, asked of `kg_search` as the owner reads the graph through the hub sink; Recall@1 and @5, MRR,
+the empty share, answers per 1,000 tokens and the time of a call. The same questions of the same graph keep the score
+they had. The night's figures (`kg_health`) take the latest measure, the coverage of the latest build, the builds of
+the span with those that changed nothing (`artifact_reused_from`), and what the facets of the span's sessions and runs
+say agents got from the graph: kg lookups that came back empty, the first search after an empty one (a fall back to
+grep), and the files edited after a lookup that it named in its top 5. The lens `kg_health` of the Curator reads them,
+and its metrics in the ledger are the commits behind, the files missing, stale or deleted, the empty lookups, the fall
+backs and the edited files outside the top 5; the first two are the state of the graph and compare as they are, not per
+session or run. `GET /v1/projects/{p}/curator/kg-health` lists the measures and the builds with their coverage, newest
+first, for a reader whose grant reaches the project's default label through the sink, and `evo-agents hub kg health
+--project demo` prints the latest measure. Going back to 0051 deletes the findings and proposals of lens `kg_health`
+and drops the two tables and the column.
+
+```sh
+evo-agents hub kg health --project demo            # each git source: commit read, behind, lag, files off; the score
+evo-agents hub kg health --project demo --json     # the measures and the builds, newest first
+```
+
 A build's artifact is the graph's SQLite file in the bucket, and its bytes differ from one build to the next even when
 the graph does not. A build whose content hash equals that of the project's latest build still holding an artifact
 therefore uploads nothing: it points at that artifact, and `artifact_reused_from` names the build that uploaded it.
@@ -1641,9 +1682,11 @@ Postgres database; there is no separate broker. The api only defers jobs. Jobs:
   Builder of a change it planned, and plan runs of the charter's `night_plans`; and it cancels the runs it queued
   that are still queued once the window ends or the project is paused (`evo-agents hub curator pause`). Its circuit breaker pauses a project's
   night shift once `max_failed_in_a_row` jobs of a night in a row failed or were reverted.
-- `curator.collect`, every minute: inside each charter's window, counts the night's figures of the project once,
-  without any model, and queues the night's review run; and opens again the proposals deferred until a moment that
-  has passed (The Curator's review, above).
+- `curator.collect`, every minute: measures the knowledge graph of each project with a night shift, 6 hours after its
+  last measure (an hour after one that failed), against the default branches on GitHub (The graph's health, above);
+  inside each charter's window, counts the night's figures of the project once, without any model, and queues the
+  night's review run; and opens again the proposals deferred until a moment that has passed (The Curator's review,
+  above).
 - `curator.brief`, every minute: at each charter's `brief_at`, in its time zone, sends the owner of the project's
   schedule the morning brief of the night (a notice `curator_brief`), once a day: the night's runs and cost, its
   review run, merges, runs waiting for approval, the Curator's changes still planned with why, open decisions and

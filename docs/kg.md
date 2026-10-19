@@ -315,7 +315,9 @@ graph says what it holds wherever it is read:
 - The hub has no checkout: it shows the count of the machine that synced the source, from the cursor of the newest run
   among those it merged. Its graph page has a card, Commits read, with a row per git source the member may see: the
   commit (a link to it on the forge, and a button that copies the SHA), the ref, and a badge when the commit is
-  behind.
+  behind. For the projects with a night shift the hub also measures each git source against the default branch on
+  GitHub every 6 hours: the commits behind and for how long, and the files the graph lacks, holds stale or still holds
+  after their deletion (`docs/hub.md`, The graph's health; `evo-agents hub kg health`).
 - `kg_node` gives a file's link at the commit read (`.../blob/<sha>/path`), so the lines of a span match what the
   link opens. The corpus keeps the link by branch, which does not change an item's hash on every commit.
 
