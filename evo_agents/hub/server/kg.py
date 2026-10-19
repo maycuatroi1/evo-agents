@@ -29,7 +29,8 @@ worker takes jobs with SKIP LOCKED, so a build that is already queued always see
 
 Reading: POST /v1/kg/{project}/tools/{tool} {arguments, sink} answers one of the seven kg_* tools of ``kg serve`` for a
 member, from the latest successful build holding an artifact (``evo_agents.hub.kg_graph``), with the hub's read rule:
-the meet of the member's grant and the sink's clearance. The sink defaults to Claude Code's; ``cli``, when the project
+the meet of the member's grant and the sink's clearance, holding the audience the database gives the member at this
+call (``evo_agents.hub.server.kg_audience``). The sink defaults to Claude Code's; ``cli``, when the project
 declares no such sink, reads through the hub sink, as the local ``cli`` sink reads everything on the machine. The answer
 is the MCP tool result, an error included; a graph that cannot be fetched is 503, and one whose bytes are not those the
 build recorded is 502 and is never opened. The kg_* tools of /mcp (``evo_agents.hub.server.mcp``) answer through the
@@ -82,6 +83,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, blob_store, commit_uploads
 from evo_agents.hub.server.errors import ErrorBody, error_response
+from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
 from evo_agents.kg.policy import Label, Policy
@@ -227,7 +229,7 @@ def _hub_ceiling(access: ProjectAccess) -> Label:
         rules.check_push({"level": rules.levels[0]}, access.role)
     except Refused as exc:
         raise HTTPException(exc.status, str(exc)) from None
-    return Label(rules.hub_sink.level, rules.hub_sink.location, "U", frozenset({access.name}))
+    return rules.clearance_label(rules.hub_sink)  # the highest audience: an item with one may be pushed
 
 
 async def _config(conn: AsyncConnection, access: ProjectAccess) -> dict:
@@ -734,15 +736,19 @@ def _read_sink(access: ProjectAccess, sink: str) -> str:
     return sink
 
 
-async def tool_result(state, user: Principal, project: str, tool: str, arguments: dict, sink: str) -> dict:
+async def tool_result(
+    state, user: Principal, project: str, tool: str, arguments: dict, sink: str, *, audience: frozenset | None = None
+) -> dict:
     """One kg_* tool of ``evo-agents kg serve`` for ``user``, answered from the project's latest successful build
-    through ``sink``: the MCP tool result, an error included. ``state`` is the app's. Raises HTTPException: 404 for a
-    project the caller cannot see, 403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact
-    whose bytes are not the build's."""
+    through ``sink``, holding ``user``'s audience as the database says now, or ``audience`` when given: the MCP tool
+    result, an error included. ``state`` is the app's. Raises HTTPException: 404 for a project the caller cannot see,
+    403 without a grant on it, 503 when no graph can be fetched, 502 for an artifact whose bytes are not the build's."""
     async with state.engine.begin() as conn:
         access = await project_access(conn, user, project)
         _member(access)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
+        if graphs and audience is None:
+            audience = await reader_audience(conn, user)
     if not graphs:
         message = (
             f"error: project {project} has no graph on the hub yet: push its runs with `evo-agents hub kg push` "
@@ -750,7 +756,7 @@ async def tool_result(state, user: Principal, project: str, tool: str, arguments
         )
         return {"content": [{"type": "text", "text": message}], "isError": True}
     rules = access.rules
-    ceiling = rules.ceiling(access.max_level, _read_sink(access, sink))
+    ceiling = rules.ceiling(access.max_level, _read_sink(access, sink), audience)
     try:
         return await asyncio.to_thread(
             answer,
