@@ -278,6 +278,20 @@ def test_a_search_matching_hidden_items_answers_as_the_graph_without_them(tmp_pa
         assert reading(with_chats, OUTSIDER).call(tool, args) == reading(without, OUTSIDER).call(tool, args), tool
 
 
+def test_a_message_ranks_with_the_idf_the_rows_without_an_audience_give_its_words(tmp_path, kg_env):
+    """``node_fts_aud`` holds a few rows: there a word that most of them hold gets next to no IDF, and a short message
+    naming it would rank below a long public page that holds it once (``Store._as_public``)."""
+    pages = [{"key": f"p{i}", "title": f"Release note {i}", "text": f"Notes of release {i}."} for i in range(12)]
+    handbook = {"key": "handbook", "title": "Handbook", "text": "The kiwi " + "handbook " * 200}
+    said = [{"key": f"m{i}", "title": f"#{i} alice", "text": f"kiwi {i}", "audience": [C5]} for i in range(3)]
+    project = make(tmp_path, kg_env, [*pages, handbook, *said])
+    found = [n["id"] for n in data(reading(project, [C5]), "kg_search", query="kiwi")["results"]]
+    assert found == ["chat:text:m0", "chat:text:m1", "chat:text:m2", "chat:text:handbook"]
+    assert [n["id"] for n in data(reading(project, [C6]), "kg_search", query="kiwi")["results"]] == [
+        "chat:text:handbook"
+    ]
+
+
 def test_a_reader_who_joined_after_project_b_left_sees_later_messages_only(chats):
     late, early = reading(chats, LATE), reading(chats, EARLY)
     assert ids(data(late, "kg_search", query="kiwi rollout")) == {M2, PLAN}  # and what it mentions
