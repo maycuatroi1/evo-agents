@@ -3,12 +3,14 @@
 ``evo-agents kg hook post-tool`` runs after every evo-kg tool call and joins the labels in the result into
 ``<kg home>/sessions/<session_id>.json``, a file of mode 0600 in a 0700 directory::
 
-    v, session_id, level, location, integrity, projects, results_read, last_updated
+    v, session_id, level, location, integrity, projects, audience, results_read, last_updated
 
+``audience`` is there once a result revealed one: the principals ``chat:<id>`` and ``grant:<project>:<level>`` of the
+elements read (``evo_agents.kg.policy``), so the record names the ids of the chats whose items the session read.
 The record only rises: a join never lowers the level or the location, never turns integrity U back into T,
-and never drops a project; a record that exists but cannot be read is left as it is, and the join fails rather
-than start the record again from one result. It names levels and projects, never ids or text from the results.
-kg_status and the SessionStart note print it.
+and never drops a project or a principal; a record that exists but cannot be read is left as it is, and the join fails
+rather than start the record again from one result. Besides those chat ids it names levels and projects, never ids or
+text from the results. kg_status and the SessionStart note print it.
 
 In a session without the evo-kg plugin the same kg_* tools come from the hub, through ``evo-agents hub mcp``, which
 joins each result into the same record with ``record_read`` itself (``evo_agents.hub.mcp_proxy.note_read``), so a
@@ -36,7 +38,7 @@ from pathlib import Path
 from evo_agents import filelock
 from evo_agents.kg.corpus import kg_home
 from evo_agents.kg.ids import utc_now
-from evo_agents.kg.policy import Label, Policy
+from evo_agents.kg.policy import Label, Policy, audience_of
 from evo_agents.kg.project import resolve_project
 
 SESSION_VERSION = 1
@@ -89,8 +91,10 @@ def describe(record: dict) -> str:
     location = record.get("location")
     where = "" if location in (None, "any") else f"/{location}"
     projects = ", ".join(record.get("projects") or []) or "no project"
+    named = record.get("audience")
+    audience = f", audience {' '.join(map(str, named))}" if isinstance(named, list) else ""
     return (
-        f"session label {record.get('level')}{where},{record.get('integrity')} over {projects}:"
+        f"session label {record.get('level')}{where},{record.get('integrity')} over {projects}{audience}:"
         f" {record.get('results_read', 0)} result(s) read, last at {record.get('last_updated')}"
     )
 
@@ -237,6 +241,7 @@ def record_read(session_id, data: dict, home: Path | None = None) -> dict | None
                 _rank(locations, entry.get("location")),
                 "T" if entry.get("integrity") == "T" else "U",
                 frozenset(p for p in projects if isinstance(p, str)),
+                audience_of(entry.get("audience")),
             )
             label = one if label is None else label.join(one)
         previous = old.get("results_read")
@@ -249,6 +254,7 @@ def record_read(session_id, data: dict, home: Path | None = None) -> dict | None
             "projects": sorted(label.projects),
             "results_read": (previous if isinstance(previous, int) else 0) + count,
             "last_updated": utc_now(),
+            **({"audience": sorted(label.audience)} if label.audience else {}),
         }
         _write(path, record)
     return record
