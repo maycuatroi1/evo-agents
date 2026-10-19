@@ -3721,6 +3721,10 @@
             "label": "Push conflict",
             "hint": "The branch moved on the origin and the push was refused."
           },
+          "push_declined": {
+            "label": "Push declined",
+            "hint": "The origin declined the push by a rule of its own, such as a hook or a protected branch. The commits are still on the run's branch in its worktree."
+          },
           "verify_failed": {
             "label": "Verify failed",
             "hint": "The step's verify command did not pass."

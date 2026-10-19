@@ -23,6 +23,7 @@ export const KNOWN_CAUSES = [
   "credentials",
   "missing_tool",
   "push_conflict",
+  "push_declined",
   "verify_failed",
   "timeout",
   "cost_cap",

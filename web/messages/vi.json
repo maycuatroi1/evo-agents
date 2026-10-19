@@ -3721,6 +3721,10 @@
             "label": "Xung đột khi push",
             "hint": "Nhánh trên origin đã đổi nên lần push bị từ chối."
           },
+          "push_declined": {
+            "label": "Push bị từ chối",
+            "hint": "Origin từ chối lần push theo luật riêng của nó, như một hook hay nhánh được bảo vệ. Commit vẫn nằm trên nhánh của run trong worktree."
+          },
           "verify_failed": {
             "label": "Verify không đạt",
             "hint": "Lệnh verify của bước không đạt."
