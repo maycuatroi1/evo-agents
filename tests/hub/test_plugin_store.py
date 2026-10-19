@@ -460,11 +460,12 @@ def test_plugin_install_cli_publishes_lists_shows_installs_upgrades_and_removes_
 
         listed = json.loads(ok(plugin_cli(["list", "--json"], home)).stdout)
         assert_json_keys("hub plugin list", listed)
-        # beside sandbox, Builder, SRS, Tasks and Telegram: the core plugins evo-ak ships, installed with it, which the
-        # hub records as it starts
+        # beside sandbox, Builder, Chats, SRS, Tasks and Telegram: the core plugins evo-ak ships, installed with it, which
+        # the hub records as it starts
         found = [(p["name"], p["state"], p["latest_version"]) for p in listed]
         assert found == [
             ("builder", "installed", "1.0.0"),
+            ("chats", "installed", "1.0.0"),
             ("sandbox", "available", "1.1.0"),
             ("srs", "installed", "1.0.0"),
             ("tasks", "installed", "1.0.0"),
