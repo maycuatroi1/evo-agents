@@ -15,7 +15,7 @@ codes.
 
 The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
 readers read, writers write, admins drop coded items. ``evo-agents hub srs list|show|import|export|submit|approve``
-is their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migration 0044), every row of a document
+is their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migration 0046), every row of a document
 carrying its label, the project's by default.
 
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,

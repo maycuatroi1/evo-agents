@@ -145,7 +145,7 @@ def test_tool_stats_are_written_when_a_run_ends_and_outlive_its_events(hub):
     assert of_project(hub, plan_id="another-plan") == {**summed, "runs": 0, "tools": []}
 
     set_run(hub.db, run_id, finished_at=func.now() - timedelta(days=31))
-    assert prune(hub)["deleted"] == 12  # the worker's 9 and the hub's 3 state events
+    assert prune(hub)["deleted"] == 13  # the worker's 9, the hub's 3 state events and its failure_cause_inferred note
     assert events_left(hub, run_id) == 0
     assert per_run(hub, run_id)["tools"] == [BASH, {**EDIT, "duration_ms": 750}, READ], "kept after the pruning"
     assert of_project(hub, days=32)["tools"][0]["calls"] == 2  # 31 days ago is the 32nd day back, today included

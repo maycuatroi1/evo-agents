@@ -806,7 +806,9 @@ def test_a_hub_admin_revokes_a_worker_its_token_stops_and_its_runs_are_released(
         pinned_held: (1, "leased", "failed", "reaper"),
         pinned_queued: (1, "queued", "failed", "reaper"),
     }
-    assert count(hub_db, runs, runs.c.event_seq == 1) == [(5,)]
+    # a run that failed got a second event, the system line that says its cause was inferred (plan run-failure-triage)
+    assert count(hub_db, runs, runs.c.event_seq == 1) == [(2,)]
+    assert count(hub_db, runs, runs.c.event_seq == 2) == [(3,)]
     assert audit_rows(hub_db, "worker.revoke") == [(f"worker:{worker_id} name=mac-mini owner={OWNER}", ADMIN)]
 
     # a revoked worker leaves the list unless asked for, and its name is free again

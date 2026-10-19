@@ -618,7 +618,7 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
     async with request.app.state.engine.begin() as conn:
         access, row = await owned_run(conn, user, project, run_id, "send a message to")
         state, plan_id, key, kind = row[2], row[3], row[4], row[11]
-        resumes = kind == "author" and state == "parked"
+        resumes = kind in ("author", "chat") and state == "parked"
         if state not in runs.MESSAGE_STATES and not resumes:
             if kind == "author":
                 raise HTTPException(

@@ -22,7 +22,7 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, replace
 
-from sqlalchemy import exists, func, insert, literal, null, or_, select, update
+from sqlalchemy import func, insert, literal, null, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
@@ -34,13 +34,12 @@ from evo_agents.hub.server.chat_notices import notice_mention
 from evo_agents.hub.server.chat_store import insert_mentions, insert_message, status_reaction
 from evo_agents.hub.server.profile_store import Profile, by_id
 from evo_agents.hub.server.run_events import write_user_message
-from evo_agents.hub.server.run_state import notify_queued, write_event
-from evo_agents.hub.server.runs.models import available
+from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
+from evo_agents.hub.server.runs.service.worker_fit import unfit_worker, workers_of
 
 log = logging.getLogger(__name__)
 
-OFFLINE = func.make_interval(0, 0, 0, 0, 0, 0, runs.OFFLINE_AFTER_SECONDS)
 WINDOW = func.make_interval(0, 0, 0, 0, rules.BUDGET_HOURS)
 AGENT_REPLY_REFUSAL = f"an agent's @ in a message hands no work: it uses `{rules.MENTION_COMMAND}`"
 
@@ -92,65 +91,6 @@ def _spent(spent: float, budget: float) -> str:
 # The worker
 
 
-def _workers(user_id: int, project_id: int):
-    """The workers of ``user_id`` that serve project ``project_id`` and are not revoked, with how many runs each
-    holds or has waiting for it (queued, pinned to it), and whether it is online."""
-    w, wp, r = tables.workers, tables.worker_projects, tables.runs
-    held = (r.c.worker_id == w.c.id) & r.c.state.in_(runs.HELD_STATES)
-    waiting = (r.c.pinned_worker_id == w.c.id) & (r.c.state == "queued")
-    holding = select(func.count()).where(or_(held, waiting)).scalar_subquery()
-    serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == project_id)
-    return (
-        select(
-            w.c.id,
-            w.c.name,
-            w.c.labels,
-            w.c.runtimes,
-            w.c.checkouts,
-            w.c.features,
-            w.c.run_kinds,
-            w.c.slots,
-            w.c.dispatch_from,
-            w.c.agent_version,
-            w.c.drained_at,
-            w.c.plugins,
-            (w.c.last_heartbeat_at >= func.now() - OFFLINE).label("online"),
-            holding.label("holding"),
-        )
-        .where(w.c.owner_id == user_id, w.c.revoked_at.is_(None), serves)
-        .order_by(w.c.id)
-    )
-
-
-def unfit_worker(row, profile: Profile, via: str) -> str | None:
-    """Why worker ``row`` (``_workers``) cannot take a chat run of ``profile`` dispatched with ``via`` now, or None."""
-    allow = profiles.allowed(profile.permissions, "runtime")
-    usable = [name for name in runs.RUNTIMES if available((row.runtimes or {}).get(name))]
-    packs = profiles.packs_unfit(
-        profile.packs, worker_id=row.id, agent_version=row.agent_version, features=row.features, plugins=row.plugins
-    )
-    checks = (
-        (not row.online, "is offline"),
-        (row.drained_at is not None, "is draining"),
-        ("chat" not in (row.run_kinds or ()), f"runs evo-agents {row.agent_version or '?'}, which takes no chat run"),
-        (row.dispatch_from == "web" and via != "web", "takes runs dispatched from the web only"),
-        (row.holding >= row.slots, "has no free slot"),  # its runs and the runs queued for it
-        (not row.checkouts, "has no checkout, and claims nothing"),
-        (
-            not profiles.allows_worker(profile.permissions, row.name, row.labels or ()),
-            f"is not one @{profile.handle} allows",
-        ),
-        (not [name for name in usable if allow is None or name in allow], f"has no runtime @{profile.handle} allows"),
-        (
-            profiles.needs_worker(profile.permissions, profile.instructions)
-            and runs.AGENT_PROFILES not in (row.features or ()),
-            "has a daemon that does not apply agent profiles",
-        ),
-        (packs is not None, f"cannot build the agent packs of @{profile.handle}: {packs}"),
-    )
-    return next((why for failed, why in checks if failed), None)
-
-
 async def project_repos(conn: AsyncConnection, project_id: int) -> list[str]:
     """The repos of a project a chat run works in: its harness, then the repos it lists, by name."""
     p, pr = tables.projects, tables.project_repos
@@ -164,7 +104,7 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
     """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher, fit for the
     profile (``unfit_worker``), the one with a checkout of the most repos of the project, then the most free slots."""
     profile = hand.profile
-    rows = (await conn.execute(_workers(hand.dispatcher_id, profile.project_id))).all()
+    rows = (await conn.execute(workers_of(hand.dispatcher_id, profile.project_id))).all()
     if not rows:
         return None, (
             f"{hand.dispatcher} has no worker that takes runs of project {profile.project}, which @{profile.handle} "
@@ -268,6 +208,49 @@ async def _go_on(conn: AsyncConnection, previous, hand: Hand, left: float) -> in
     return new_id
 
 
+async def go_on_parked(conn: AsyncConnection, parked_id: int, why: str, *, token_id: int | None = None) -> int:
+    """Queue the run that goes on in the session of chat run ``parked_id``, which waited for its owner's answer and was
+    parked, whose row the caller holds locked, and end the parked run done; the new run's id. The new run is the
+    parked one's for the thread, the person, the worker and the agent time used so far; the decisions of the parked
+    run still open and the messages of its inbox the worker has not handed to the agent go to it. ``why`` ends the
+    new run's first event, such as "as owner answered decision #3"."""
+    r = tables.runs
+    row = (
+        await conn.execute(
+            select(
+                r.c.dispatched_by,
+                r.c.dispatched_via,
+                r.c.chat_id,
+                r.c.chat_message_id,
+                r.c.hop,
+                r.c.usage,
+                r.c.run_seconds,
+            ).where(r.c.id == parked_id)
+        )
+    ).one()
+    spent, budget = await chat_spend(conn, row.chat_id)
+    values = {
+        "dispatched_by": row.dispatched_by,
+        "dispatched_via": row.dispatched_via,
+        "chat_message_id": row.chat_message_id,
+        "hop": row.hop,
+        "run_seconds": row.run_seconds,
+        "budget": rules.run_budget(max(budget - spent, 0.0) + curator.run_cost(row.usage)),
+    }
+    await move_run(
+        conn, parked_id, "parked", "done", "owner", reason="resumed in a new run", token_id=token_id, decisions=None
+    )
+    new_id = (await conn.execute(_continue_run(parked_id, values))).scalar_one()
+    d, i = tables.decisions, tables.run_inbox
+    await conn.execute(update(d).values(run_id=new_id).where(d.c.run_id == parked_id, d.c.state == "open"))
+    await conn.execute(update(i).values(run_id=new_id).where(i.c.run_id == parked_id, i.c.delivered_at.is_(None)))
+    await write_event(
+        conn, new_id, {"text": f"goes on in the session of run #{parked_id}, {why}", "resume_of_run_id": parked_id}
+    )
+    await notify_queued(conn, new_id)
+    return new_id
+
+
 async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
     """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>."""
     profile = hand.profile
@@ -353,6 +336,10 @@ async def hand_work(conn: AsyncConnection, hand: Hand) -> tuple[int | None, str 
     spent, budget = await chat_spend(conn, hand.chat.chat_id)
     if spent >= budget:
         return None, _spent(spent, budget)
+    if session is not None and session.state == "parked" and session.session_id:
+        new_id = await go_on_parked(conn, session.id, f"as {hand.author} wrote in the thread")
+        await _to_inbox(conn, new_id, hand)
+        return new_id, None
     if session is not None and session.state == "done" and session.session_id and not session.revoked:
         return await _go_on(conn, session, hand, budget - spent), None
     worker, why = await pick_worker(conn, hand)
@@ -536,10 +523,12 @@ async def _untaken(conn: AsyncConnection, run_id: int) -> list:
     return (await conn.execute(query.order_by(i.c.id))).scalars().all()
 
 
-async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str) -> int | None:
+async def chat_run_moved(conn: AsyncConnection, run_id: int, new: str, old: str | None = None) -> int | None:
     """What chat run ``run_id`` moving to ``new`` does in its chat: the agent's reaction on the message that started it,
     the hub's reply in the thread when it failed, and when it ended done with messages of its inbox untaken, the run
     that goes on in its session with them (its id)."""
+    if old == "parked" and new == "done":  # it waited for an answer and a new run goes on in its session (go_on_parked)
+        return None
     found = await chat_run(conn, run_id)
     if found is None:
         return None

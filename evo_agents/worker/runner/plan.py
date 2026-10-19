@@ -276,8 +276,10 @@ class PlanRun:
             raise RunFailed(f"HEAD is detached in the worktree of {name}: the worker does not push a detached HEAD")
         if head_branch != workspace.local_branch:
             raise RunFailed(
-                f"the worktree of {name} is on {head_branch}, not {workspace.local_branch}: the agent switched "
-                "branches, and the worker does not push it"
+                f"the worktree of {name} is on {gitops.branch_ref(head_branch)}, not "
+                f"{gitops.branch_ref(workspace.local_branch)}: the agent switched branches, and the worker does not "
+                "push it",
+                cause="branch_mismatch",
             )
         run.check()
         options = self.push_options(name)
