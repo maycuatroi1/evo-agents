@@ -379,6 +379,25 @@ The routes refuse a token scoped to a run, but they take an admin's own machine 
 agent that can read such a token on its worker could approve its own proposal. Run @builder on workers where no
 admin's machine token is readable by the agent.
 
+### SRS and tasks
+
+Two more core plugins keep a project's requirements and work in the hub's database, and projects enable them:
+
+- **srs** (`evo_agents/core_plugins/srs`, `docs/srs-plugin.md`): BA documents to a template, with versions members
+  approve and a code on each use case, business rule, screen and requirement. It contributes routes under
+  `/v1/x/srs/`, nine tables `srs_*` (migration 0046), native pages, the MCP tools `srs__read`, `srs__search`,
+  `srs__diff`, `srs__propose` and `srs__comment`, a source of the knowledge graph (`kg_sources`, the approved versions),
+  and the agent type `ba` with the pack `srs/ba`: @ba drafts and reviews documents for the project's writers. The type
+  declares `chat_runs: run_as` (section Agent types), and the plugin hands @ba the review of each version that enters
+  review as a task run of its own, with no `runs:dispatch` grant. It asks for no permission.
+- **tasks** (`evo_agents/core_plugins/tasks`, `docs/tasks-plugin.md`): a backlog with sprints, people and links to
+  coded items of srs, plan steps, runs and pull requests. It contributes routes under `/v1/x/tasks/`, six tables
+  `tasks_*` (migration 0047), native pages, the MCP tool `tasks__create`, the event `plan.step` (it asks for
+  `plans:read`) and a source of the knowledge graph (Ticket nodes).
+
+Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
+imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
+
 ## Runtimes
 
 A plugin of either tier declares a runtime of agents with `acp`, the command of an agent that speaks the
@@ -590,6 +609,20 @@ contributions by name. A manifest that names a part the plugin does not contribu
 are two types with the same handle. `mentioned_by` says who hands the profile work by mentioning it in a group chat:
 `writer`, the default, for the project's writers, or `admin` for its admins alone. Any other member who mentions it
 gets the hub's refusal in the thread, and no run starts (core plugin builder, above).
+
+`chat_runs` says where the chat runs of the profile go (`evo_agents/hub/server/chat_route.py`):
+
+- `mentioner`, the default: to a worker of the member who mentioned it, as for any agent (`docs/hub.md`, Group chats).
+- `run_as`: to a worker of the type's `run_as` (below), among the workers the type names, whoever mentioned it, so a
+  member without a worker reaches the agent too. The run's row is dispatched by `run_as`, whose worker claims it,
+  whose credentials it leases and whose grant the agent's session on /mcp carries. The person who mentioned the agent
+  stays the origin of the chain: the hub's chat code and a core plugin's tools act for that person (core plugin srs,
+  @ba). When `run_as` no longer holds writer on the project, or has no worker that can take the run, the hub answers
+  in the thread why and starts no run. While the type or its plugin is off in the project, the profile routes as
+  `mentioner`.
+
+The key is additive to the manifest's schema (`plugin.schema.json`, `$defs.agent_type.chat_runs`): a manifest without
+it routes as before.
 
 **An admin of a project enables an agent type there** after enabling its plugin:
 `PUT /v1/projects/{project}/agent-types/{plugin}/{name}` with:
