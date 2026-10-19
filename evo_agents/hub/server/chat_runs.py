@@ -9,15 +9,19 @@ can take it now. Each (thread, agent, person) is one session: a run of it that i
 its inbox; one that ended done, or failed because the remote declined its push (``rules.goes_on``), is gone on from by
 a new run, pinned to its worker, in its session, with the message in its inbox; else a new session starts on the
 person's worker the profile allows, with the most of the project's repos checked out first, on the branch
-``chat/<run>``. The profile of an agent type that routes its chat runs to its ``run_as`` (``chat_route``) takes the
-worker of that member instead, who must hold writer on the project, and its run's row is dispatched by them; the person
-stays the origin the hub's chat code acts for (``ChatRun.dispatcher_id``).
+``chat/<run>``, in the repos of the project that worker has a checkout of; on a daemon of ``runs.LAZY_CHAT_REPOS``, in
+the project's harness alone, and its agent opens the others it needs (``chat_agents.open_repo``), which the runs after
+it in the session start with (``_continue_run``). The profile of an agent type that routes its chat runs to its
+``run_as`` (``chat_route``) takes the worker of that member instead, who must hold writer on the project, and its run's
+row is dispatched by them; the person stays the origin the hub's chat code acts for (``ChatRun.dispatcher_id``).
 
 A chat run's moves (``chat_run_moved``, from ``run_state.record_move``) put the agent's reaction on the message that
 started it by rule (``chat_store.status_reaction``); a run that failed says why in the thread, and one that ended
 done with messages of its inbox untaken goes on in its session at once, with them. Its prompt is built when it is
-claimed (``chat_prompt``). The agent's reply at the end of each turn, and the messages of its commands, are messages of
-its profile in the thread (``post_agent``): a person it mentions gets the notice, an agent none, and no run.
+claimed (``chat_prompt``); on a daemon of ``runs.LAZY_CHAT_REPOS`` it lists every repo of the project, those open and
+those the message or the thread names first (``rules.ranked_repos``). The agent's reply at the end of each turn, and
+the messages of its commands, are messages of its profile in the thread (``post_agent``): a person it mentions gets the
+notice, an agent none, and no run.
 """
 
 from __future__ import annotations
@@ -112,12 +116,19 @@ def _spent(spent: float, budget: float) -> str:
 # The worker
 
 
+async def project_harness(conn: AsyncConnection, project_id: int) -> str | None:
+    """The repo a worker names the checkout of the project's harness by (``author.harness_repo``); None for a project
+    registered without one."""
+    p = tables.projects
+    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == project_id))).scalar_one_or_none()
+    return harness_repo(path)
+
+
 async def project_repos(conn: AsyncConnection, project_id: int) -> list[str]:
     """The repos of a project a chat run works in: its harness, then the repos it lists, by name."""
-    p, pr = tables.projects, tables.project_repos
-    path = (await conn.execute(select(p.c.harness_path).where(p.c.id == project_id))).scalar_one_or_none()
+    pr = tables.project_repos
     names = (await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id).order_by(pr.c.name))).scalars()
-    harness = harness_repo(path)
+    harness = await project_harness(conn, project_id)
     return list(dict.fromkeys([*([harness] if harness else []), *names]))
 
 
@@ -315,13 +326,18 @@ async def go_on_parked(conn: AsyncConnection, parked_id: int, why: str, *, token
 
 
 async def _start(conn: AsyncConnection, hand: Hand, worker, left: float) -> int:
-    """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>."""
+    """Queue the first run of a session of ``hand`` on ``worker``, on the branch chat/<its id>, with the repos of the
+    project the worker has a checkout of: of them, the project's harness alone on a daemon of
+    ``runs.LAZY_CHAT_REPOS``, whose agent opens the others it needs (``chat_agents.open_repo``)."""
     profile = hand.profile
     names = [
         name
         for name in await project_repos(conn, profile.project_id)
         if f"{profile.project}/{name}" in (worker.checkouts or {})
     ]
+    if runs.LAZY_CHAT_REPOS in (worker.features or ()):
+        harness = await project_harness(conn, profile.project_id)
+        names = [name for name in names if name == harness]
     allow = profiles.allowed(profile.permissions, "model")
     title = runs.step_title({"title": f"@{profile.handle} in {hand.chat.title}: {hand.body}"})
     values = {
@@ -676,9 +692,29 @@ def _clearers(found: ChatRun) -> list[int]:
     return list(dict.fromkeys([found.dispatcher_id, found.dispatched_by]))
 
 
-async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, repos: list) -> str:
+async def _listing(
+    conn: AsyncConnection, run_id: int, profile: Profile, repos: list, texts: list[str]
+) -> tuple[list[dict], str | None]:
+    """(every repo of the project of chat run ``run_id`` as its prompt lists them, ``rules.ranked_repos``: the run's
+    ``repos`` open, those ``texts`` name, and whether the run's worker has a checkout of each; the project's
+    harness)."""
+    r, w = tables.runs, tables.workers
+    held_by = select(w.c.checkouts).join_from(r, w, w.c.id == r.c.worker_id).where(r.c.id == run_id)
+    checkouts = (await conn.execute(held_by)).scalar_one_or_none() or {}
+    names = await project_repos(conn, profile.project_id)
+    opened = [entry.get("repo") for entry in repos if isinstance(entry, dict)]
+    held = {name for name in [*names, *opened] if isinstance(name, str) and f"{profile.project}/{name}" in checkouts}
+    listing = rules.ranked_repos(names, opened, held, rules.named_repos(names, texts))
+    return listing, await project_harness(conn, profile.project_id)
+
+
+async def chat_prompt(
+    conn: AsyncConnection, run_id: int, branch: str | None, repos: list, features: tuple[str, ...] = ()
+) -> str:
     """The prompt of chat run ``run_id`` as its worker claims it (``chat_runs.build_chat_prompt``): the snapshot holds
-    the messages its dispatcher clears the label of, and the member whose worker runs it too."""
+    the messages its dispatcher clears the label of, and the member whose worker runs it too. On a daemon that lists
+    ``runs.LAZY_CHAT_REPOS`` among its ``features``, every repo of the project, those the message that woke it or a
+    message of the thread the prompt shows names before the others not open (``_listing``)."""
     from evo_agents.hub.server.chat_views import message_select, profiles_by_id
 
     found = await chat_run(conn, run_id)
@@ -695,6 +731,7 @@ async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, re
     readers = [await label_reader(conn, user_id, [row.label for row in rows]) for user_id in _clearers(found)]
     authors = await profiles_by_id(conn, [row.author_profile_id for row in rows if row.author_profile_id])
     shown = {row.id: _message(row, authors) for row in rows if all(reader.sees(row.label) for reader in readers)}
+    in_thread = [shown[row.id]["body"] for row in rows if row.id in shown and root_id in (row.id, row.thread_root_id)]
     trigger = shown.pop(found.message_id, None) or {"id": found.message_id, "author": found.dispatcher, "body": ""}
     root = shown.pop(root_id, None) if root_id != found.message_id else None
     blocks = rules.snapshot(
@@ -706,6 +743,9 @@ async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, re
     _, budget = await chat_spend(conn, found.chat_id)
     c = tables.chats
     title = (await conn.execute(select(c.c.title).where(c.c.id == found.chat_id))).scalar_one()
+    listing, harness = None, None
+    if runs.LAZY_CHAT_REPOS in features:
+        listing, harness = await _listing(conn, run_id, profile, repos, [trigger["body"], *in_thread])
     return rules.build_chat_prompt(
         agent={
             "handle": profile.handle,
@@ -721,6 +761,8 @@ async def chat_prompt(conn: AsyncConnection, run_id: int, branch: str | None, re
         budget_usd=budget,
         blocks=blocks,
         repos=repos,
+        listing=listing,
+        harness=harness,
     )
 
 

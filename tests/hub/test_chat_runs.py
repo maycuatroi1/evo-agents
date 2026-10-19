@@ -26,7 +26,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from fastapi.testclient import TestClient
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 from evo_agents.hub import chat_runs, chats, runs, tables
 from evo_agents.hub.server.app import create_app
@@ -42,6 +42,8 @@ OWNER, OTHER, STRANGER = credentials_api.OWNER, credentials_api.OTHER, "stranger
 CHECKOUTS = credentials_api.CHECKOUTS  # evo-agents, lumen-identity, lumen-kb-docs and notes
 ONE_REPO = {f"{PROJECT}/evo-agents": {"path": "/src/evo-agents", "branch": "main"}}
 ADMIN_GRANT = {"role": "admin", "max_level": "internal"}
+# the features of a daemon whose chat run starts with every repo it has a checkout of, as one before LAZY_CHAT_REPOS
+EAGER = tuple(feature for feature in runs.WORKER_FEATURES if feature != runs.LAZY_CHAT_REPOS)
 EYES, CHECK, CROSS = chats.EYES, chats.CHECK, chats.CROSS
 WORKERS_APP = {"contents": "write", "metadata": "read", "pull_requests": "write"}
 
@@ -82,9 +84,13 @@ def agent(client, headers, handle: str, **body) -> dict:
     return response.json()
 
 
-def chat_worker(client, headers, name: str, *, checkouts=CHECKOUTS, kinds=runs.RUN_KINDS, slots: int = 1) -> dict:
-    """A worker of ``headers``' member whose daemon says it runs ``kinds`` and applies agent profiles."""
+def chat_worker(
+    client, headers, name: str, *, checkouts=CHECKOUTS, kinds=runs.RUN_KINDS, slots: int = 1, features=EAGER
+) -> dict:
+    """A worker of ``headers``' member whose daemon says it runs ``kinds`` and does ``features``: it applies agent
+    profiles, and its chat runs start with every repo it has a checkout of unless they name LAZY_CHAT_REPOS."""
     worker = add_worker(client, headers, name, slots=slots, checkouts=checkouts)
+    worker["features"] = list(features)
     beat(client, worker, kinds=kinds)
     return worker
 
@@ -96,7 +102,7 @@ def beat(client, worker: dict, held=(), kinds=runs.RUN_KINDS) -> dict:
         "free_slots": 1,
         "runs": list(held),
         "run_kinds": list(kinds),
-        "features": list(runs.WORKER_FEATURES),
+        "features": worker.get("features", list(EAGER)),
     }
     response = client.post("/v1/worker/heartbeat", json=body, headers=worker["headers"])
     assert response.status_code == 200, response.text
@@ -724,3 +730,173 @@ def test_a_lost_chat_run_is_tried_again_with_its_chat_columns(client, hub, hub_d
     assert retry == [(chat["id"], mention["id"], 1, f"chat/{spec['id']}", spec["id"])]
     assert reactions(client, hub["owner"], chat["id"], mention["id"]) == [(EYES, ["reviewer"])]  # the eyes stay
     assert report(client, worker, spec["id"], "running").status_code == 404
+
+
+# The repos of a chat run on a daemon of LAZY_CHAT_REPOS (criterion a3 of chat-runs-start-fast)
+
+HARNESS = "evo-agents-harness"  # the harness test_plans registers the project with, which it does not list as a repo
+WITH_HARNESS = {**CHECKOUTS, f"{PROJECT}/{HARNESS}": {"path": f"/src/{HARNESS}", "branch": "main"}}
+NO_NOTES = {name: held for name, held in WITH_HARNESS.items() if name != f"{PROJECT}/notes"}
+OPEN = chat_runs.OPEN_COMMAND
+
+
+def repos_of(run: dict) -> list[str] | None:
+    return None if run["repos"] is None else [entry["repo"] for entry in run["repos"]]
+
+
+def opened(client, worker: dict, run_id: int, repo: str):
+    return in_chats(client, worker, run_id, "chat/repos", {"repo": repo})
+
+
+def listed(prompt: str) -> list[str]:
+    """The lines of the repos a chat run's prompt lists."""
+    lines = prompt.split("\n")
+    start = next(i for i, line in enumerate(lines) if line.startswith("Repositories of ")) + 1
+    return lines[start : lines.index("", start)]
+
+
+def test_a_lazy_daemons_chat_run_starts_with_the_harness_alone_and_another_with_every_checkout(client, hub, hub_db):
+    studio = chat_worker(client, hub["owner"], "studio", checkouts=WITH_HARNESS, slots=3, features=runs.WORKER_FEATURES)
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=WITH_HARNESS)
+    chat = created(client, hub["owner"], people=[OTHER])
+    mine = run_of(
+        client, hub["owner"], sent(client, hub["owner"], chat["id"], "@reviewer fix it")["mentions"][0]["run_id"]
+    )
+    assert mine["pinned_worker_id"] == studio["id"]
+    assert mine["repos"] == [{"repo": HARNESS, "branch": f"chat/{mine['id']}"}]
+    # a daemon that does not say LAZY_CHAT_REPOS gets every repo of the project it has a checkout of, as before
+    said = sent(client, hub["other"], chat["id"], "@reviewer and mine")
+    theirs = run_of(client, hub["other"], said["mentions"][0]["run_id"])
+    assert theirs["pinned_worker_id"] == laptop["id"]
+    assert repos_of(theirs) == [HARNESS, "evo-agents", "lumen-identity", "lumen-kb-docs", "notes"]
+    # no checkout of the harness, or a project registered without one: the run starts with no repo
+    studio["checkouts"] = CHECKOUTS
+    beat(client, studio)
+    bare = run_of(
+        client, hub["owner"], sent(client, hub["owner"], chat["id"], "@reviewer again")["mentions"][0]["run_id"]
+    )
+    assert (bare["pinned_worker_id"], bare["repos"]) == (studio["id"], None)
+    studio["checkouts"] = WITH_HARNESS
+    beat(client, studio)
+    unregistered = update(tables.projects).values(cluster=None, workspace=None, harness_path=None)
+    sql(hub_db, unregistered.where(tables.projects.c.name == PROJECT))
+    none = run_of(
+        client, hub["owner"], sent(client, hub["owner"], chat["id"], "@reviewer last")["mentions"][0]["run_id"]
+    )
+    assert (none["pinned_worker_id"], none["repos"]) == (studio["id"], None)
+
+
+def test_a_lazy_chat_runs_prompt_lists_every_repo_open_and_named_first_with_the_command_that_opens_it(
+    client, hub, hub_db
+):
+    studio = chat_worker(client, hub["owner"], "studio", checkouts=NO_NOTES, features=runs.WORKER_FEATURES)
+    chat = created(client, hub["owner"], people=[OTHER])
+    sent(client, hub["other"], chat["id"], "lumen-identity looks fine to me.")  # before the thread: it names nothing
+    root = sent(client, hub["owner"], chat["id"], "The LUMEN-KB-DOCS build is red since Tuesday.")
+    sent(client, hub["owner"], chat["id"], "@reviewer look at evo-agents too, please", root["id"])
+    spec = claim(client, studio)
+    prompt = spec["prompt"]
+    branch = f"chat/{spec['id']}"
+    assert listed(prompt) == [
+        f"- {HARNESS}: open, checked out on this worker: its worktree is {HARNESS}/, and `{OPEN} {HARNESS}` prints its "
+        "path",
+        f"- evo-agents: not open, checked out on this worker, named in the chat: `{OPEN} evo-agents` opens it",
+        f"- lumen-kb-docs: not open, checked out on this worker, named in the chat: `{OPEN} lumen-kb-docs` opens it",
+        f"- lumen-identity: not open, checked out on this worker: `{OPEN} lumen-identity` opens it",
+        f"- notes: not open, no checkout on this worker: `{OPEN} notes` refuses it",
+    ]
+    assert "Repositories of the project, those open in this run first, then those the chat names:" in prompt
+    assert (
+        f"Open a repo with `{OPEN} REPO` before you read or change its code: the worker makes its worktree on the "
+        f"branch {branch} under the current directory"
+    ) in prompt
+    assert f"The harness.yaml of {HARNESS} says what each repo of the project is for." in prompt
+    assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
+    # the prompt of another daemon's chat run lists the run's repos as before, and no command that opens one
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=NO_NOTES)
+    sent(client, hub["other"], chat["id"], "@reviewer and mine")
+    other = claim(client, laptop)
+    assert listed(other["prompt"]) == [
+        f"- {name}: {name}/" for name in (HARNESS, "evo-agents", "lumen-identity", "lumen-kb-docs")
+    ]
+    assert OPEN not in other["prompt"]
+    assert (
+        f"You may change code in the repos below, each a worktree on the branch chat/{other['id']}" in other["prompt"]
+    )
+
+
+def test_a_lazy_chat_run_opens_a_repo_its_leases_pulls_and_next_turn_take(client, hub, hub_db, github):
+    credentials_api.install(github, "evo-agents", permissions=WORKERS_APP)
+    github.add_repo(MINE, "evo-agents")
+    studio = chat_worker(client, hub["owner"], "studio", checkouts=NO_NOTES, features=runs.WORKER_FEATURES)
+    chat = created(client, hub["owner"])
+    mention, spec = started(client, hub, studio, chat)
+    first, branch = spec["id"], f"chat/{spec['id']}"
+    assert spec["repos"] == [{"repo": HARNESS, "branch": branch}]
+    leases = credentials_api.leased(client, studio, first)
+    assert (credentials_api.by_name(leases), set(credentials_api.missing(leases))) == ({}, {HARNESS})
+    pull = {"repo": "evo-agents", "branch": branch, "head": "1" * 40}
+    refused = in_chats(client, studio, first, "chat/pulls", pull)
+    assert refused.status_code == 422 and "does not work in evo-agents" in refused.json()["message"]
+
+    answer = opened(client, studio, first, "evo-agents")
+    assert answer.status_code == 200, answer.text
+    both = [{"repo": HARNESS, "branch": branch}, {"repo": "evo-agents", "branch": branch}]
+    assert answer.json() == {"repo": "evo-agents", "branch": branch, "added": True, "repos": both}
+    again = opened(client, studio, first, "evo-agents")
+    assert again.status_code == 200 and again.json() == {**answer.json(), "added": False}
+    assert run_of(client, hub["owner"], first)["repos"] == both
+    audited = select(tables.audit.c.action, tables.audit.c.target, tables.audit.c.project_id)
+    rows = sql(hub_db, audited.where(tables.audit.c.action == "run.open_repo"))
+    project_id = sql(hub_db, select(tables.projects.c.id).where(tables.projects.c.name == PROJECT))[0][0]
+    assert rows == [("run.open_repo", f"{PROJECT}/chat run:{first} repo=evo-agents", project_id)]
+    # the run's leases take the repo it opened, and so does its pull request
+    leases = credentials_api.leased(client, studio, first)
+    assert set(credentials_api.by_name(leases)) == {f"github-app:{MINE}"}
+    assert set(credentials_api.missing(leases)) == {HARNESS}
+    github.push(MINE, "evo-agents", branch, "1" * 40)
+    made = in_chats(client, studio, first, "chat/pulls", pull)
+    assert made.status_code == 201 and made.json()["number"] == 1, made.text
+
+    # a repo the project does not list, or one the worker has no checkout of, is refused, and nothing changes
+    unknown = opened(client, studio, first, "nope")
+    assert unknown.status_code == 422
+    assert unknown.json()["message"] == (
+        f"project {PROJECT} has no repo nope: its repos are {HARNESS}, evo-agents, lumen-identity, lumen-kb-docs, notes"
+    )
+    unheld = opened(client, studio, first, "notes")
+    assert unheld.status_code == 409
+    assert unheld.json()["message"] == (
+        f"worker studio has no checkout of notes of project {PROJECT}: the run cannot open it here"
+    )
+    laptop = chat_worker(client, hub["other"], "laptop", checkouts=NO_NOTES, features=runs.WORKER_FEATURES)
+    assert opened(client, laptop, first, "lumen-identity").status_code == 404  # not its run
+    assert run_of(client, hub["owner"], first)["repos"] == both
+
+    # the next turn of the session starts with the repos the run opened, listed open first
+    ended(client, studio, first)
+    assert opened(client, studio, first, "lumen-identity").status_code == 404  # the run ended
+    later = sent(client, hub["owner"], chat["id"], "@reviewer and the docs?", mention["id"])
+    second = later["mentions"][0]["run_id"]
+    assert run_of(client, hub["owner"], second)["repos"] == both
+    goes_on = claim(client, studio)
+    assert (goes_on["id"], goes_on["resume_of_run_id"], goes_on["repos"]) == (second, first, both)
+    assert [line.split(":")[:2] for line in listed(goes_on["prompt"])[:2]] == [
+        [f"- {HARNESS}", " open, checked out on this worker"],
+        ["- evo-agents", " open, checked out on this worker"],
+    ]
+    moved(client, studio, second, "running")
+    taken = client.post(f"/v1/worker/runs/{second}/inbox", json={}, headers=studio["headers"]).json()["messages"]
+    client.post(f"/v1/worker/runs/{second}/inbox", json={"ack": taken[-1]["id"]}, headers=studio["headers"])
+    ended(client, studio, second)
+
+    # a run of another kind opens no repo here
+    plan = {"body": credentials_api.plan_body()}
+    pushed = client.put(f"/v1/projects/{PROJECT}/plans/{credentials_api.PLAN}", json=plan, headers=hub["owner"])
+    assert pushed.status_code == 200, pushed.text
+    body = {"plan_id": credentials_api.PLAN, "steps": [1]}
+    assert client.post(f"/v1/projects/{PROJECT}/runs", json=body, headers=hub["owner"]).status_code == 201
+    step = claim(client, studio)
+    assert step["kind"] == "step"
+    refused = opened(client, studio, step["id"], "evo-agents")
+    assert refused.status_code == 404 and "only a chat run's agent opens a repo here" in refused.json()["message"]

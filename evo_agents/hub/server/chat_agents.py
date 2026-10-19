@@ -20,9 +20,15 @@ acts for the person who dispatched the run, the origin of the chain: it writes o
 - POST .../chat/pulls: the worker pushed the run's branch of a repo (chat runs only): the hub opens a draft pull
   request of it on GitHub with the workers' App, or finds the one open, and the agent's message in the thread links
   it; a repo elsewhere, or a hub without the App, gets the message without one.
+- POST .../chat/repos: the worker opened a repo of the project in the chat run, as its agent asked (``evo-agents
+  worker repo open``, a daemon of ``runs.LAZY_CHAT_REPOS``; chat runs only): the hub adds it to the run's repos, on
+  the run's branch, so the run's leases (``credentials``) and ``chat/pulls`` take it, and the runs after it in the
+  session start with it. Only a repo of the project the worker has a checkout of (422 for a repo the project does not
+  list, 409 for one the worker has no checkout of, or past ``runs.MAX_RUN_REPOS``); one the run works in already is
+  answered as it is (``added`` false).
 
 The agent's messages are audited as chat.message, and a chat it creates as chat.create, as the run's dispatcher with
-the worker's token.
+the worker's token; a repo opened as run.open_repo, as the worker, in the run's project.
 """
 
 from __future__ import annotations
@@ -33,7 +39,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, Field, field_validator
-from sqlalchemy import insert, select
+from sqlalchemy import insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chat_runs as rules
@@ -43,7 +49,7 @@ from evo_agents.hub.server import audit, pulls
 from evo_agents.hub.server.chat_access import ChatAccess, label_reader, projects_by_id, uncleared
 from evo_agents.hub.server.chat_members import LOGIN_PATTERN, person, refuse_clash, refuse_uncleared
 from evo_agents.hub.server.chat_notices import notice_added
-from evo_agents.hub.server.chat_runs import Hand, agent_access, chat_run, hub_reply, post_agent
+from evo_agents.hub.server.chat_runs import Hand, agent_access, chat_run, hub_reply, post_agent, project_repos
 from evo_agents.hub.server.chat_store import add_member, emoji_kinds, member_event, put_reaction, take_reaction
 from evo_agents.hub.server.chat_views import (
     Chat,
@@ -57,7 +63,7 @@ from evo_agents.hub.server.chat_views import (
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.profile_store import Profile, by_id
-from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId
+from evo_agents.hub.server.runs.models import MAX_ID, NOT_HELD, OBJECT_NAME, RunId, RunRepo
 from evo_agents.hub.server.runs.service.claims import worker_of
 from evo_agents.hub.server.security import CurrentUser, Principal
 
@@ -138,6 +144,22 @@ class ChatPull(BaseModel):
     number: int | None = Field(description="the pull request's number on GitHub")
     opened: bool = Field(description="the hub opened it now; false for one open already, or none")
     message_id: int = Field(description="the agent's message in the thread that says so")
+
+
+class ChatRepoIn(BaseModel):
+    repo: str = Field(
+        min_length=1,
+        max_length=200,
+        pattern=r"^[^\x00-\x1f\x7f]+$",
+        description="a repo of the run's project, as the project names it, that the worker has a checkout of",
+    )
+
+
+class ChatRepo(BaseModel):
+    repo: str
+    branch: str = Field(description="the run's branch, chat/<id of its session's first run>, the repo's worktree is on")
+    added: bool = Field(description="the hub added the repo to the run now; false when the run worked in it already")
+    repos: list[RunRepo] = Field(description="the run's repos now: those it started with, then those opened, in order")
 
 
 # The run and its agent
@@ -439,3 +461,45 @@ async def pushed(request: Request, run_id: RunId, body: ChatPushed, user: Curren
             message_id, _ = await post_agent(conn, chat, run.profile, run_id, said, found.root_id)
     log.info("chat run branch pushed", extra={"run_id": run_id, "repo": body.repo, "pull": number, "opened": opened})
     return ChatPull(repo=body.repo, branch=body.branch, url=url, number=number, opened=opened, message_id=message_id)
+
+
+# The repos a chat run's agent opens
+
+
+@worker_router.post("/runs/{run_id}/chat/repos", response_model=ChatRepo, responses=REFUSALS)
+async def open_repo(request: Request, run_id: RunId, body: ChatRepoIn, user: CurrentUser) -> ChatRepo:
+    """The worker opened repo ``repo`` of the project in the chat run, as its agent asked: the hub adds it to the run's
+    repos on the run's branch (see the module's docstring)."""
+    async with request.app.state.engine.begin() as conn:
+        run = await agent_run(conn, user, run_id)
+        if run.kind != "chat":
+            raise HTTPException(404, f"run {run_id} is a {run.kind} run: only a chat run's agent opens a repo here")
+        project, name = run.profile.project, body.repo
+        names = await project_repos(conn, run.project_id)
+        if name not in names:
+            listed = ", ".join(names) or "none"
+            raise HTTPException(422, f"project {project} has no repo {name}: its repos are {listed}")
+        worker = await worker_of(conn, user)
+        if f"{project}/{name}" not in (worker.checkouts or {}):
+            raise HTTPException(
+                409,
+                f"worker {worker.name} has no checkout of {name} of project {project}: the run cannot open it here",
+            )
+        repos = [dict(entry) for entry in run.repos if isinstance(entry, dict)]
+        added = name not in [entry.get("repo") for entry in repos]
+        if added:
+            if len(repos) >= runs.MAX_RUN_REPOS:
+                raise HTTPException(409, f"run {run_id} works in {len(repos)} repos, the most a run works in")
+            repos.append({"repo": name, "branch": run.branch})
+            r = tables.runs
+            await conn.execute(update(r).values(repos=repos).where(r.c.id == run_id))
+            await audit.record(
+                conn,
+                actor_id=user.user_id,
+                token_id=user.token_id,
+                action=audit.RUN_OPEN_REPO,
+                target=f"{project}/chat run:{run_id} repo={name}",
+                project_id=run.project_id,
+            )
+    log.info("chat run repo opened", extra={"run_id": run_id, "repo": name, "added": added})
+    return ChatRepo(repo=name, branch=run.branch, added=added, repos=[RunRepo(**entry) for entry in repos])

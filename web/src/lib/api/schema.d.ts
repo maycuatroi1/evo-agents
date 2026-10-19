@@ -4172,6 +4172,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/worker/runs/{run_id}/chat/repos": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Open Repo
+         * @description The worker opened repo ``repo`` of the project in the chat run, as its agent asked: the hub adds it to the run's
+         *     repos on the run's branch (see the module's docstring).
+         */
+        post: operations["open_repo_v1_worker_runs__run_id__chat_repos_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/worker/runs/{run_id}/triage/rerun": {
         parameters: {
             query?: never;
@@ -6790,6 +6811,34 @@ export interface components {
              * @description the seq of the last event the member read
              */
             seq: number;
+        };
+        /** ChatRepo */
+        ChatRepo: {
+            /** Repo */
+            repo: string;
+            /**
+             * Branch
+             * @description the run's branch, chat/<id of its session's first run>, the repo's worktree is on
+             */
+            branch: string;
+            /**
+             * Added
+             * @description the hub added the repo to the run now; false when the run worked in it already
+             */
+            added: boolean;
+            /**
+             * Repos
+             * @description the run's repos now: those it started with, then those opened, in order
+             */
+            repos: components["schemas"]["RunRepo"][];
+        };
+        /** ChatRepoIn */
+        ChatRepoIn: {
+            /**
+             * Repo
+             * @description a repo of the run's project, as the project names it, that the worker has a checkout of
+             */
+            repo: string;
         };
         /** ChatSummary */
         ChatSummary: {
@@ -31421,6 +31470,68 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ChatPull"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    open_repo_v1_worker_runs__run_id__chat_repos_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                run_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChatRepoIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatRepo"];
                 };
             };
             /** @description Unauthorized */

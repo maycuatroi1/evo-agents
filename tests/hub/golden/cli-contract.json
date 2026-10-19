@@ -31547,6 +31547,91 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/chat/repos": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Open Repo",
+          "description": "The worker opened repo ``repo`` of the project in the chat run, as its agent asked: the hub adds it to the run's\nrepos on the run's branch (see the module's docstring).",
+          "operationId": "open_repo_v1_worker_runs__run_id__chat_repos_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatRepoIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatRepo"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/worker/runs/{run_id}/triage/rerun": {
         "post": {
           "tags": [
@@ -39280,6 +39365,57 @@
             "seq"
           ],
           "title": "ChatReadIn"
+        },
+        "ChatRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch",
+              "description": "the run's branch, chat/<id of its session's first run>, the repo's worktree is on"
+            },
+            "added": {
+              "type": "boolean",
+              "title": "Added",
+              "description": "the hub added the repo to the run now; false when the run worked in it already"
+            },
+            "repos": {
+              "items": {
+                "$ref": "#/components/schemas/RunRepo"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "the run's repos now: those it started with, then those opened, in order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "added",
+            "repos"
+          ],
+          "title": "ChatRepo"
+        },
+        "ChatRepoIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo",
+              "description": "a repo of the run's project, as the project names it, that the worker has a checkout of"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "ChatRepoIn"
         },
         "ChatSummary": {
           "properties": {

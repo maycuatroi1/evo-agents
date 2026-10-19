@@ -149,3 +149,63 @@ def test_chat_run_rules_of_hops_budgets_branches_and_the_inbox():
     assert "did not open its draft pull request: GitHub said no" in chat_runs.pull_text(
         "evo-agents", "chat/41", None, pull=False, opened=False, problem="GitHub said no"
     )
+
+
+@pytest.mark.parametrize(
+    ("texts", "named"),
+    [
+        (["look at evo-agents too"], ["evo-agents"]),
+        (["EVO-AGENTS and Notes."], ["evo-agents", "notes"]),
+        (["the evo-agents-harness says so"], ["evo-agents-harness"]),  # not evo-agents, which it starts with
+        (["clone maycuatroi1/evo-agents.git", None], ["evo-agents"]),
+        (["my-notes and notes_old and anotes"], []),
+        (["", "m1.kb fails"], []),
+    ],
+)
+def test_a_chat_run_names_a_repo_as_a_name_of_its_own(texts, named):
+    from evo_agents.hub import chat_runs
+
+    names = ["evo-agents-harness", "evo-agents", "lumen-kb-docs", "notes"]
+    assert chat_runs.named_repos(names, texts) == named
+
+
+def test_a_lazy_chat_run_ranks_the_repos_open_then_named_then_the_others_within_its_bytes():
+    from evo_agents.hub import chat_runs
+
+    names = ["harness", *(f"repo-{n:02}" for n in range(60))]
+    listing = chat_runs.ranked_repos(names, ["harness", "repo-40"], {"harness", "repo-40", "repo-07"}, ["repo-07"])
+    assert [item["repo"] for item in listing[:4]] == ["harness", "repo-40", "repo-07", "repo-00"]
+    assert listing[:3] == [
+        {"repo": "harness", "open": True, "checkout": True, "named": False},
+        {"repo": "repo-40", "open": True, "checkout": True, "named": False},
+        {"repo": "repo-07", "open": False, "checkout": True, "named": True},
+    ]
+    assert len(listing) == len(names) and listing[3] == {
+        "repo": "repo-00",
+        "open": False,
+        "checkout": False,
+        "named": False,
+    }
+    trigger = _message(60, "@reviewer look at repo-07\n" + "detail " * 5000)
+    prompt = chat_runs.build_chat_prompt(
+        agent={"handle": "reviewer", "name": "Reviewer", "project": "evo-agents"},
+        chat={"id": 7, "title": "Release talk", "people": ["owner"], "agents": ["reviewer"]},
+        trigger=trigger,
+        login="owner",
+        hop=1,
+        branch="chat/41",
+        budget_usd=5.0,
+        blocks=[],
+        listing=listing,
+        harness="harness",
+    )
+    assert len(prompt.encode()) <= runs.MAX_PROMPT_BYTES
+    start = prompt.index("Repositories of the project")
+    shown = prompt[prompt.index("\n", start) + 1 : prompt.index("\n\n", start)]
+    assert len(shown.encode()) <= chat_runs.REPOS_BYTES and "repo-59" not in shown  # the last ones left out first
+    assert shown.startswith("- harness: open, checked out on this worker: its worktree is harness/")
+    assert (
+        "- repo-07: not open, checked out on this worker, named in the chat: `evo-agents worker repo open repo-07`"
+        in shown
+    )
+    assert "The harness.yaml of harness says what each repo of the project is for." in prompt

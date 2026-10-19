@@ -118,6 +118,7 @@ MAX_BATCH_EVENTS = 500  # events in one POST of a run's events
 MAX_BATCH_BYTES = 1024 * 1024  # body of that POST
 MAX_EVENT_BODY_BYTES = 64 * 1024  # one event's body as JSON; a longer one is cut and marked truncated
 MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
+MAX_RUN_REPOS = 50  # the repos of one run (runs.repos, as schema 0010 bounds it)
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
 
@@ -148,6 +149,10 @@ ENVIRONMENTS = "environments"
 AGENT_PACKS = "agent_packs"
 # a daemon whose chat run's agent asks decisions (`evo-agents worker ask`), waits for the answers and is parked
 CHAT_DECISIONS = "chat_decisions"
+# a daemon whose chat run starts with the project's harness alone and whose agent opens each other repo it needs
+# (`evo-agents worker repo open`, POST /v1/worker/runs/{id}/chat/repos); the hub hands any other daemon's chat run
+# every repo of the project the worker has a checkout of (evo_agents.hub.chat_runs)
+LAZY_CHAT_REPOS = "lazy_chat_repos"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -157,6 +162,7 @@ WORKER_FEATURES = (
     ENVIRONMENTS,
     AGENT_PACKS,
     CHAT_DECISIONS,
+    LAZY_CHAT_REPOS,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
