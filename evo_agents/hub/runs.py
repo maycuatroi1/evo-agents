@@ -145,6 +145,10 @@ ENVIRONMENTS = "environments"
 AGENT_PACKS = "agent_packs"
 # a daemon whose chat run's agent asks decisions (`evo-agents worker ask`), waits for the answers and is parked
 CHAT_DECISIONS = "chat_decisions"
+# a daemon that keeps the graph of each project whose night shift it is on duty for fresh on the hub: it syncs the git
+# sources whose ref is origin/<branch>, fetching it first, and pushes their runs with its own token, no model involved
+# (evo_agents.worker.kg_sync); the heartbeat answer names those projects (kg_sync) only to a daemon that says it
+KG_SYNC = "kg_sync"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -154,6 +158,7 @@ WORKER_FEATURES = (
     ENVIRONMENTS,
     AGENT_PACKS,
     CHAT_DECISIONS,
+    KG_SYNC,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -288,6 +293,14 @@ WORKER_STATUSES = ("online", "offline", "draining", "revoked")
 SELF_UPDATE_STATES = ("current", "waiting", "updating", "locked", "unsupported")
 SELF_UPDATE_REASON_CHARS = 500  # the most characters of self_update.reason a heartbeat carries
 SELF_UPDATE_ERROR_CHARS = 2000  # and of self_update.error
+# What a daemon of feature KG_SYNC last did for each git source of a project it is on duty for (kg_sync of its
+# heartbeat): ok, the source was read or found at the commit read last, and every run of it is on the hub; failed, the
+# sync, the pull of the hub's runs or the push went wrong, and error says how; skipped, the worker does not read it
+# (a ref that is not origin/<branch>, a path: source, no checkout of its repo here), and error says why.
+KG_SYNC_STATES = ("ok", "failed", "skipped")
+KG_SYNC_ERROR_CHARS = 500  # the most characters of an error of kg_sync a heartbeat carries
+MAX_KG_SYNC_PROJECTS = 50  # the projects of kg_sync in one heartbeat
+MAX_KG_SYNC_SOURCES = 50  # and the sources of one project
 
 ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
     "agent_message_chunk",

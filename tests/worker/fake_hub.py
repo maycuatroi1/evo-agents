@@ -72,6 +72,9 @@ class FakeHub:
         self.settings: dict | None = None
         # the declarations of plugins' runtimes each heartbeat answer carries (plugin_runtimes); empty: the key left out
         self.plugin_runtimes: list[dict] = []
+        # the projects whose graph the worker keeps fresh, each {project, received_at}, that each heartbeat answer of a
+        # daemon saying kg_sync carries (kg_sync); empty: the key left out
+        self.kg_duties: list[dict] = []
         self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol
         self.heartbeat_bodies: list[dict] = []  # every heartbeat the worker sent, in order
         self.blobs: dict[str, bytes] = {}  # sha256 -> the bytes /blobs/<sha256> answers, a skill's bundle
@@ -592,6 +595,8 @@ class FakeHub:
             answer["settings"] = self.settings
         if self.plugin_runtimes:
             answer["plugin_runtimes"] = self.plugin_runtimes
+        if self.kg_duties and runs.KG_SYNC in (body.get("features") or ()):
+            answer["kg_sync"] = self.kg_duties
         return web.json_response(answer)
 
     async def _state(self, request: web.Request) -> web.Response:

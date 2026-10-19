@@ -13555,6 +13555,749 @@
           }
         }
       },
+      "/v1/worker/kg/{project}/runs": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "List Runs",
+          "description": "The runs the hub holds of the project, or of one of its sources.",
+          "operationId": "list_runs_v1_worker_kg__project__runs_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "source",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 200
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the runs of this source",
+                "title": "Source"
+              },
+              "description": "only the runs of this source"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Runs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Push Run",
+          "description": "Check the log of a run of the worker's and keep it, as POST /v1/kg/{project}/runs does.",
+          "operationId": "push_run_v1_worker_kg__project__runs_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RunPush"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunState"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/kg/{project}/runs/{run_id}/log": {
+        "get": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Run Log",
+          "description": "Where to fetch the log of an ingested run of the project.",
+          "operationId": "run_log_v1_worker_kg__project__runs__run_id__log_get",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "format": "uuid",
+                "description": "the connector run, as its log file is named",
+                "title": "Run Id"
+              },
+              "description": "the connector run, as its log file is named"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunLog"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/kg/{project}/runs/{run_id}/commit": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Commit Run",
+          "description": "Make a run of the worker's part of the project's corpus and queue a build, as for a member's run.",
+          "operationId": "commit_run_v1_worker_kg__project__runs__run_id__commit_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "format": "uuid",
+                "description": "the connector run, as its log file is named",
+                "title": "Run Id"
+              },
+              "description": "the connector run, as its log file is named"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/RunCommitted"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/kg/{project}/blobs/check": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Check Blobs",
+          "description": "The hashes of ``sha256`` the project does not hold.",
+          "operationId": "check_blobs_v1_worker_kg__project__blobs_check_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/BlobCheck"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/MissingBlobs"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
+      "/v1/worker/kg/{project}/blobs/uploads": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Request Uploads",
+          "description": "Presigned PUT URLs for the blobs of a run of the worker's that the project does not hold yet.",
+          "operationId": "request_uploads_v1_worker_kg__project__blobs_uploads_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/UploadRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Uploads"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "413": {
+              "description": "Request Entity Too Large"
+            }
+          }
+        }
+      },
+      "/v1/worker/kg/{project}/blobs/commit": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Commit Blobs",
+          "description": "Check the uploads of the items of a run of the worker's and record the blobs in the project.",
+          "operationId": "commit_blobs_v1_worker_kg__project__blobs_commit_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CommitRequest"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Committed"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        }
+      },
       "/v1/kg/{project}/graph": {
         "get": {
           "tags": [
@@ -42253,6 +42996,14 @@
               "type": "array",
               "title": "Plugin Runtimes",
               "description": "for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise"
+            },
+            "kg_sync": {
+              "items": {
+                "$ref": "#/components/schemas/KgDuty"
+              },
+              "type": "array",
+              "title": "Kg Sync",
+              "description": "for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise"
             }
           },
           "type": "object",
@@ -42377,6 +43128,17 @@
                 }
               ],
               "description": "what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the hub shows, so a daemon sends it every time once it has one"
+            },
+            "kg_sync": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/KgSyncReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off"
             }
           },
           "type": "object",
@@ -42763,6 +43525,34 @@
           ],
           "title": "KgConfig"
         },
+        "KgDuty": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "title": "Project"
+            },
+            "received_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Received At",
+              "description": "when the hub last took a run of the project's graph, from any machine: a daemon that saw an earlier time merges the hub's runs and looks at the project's sources again; null when it holds none"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "received_at"
+          ],
+          "title": "KgDuty",
+          "description": "A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it."
+        },
         "KgNode": {
           "properties": {
             "id": {
@@ -42871,6 +43661,197 @@
             "pending"
           ],
           "title": "KgPruned"
+        },
+        "KgSyncProject": {
+          "properties": {
+            "project": {
+              "type": "string",
+              "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+              "title": "Project"
+            },
+            "checked_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Checked At",
+              "description": "when the daemon last looked at the project"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error",
+              "description": "what stopped the look before any source: no checkout of the harness here, a knowledge.yaml that does not load, or a hub that refused the push"
+            },
+            "sources": {
+              "items": {
+                "$ref": "#/components/schemas/KgSyncSource"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Sources"
+            }
+          },
+          "type": "object",
+          "required": [
+            "project",
+            "checked_at"
+          ],
+          "title": "KgSyncProject",
+          "description": "What the daemon last did for one project whose night shift it is on duty for."
+        },
+        "KgSyncReport": {
+          "properties": {
+            "projects": {
+              "items": {
+                "$ref": "#/components/schemas/KgSyncProject"
+              },
+              "type": "array",
+              "maxItems": 50,
+              "title": "Projects"
+            }
+          },
+          "type": "object",
+          "title": "KgSyncReport",
+          "description": "What a daemon of feature kg_sync last did to keep the graphs of the projects it is on duty for fresh."
+        },
+        "KgSyncSource": {
+          "properties": {
+            "source": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Source",
+              "description": "the source's id in knowledge.yaml"
+            },
+            "status": {
+              "type": "string",
+              "pattern": "^[a-z][a-z0-9_]{0,31}$",
+              "title": "Status",
+              "description": "ok, the source was read, or found at the commit it read last, and every run of it is on the hub; failed, reading it, merging the hub's runs of it or pushing went wrong (error says how); skipped, the worker does not read it (error says why). A status this hub does not know is kept as named (runs.KG_SYNC_STATES)"
+            },
+            "error": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 500,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Error"
+            },
+            "ref": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "pattern": "^[^\\x00-\\x1f\\x7f]+$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Ref",
+              "description": "the ref it reads"
+            },
+            "commit": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Commit",
+              "description": "the commit its last ok read read"
+            },
+            "behind": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 0.0
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Behind",
+              "description": "commits of the remote's default branch that commit lacked when it was read"
+            },
+            "checked_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Checked At",
+              "description": "when the daemon last looked at the source"
+            },
+            "read_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Read At",
+              "description": "when the commit it holds was last read"
+            },
+            "pushed_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pushed At",
+              "description": "when it last pushed a run of the source"
+            },
+            "pulled": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Pulled",
+              "description": "runs of other machines the last look merged from the hub",
+              "default": 0
+            },
+            "pushed": {
+              "type": "integer",
+              "minimum": 0.0,
+              "title": "Pushed",
+              "description": "runs the last look pushed",
+              "default": 0
+            }
+          },
+          "type": "object",
+          "required": [
+            "source",
+            "status"
+          ],
+          "title": "KgSyncSource",
+          "description": "What the daemon last did for one git source of a project whose night shift it is on duty for."
         },
         "KindCount": {
           "properties": {
@@ -51424,6 +52405,40 @@
           ],
           "title": "RunList"
         },
+        "RunLog": {
+          "properties": {
+            "run_id": {
+              "type": "string",
+              "title": "Run Id"
+            },
+            "source": {
+              "type": "string",
+              "title": "Source"
+            },
+            "log_sha256": {
+              "type": "string",
+              "title": "Log Sha256"
+            },
+            "log_size": {
+              "type": "integer",
+              "title": "Log Size"
+            },
+            "url": {
+              "type": "string",
+              "title": "Url",
+              "description": "presigned GET of the log, as the corpus that ran it wrote it (jsonl.gz)"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "source",
+            "log_sha256",
+            "log_size",
+            "url"
+          ],
+          "title": "RunLog"
+        },
         "RunMount": {
           "properties": {
             "type": {
@@ -59819,6 +60834,17 @@
                 }
               ],
               "description": "what its daemon last said of updating itself to the tag nightly; null when its last heartbeat said nothing of it, as an older daemon does"
+            },
+            "kg_sync": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/KgSyncReport"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it"
             },
             "projects": {
               "items": {

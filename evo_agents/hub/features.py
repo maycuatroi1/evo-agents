@@ -47,7 +47,12 @@ FEATURES = (
         (re.compile(rf"/v1/projects/{_PROJECT}/curator(?:/.*)?"),),
         frozenset({"curator_figures"}),
     ),
-    Feature("kg", LAYERS, (re.compile(rf"/v1/kg/{_PROJECT}(?:/.*)?"),), frozenset(tool["name"] for tool in KG_TOOLS)),
+    Feature(
+        "kg",
+        LAYERS,
+        (re.compile(rf"/v1/kg/{_PROJECT}(?:/.*)?"), re.compile(rf"/v1/worker/kg/{_PROJECT}(?:/.*)?")),
+        frozenset(tool["name"] for tool in KG_TOOLS),
+    ),
     Feature("monitor", (INSTANCE,)),
 )
 BY_ID = {feature.id: feature for feature in FEATURES}
