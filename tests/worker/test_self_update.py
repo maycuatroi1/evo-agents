@@ -5,7 +5,8 @@ and the ``uv`` of ``tests.worker.fake_uv``, without Postgres.
 - What the daemon reads of its install, of its service manager and of the tag, and the two locks of the daemons of
   one install.
 - The update: staged first, then over the install, each started and its commit checked; a failure leaves the install
-  as it was, or puts the old one back.
+  as it was, or puts its copy back, with a uv that updates an environment in place (0.6.13) and with one that deletes
+  and builds it again (0.12.24); when the copy cannot go back, the old version is installed again.
 - The daemon: an idle, unlocked daemon under a service manager installs nightly and exits ``EXIT_UPDATED``; a locked
   one, one that has not heard the lock, one run by hand or one that holds a run does not; a failed update is reported
   and tried again later while runs go on; a hub that answers 426 gets an update first when the lock kept in
@@ -18,6 +19,7 @@ import asyncio
 import json
 import logging
 import os
+import shutil
 import signal
 from pathlib import Path
 
@@ -27,6 +29,7 @@ pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak
 
 from evo_agents.worker.daemon import Daemon
 from evo_agents.worker.home import EXIT_UPDATED, PidLock, WorkerConfig, WorkerHome
+from evo_agents.worker.selfupdate import backup as backup_module
 from evo_agents.worker.selfupdate import installer as installer_module
 from evo_agents.worker.selfupdate.install import find_uv, read_install, repo_of
 from evo_agents.worker.selfupdate.installer import Done, Installer, api_commit, nightly_commit, parse_ls_remote
@@ -49,22 +52,25 @@ NIGHTLY_REQUIREMENT = "evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-a
 
 
 class Fake:
-    """A uv tool install of evo-ak at OLD, the fake uv that installs over it, and where nightly points."""
+    """A uv tool install of evo-ak at OLD, the fake uv that installs over it, and where nightly points. With
+    ``recreates`` the fake uv deletes the environment and its command before each install, as uv 0.12.24 does."""
 
-    def __init__(self, tmp: Path):
+    def __init__(self, tmp: Path, *, recreates: bool = False):
         self.tmp = tmp
         self.tools, self.bin = tmp / "uv-tools", tmp / "uv-bin"
         self.uv = install_script(tmp / "uv-cmd" / "uv")
         self.scenario, self.log = tmp / "uv-scenario.json", tmp / "uv-log.jsonl"
         self.prefix = write_install(self.tools, self.bin, version="0.22.0", commit=OLD)
         self.nightly = NEW
+        self.recreates = recreates
         self.lookups = 0
         self.lookup_error: str | None = None
         self.now = 0.0  # the clock of the updaters that take ``clock=fake.clock``
         self.steps([])
 
     def steps(self, steps: list[str]) -> None:
-        self.scenario.write_text(json.dumps({"nightly": self.nightly, "steps": steps}), encoding="utf-8")
+        scenario = {"nightly": self.nightly, "recreates": self.recreates, "steps": steps}
+        self.scenario.write_text(json.dumps(scenario), encoding="utf-8")
 
     def point(self, commit: str) -> None:
         """Move nightly to ``commit``, for the lookup and for the fake uv."""
@@ -91,6 +97,17 @@ class Fake:
     def install(self):
         return read_install(self.prefix, PYTHON)
 
+    def installer(self, **options) -> Installer:
+        return Installer(self.install(), str(self.uv), self.tmp / "staging", self.env(), **options)
+
+    async def probe(self) -> bool:
+        """Whether the install starts, as the update checks it."""
+        problem, _ = await self.installer().check(self.prefix, self.bin / "evo-agents")
+        return problem is None
+
+    def starts(self) -> bool:
+        return asyncio.run(self.probe())
+
     async def lookup(self) -> str:
         self.lookups += 1
         if self.lookup_error:
@@ -110,6 +127,13 @@ class Fake:
 @pytest.fixture
 def fake(tmp_path) -> Fake:
     return Fake(tmp_path)
+
+
+@pytest.fixture(params=[False, True], ids=["uv-in-place", "uv-recreates"])
+def any_uv(request, tmp_path) -> Fake:
+    """The install, under a uv that updates an environment in place (0.6.13) and under one that deletes it and builds
+    it again on every install (0.12.24)."""
+    return Fake(tmp_path, recreates=request.param)
 
 
 def records(caplog, message: str) -> list[logging.LogRecord]:
@@ -198,6 +222,7 @@ def test_a_uv_tool_install_of_nightly_from_git_can_be_updated(fake):
     install = fake.install()
     assert (install.kind, install.reason, install.commit, install.version) == ("git", None, OLD, "0.22.0")
     assert install.extras == ("worker",) and install.entrypoint == fake.bin / "evo-agents"
+    assert install.commands == (fake.bin / "evo-agents",)
     assert install.python == PYTHON and install.prefix == fake.prefix
 
 
@@ -384,67 +409,168 @@ def test_only_the_daemons_that_run_count_as_peers(tmp_path):
         lock.release()
 
 
+@pytest.mark.parametrize("worked", [True, False], ids=["update-worked", "copy-put-back"])
+def test_a_daemon_whose_install_changes_during_an_update_restarts_only_once_the_gate_opens(fake, tmp_path, worked):
+    """With a uv that deletes the environment first, the other daemons of the install see it change in the middle of
+    the update: they wait for the updater, whose copy may yet go back, instead of restarting on half an install."""
+    homes = [WorkerHome(tmp_path / name) for name in ("worker-a", "worker-b")]
+    for home in homes:
+        home.ensure()
+    a, b = (fake.updater(home) for home in homes)
+    b.hear_lock(False)
+    fake.point(OLD)
+    try:
+        assert a.peers.close_gate()
+        shutil.rmtree(fake.prefix)  # uv 0.12.24 in the middle of the update
+        assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is False
+        assert (b.state, b.reason) == ("waiting", "another daemon of this install is updating it")
+        assert not b.may_claim()
+        if worked:
+            write_install(fake.tools, fake.bin, version="0.23.0", commit=NEW)
+            assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is False, "the updater has not exited yet"
+            a.close()  # the updater exits 75, and the kernel drops its locks
+            assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is True, "b restarts on the new install"
+        else:
+            write_install(fake.tools, fake.bin, version="0.22.0", commit=OLD)  # the copy went back
+            a.peers.open_gate()
+            assert asyncio.run(b.turn(held=0, orphans=0, worker="b")) is False
+            assert b.state == "current" and b.may_claim(), "b goes on with the install it started on"
+    finally:
+        a.close()
+        b.close()
+
+
 # The update
 
 
-def test_an_update_installs_nightly_in_staging_then_over_the_install(fake):
-    installer = Installer(fake.install(), str(fake.uv), fake.tmp / "staging", fake.env())
-    outcome = asyncio.run(installer.update(fake.lookup))
+def test_an_update_installs_nightly_in_staging_then_over_the_install(any_uv):
+    fake = any_uv
+    (fake.prefix / "marker").write_text("of the old environment", encoding="utf-8")
+    outcome = asyncio.run(fake.installer().update(fake.lookup))
     assert outcome.ok and outcome.commit == NEW
     assert fake.install().commit == NEW and fake.install().version == "0.23.0"
     assert 'rev=nightly"' in (fake.prefix / "uv-receipt.toml").read_text(encoding="utf-8")
+    assert (fake.prefix / "marker").exists() is not fake.recreates, "the fake uv recreates the environment, or not"
     staged, real = fake.calls()
     for call in (staged, real):
         argv = call["argv"]
         assert argv[-1] == NIGHTLY_REQUIREMENT
-        assert argv[argv.index("--python") + 1] == PYTHON, "the install's own interpreter: uv never recreates it"
+        assert argv[argv.index("--python") + 1] == PYTHON, "the install's own interpreter"
         assert {"--reinstall-package", "--refresh-package", "--force"} <= set(argv)
     assert staged["tool_dir"] == str(fake.tmp / "staging" / "tools")
     assert (real["tool_dir"], real["bin_dir"]) == (str(fake.tools), str(fake.bin))
-    assert not (fake.tmp / "staging").exists()
+    assert not (fake.tmp / "staging").exists() and not (fake.tmp / "backup").exists()
+    assert fake.starts()
 
 
 @pytest.mark.parametrize(
     ("step", "said"),
     [("fail", "uv could not install"), ("broken", "the new version does not start"), ("wipe", "uv could not install")],
 )
-def test_an_update_that_fails_in_staging_leaves_the_install_untouched(fake, step, said):
+def test_an_update_that_fails_in_staging_leaves_the_install_untouched(any_uv, step, said):
+    fake = any_uv
     fake.steps([step])
     before = (fake.prefix / "uv-receipt.toml").read_text(encoding="utf-8")
-    outcome = asyncio.run(Installer(fake.install(), str(fake.uv), fake.tmp / "staging", fake.env()).update(fake.lookup))
+    outcome = asyncio.run(fake.installer().update(fake.lookup))
     assert not outcome.ok and said in outcome.error and not outcome.broken
     assert len(fake.calls()) == 1, "the install was never touched"
     assert fake.install().commit == OLD and (fake.prefix / "uv-receipt.toml").read_text(encoding="utf-8") == before
+    assert not (fake.tmp / "backup").exists(), "no copy is made for an update that stops in staging"
 
 
-def test_an_install_that_does_not_start_after_the_update_is_put_back(fake):
-    fake.steps(["ok", "broken"])
-    outcome = asyncio.run(Installer(fake.install(), str(fake.uv), fake.tmp / "staging", fake.env()).update(fake.lookup))
+@pytest.mark.parametrize("step", ["fail", "broken", "wipe"])
+def test_an_update_that_fails_over_the_install_puts_its_copy_back_without_uv(any_uv, step):
+    """Criterion a4 whatever uv does to the environment: here every uv call after the failed one fails as well (no
+    network), and the install still starts, as it was, from the copy made before uv went over it."""
+    fake = any_uv
+    fake.steps(["ok", step, "fail", "fail"])
+    (fake.prefix / "marker").write_text("of the old environment", encoding="utf-8")
+    receipt = (fake.prefix / "uv-receipt.toml").read_bytes()
+    outcome = asyncio.run(fake.installer().update(fake.lookup))
     assert not outcome.ok and not outcome.broken
-    assert outcome.error.startswith("the install holds") or "exited 1" in outcome.error
-    assert f"put back evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@{OLD}" in outcome.error
-    assert [call["argv"][-1] for call in fake.calls()][-1].endswith(f"@{OLD}")
+    assert outcome.error.endswith("; put back the copy of the install"), outcome.error
+    assert len(fake.calls()) == 2, "no uv call puts it back"
+    assert (fake.prefix / "uv-receipt.toml").read_bytes() == receipt, "the receipt as it was: still nightly"
+    assert (fake.prefix / "marker").exists(), "the very environment that was there, not one built again"
     install = fake.install()
     assert (install.commit, install.version) == (OLD, "0.22.0")
-    problem, _ = asyncio.run(
-        Installer(install, str(fake.uv), fake.tmp / "s", fake.env()).check(fake.prefix, fake.bin / "evo-agents")
-    )
-    assert problem is None, "the install starts again"
+    command = fake.bin / "evo-agents"
+    assert command.is_symlink() and command.resolve() == (fake.prefix / "bin" / "evo-agents").resolve()
+    assert fake.starts(), "the install starts again"
+    assert not (fake.tmp / "backup").exists(), "the copy is dropped once it is back"
 
 
-def test_an_update_whose_install_is_wiped_and_cannot_be_put_back_says_so(fake):
-    fake.steps(["ok", "wipe", "fail"])
-    outcome = asyncio.run(Installer(fake.install(), str(fake.uv), fake.tmp / "staging", fake.env()).update(fake.lookup))
-    assert not outcome.ok and outcome.broken and "putting back" in outcome.error
+def test_a_command_that_was_a_copy_is_put_back_as_a_copy(tmp_path):
+    fake = Fake(tmp_path, recreates=True)
+    write_install(fake.tools, fake.bin, version="0.22.0", commit=OLD, link=False)
+    command = fake.bin / "evo-agents"
+    before = command.read_bytes()
+    fake.steps(["ok", "fail"])
+    outcome = asyncio.run(fake.installer().update(fake.lookup))
+    assert not outcome.ok and not outcome.broken and "put back the copy" in outcome.error
+    assert not command.is_symlink() and command.read_bytes() == before
+    assert fake.starts()
 
 
-def test_a_failed_update_of_an_install_from_pypi_puts_back_its_version(tmp_path):
-    fake = Fake(tmp_path)
-    fake.prefix = write_install(fake.tools, fake.bin, version="0.21.0", commit=None)
+@pytest.mark.parametrize(
+    ("commit", "version", "previous"),
+    [
+        (OLD, "0.22.0", f"evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@{OLD}"),
+        (None, "0.21.0", "evo-ak[worker]==0.21.0"),
+    ],
+    ids=["git", "pypi"],
+)
+def test_an_update_whose_copy_cannot_go_back_installs_the_old_version_again(
+    tmp_path, monkeypatch, commit, version, previous
+):
+    fake = Fake(tmp_path, recreates=True)
+    fake.prefix = write_install(fake.tools, fake.bin, version=version, commit=commit)
+
+    def unreadable(place, prefix):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(backup_module, "restore", unreadable)
     fake.steps(["ok", "broken"])
-    outcome = asyncio.run(Installer(fake.install(), str(fake.uv), fake.tmp / "staging", fake.env()).update(fake.lookup))
-    assert not outcome.ok and "put back evo-ak[worker]==0.21.0" in outcome.error
-    assert (fake.install().kind, fake.install().version) == ("pypi", "0.21.0")
+    outcome = asyncio.run(fake.installer().update(fake.lookup))
+    assert not outcome.ok and not outcome.broken
+    assert "putting back the copy of the install failed: [Errno 5] Input/output error" in outcome.error
+    assert outcome.error.endswith(f"; put back {previous}"), outcome.error
+    assert fake.calls()[-1]["argv"][-1] == previous
+    install = fake.install()
+    assert (install.commit, install.version) == (commit, version)
+    if commit:
+        assert f'rev={OLD}"' in (fake.prefix / "uv-receipt.toml").read_text(encoding="utf-8"), "uv names the commit"
+    assert fake.starts()
+    assert not (fake.tmp / "backup").exists()
+
+
+def test_an_update_that_cannot_put_anything_back_keeps_the_copy_and_stops_updating(fake, monkeypatch):
+    def unreadable(place, prefix):
+        raise OSError(5, "Input/output error")
+
+    monkeypatch.setattr(backup_module, "restore", unreadable)
+    fake.steps(["ok", "wipe", "fail"])
+    outcome = asyncio.run(fake.installer().update(fake.lookup))
+    assert not outcome.ok and outcome.broken and "putting back" in outcome.error and "failed too" in outcome.error
+    kept = fake.tmp / "backup"
+    assert (kept / "env" / "uv-receipt.toml").is_file() and (kept / "KEPT").read_text(encoding="utf-8").strip()
+    calls = len(fake.calls())
+    again = asyncio.run(fake.installer().update(fake.lookup))
+    assert not again.ok and again.broken and f"kept at {kept}" in again.error
+    assert len(fake.calls()) == calls, "no update goes over the copy kept for a person"
+    assert (kept / "env" / "uv-receipt.toml").is_file()
+
+
+def test_an_install_that_cannot_be_copied_is_not_updated(any_uv):
+    fake = any_uv
+    (fake.tmp / "full").write_text("a file where the copy's directory would go", encoding="utf-8")
+    receipt = (fake.prefix / "uv-receipt.toml").read_bytes()
+    outcome = asyncio.run(fake.installer(backup_dir=fake.tmp / "full" / "backup").update(fake.lookup))
+    assert not outcome.ok and not outcome.broken
+    assert outcome.error.startswith("the install was not copied before the update, which did not go on")
+    assert len(fake.calls()) == 1, "staged only: uv never went over the install"
+    assert (fake.prefix / "uv-receipt.toml").read_bytes() == receipt and fake.install().commit == OLD
+    assert fake.starts()
 
 
 # The daemon
@@ -541,8 +667,25 @@ def test_a_daemon_holding_a_run_waits_and_updates_once_the_run_ends(machine, fak
     assert fake.install().commit == NEW
 
 
-def test_a_failed_update_is_reported_runs_go_on_and_it_is_tried_again_later(machine, fake, tmp_path):  # noqa: F811
-    fake.steps(["fail"])
+@pytest.mark.parametrize(
+    ("recreates", "steps", "said", "tried"),
+    [
+        (False, ["fail"], "uv could not install", 1),
+        (True, ["ok", "fail"], "; put back the copy of the install", 2),
+    ],
+    ids=["in-staging", "over-the-install-uv-recreates"],
+)
+def test_a_failed_update_is_reported_runs_go_on_and_it_is_tried_again_later(
+    machine,  # noqa: F811
+    fake,
+    tmp_path,
+    recreates,
+    steps,
+    said,
+    tried,
+):
+    fake.recreates = recreates
+    fake.steps(steps)
     started, release = waiting_step(machine, tmp_path)
 
     def updater(home):
@@ -550,20 +693,21 @@ def test_a_failed_update_is_reported_runs_go_on_and_it_is_tried_again_later(mach
 
     async def body(hub, daemon, task):
         report = await until_heartbeat(hub, lambda found: "error" in found, "the error reported")
-        assert "uv could not install" in report["error"] and report["error_at"] and report["state"] == "waiting"
+        assert said in report["error"] and report["error_at"] and report["state"] == "waiting"
         assert "failed; it is tried again later" in report["reason"]
         run_id = hub.queue_step_run(PLAN, "1", "alpha", "feat/alpha")
         await wait_for(started.exists, "a run claimed on the version it runs")
-        assert not task.done() and fake.install().commit == OLD and len(fake.calls()) == 1
+        assert not task.done() and fake.install().commit == OLD and len(fake.calls()) == tried
+        assert await fake.probe(), "the install the service would start again"
         release.write_text("go", encoding="utf-8")
         assert await hub.wait_state(run_id, "done", "failed") == "done", hub.texts(run_id)
         await asyncio.sleep(0.6)
-        assert not task.done() and len(fake.calls()) == 1, "not before the hour is up"
+        assert not task.done() and len(fake.calls()) == tried, "not before the hour is up"
         fake.later()
         assert await ended(task) == EXIT_UPDATED, "tried again"
 
     assert run_daemon(machine, body, updater=updater) == EXIT_UPDATED
-    assert len(fake.calls()) == 3 and fake.install().commit == NEW
+    assert len(fake.calls()) == tried + 2 and fake.install().commit == NEW
 
 
 def test_a_tag_that_cannot_be_read_is_reported_and_read_again(machine, fake):  # noqa: F811

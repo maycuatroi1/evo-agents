@@ -47,6 +47,7 @@ class Install:
     extras: tuple[str, ...] = ()
     entrypoint: Path | None = None  # the evo-agents command uv put on the PATH
     python: str | None = None  # the interpreter the environment was made from, which an update keeps
+    commands: tuple[Path, ...] = ()  # every command of the receipt, the entrypoint among them
 
     @property
     def requirement_extras(self) -> str:
@@ -131,11 +132,13 @@ def _parse_receipt(data) -> tuple[dict | None, str | None]:
     return ours[0], None
 
 
-def _entrypoint(data) -> Path | None:
+def _commands(data) -> dict[str, Path]:
+    """The commands uv put on the PATH for the tool, by name."""
+    found = {}
     for item in data["tool"].get("entrypoints") or []:
-        if isinstance(item, dict) and item.get("name") == COMMAND and isinstance(item.get("install-path"), str):
-            return Path(item["install-path"])
-    return None
+        if isinstance(item, dict) and isinstance(item.get("name"), str) and isinstance(item.get("install-path"), str):
+            found[item["name"]] = Path(item["install-path"])
+    return found
 
 
 def read_install(prefix: Path, python: str | None) -> Install:
@@ -156,7 +159,8 @@ def read_install(prefix: Path, python: str | None) -> Install:
         return Install(prefix, "other", problem, **facts)
     kind, problem = _kind(requirement)
     extras = tuple(sorted(str(item) for item in requirement.get("extras") or []))
-    entrypoint = _entrypoint(data)
+    commands = _commands(data)
+    entrypoint = commands.get(COMMAND)
     if problem is None and entrypoint is None:
         problem = f"the receipt names no {COMMAND} command"
     if problem is None and _normalized(prefix.name) != PACKAGE:
@@ -165,7 +169,8 @@ def read_install(prefix: Path, python: str | None) -> Install:
         problem = "the interpreter of the install is not known"
     if problem is None and identity.dist_info is None:
         problem = f"no dist-info of {PACKAGE} in {prefix}"
-    return Install(prefix, kind, problem, extras=extras, entrypoint=entrypoint, **facts)
+    found = {"extras": extras, "entrypoint": entrypoint, "commands": tuple(commands.values())}
+    return Install(prefix, kind, problem, **found, **facts)
 
 
 def find_uv(path: str | None) -> str | None:

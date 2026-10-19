@@ -5,8 +5,9 @@ A turn, in order:
 
 1. Not an install it can update (``install``): nothing, state ``unsupported``.
 2. It writes its state for the other daemons of the install (``peers``).
-3. The install changed under it (another daemon of the install updated it, or a person did): once it holds no run,
-   it restarts on it; it claims nothing meanwhile. A daemon that may not update itself goes on as it is.
+3. The install changed under it (another daemon of the install updated it, or a person did): once it holds no run
+   and no daemon of the install is still updating it, it restarts on it; it claims nothing meanwhile. A daemon that
+   may not update itself goes on as it is.
 4. Turned off on this machine (EVO_WORKER_SELF_UPDATE=off), not run by launchd or systemd, or no uv: ``unsupported``.
 5. The hub has not said whether the worker's version is locked: ``waiting``. Locked: ``locked``.
 6. Where nightly points, read at the first turn, then hourly (after a failure, in 15 minutes): unknown, ``waiting``;
@@ -110,7 +111,7 @@ class SelfUpdate:
             install,
             supervision=detect(env),
             peers=peers,
-            installer=Installer(install, uv, peers.staging, env) if uv else None,
+            installer=Installer(install, uv, peers.staging, env, backup_dir=peers.backup) if uv else None,
             lookup=functools.partial(nightly_commit, env),
             off=(env.get(OFF_VARIABLE) or "").strip().lower() in OFF_VALUES,
         )
@@ -289,6 +290,9 @@ class SelfUpdate:
             return False
         if not idle:
             self._say("waiting", "the install was updated: it restarts on it once its runs end")
+            return False
+        if not self.peers.gate_open():  # uv may have deleted the environment, and the copy may yet go back
+            self._say("waiting", "another daemon of this install is updating it")
             return False
         log.info("self-update: the install was updated; restarting on it", extra={"commit": now.commit})
         return True
