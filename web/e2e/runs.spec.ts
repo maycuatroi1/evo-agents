@@ -81,14 +81,15 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
   await expect(dialog.getByTestId("dispatch-step-5").getByRole("checkbox")).toBeDisabled();
 
   await expect(dialog.getByTestId("dispatch-submit")).toBeDisabled();
-  await expect(dialog.getByTestId("dispatch-outlook")).toHaveText("Pick at least one ready step.");
+  await expect(dialog.getByTestId("dispatch-outlook")).toHaveCount(0);
   await dialog.getByTestId("dispatch-step-2").click();
   await dialog.getByTestId("dispatch-step-4").click();
   await expect(dialog.getByTestId("dispatch-picked")).toHaveText("2 of 2 ready steps picked");
-  await expect(dialog.getByTestId("dispatch-outlook")).toHaveText(`Matching now: ${live.worker.name} (1 free slot).`);
+  // One free slot for two runs: the dropdown leaves them to any worker that fits.
+  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveValue("any");
   await dialog.getByRole("radio", { name: /^Codex CLI/ }).check();
   await expect(dialog.getByTestId("dispatch-outlook")).toContainText(`${live.worker.name}: no Codex CLI`);
-  await dialog.getByRole("radio", { name: /^Claude Code/ }).check();
+  await dialog.getByRole("radio", { name: "Claude Code" }).check();
   await expect(dialog.getByRole("radio", { name: /^Hold for review/ })).toBeChecked();
   await expect(dialog.getByTestId("dispatch-submit")).toHaveText("Dispatch 2 runs");
   await dialog.getByTestId("dispatch-submit").click();
@@ -215,10 +216,9 @@ test("a plan step's page runs the step, and lists its runs", async ({ page, memb
   const dialog = page.getByTestId("dispatch-dialog");
   await expect(dialog.getByTestId("dispatch-step-4").getByRole("checkbox")).toBeChecked();
   await expect(dialog.getByTestId("dispatch-step-2").getByRole("checkbox")).not.toBeChecked();
-  await dialog.getByTestId("dispatch-target-pin").click();
-  await expect(dialog.getByTestId("dispatch-pinned-worker")).toHaveValue(String(live.worker.id));
-  await expect(dialog.getByTestId("dispatch-outlook")).toHaveText(`${live.worker.name} can take them now.`);
-  await dialog.getByRole("radio", { name: /^Mark the step done with evidence/ }).check();
+  await expect(dialog.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
+  await expect(dialog.getByTestId("dispatch-outlook")).toHaveCount(0);
+  await dialog.getByRole("radio", { name: "Mark done" }).check();
   await dialog.getByTestId("dispatch-submit").click();
   await expect(dialog).toBeHidden();
 
@@ -308,6 +308,6 @@ test.describe("in Vietnamese", () => {
     const dialog = page.getByTestId("dispatch-dialog");
     await expect(dialog.getByRole("heading", { name: "Dispatch run" })).toBeVisible();
     await expect(dialog.getByTestId(`dispatch-step-${WAITING_STEP}`)).toContainText("Chưa sẵn sàng");
-    await expect(dialog.getByTestId("dispatch-outlook")).toHaveText("Chọn ít nhất một bước đã sẵn sàng.");
+    await expect(dialog.getByRole("radio", { name: "Bất kỳ" })).toBeChecked();
   });
 });

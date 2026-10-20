@@ -12,7 +12,6 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogClose, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { KNOWN_RUNTIMES } from "@/components/workers/model";
 import { workersQuery } from "@/components/workers/queries";
 import { agentModels, agentProblems, agentWorkers, profileField } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
@@ -21,16 +20,28 @@ import { planQuery } from "@/lib/plan-queries";
 import { parsePlan } from "@/lib/plans";
 import { projectQuery, whoamiQuery } from "@/lib/queries";
 
-import { AccountField } from "./account-field";
-import { accountField, BY_RULES } from "./account-model";
+import { AccountField, useAccountChoice } from "./account-field";
+import { accountField } from "./account-model";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
-import { Choice, ModelField, Outlook, RuntimeHint, Section, type Target, WorkerPicker } from "./dispatch-fields";
+import { Outlook, WorkerField, type WorkerChoice } from "./dispatch-fields";
+import { FieldLabel } from "./field-label";
 import { useDispatchPlanRun } from "./hooks";
-import { dispatchOutlook, dispatchWorkers, modelSuggestions, planRunScope, readModel } from "./model";
+import {
+  chosenWorker,
+  dispatchOutlook,
+  dispatchWorkers,
+  fitWorker,
+  modelSuggestions,
+  outlookFine,
+  planRunScope,
+  readModel,
+  runtimeCount,
+  type RuntimeName,
+} from "./model";
+import { ModelField } from "./model-field";
 import { Blockers, blockersOf, ScopeSummary } from "./plan-run-scope";
 import {
   DEFAULT_PLAN_TIMEOUT,
-  MODES,
   PLAN_TIMEOUT_CHOICES,
   type PlanTimeout,
   readyStepsQuery,
@@ -39,6 +50,7 @@ import {
   type RunMode,
   RUNTIMES,
 } from "./queries";
+import { ModeField, RuntimeField } from "./runtime-field";
 
 /**
  * The switch between one session for every step and a new session for each step (plan-run-sessions.tsx). Its code
@@ -65,9 +77,10 @@ type Props = {
 /**
  * Run plan: one run, on one of the visitor's workers, that does every step of the plan not done yet, in depends_on
  * order, in one session or, switched on, in a new session for each step (docs/workers.md, A plan run on the machine).
- * The dialog says what the run will do (its steps, repos, checkpoints, and where the agent may push and merge), takes
- * the runtime, model, mode, sessions, worker and timeout, and says in its footer which worker could take it now. The
- * content mounts each time the dialog opens.
+ * The dialog says what the run will do (its steps, repos, checkpoints, and where the agent may push and merge) and takes
+ * the agent, runtime, model, mode, worker, account, timeout and sessions. It fills the worker and the account with the
+ * ones it finds for the run, which the visitor may change; what a field means shows from its info icon, and below a
+ * field only what is wrong with the choice. The content mounts each time the dialog opens.
  */
 export function PlanRunDialog({ project, planId, open, onOpenChange, onDispatched, onCloseAutoFocus }: Props) {
   const write = useDispatchPlanRun(project);
@@ -120,11 +133,9 @@ function PlanRunForm({
   const [runtime, setRuntime] = useState<RequestedRuntime>("any");
   const [modelText, setModelText] = useState("");
   const [mode, setMode] = useState<RunMode>("headless");
-  const [target, setTarget] = useState<Target>("auto");
-  const [pinnedChoice, setPinnedChoice] = useState<number | null>(null);
+  const [workerPick, setWorkerPick] = useState<WorkerChoice | null>(null);
   const [timeout, setTimeoutHours] = useState<PlanTimeout>(DEFAULT_PLAN_TIMEOUT);
   const [perStep, setPerStep] = useState(false);
-  const [account, setAccount] = useState(BY_RULES);
   const agents = useAgentChoice(project);
 
   const view = plan.data ? parsePlan(plan.data.body, plan.data.plan_id) : null;
@@ -133,16 +144,25 @@ function PlanRunForm({
   const blockers = scope && ready.data ? blockersOf(scope, ready.data.steps, ready.data.plan_run ?? null) : [];
   const own = me.data && workersState.data ? dispatchWorkers(workersState.data, me.data.login, project) : [];
   const mine = agentWorkers(own, agents.agent);
-  const pinned = target === "pin" ? (pinnedChoice ?? mine[0]?.id ?? null) : null;
+  const repos = scope?.repos.map((repo) => repo.repo) ?? [];
+  const request = { project, runtime, repos, sessionPerStep: perStep };
+  const pinned = chosenWorker(mine, request, workerPick);
+  const [account, setAccount] = useAccountChoice(project, runtime, mine.find((worker) => worker.id === pinned)?.name ?? null);
+  const models = Object.fromEntries(RUNTIMES.map((name) => [name, agentModels(agents.agent, modelSuggestions(mine, name))])) as Record<RuntimeName, string[]>;
+  const reach = workersState.isSuccess && mine.length > 0 ? Object.fromEntries((["any", ...RUNTIMES] as const).map((name) => [name, runtimeCount(mine, name)])) : null;
   const model = readModel(modelText, runtime);
-  const suggestions = agentModels(agents.agent, modelSuggestions(mine, runtime));
   const problems = agentProblems(agents.agent, { runtime, model: model.model, workers: own });
   const runnable = scope !== null && blockers.length === 0 && problems.length === 0;
-  const repos = scope?.repos.map((repo) => repo.repo) ?? [];
-  const outlook = dispatchOutlook(runnable ? 1 : 0, mine, { project, runtime, repos, sessionPerStep: perStep }, pinned);
+  const outlook = dispatchOutlook(runnable ? 1 : 0, mine, request, pinned);
   const pending = write.isPending;
   const loading = plan.isPending || ready.isPending;
   const loadFailed = !loading && (plan.isError || ready.isError) && scope === null;
+
+  // A model goes with its runtime: one the next runtime does not list is cleared, as is any model for any runtime.
+  const changeRuntime = (next: RequestedRuntime) => {
+    setRuntime(next);
+    if (next === "any" || !models[next].includes(modelText.trim())) setModelText("");
+  };
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
@@ -170,22 +190,17 @@ function PlanRunForm({
 
   const error = write.isError ? failure(write.error, { 403: t("errors.forbidden"), 404: t("errors.notFound"), 409: t("errors.conflict"), 422: t("errors.invalid") }) : null;
   const apiDetail = write.isError && isApiError(write.error) && [404, 409, 422].includes(write.error.info.status) ? t("errors.hubSays", { message: write.error.info.message }) : null;
-  const planTitle = view?.title ?? planId;
 
   return (
     <form onSubmit={(event) => void submit(event)} noValidate className="flex min-h-0 flex-1 flex-col" aria-busy={pending || undefined}>
       <div className="flex items-start gap-3 border-b px-4 pt-4 pb-3 sm:px-5">
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-1">
           <DialogTitle className="flex items-center gap-2 text-lg font-semibold">
             <Play className="size-5 text-muted-foreground" aria-hidden="true" />
             {t("title")}
           </DialogTitle>
-          <DialogDescription className="text-pretty">
-            {t.rich("description", {
-              plan: planTitle,
-              sessions: perStep ? "step" : "one",
-              name: (chunks) => <span className="font-medium text-foreground [overflow-wrap:anywhere]">{chunks}</span>,
-            })}
+          <DialogDescription className="truncate font-mono text-xs" title={view?.title ?? planId} data-testid="plan-run-plan">
+            {view?.title ?? planId}
           </DialogDescription>
         </div>
         <DialogClose asChild>
@@ -213,93 +228,56 @@ function PlanRunForm({
         ) : null}
 
         <AgentField choice={agents} problems={problems} disabled={pending} />
+        <RuntimeField value={runtime} onChange={changeRuntime} reach={reach} />
 
-        <Section legend={tDispatch("runtime")} testId="dispatch-runtime">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {(["any", ...RUNTIMES] as const).map((value) => (
-              <Choice
-                key={value}
-                type="radio"
-                name="runtime"
-                value={value}
-                checked={runtime === value}
-                onChange={() => setRuntime(value)}
-                title={value === "any" ? tDispatch("runtimeAny") : KNOWN_RUNTIMES[value]}
-                hint={<RuntimeHint runtime={value} workers={mine} loaded={workersState.isSuccess} />}
-              />
-            ))}
+        <div className="grid gap-x-4 gap-y-5 sm:grid-cols-2">
+          <ModelField
+            value={modelText}
+            onChange={setModelText}
+            runtime={runtime}
+            models={models}
+            onRuntime={changeRuntime}
+            problem={model.problem}
+            disabled={pending}
+          />
+          <ModeField value={mode} onChange={setMode} />
+          <WorkerField
+            project={project}
+            fits={mine.map((worker) => fitWorker(worker, request))}
+            value={pinned}
+            onChange={setWorkerPick}
+            loading={workersState.isPending || me.isPending}
+            registered={own.length}
+            subject="plan"
+            note={outlookFine(outlook) || outlook.kind === "noWorker" ? null : <Outlook outlook={outlook} project={project} subject="plan" className="text-xs" />}
+            disabled={pending}
+          />
+          <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
+          <div className="flex min-w-0 flex-col gap-1.5">
+            <FieldLabel htmlFor={`${ids}-timeout`} label={t("timeout")} info={t("timeoutHint")} testId="plan-run-timeout-info" />
+            <NativeSelect
+              id={`${ids}-timeout`}
+              value={String(timeout)}
+              onChange={(event) => setTimeoutHours(Number(event.target.value) as PlanTimeout)}
+              disabled={pending}
+              className="w-full md:[&_select]:h-9"
+              data-testid="plan-run-timeout"
+            >
+              {PLAN_TIMEOUT_CHOICES.map((hours) => (
+                <NativeSelectOption key={hours} value={String(hours)}>
+                  {t("timeoutValue", { hours })}
+                </NativeSelectOption>
+              ))}
+            </NativeSelect>
           </div>
-        </Section>
-
-        <ModelField value={modelText} onChange={setModelText} runtime={runtime} suggestions={suggestions} problem={model.problem} disabled={pending} />
-
-        <Section legend={tDispatch("mode")} testId="dispatch-mode">
-          <div className="grid gap-2 sm:grid-cols-2">
-            {MODES.map((value) => (
-              <Choice
-                key={value}
-                type="radio"
-                name="mode"
-                value={value}
-                checked={mode === value}
-                onChange={() => setMode(value)}
-                title={tDispatch(`modes.${value}`)}
-                hint={tDispatch(`modes.${value}Hint`)}
-              />
-            ))}
-          </div>
-        </Section>
-
-        <SessionsField
-          on={perStep}
-          onChange={setPerStep}
-          disabled={pending}
-          workers={mine}
-          loaded={workersState.isSuccess}
-        />
-
-        <WorkerPicker
-          project={project}
-          workers={mine}
-          registered={own.length}
-          loading={workersState.isPending || me.isPending}
-          target={target}
-          pinned={pinned}
-          onTarget={setTarget}
-          onPinned={setPinnedChoice}
-          subject="plan"
-        />
-
-        <AccountField project={project} value={account} onChange={setAccount} disabled={pending} />
-
-        <div className="flex flex-col gap-1.5">
-          <label htmlFor={`${ids}-timeout`} className="text-sm font-medium">
-            {t("timeout")}
-          </label>
-          <NativeSelect
-            id={`${ids}-timeout`}
-            value={String(timeout)}
-            onChange={(event) => setTimeoutHours(Number(event.target.value) as PlanTimeout)}
-            className="w-full sm:w-56 md:[&_select]:h-9"
-            aria-describedby={`${ids}-timeout-hint`}
-            data-testid="plan-run-timeout"
-          >
-            {PLAN_TIMEOUT_CHOICES.map((hours) => (
-              <NativeSelectOption key={hours} value={String(hours)}>
-                {t("timeoutValue", { hours })}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-          <p id={`${ids}-timeout-hint`} className="text-xs text-pretty text-muted-foreground">
-            {t("timeoutHint")}
-          </p>
+          <SessionsField on={perStep} onChange={setPerStep} disabled={pending} workers={mine} loaded={workersState.isSuccess} />
         </div>
 
         {error ? <InlineError text={error.text} detail={apiDetail ?? error.detail} requestId={error.requestId} /> : null}
       </div>
 
-      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:px-5">
-        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : <Outlook outlook={outlook} project={project} subject="plan" />}
+      <div className="flex flex-col gap-3 border-t bg-muted/50 px-4 py-3 sm:flex-row sm:items-center sm:justify-end sm:px-5">
+        {agents.agent && problems.length ? <AgentBlocked agent={agents.agent} /> : null}
         <div className="flex shrink-0 flex-col-reverse gap-2 sm:flex-row">
           <DialogClose asChild>
             <Button

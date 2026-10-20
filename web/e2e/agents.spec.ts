@@ -209,12 +209,12 @@ test("Dispatch, Run plan and New plan queue their runs under the agent picked, a
   const pick = dispatch.getByTestId("dispatch-agent-select");
   await expect(pick).toHaveValue(project);
   await pick.selectOption(handle);
-  await expect(dispatch.getByTestId("dispatch-agent-hint")).toHaveText(`It limits workers to ${live.worker.name} and runtimes to Claude Code.`);
+  await expect(dispatch.getByTestId("dispatch-agent-info")).toHaveAccessibleDescription(`It limits workers to ${live.worker.name} and runtimes to Claude Code.`);
   await dispatch.getByRole("radio", { name: /^Codex CLI/ }).check();
   await expect(dispatch.getByTestId("dispatch-agent-problem")).toHaveText(`@${handle} does not allow Codex CLI: it allows Claude Code.`);
   await expect(dispatch.getByTestId("dispatch-submit")).toBeDisabled();
   await dispatch.getByRole("radio", { name: /^Claude Code/ }).check();
-  await expect(dispatch.getByTestId("dispatch-outlook")).toContainText(live.worker.name);
+  await expect(dispatch.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
   await dispatch.getByTestId("dispatch-submit").click();
   await expect(dispatch).toBeHidden();
 
