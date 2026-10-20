@@ -9,11 +9,15 @@ agent, which makes a chat run for the owner; the notice run_failed links to the 
 a7: one thread a run however often its failure is handled; a failed chat run of triage opens none; its cost stays in the
 chat's budget; a project's switch turns it off and the notice is the one it always was; review, judge, chat and local
 runs open none.
+
+A run the hub stopped on its owner's accounts for a variable, none of which is ready, gets the thread and the time the
+first is ready again, and no agent.
 """
 
 from __future__ import annotations
 
 from dataclasses import replace
+from datetime import timedelta
 
 import pytest
 
@@ -22,16 +26,17 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
 from evo_agents.hub.server import triage
-from evo_agents.hub.server.run_state import run_step
+from evo_agents.hub.server.run_state import run_step, write_event
 from tests.hub.live import sql
 from tests.hub.test_chat_runs import chat_worker, thread
 from tests.hub.test_runs import PLAN, PROJECT, claim, client, dispatched, hub, moved, notices, report  # noqa: F401
 
 ERROR = "no credential reads evo-agents: git could not read Username"
+VAR = "CLAUDE_CODE_OAUTH_TOKEN"
 
 
 def failed_step(client, hub, worker, key: int = 2, *, cause="credentials", error=ERROR) -> int:
@@ -41,6 +46,34 @@ def failed_step(client, hub, worker, key: int = 2, *, cause="credentials", error
     assert run_id in [spec["id"] for spec in claimed if spec]
     body = {"error": error} | ({"failure_cause": cause} if cause else {})
     assert report(client, worker, run_id, "failed", **body).status_code == 200
+    return run_id
+
+
+def stopped_on_accounts(client, hub, hub_db, worker, *minutes: int | None) -> int:
+    """A step run the hub stopped on its owner's accounts for VAR, bound to the project, one cooling down for each of
+    ``minutes`` (None: one that is ready), and reported failed with cause rate_limit; its id."""
+    run_id = dispatched(client, hub["owner"], [2])[0]["id"]
+    assert run_id in [spec["id"] for spec in (claim(client, worker) for _ in range(2)) if spec]
+    r, s = tables.runs, tables.secrets
+    ((owner_id, project_id),) = sql(hub_db, select(r.c.dispatched_by, r.c.project_id).where(r.c.id == run_id))
+    ids = []
+    for index, wait in enumerate(minutes):
+        values = {"owner_id": owner_id, "name": f"claude-{index}", "kind": "env", "env_var": VAR}
+        sealed = {"sealed": bytes(32), "nonce": bytes(12), "key_id": "0" * 8}  # no lease reads it
+        ((secret_id,),) = sql(hub_db, insert(s).values(**values, **sealed).returning(s.c.id))
+        sql(hub_db, insert(tables.secret_bindings).values(secret_id=secret_id, project_id=project_id))
+        until = None if wait is None else func.now() + timedelta(minutes=wait)
+        sql(hub_db, insert(tables.accounts).values(secret_id=secret_id, cooldown_until=until))
+        ids.append(secret_id)
+
+    async def stop():
+        async with client.app.state.engine.begin() as conn:
+            body = {"text": "the run stops", "env_var": VAR, "secret_id": ids[0], "account_event": "stop"}
+            await write_event(conn, run_id, body)
+
+    client.portal.call(stop)
+    said = report(client, worker, run_id, "failed", error="usage limit", failure_cause="rate_limit")
+    assert said.status_code == 200, said.text
     return run_id
 
 
@@ -153,6 +186,32 @@ def test_the_chat_budget_holds_the_triage_run_back_and_the_hub_says_so_in_the_th
     assert agent_run is None
     said = thread(client, hub["owner"], chat_id, root_id)
     assert len(said) == 2 and said[1]["author"]["kind"] == "hub" and "budget" in said[1]["body"]
+
+
+def test_a_run_stopped_on_accounts_none_of_which_is_ready_asks_no_agent_and_says_when_one_is(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    run_id = stopped_on_accounts(client, hub, hub_db, worker, 90, 30)
+    ((chat_id, root_id, cause, _, agent_run),) = row_of(hub_db, run_id)
+    assert (cause, agent_run) == ("rate_limit", None)
+    a = tables.accounts
+    ((soonest,),) = sql(hub_db, select(func.min(a.c.cooldown_until)))
+    root = root_of(client, hub, chat_id, root_id)
+    assert (
+        f"No account of the owner for {VAR} is ready before {soonest.isoformat()}: the hub asks no agent"
+        in root["body"]
+    )
+    assert not root["body"].endswith(f"@{PROJECT}") and root["mentions"] == []
+    r = tables.runs
+    assert sql(hub_db, select(func.count()).select_from(r).where(r.c.kind == "chat")) == [(0,)]
+
+
+def test_a_run_stopped_on_accounts_one_of_which_is_ready_again_asks_the_agent(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "mac-mini", slots=4)
+    run_id = stopped_on_accounts(client, hub, hub_db, worker, 90, None)
+    ((chat_id, root_id, _, _, agent_run),) = row_of(hub_db, run_id)
+    assert agent_run is not None
+    root = root_of(client, hub, chat_id, root_id)
+    assert "No account of the owner" not in root["body"] and root["body"].endswith(f"@{PROJECT}")
 
 
 def test_a_project_with_triage_off_gets_the_notice_it_always_had(client, hub, hub_db):
