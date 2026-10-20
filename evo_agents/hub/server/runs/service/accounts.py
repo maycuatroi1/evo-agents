@@ -44,7 +44,7 @@ def _secret_query(owner_id: int):
             s.c.kind,
             s.c.env_var,
             s.c.deleted_at,
-            (s.c.expires_at <= func.now()).label("ended"),
+            ((s.c.expires_at <= func.now()) & tables.accounts.c.oauth_sealed.is_(None)).label("ended"),
             s.c.expires_at,
             tables.accounts.c.paused_at,
         )

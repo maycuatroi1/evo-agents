@@ -2,9 +2,9 @@
 attributes (``tables.release_schedules``, ``tables.release_cycles``, ``tables.release_runs``,
 ``tables.release_checks``): queries name them there.
 
-release_schedules (0066) holds the release schedule of each project, at most one; release_cycles (0066) each cycle a
-check opened, at most one unfinished per schedule (``release_cycles_unfinished_key``); release_runs (0066) the runs of
-each cycle with their mode; release_checks (0066) every check, the scheduled one of a local day once
+release_schedules (0067) holds the release schedule of each project, at most one; release_cycles (0067) each cycle a
+check opened, at most one unfinished per schedule (``release_cycles_unfinished_key``); release_runs (0067) the runs of
+each cycle with their mode; release_checks (0067) every check, the scheduled one of a local day once
 (``release_checks_day_key``, a check that failed aside). runs gains ``runs_active_release_key``: a project has one
 release run active at a time. ``evo_agents.hub.releases`` describes the model.
 """

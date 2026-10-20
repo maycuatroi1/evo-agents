@@ -1,7 +1,7 @@
 """The daily release of a project: its schedule, its cycles, the runs of each cycle and every check.
 
-Revision ID: 0066
-Revises: 0065
+Revision ID: 0067
+Revises: 0066
 Create Date: 2026-10-21
 
 ``evo_agents.hub.releases`` describes the design and ``evo_agents.hub.server.releases`` the routes; the values below
@@ -27,25 +27,25 @@ runs.kind takes ``release``: a run on no plan and no single repo (its repos a JS
 release schedule (dispatched_via ``release``, ``runs_release_check``), one active at a time per project
 (``runs_active_release_key``).
 
-Going back deletes the release runs, drops the four tables and the index, and puts back the checks of 0065, which is
-the schema that schema 0065 runs on.
+Going back deletes the release runs, drops the four tables and the index, and puts back the checks of 0066, which is
+the schema that schema 0066 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0066"
-down_revision = "0065"
+revision = "0067"
+down_revision = "0066"
 branch_labels = None
 depends_on = None
 
-KINDS_0065 = ("step", "plan", "review", "judge", "author", "chat", "local", "task", "replay", "history")
-KINDS = (*KINDS_0065, "release")  # evo_agents.hub.runs.SHOWN_KINDS
-NO_PLAN_0065 = ("review", "chat", "task", "history")
-NO_PLAN = (*NO_PLAN_0065, "release")
-VIA_0065 = ("machine", "web", "schedule")
-VIA = (*VIA_0065, "release")  # evo_agents.hub.credentials.DISPATCHED_VIA
+KINDS_0066 = ("step", "plan", "review", "judge", "author", "chat", "local", "task", "replay", "history")
+KINDS = (*KINDS_0066, "release")  # evo_agents.hub.runs.SHOWN_KINDS
+NO_PLAN_0066 = ("review", "chat", "task", "history")
+NO_PLAN = (*NO_PLAN_0066, "release")
+VIA_0066 = ("machine", "web", "schedule")
+VIA = (*VIA_0066, "release")  # evo_agents.hub.credentials.DISPATCHED_VIA
 ACTIVE = ("queued", "leased", "running", "interactive", "verifying", "waiting", "review", "parked")
 CYCLE_STATES = ("open", "stopped", "published", "closed")  # evo_agents.hub.releases.CYCLE_STATES
 UNFINISHED = ("open", "stopped")  # evo_agents.hub.releases.UNFINISHED
@@ -329,4 +329,4 @@ def downgrade() -> None:
         op.execute(runs.delete().where(runs.c.kind == "release", runs.c.attempt == attempt))
     op.drop_index("runs_active_release_key", table_name="runs")
     op.drop_constraint("runs_release_check", "runs", type_="check")
-    _run_checks(KINDS_0065, NO_PLAN_0065, VIA_0065)
+    _run_checks(KINDS_0066, NO_PLAN_0066, VIA_0066)

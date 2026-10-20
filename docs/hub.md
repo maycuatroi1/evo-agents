@@ -849,7 +849,9 @@ makes every withdrawn version a draft again. Schema 0065 adds `hub_nightly`, one
 pointed to when the job `hub.read_nightly` last read it, and when (`read_at`); and `workers.update_requested_at`,
 `update_ended_at`, `update_outcome` (`current`, `cancelled`, `failed` or `impossible`) and `update_reason`, an owner's
 last Update now of the worker (`docs/workers.md`, Updating itself to nightly); going back to 0064 drops the table and
-the four columns, and the hub then reads no nightly and takes no Update now.
+the four columns, and the hub then reads no nightly and takes no Update now. Schema 0066 adds `oauth_sealed`, `oauth_nonce` and
+`oauth_key_id` to `accounts`, the sealed tokens of an OAuth account (`docs/credentials.md`, Accounts), all null for every
+account there is; going back to 0065 drops them and the tokens with them.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -977,8 +979,10 @@ day, as GitLab ends an access token on its expiry date. `secret list` reads `GET
 and `secret delete` is `DELETE /v1/secrets/{name}`. `docs/credentials.md` describes which leases a run gets of them.
 Several `env` secrets for one variable are accounts a run picks among; `evo-agents hub account
 list|show|set|pause|resume|policy` shows their usage, runs and cost, and weighs, pauses and sets the strategy for them,
-as the web's Accounts page does, and `hub account login` adds or renews a Claude account with the token
-`claude setup-token` prints (`docs/credentials.md`, section "Accounts").
+as the web's Accounts page does, `hub account login` adds or renews a Claude account with the token
+`claude setup-token` prints, and `hub account oauth-login` signs one in with Claude's OAuth flow: the hub keeps its
+refresh token sealed, refreshes the access token when a run is leased and ends within five minutes, and shows the state
+`needs-relogin` when the refresh token is refused (`docs/credentials.md`, section "Accounts").
 
 The agent of a plan run asks its owner the decisions it may not take alone (`docs/notifications.md`), and the hub
 tells the owner of them, and of pushes to a default branch, in notifications:

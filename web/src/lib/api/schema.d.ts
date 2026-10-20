@@ -5735,6 +5735,12 @@ export interface components {
              */
             workers: string[];
             /**
+             * Auth
+             * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
+             * @enum {string}
+             */
+            auth: "token" | "oauth";
+            /**
              * Weight
              * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
              */
@@ -5768,10 +5774,10 @@ export interface components {
             expires_at: string | null;
             /**
              * State
-             * @description ready, cooling, paused or expired, now
+             * @description ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now
              * @enum {string}
              */
-            state: "ready" | "cooling" | "paused" | "expired";
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
             /** @description what a run's CLI last said of its usage; null before any */
             last_usage: components["schemas"]["AccountUsage"] | null;
             /**
@@ -11092,6 +11098,40 @@ export interface components {
             /** Offset */
             offset: number;
         };
+        /**
+         * OAuthTokens
+         * @description The tokens beside the access token (which is the secret's value) that PUT /v1/secrets/{name} takes for an
+         *     account of OAuth; never shown again.
+         */
+        OAuthTokens: {
+            /**
+             * Refresh Token
+             * Format: password
+             * @description the refresh token; sealed, never shown again
+             */
+            refresh_token: string;
+            /**
+             * Access Expires At
+             * Format: date-time
+             * @description when the access token (the value) ends
+             */
+            access_expires_at: string;
+            /**
+             * Account Uuid
+             * @description the Claude account's id
+             */
+            account_uuid?: string | null;
+            /**
+             * Organization Uuid
+             * @description its organization's id
+             */
+            organization_uuid?: string | null;
+            /**
+             * Email
+             * @description the Claude account's address
+             */
+            email?: string | null;
+        };
         /** OptionIn */
         OptionIn: {
             /**
@@ -15226,6 +15266,8 @@ export interface components {
              * @description after this no run gets it; in the future
              */
             expires_at?: string | null;
+            /** @description kind env, env_var CLAUDE_CODE_OAUTH_TOKEN only: the account signed in with OAuth. The value is its access token; this holds the refresh token and when the access token ends, and the hub keeps all of them sealed. expires_at, when given, is that end */
+            oauth?: components["schemas"]["OAuthTokens"] | null;
             /**
              * Value
              * Format: password
