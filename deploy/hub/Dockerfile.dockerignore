@@ -1,12 +1,13 @@
 # The build context is the repository root; the image needs the Python package and nothing else. Everything is
 # left out first (.git, tests/, web/ and its node_modules and .next, plugins/, deploy/, caches), then the files the
-# wheel is built from are let back in.
+# wheel is built from are let back in, and the pinned core plugins the image installs beside it.
 *
 !pyproject.toml
 !README.md
 !LICENSE
 !MANIFEST.in
 !evo_agents/
+!deploy/hub/core-plugins.txt
 # Caches that can sit inside the package directory.
 **/__pycache__
 **/*.py[cod]

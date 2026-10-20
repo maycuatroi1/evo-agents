@@ -23,7 +23,7 @@ no ``--json``, since this module may not import the hub's contract (the worker r
 the contract's modules import). A failure is one ``error:`` line on stderr and exit status 1; without the worker
 extra, status 2.
 
-``repo open REPO`` (``chat_runs.OPEN_COMMAND``) asks the daemon, on the run's socket (``credentials.ask_open``), to open
+``repo open REPO`` (``chat_runs.OPEN_COMMAND``) asks the daemon, on the run's socket (``credential_commands.ask_open``), to open
 repo REPO of the project in a chat run of this worker: the daemon asks the hub to add it to the run, takes the leases
 that cover it, fetches its checkout and makes its worktree on the run's branch in the run's directory
 (``runner.chat``). It prints the worktree's path alone, the same path for a repo open already. It holds no token and
@@ -41,7 +41,7 @@ from dataclasses import dataclass
 
 from evo_agents.hub import chat_runs, chats
 from evo_agents.hub.client import HubError
-from evo_agents.worker import credentials
+from evo_agents.worker import credential_commands
 from evo_agents.worker.home import WorkerConfig, WorkerHome, WorkerStateError
 
 EXIT_FAILED = 1
@@ -213,7 +213,7 @@ def cmd_repo_open(args) -> int:
             f"run {run_id} is {article} {kind} run: only the agent of a chat run opens a repo with `evo-agents worker "
             f"repo open`; {article} {kind} run works in the repos it was given"
         )
-    answer = credentials.ask_open(home, run_id, args.repo)
+    answer = credential_commands.ask_open(home, run_id, args.repo)
     path = answer.get("path")
     if answer.get("error") or not isinstance(path, str) or not path:
         raise WorkerStateError(str(answer.get("error") or f"the daemon did not say where {args.repo} is"))

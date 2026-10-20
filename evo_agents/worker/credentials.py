@@ -39,9 +39,10 @@
 - ``release`` gives the leases back (``DELETE`` on the same route) when the run ends, is parked or the daemon stops,
   closes the socket and forgets the values, in the redaction too.
 
-``git_credential`` and ``print_env`` are the sides of ``evo-agents worker git-credential --run N get|store|erase``
-(git's credential protocol; store and erase do nothing) and ``evo-agents worker env --run N``. This module is standard
-library only, so git's helper starts without the worker extra; the daemon's side imports ``hubapi`` when it runs.
+The other side of the socket, ``evo-agents worker git-credential --run N get|store|erase`` (git's credential
+protocol; store and erase do nothing), ``evo-agents worker env --run N`` and the asks of a Builder's push and of a chat
+run's ``repo open``, is ``evo_agents.worker.credential_commands``, over ``ask``. This module is standard library only,
+so git's helper starts without the worker extra; the daemon's side imports ``hubapi`` when it runs.
 
 A run of the Curator (``RunCredentials.guarded``) never hands its agent a push credential, on GitHub or GitLab alike:
 the agent's environment gets the env leases and git configuration that empties the list of credential helpers
@@ -53,10 +54,10 @@ ENV_TICKET_VARIABLE on that pane's one ``evo-agents worker env``, good for one a
 code the run does not trust, such as a verify command or a hidden check of a judge run, cannot read the env leases (a
 subscription token among them) from the socket. A
 Builder's agent that reports a step done asks the daemon to push instead (``{"op": "push", "repo", "title"}``,
-``ask_push``): the daemon pushes that repo's own branch, curator/..., from its worktree, with the run's credential, and
+``credential_commands.ask_push``): the daemon pushes that repo's own branch, curator/..., from its worktree, with the run's credential, and
 answers what it pushed.
 
-A chat run's agent opens a repo of its project the same way (``{"op": "open", "repo"}``, ``ask_open``, ``evo-agents
+A chat run's agent opens a repo of its project the same way (``{"op": "open", "repo"}``, ``credential_commands.ask_open``, ``evo-agents
 worker repo open``): the daemon asks the hub to add the repo to the run, takes the run's leases again so they cover it
 (``RunCredentials.add``), fetches its checkout with them and makes its worktree (``runner.chat``), and answers the
 worktree's path. The agent gets that path and nothing else: no lease value, and a guarded run's agent no credential
@@ -104,7 +105,6 @@ DIR_MODE = 0o700
 SOCKET_TIMEOUT = 10.0  # seconds a client of the socket has to ask, and the daemon to answer
 MAX_REQUEST_BYTES = 16 * 1024
 MAX_ANSWER_BYTES = 1024 * 1024
-MAX_INPUT_BYTES = 64 * 1024  # what git writes to its helper
 SOCKET_PATH_BYTES = 100  # a longer socket path is bound and reached from its directory: sun_path holds 104 on macOS
 TAKE_TRIES = 5  # asks for a run's leases while the hub does not answer, the backoff between them
 RELEASE_TRIES = 5
@@ -130,7 +130,6 @@ DAEMON_GIT_CONFIG = (
 MISSING_NOTE = "no leased credential for {origin}: {reason}; git uses this machine's own"
 NOT_COVERED = "no lease of the run covers the origin of this worker's checkout"
 GIT_ACTIONS = ("get", "store", "erase")
-_NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 _SCP = re.compile(r"^(?:[^@/\s]+@)?([^:/\s]+):(?!//)(.+)$")
 
 _held: dict[str, set[int]] = {}  # each lease value a run of this process holds -> those runs, for ``scrub``
@@ -925,88 +924,3 @@ async def _wait_or(event: asyncio.Event | None, seconds: float) -> None:
         return
     with contextlib.suppress(asyncio.TimeoutError):
         await asyncio.wait_for(event.wait(), max(0.0, seconds))
-
-
-# The commands
-
-
-def read_attributes(stream) -> dict[str, str]:
-    """git's ``key=value`` lines up to an empty line or the end, ``url=`` taken apart into protocol, host and path."""
-    found: dict[str, str] = {}
-    size = 0
-    for line in stream:
-        size += len(line)
-        line = line.rstrip("\r\n")
-        if not line or size > MAX_INPUT_BYTES:
-            break
-        key, sep, value = line.partition("=")
-        if sep:
-            found[key] = value
-    url = found.get("url")
-    if url and "host" not in found:
-        parts = urlsplit(url)
-        found.setdefault("protocol", parts.scheme)
-        if parts.hostname:
-            found["host"] = f"{parts.hostname}:{parts.port}" if parts.port else parts.hostname
-        found.setdefault("path", parts.path.lstrip("/"))
-    return found
-
-
-def _line_safe(value) -> bool:
-    return isinstance(value, str) and bool(value) and not any(char in value for char in "\n\r\0")
-
-
-def git_credential(run_id: int, action: str, stdin, stdout, stderr, home: WorkerHome | None = None) -> int:
-    """``evo-agents worker git-credential --run N ACTION``: for ``get``, the username and password of run N's lease
-    for what git asks, from the run's socket; ``store``, ``erase`` and any other action read git's lines and do
-    nothing. Nothing is printed when the run holds no lease for it: git then fails to authenticate."""
-    attributes = read_attributes(stdin)
-    if action != "get":
-        return 0
-    request = {"op": "git", **{key: attributes.get(key, "") for key in ("protocol", "host", "path")}}
-    ticket = os.environ.get(TICKET_VARIABLE)
-    if ticket:
-        request["ticket"] = ticket
-    answer = ask(home or WorkerHome(), run_id, request)
-    if answer is None:
-        stderr.write(f"evo-agents: run {run_id} holds no credentials on this worker\n")
-        return 0
-    username, password = answer.get("username"), answer.get("password")
-    if _line_safe(username) and _line_safe(password):
-        stdout.write(f"username={username}\npassword={password}\n")
-    return 0
-
-
-def ask_push(home: WorkerHome, run_id: int, repo: str, title: str | None) -> dict:
-    """``evo-agents worker step`` of a Builder of the Curator: ask the daemon to push the run's branch of ``repo``;
-    its answer (``branch``, ``head``, ``changed``, ``default``, ``commits``, or ``error``)."""
-    answer = ask(home, run_id, {"op": "push", "repo": repo, "title": title}, timeout=PUSH_TIMEOUT + SOCKET_TIMEOUT)
-    return answer if answer is not None else {"error": f"run {run_id} holds no socket on this worker to push through"}
-
-
-def ask_open(home: WorkerHome, run_id: int, repo: str) -> dict:
-    """``evo-agents worker repo open`` of a chat run's agent: ask the daemon to open ``repo`` of the project in the
-    run; its answer (``repo``, ``path``, ``opened``, or ``error``)."""
-    answer = ask(home, run_id, {"op": "open", "repo": repo}, timeout=OPEN_TIMEOUT + SOCKET_TIMEOUT)
-    return answer if answer is not None else {"error": f"run {run_id} holds no socket on this worker to open a repo"}
-
-
-def print_env(
-    run_id: int, stdout, stderr, home: WorkerHome | None = None, environ: Mapping[str, str] | None = None
-) -> int:
-    """``evo-agents worker env --run N``: ``export NAME=value`` lines of what run N's leases add to its agent's
-    environment, for a shell to evaluate; 1 when the run holds no socket here, or answers nothing (a run of the
-    Curator asked without its pane's ticket, ENV_TICKET_VARIABLE)."""
-    request: dict = {"op": "env"}
-    ticket = (os.environ if environ is None else environ).get(ENV_TICKET_VARIABLE)
-    if ticket:
-        request["ticket"] = ticket
-    answer = ask(home or WorkerHome(), run_id, request)
-    env = answer.get("env") if isinstance(answer, dict) else None
-    if not isinstance(env, dict):
-        stderr.write(f"evo-agents: run {run_id} holds no credentials on this worker\n")
-        return 1
-    for key, value in sorted(env.items()):
-        if _NAME.match(str(key)) and isinstance(value, str) and "\0" not in value:
-            stdout.write(f"export {key}={shlex.quote(value)}\n")
-    return 0
