@@ -386,7 +386,7 @@ and none of the hub's tools, since the hub holds the project as it is now. The w
 arm's work as code it does not trust, as the Judge runs its checks, and posts what the arm came to with the run's own
 key: passed or not, cost, turns, tool calls and failed ones, the largest context, the agent's time.
 
-**What it decides.** Each change's replays are kept with it (`curator_replays`, schema 0053) and read with
+**What it decides.** Each change's replays are kept with it (`curator_replays`, schema 0056) and read with
 `evo-agents hub curator replay show CHANGE`, `GET .../curator/changes/{id}/replay` and the MCP tool `curator_replay`,
 with their verdict at the head of the change's pull request (`replay.verdict`). The Judge never reads them. The verdict
 counts the replays of the holdout split whose arm b ran at that head: with at least 6 of them, the replays won when arm
@@ -588,7 +588,7 @@ job `curator.outcomes` counts the same figures again: `keep` when none got worse
 better, `unclear` otherwise or when there was too little to count. A `revert` makes the hub propose the revert
 itself, a tier 1 proposal of kind `revert` whose plan reverts the merge commit, which reaches the Inbox and Telegram
 whatever room the day has left. The hub's merge of a change whose replays won keeps their verdict under the line's
-`details.replay`, and a global skill it releases under `details.release`; the line `skill_release` (schema 0055) is the
+`details.replay`, and a global skill it releases under `details.release`; the line `skill_release` (schema 0058) is the
 version it published from the merge, or the one before published again after a revert.
 
 **The circuit breaker** pauses every schedule of the project once `circuit_breaker.max_failed_in_a_row` jobs of one
@@ -618,14 +618,14 @@ evo-agents hub kg health --project demo
 | 0017 | runs of kind `judge`, `curator_changes`, `curator_repo_checks` |
 | 0018 | `curator_ledger`, revert proposals, `schedules.pause_reason`, the notice `curator_paused` |
 | 0019 | `curator_changes.judge_key` |
-| 0051 | `session_facets`, the deterministic facet of each session and each run that ended |
-| 0052 | `kg_builds.coverage`, `kg_source_files`, `kg_health`: the health of a project's graph; the lens `kg_health` |
-| 0053 | runs of kind `replay`, `replay_tasks`, `curator_replays`: the suite of replay tasks and the replays of the changes |
-| 0054 | the kind `kg_source`, `curator_changes.knowledge`: what a pull request does to knowledge.yaml, key by key |
-| 0055 | the ledger line `skill_release`: a global skill the hub published from a merge whose replays won, or published again |
-| 0056 | runs of kind `history`, the facet of the model on `session_facets`, `history_runs`, `facet_clusters`: the history run and the clusters of its facets |
-| 0057 | `history_lines`, `history_indexed`: the words of the history for search; `curator_playbook`, `curator_playbook_deltas`: the playbook and its deltas |
-| 0058 | the lenses `runtime` and `harness` |
+| 0054 | `session_facets`, the deterministic facet of each session and each run that ended |
+| 0055 | `kg_builds.coverage`, `kg_source_files`, `kg_health`: the health of a project's graph; the lens `kg_health` |
+| 0056 | runs of kind `replay`, `replay_tasks`, `curator_replays`: the suite of replay tasks and the replays of the changes |
+| 0057 | the kind `kg_source`, `curator_changes.knowledge`: what a pull request does to knowledge.yaml, key by key |
+| 0058 | the ledger line `skill_release`: a global skill the hub published from a merge whose replays won, or published again |
+| 0059 | runs of kind `history`, the facet of the model on `session_facets`, `history_runs`, `facet_clusters`: the history run and the clusters of its facets |
+| 0060 | `history_lines`, `history_indexed`: the words of the history for search; `curator_playbook`, `curator_playbook_deltas`: the playbook and its deltas |
+| 0061 | the lenses `runtime` and `harness` |
 
 `docs/hub.md`, "Workers and runs", says what going back from each one does. The jobs are `hub.fire_schedules`,
 `curator.collect`, `curator.brief`, `curator.changes`, `curator.outcomes`, `curator.replay_suite` and

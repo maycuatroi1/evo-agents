@@ -4,7 +4,7 @@ as its own attributes (``tables.kg_ingests``, ``tables.kg_configs``, ``tables.kg
 
 kg_ingests (0001) holds the connector runs machines pushed, kg_configs (0006) the knowledge config the build reads,
 kg_pending_runs (0006) the runs waiting for their blobs, and kg_builds (0006, 0008) each build with its artifact
-(``evo_agents.hub.server.kg``, ``evo_agents.hub.kg_build``). kg_builds.coverage, kg_source_files and kg_health (0052)
+(``evo_agents.hub.server.kg``, ``evo_agents.hub.kg_build``). kg_builds.coverage, kg_source_files and kg_health (0055)
 say how healthy the graph is over time: what each build covers, the files each git source holds in the latest
 build, and each measure of the graph against the default branches on the forge (``evo_agents.hub.server.kg_health``).
 """
@@ -142,7 +142,7 @@ def _builds(metadata: MetaData) -> Table:
 
 
 def _health_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """(kg_source_files, kg_health), added to ``metadata`` (0052)."""
+    """(kg_source_files, kg_health), added to ``metadata`` (0055)."""
     files = Table(
         "kg_source_files",
         metadata,

@@ -4,16 +4,16 @@ them, which ``evo_agents.hub.tables`` adds to its metadata and exposes as its ow
 queries name them there.
 
 session_digests (0013) holds the digest of each session of a project's directory (``evo_agents.hub.server.digests``).
-session_transcripts (0049) holds one row per transcript file of a session in a project, the session's own (``file`` main)
+session_transcripts (0052) holds one row per transcript file of a session in a project, the session's own (``file`` main)
 and each subagent's (``subagents/...``): who uploaded it first, from which machine and runtime, the label it carries,
 how far into the file on the machine the hub holds it (``source_bytes``, ``lines``), its parts and their bytes, the
 chain of their hashes, and ``deleted_at`` once its content was deleted. transcript_parts holds the parts in order,
-each the blob of kind transcript that holds its lines (``evo_agents.hub.server.transcripts``). session_facets (0051)
-holds the deterministic facet of each session and of each run that ended (``evo_agents.hub.facet_job``), and since 0056
-the facet a cheap model wrote of it (``llm``, ``evo_agents.hub.history``). history_runs (0056) holds one row per
-history run of the night shift, and facet_clusters (0056) the groups of a project's facets
-(``evo_agents.hub.server.history``). history_lines (0057) holds the words of the transcripts and run logs, one row per
-entry of a line, for search, and history_indexed (0057) how far each transcript and run is in it
+each the blob of kind transcript that holds its lines (``evo_agents.hub.server.transcripts``). session_facets (0054)
+holds the deterministic facet of each session and of each run that ended (``evo_agents.hub.facet_job``), and since 0059
+the facet a cheap model wrote of it (``llm``, ``evo_agents.hub.history``). history_runs (0059) holds one row per
+history run of the night shift, and facet_clusters (0059) the groups of a project's facets
+(``evo_agents.hub.server.history``). history_lines (0060) holds the words of the transcripts and run logs, one row per
+entry of a line, for search, and history_indexed (0060) how far each transcript and run is in it
 (``evo_agents.hub.history_index``).
 """
 
@@ -132,7 +132,7 @@ def session_tables(metadata: MetaData) -> tuple[Table, Table, Table, Table]:
 
 
 def facet_table(metadata: MetaData) -> Table:
-    """session_facets (0051), added to ``metadata``."""
+    """session_facets (0054), added to ``metadata``."""
     return Table(
         "session_facets",
         metadata,
@@ -156,7 +156,7 @@ def facet_table(metadata: MetaData) -> Table:
         Column("retry_at", DateTime(timezone=True)),
         _stamp("created_at"),
         _stamp("updated_at"),
-        Column("llm", JSONB),  # 0056: the facet a cheap model wrote, and how it went
+        Column("llm", JSONB),  # 0059: the facet a cheap model wrote, and how it went
         _count("llm_version", Integer),
         Column("llm_fingerprint", Text),
         Column("llm_at", DateTime(timezone=True)),
@@ -184,7 +184,7 @@ def facet_table(metadata: MetaData) -> Table:
 
 
 def history_tables(metadata: MetaData, runs: Table, active) -> tuple[Table, Table]:
-    """(history_runs, facet_clusters) of 0056, added to ``metadata``, and the index that keeps one history run of a
+    """(history_runs, facet_clusters) of 0059, added to ``metadata``, and the index that keeps one history run of a
     project active at a time: ``active`` are the states it counts (``tables.RUN_ACTIVE``)."""
     Index(
         "runs_active_history_key",
@@ -240,7 +240,7 @@ def history_tables(metadata: MetaData, runs: Table, active) -> tuple[Table, Tabl
 
 
 def search_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """(history_lines, history_indexed) of 0057, added to ``metadata``."""
+    """(history_lines, history_indexed) of 0060, added to ``metadata``."""
     lines = Table(
         "history_lines",
         metadata,

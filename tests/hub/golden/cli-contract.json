@@ -50255,7 +50255,7 @@
                 }
               ],
               "title": "Coverage",
-              "description": "what the build covers (kg_builds.coverage); null before schema 0052"
+              "description": "what the build covers (kg_builds.coverage); null before schema 0055"
             }
           },
           "type": "object",

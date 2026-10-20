@@ -1,7 +1,7 @@
 """The Curator's changes of a harness whose replays won: the ledger's line of the global skill the hub publishes.
 
-Revision ID: 0055
-Revises: 0054
+Revision ID: 0058
+Revises: 0057
 Create Date: 2026-10-20
 
 ``evo_agents.hub.tiers.replay_tier``, ``evo_agents.hub.replay.verdict`` and ``evo_agents.hub.server.skill_release``
@@ -13,19 +13,19 @@ merge commit of a change of the Curator whose replays won, or published the vers
 figures got worse, or says why it published none. A merge's verdict of its replays and the skill it releases live in
 the details of its line 'merged', which need no column.
 
-Going back deletes the lines 'skill_release' and puts back the check of 0018, which is the schema that schema 0054 runs
+Going back deletes the lines 'skill_release' and puts back the check of 0018, which is the schema that schema 0057 runs
 on; the versions of the skills the hub published stay, as any version does.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0055"
-down_revision = "0054"
+revision = "0058"
+down_revision = "0057"
 branch_labels = None
 depends_on = None
 
-ACTIONS_0054 = (
+ACTIONS_0057 = (
     "proposed",
     "dropped",
     "accepted",
@@ -42,7 +42,7 @@ ACTIONS_0054 = (
     "outcome",
 )
 NEW_ACTIONS = ("skill_release",)
-ACTIONS = (*ACTIONS_0054, *NEW_ACTIONS)  # evo_agents.hub.ledger.ACTIONS
+ACTIONS = (*ACTIONS_0057, *NEW_ACTIONS)  # evo_agents.hub.ledger.ACTIONS
 
 col = sa.column
 
@@ -60,4 +60,4 @@ def downgrade() -> None:
     ledger = sa.table("curator_ledger", col("action"))
     op.execute(ledger.delete().where(ledger.c.action.in_(NEW_ACTIONS)))
     op.drop_constraint("curator_ledger_action_check", "curator_ledger", type_="check")
-    _actions(ACTIONS_0054)
+    _actions(ACTIONS_0057)

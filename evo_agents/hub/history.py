@@ -1,5 +1,5 @@
 """The Curator's reading of a project's history with a model, as the hub models it: the facet a cheap model writes of
-each session and run (the ``llm`` of session_facets, schema 0056), the prompts of the night's history run, what its
+each session and run (the ``llm`` of session_facets, schema 0059), the prompts of the night's history run, what its
 answers may hold, and the clusters the facets fall into. Pure functions over JSON values, standard library only, so the
 api, the hub's worker, the worker daemon and the tests share them. ``evo_agents.hub.excerpts`` cuts what the model
 reads of a transcript, ``evo_agents.hub.server.history`` queues the run and keeps what it wrote,
@@ -46,7 +46,7 @@ MIN_CLUSTER_SESSIONS = 3  # a cluster smaller than this stays out of the night's
 CLUSTER_EXAMPLES = 3  # sessions a cluster names, the latest first; the first is its representative
 RETRY_HOURS = 20  # an item the model gave no usable facet waits this long, so the next night tries it again
 MAX_ATTEMPTS = 3  # attempts at an item after which it waits a week
-MAX_ERROR_CHARS = 2000  # migration 0056's bound of session_facets.llm_error
+MAX_ERROR_CHARS = 2000  # migration 0059's bound of session_facets.llm_error
 MAX_ANSWER_CHARS = 200_000  # of an agent's last message, read from its end
 MAX_JSON_TRIES = 50
 ITEM = re.compile(r"^(session):([^\s:]{1,100})$|^(run):([1-9][0-9]{0,18})$")

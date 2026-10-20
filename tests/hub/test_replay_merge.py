@@ -3,7 +3,7 @@
 the Judge and CI pass; replays that lost, too few replays, or another file in the diff keep the tier the rules give; a
 change left open goes back to judged once its replays win; the merge of a global skill publishes its version from the
 merge commit and keeps the one before, which the hub publishes again when the figures get worse; the detector of
-score hacking reads the instructions of a harness to test or verify; schema 0055. The world, GitHub and the helpers are
+score hacking reads the instructions of a harness to test or verify; schema 0058. The world, GitHub and the helpers are
 ``tests.hub.test_curator_changes``', the suite ``tests.hub.test_replays``'."""
 
 from __future__ import annotations
@@ -399,10 +399,10 @@ def test_skill_release_a_directory_that_cannot_be_a_bundle_says_why_and_publishe
     assert [row[0] for row in versions(world)] == [1] and released(world) == {}
 
 
-# Schema 0055
+# Schema 0058
 
 
-def test_replay_schema_0055_takes_the_line_skill_release_and_going_back_deletes_those_lines(skill_world):
+def test_replay_schema_0058_takes_the_line_skill_release_and_going_back_deletes_those_lines(skill_world):
     world = skill_world
     change = merged_skill(world)
     lg, p = tables.curator_ledger, tables.projects
@@ -410,10 +410,10 @@ def test_replay_schema_0055_takes_the_line_skill_release_and_going_back_deletes_
     line = {"project_id": project_id, "proposal_id": change["proposal_id"], "actor": "curator", "what": "x"}
     with pytest.raises(psycopg.errors.CheckViolation):
         sql(world.db, insert(lg).values(**line, action="other"))
-    move_to(world.db, "0054", down=True)
+    move_to(world.db, "0057", down=True)
     assert sql(world.db, select(func.count()).select_from(lg).where(lg.c.action == "skill_release")) == [(0,)]
     with pytest.raises(psycopg.errors.CheckViolation):
         sql(world.db, insert(lg).values(**line, action="skill_release"))
-    move_to(world.db, "0055")
+    move_to(world.db, "0058")
     assert [row[0] for row in versions(world)] == [1, 2]  # the versions published stay
     assert replay.MIN_HOLDOUT == 6

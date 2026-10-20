@@ -845,7 +845,7 @@ did for each project of the answer's `kg_sync`: the project, when it looked (`ch
 the look (`error`), and for each source at most 50, its `source`, `status` (a name as `state` above; this daemon sends
 one of `runs.KG_SYNC_STATES`), `error`, `ref`, `commit`, `behind`, `checked_at`, `read_at`, `pushed_at`, `pulled` and
 `pushed`, at most 50 projects and every error 1 to 500 characters. Each heartbeat replaces what the hub holds
-(`workers.kg_sync`, schema 0050), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
+(`workers.kg_sync`, schema 0053), and one without it clears it; `GET /v1/workers/{id}` shows it as `kg_sync`.
 
 The hub records the heartbeat and when the worker's heartbeats became steady (`steady_since`, set to now by the first
 heartbeat and by one that comes more than 30 seconds after the one before), extends the lease of each run named that

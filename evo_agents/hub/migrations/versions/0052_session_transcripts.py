@@ -1,7 +1,7 @@
 """The transcripts of Claude Code and Codex sessions: an index per transcript file, and the parts its content came in.
 
-Revision ID: 0049
-Revises: 0048
+Revision ID: 0052
+Revises: 0051
 Create Date: 2026-10-19
 
 ``evo_agents.hub.server.transcripts`` describes the design; the bounds below are copies of the constants of
@@ -20,7 +20,7 @@ transcript_parts holds each part of a transcript in order: the bytes of the file
 line and how many lines it has, and the blob (kind transcript) that holds them, gzip of the redacted lines. A part
 starts where the one before it ended, so ``(transcript_id, source_start)`` is unique.
 
-Going back drops both tables, which is the schema 0048 runs on; the blobs of kind transcript stay as rows of their
+Going back drops both tables, which is the schema 0051 runs on; the blobs of kind transcript stay as rows of their
 project until an admin deletes them.
 """
 
@@ -28,8 +28,8 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0049"
-down_revision = "0048"
+revision = "0052"
+down_revision = "0051"
 branch_labels = None
 depends_on = None
 

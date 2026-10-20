@@ -796,26 +796,25 @@ no worker is locked there, and a heartbeat neither takes nor keeps a commit or a
 `runs.seen_audience`, the principals of what the hub returned to the agent of the run with an audience (Memories,
 skills and knowledge graphs, Audience of memories): empty for every run there is and every new one, it only grows,
 sorted and without repeats. Going back to 0048 drops the column, and a memory written meanwhile keeps the audience its
-label took. Schema 0049
-(session transcripts) is described under Memories, skills and knowledge graphs below. Schema 0050 adds
-`workers.kg_sync`, what the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift
-it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0049 drops it, and a
-heartbeat no longer keeps it. Schema 0051 (session facets) and schema 0052 (the health of a graph) are described under
-Memories, skills and knowledge graphs below. Schema 0053 adds the replay run (a run of kind `replay`, on the plan of
+label took. Schema 0050 (direct chats) and schema 0051 (chat images) are described under Group chats above, and schema
+0052 (session transcripts) under Memories, skills and knowledge graphs below. Schema 0053 adds `workers.kg_sync`, what
+the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift it is on duty for, an
+object (`docs/workers.md`, Keeping the graph fresh); going back to 0052 drops it, and a heartbeat no longer keeps it. Schema 0054 (session facets) and schema 0055 (the health of a graph) are described under
+Memories, skills and knowledge graphs below. Schema 0056 adds the replay run (a run of kind `replay`, on the plan of
 the change it measures, which only the night shift queues and of which a project has one active at a time),
-`replay_tasks` and `curator_replays` (The Curator's replays, below); going back to 0052 deletes the replay runs and
-drops the two tables. Schema 0054 adds the kind of change `kg_source` and `curator_changes.knowledge`, what a pull
-request of such a change does to knowledge.yaml (The Curator's changes, below); going back to 0053 deletes the
-proposals of kind `kg_source`, their changes with them, and drops the column. Schema 0055 adds the ledger's line
-`skill_release` (The Curator's replays, below); going back to 0054 deletes those lines and leaves the skill versions
-the hub published. Schema 0056 adds the history run (a run of kind `history`, on no plan and no repo, which only the
+`replay_tasks` and `curator_replays` (The Curator's replays, below); going back to 0055 deletes the replay runs and
+drops the two tables. Schema 0057 adds the kind of change `kg_source` and `curator_changes.knowledge`, what a pull
+request of such a change does to knowledge.yaml (The Curator's changes, below); going back to 0056 deletes the
+proposals of kind `kg_source`, their changes with them, and drops the column. Schema 0058 adds the ledger's line
+`skill_release` (The Curator's replays, below); going back to 0057 deletes those lines and leaves the skill versions
+the hub published. Schema 0059 adds the history run (a run of kind `history`, on no plan and no repo, which only the
 night shift queues and of which a project has one active at a time), the facet of the model on each row of
 `session_facets` (`llm` and its `llm_*` columns), `history_runs` and `facet_clusters` (The Curator's history run,
-below); going back to 0055 drops the tables and the columns and deletes the history runs. Schema 0057 adds
+below); going back to 0058 drops the tables and the columns and deletes the history runs. Schema 0060 adds
 `history_lines` and `history_indexed`, the words of the project's history for search (The project's history, below),
-and `curator_playbook` and `curator_playbook_deltas` (The Curator's memory, below); going back to 0056 drops the four
-tables, and the job indexes the history again. Schema 0058 adds the lenses `runtime` and `harness` to the checks of
-`findings` and `proposals` (The Curator's review, below); going back to 0057 deletes their findings and proposals.
+and `curator_playbook` and `curator_playbook_deltas` (The Curator's memory, below); going back to 0059 drops the four
+tables, and the job indexes the history again. Schema 0061 adds the lenses `runtime` and `harness` to the checks of
+`findings` and `proposals` (The Curator's review, below); going back to 0060 deletes their findings and proposals.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and
@@ -1206,7 +1205,7 @@ every route of a project.
 
 ## The Curator's replays
 
-A replay measures a change of the Curator on the project's own history (schema 0053, `evo_agents/hub/replay.py`,
+A replay measures a change of the Curator on the project's own history (schema 0056, `evo_agents/hub/replay.py`,
 `evo_agents/hub/replay_suite.py`, `evo_agents/hub/server/replays.py`): the agent does a step of a plan done before
 twice, from the code as it was before that step, once with the harness of the default branch (arm `a`) and once with
 the harness of the change (arm `b`), and the worker runs the step's verify on each arm's work.
@@ -1284,7 +1283,7 @@ evo-agents hub curator replay show 4                  # change #4's replays, arm
 ## The Curator's history run
 
 Each night, after its review run, the night shift reads the project's sessions and runs with a cheap model, which
-writes a facet of each that has none (schema 0056, `evo_agents/hub/history.py`, `evo_agents/hub/excerpts.py`,
+writes a facet of each that has none (schema 0059, `evo_agents/hub/history.py`, `evo_agents/hub/excerpts.py`,
 `evo_agents/hub/server/history.py`), and the hub groups those facets into clusters. The deterministic facets (Session
 facets, below) count what happened; the facet of the model says what the session was about and how it went.
 
@@ -1349,7 +1348,7 @@ evo-agents hub curator history clusters    # the clusters of 3 sessions or more,
 
 ## The project's history
 
-The Reviewer, and any member, read a project's whole history through the hub, Postgres alone (schema 0057,
+The Reviewer, and any member, read a project's whole history through the hub, Postgres alone (schema 0060,
 `evo_agents/hub/history_index.py`, `evo_agents/hub/server/history_search.py`, `evo_agents/hub/server/history_mcp.py`).
 
 **The index.** The job `hub.index_history`, every 5 minutes, reads each part of a transcript the hub holds that it has
@@ -1402,7 +1401,7 @@ evo-agents hub curator history lines SESSION 120 --before 5 --after 5           
 
 ## The Curator's memory
 
-What the review runs of a project remember of it (schema 0057, `evo_agents/hub/server/earlier.py`,
+What the review runs of a project remember of it (schema 0060, `evo_agents/hub/server/earlier.py`,
 `evo_agents/hub/playbook.py`, `evo_agents/hub/server/playbook.py`).
 
 **Earlier nights.** A finding's status comes from the proposals that name it whose label the reader reads through the
@@ -1448,7 +1447,7 @@ the entries its evidence and its findings' evidence point at (an environment cau
 run again and again), with the sessions and runs the night counted. Then come the owner's answer, the plan it became,
 its Builder (`built`, or `build_failed`), the pull request the hub opened, the Judge's verdict (or the hub's own when
 the diff showed signs of score hacking), the merge by the hub or by hand, a change left open with why, the global
-skill the hub published from its merge (`skill_release`, schema 0055), and its outcome, which for a change with
+skill the hub published from its merge (`skill_release`, schema 0058), and its outcome, which for a change with
 replays keeps their verdict under `figures.replay`.
 The job `curator.changes` reads a pull request left open for its owner again every hour, so a merge or a close by
 hand reaches the ledger too.
@@ -1579,10 +1578,10 @@ those unchanged for more than an hour (`missing_ended`), which should be on the 
 named, and `$CODEX_HOME` (else `~/.codex`) `sessions` and `archived_sessions`. A transcript deleted on the hub is not
 sent again.
 
-Postgres holds the index (schema 0049): `session_transcripts`, a row per transcript file (session, `file` `main` or
+Postgres holds the index (schema 0052): `session_transcripts`, a row per transcript file (session, `file` `main` or
 `subagents/...`, project, the member who sent it first, machine, runtime, directory, the project's label, bytes of the
 file the hub holds, lines, parts, their bytes gzipped and redacted, the chain of their hashes, when its lines start
-and end), and `transcript_parts`, the parts in order; the content lives in the blob store. Going back to 0048 drops
+and end), and `transcript_parts`, the parts in order; the content lives in the blob store. Going back to 0051 drops
 both tables and leaves the blobs as rows of their project. `GET /v1/projects/{project}/transcripts` lists the
 transcripts the caller may read (by session, member, machine, runtime, `since`), and `GET .../transcripts/{session}`
 shows one session's with their parts; both need a grant and go through the read rule with the transcript's label and
@@ -1597,7 +1596,7 @@ blobs no part names leave the bucket. `hub.prune_transcripts` does the same for 
 names, a day after they came. Neither touches what is computed from transcripts elsewhere.
 
 **Session facets.** The job `hub.analyze_facets` (`evo_agents/hub/facet_job.py`) reads each session and each run
-that ended once, without any model, and keeps what it counted in `session_facets` (schema 0051): one row per session
+that ended once, without any model, and keeps what it counted in `session_facets` (schema 0054): one row per session
 of a project, made from its transcripts (the session's own and its subagents') or, while the hub holds none, from its
 digest, and one per run that ended (`done`, `failed`, `lost`, `cancelled`, a local run's `ended`), made from the log its
 worker uploaded (blob kind `run-log`) or else from its events on the hub. A facet (`evo_agents/hub/facets.py`,
@@ -1625,8 +1624,8 @@ parsed outside any, and a facet is written with one upsert. A blob store that do
 missing, fails the attempt: the facet made before stays, and the row counts `attempts` with the `error` and waits
 5 minutes before the next one, twice as long after each failure up to a day. A session's facet has no foreign key to its
 transcripts, so deleting their content, by an admin or by the retention, leaves it: the hub keeps facets without a
-limit, until the project goes. Going back to 0050 drops the table, and the job makes the facets again. Since schema
-0056 a row also holds the facet a cheap model wrote of it (`llm`), which the night's history run writes (The Curator's
+limit, until the project goes. Going back to 0053 drops the table, and the job makes the facets again. Since schema
+0059 a row also holds the facet a cheap model wrote of it (`llm`), which the night's history run writes (The Curator's
 history run, above); a facet made again from other content makes the facet of the model wait to be written again.
 
 **Long tool output.** PostToolUse (`evo-agents hub hook post-tool-use`, `evo_agents/hub/spool.py`) keeps a long
@@ -1764,11 +1763,11 @@ that its night shift names gets through (403 otherwise, and a machine token the 
 owner, whose writer role the push needs, as for any member. It never sends the knowledge config, so its runs go into
 the config a member pushed, and a project with none answers 422. The hub builds the graph from its runs as from any push;
 `kg_ingests.pushed_by` names the owner, and the `kg.ingest` audit row names the worker's token. `GET /v1/workers/{id}`
-shows what the worker last said of each project (`kg_sync`, schema 0050): the time of its look, what stopped it, and
+shows what the worker last said of each project (`kg_sync`, schema 0053): the time of its look, what stopped it, and
 for each git source its status (`ok`, `failed` or `skipped`), the commit it holds and the error of a sync that
 failed. The night's figures of the project repeat it (The Curator's review).
 
-**The graph's health.** Each build that succeeds keeps what it covers in `kg_builds.coverage` (schema 0052,
+**The graph's health.** Each build that succeeds keeps what it covers in `kg_builds.coverage` (schema 0055,
 `evo_agents/hub/kg_coverage.py`): per source its items and mentions and how many resolved, stayed ambiguous or
 dangled, with their shares; the commit each git source read (the field `kg_status` shows); the Python functions and
 methods outside tests that no `calls` edge reaches (`evo_agents/kg/health.py`); and whether nothing had changed. It
@@ -1798,7 +1797,7 @@ and its metrics in the ledger are the commits behind, the files missing, stale o
 backs and the edited files outside the top 5; the first two are the state of the graph and compare as they are, not per
 session or run. `GET /v1/projects/{p}/curator/kg-health` lists the measures and the builds with their coverage, newest
 first, for a reader whose grant reaches the project's default label through the sink, and `evo-agents hub kg health
---project demo` prints the latest measure. Going back to 0051 deletes the findings and proposals of lens `kg_health`
+--project demo` prints the latest measure. Going back to 0054 deletes the findings and proposals of lens `kg_health`
 and drops the two tables and the column.
 
 ```sh

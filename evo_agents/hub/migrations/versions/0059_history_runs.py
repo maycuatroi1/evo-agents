@@ -1,7 +1,7 @@
 """The night's history run: a facet a cheap model writes of each session and run, and the clusters they fall into.
 
-Revision ID: 0056
-Revises: 0055
+Revision ID: 0059
+Revises: 0058
 Create Date: 2026-10-20
 
 ``evo_agents.hub.history`` describes the design and ``evo_agents.hub.server.history`` the routes and the night shift's
@@ -24,25 +24,25 @@ counted it, its sessions and runs, the members whose they are and its latest ses
 runs.kind takes ``history``: a run of the Curator on no plan and no repo (its repos NULL), which only the night shift
 queues (``runs_history_schedule_check``), one active at a time per project (``runs_active_history_key``).
 
-Going back drops the two tables and the columns, deletes the history runs and puts back the checks of 0055, which is
-the schema that schema 0055 runs on.
+Going back drops the two tables and the columns, deletes the history runs and puts back the checks of 0058, which is
+the schema that schema 0058 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0056"
-down_revision = "0055"
+revision = "0059"
+down_revision = "0058"
 branch_labels = None
 depends_on = None
 
-KINDS_0055 = ("step", "plan", "review", "judge", "author", "chat", "local", "task", "replay")
-KINDS = (*KINDS_0055, "history")  # evo_agents.hub.runs.SHOWN_KINDS
-NO_PLAN_0055 = ("review", "chat", "task")
-NO_PLAN = (*NO_PLAN_0055, "history")
-ANY_REPOS_0055 = ("chat", "local", "task")  # the kinds whose repos may be NULL: a project may have no repo
-ANY_REPOS = (*ANY_REPOS_0055, "history")
+KINDS_0058 = ("step", "plan", "review", "judge", "author", "chat", "local", "task", "replay")
+KINDS = (*KINDS_0058, "history")  # evo_agents.hub.runs.SHOWN_KINDS
+NO_PLAN_0058 = ("review", "chat", "task")
+NO_PLAN = (*NO_PLAN_0058, "history")
+ANY_REPOS_0058 = ("chat", "local", "task")  # the kinds whose repos may be NULL: a project may have no repo
+ANY_REPOS = (*ANY_REPOS_0058, "history")
 ACTIVE = ("queued", "leased", "running", "interactive", "verifying", "waiting", "review", "parked")
 KEY = r"^[a-z]+/(FM-[1-3]\.[1-6]|none)$"  # evo_agents.hub.history.KEY
 MAX_ERROR = 2000  # evo_agents.hub.history.MAX_ERROR_CHARS
@@ -222,4 +222,4 @@ def downgrade() -> None:
         op.execute(runs.delete().where(runs.c.kind == "history", runs.c.attempt == attempt))
     op.drop_index("runs_active_history_key", table_name="runs")
     op.drop_constraint("runs_history_schedule_check", "runs", type_="check")
-    _checks(KINDS_0055, NO_PLAN_0055, ANY_REPOS_0055)
+    _checks(KINDS_0058, NO_PLAN_0058, ANY_REPOS_0058)

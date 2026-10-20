@@ -1,7 +1,7 @@
 """The health of a project's knowledge graph over time, and the Curator's lens on it.
 
-Revision ID: 0052
-Revises: 0051
+Revision ID: 0055
+Revises: 0054
 Create Date: 2026-10-19
 
 ``evo_agents.hub.kg_coverage`` holds the model and ``evo_agents.hub.server.kg_health`` the measure; the values below are
@@ -19,19 +19,19 @@ files the graph lacks, holds at an older revision or holds though the branch del
 evaluation of the graph's latest build. findings.lens and proposals.lens take ``kg_health``.
 
 Going back deletes the findings and the proposals of lens kg_health (and those dropped as repeats of one), puts the
-checks of 0051 back, and drops the two tables and the column: schema 0051 keeps no health of a graph.
+checks of 0054 back, and drops the two tables and the column: schema 0054 keeps no health of a graph.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0052"
-down_revision = "0051"
+revision = "0055"
+down_revision = "0054"
 branch_labels = None
 depends_on = None
 
-LENSES_0051 = (
+LENSES_0054 = (
     "tool_errors",
     "environment",
     "corrections",
@@ -45,7 +45,7 @@ LENSES_0051 = (
     "product_goals",
 )
 NEW_LENSES = ("kg_health",)
-LENSES = (*LENSES_0051, *NEW_LENSES)  # evo_agents.hub.review.LENSES
+LENSES = (*LENSES_0054, *NEW_LENSES)  # evo_agents.hub.review.LENSES
 MAX_SOURCE_CHARS = 200
 MAX_ERROR_CHARS = 2000  # evo_agents.hub.server.kg_health.ERROR_CHARS
 
@@ -119,7 +119,7 @@ def downgrade() -> None:
     op.execute(proposals.delete().where(proposals.c.lens.in_(NEW_LENSES)))
     op.execute(findings.delete().where(findings.c.lens.in_(NEW_LENSES)))
     _drop_lenses()
-    _lenses(LENSES_0051)
+    _lenses(LENSES_0054)
     op.drop_index("kg_health_project_idx", table_name="kg_health")
     op.drop_table("kg_health")
     op.drop_table("kg_source_files")

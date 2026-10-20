@@ -9849,7 +9849,7 @@ export interface components {
             changed: boolean;
             /**
              * Coverage
-             * @description what the build covers (kg_builds.coverage); null before schema 0052
+             * @description what the build covers (kg_builds.coverage); null before schema 0055
              */
             coverage: {
                 [key: string]: unknown;
