@@ -17,6 +17,7 @@ if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
 from sqlalchemy import delete, func, select, update
+from sqlalchemy.dialects.postgresql import insert
 
 from evo_agents.hub import runs, tables
 from tests.hub import test_credentials_api as credentials_api
@@ -180,6 +181,34 @@ def test_an_account_dispatch_refuses_a_name_that_is_not_the_dispatchers_env_secr
     # pinned to the worker it is bound to, it goes
     run_id = dispatched(client, hub["owner"], "evo-agents", box, account="box-only")
     assert account_of(client, box, run_id) == "box-only"
+
+
+def test_an_oauth_account_with_a_lapsed_access_token_is_pickable_and_a_candidate_unlike_a_setup_token(
+    client, hub, hub_db
+):
+    three(client, hub["owner"])
+    desk = worker_of(client, hub["owner"], "desk")
+    env_secret(client, hub["owner"], "oauth-old", VAR, sample())
+    env_secret(client, hub["owner"], "token-old", VAR, sample())
+    s, a = tables.secrets, tables.accounts
+    lapsed = func.now() - timedelta(minutes=1)
+    sql(hub_db, update(s).values(expires_at=lapsed).where(s.c.name.in_(("oauth-old", "token-old"))))
+    oauth = select(s.c.id).where(s.c.name == "oauth-old").scalar_subquery()
+    sealed = {"oauth_sealed": b"sealed", "oauth_nonce": b"nonce", "oauth_key_id": "k1"}
+    upsert = insert(a).values(secret_id=oauth, **sealed)
+    sql(hub_db, upsert.on_conflict_do_update(index_elements=[a.c.secret_id], set_=sealed))
+
+    response = dispatch(client, hub["owner"], "evo-agents", desk, account="token-old")
+    assert response.status_code == 422 and "account token-old ended at" in response.json()["message"]
+    # the pick is accepted; its tokens are fake here, so the lease itself is covered by test_account_oauth_refresh
+    run_id = dispatched(client, hub["owner"], "evo-agents", desk, account="oauth-old")
+    ended(client, desk, run_id)
+    path = f"/v1/projects/{PROJECT}/runs/{run_id}/rerun-candidates"
+    answer = client.get(path, headers=hub["owner"]).json()
+    states = {c["name"]: c["state"] for c in answer["accounts"]}
+    assert states["oauth-old"] == "ready" and states["token-old"] == "expired"
+    (candidate,) = (w for w in answer["workers"] if w["worker"] == "desk")
+    assert "oauth-old" in candidate["accounts"] and "token-old" not in candidate["accounts"]
 
 
 # Rerunning

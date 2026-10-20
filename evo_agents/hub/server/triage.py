@@ -114,7 +114,7 @@ async def _no_account(conn: AsyncConnection, found: RunStep) -> str | None:
     now = datetime.now(UTC)
     for env_var in sorted({name for name in (await conn.execute(names)).scalars() if name}):
         rows = await conn.execute(
-            select(s.c.expires_at, a.c.paused_at, a.c.cooldown_until)
+            select(s.c.expires_at, a.c.oauth_sealed, a.c.paused_at, a.c.cooldown_until)
             .outerjoin_from(s, a, a.c.secret_id == s.c.id)
             .where(
                 s.c.owner_id == found.dispatcher_id,
@@ -124,7 +124,18 @@ async def _no_account(conn: AsyncConnection, found: RunStep) -> str | None:
                 bound,
             )
         )
-        states = [(account_state(r.paused_at, r.cooldown_until, r.expires_at, now), r.cooldown_until) for r in rows]
+        states = [
+            (
+                account_state(
+                    r.paused_at,
+                    r.cooldown_until,
+                    None if r.oauth_sealed is not None else r.expires_at,  # an OAuth token is renewed at lease time
+                    now,
+                ),
+                r.cooldown_until,
+            )
+            for r in rows
+        ]
         if not states or any(state == "ready" for state, _ in states):
             continue
         cooling = [until for state, until in states if state == "cooling"]
