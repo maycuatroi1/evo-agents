@@ -9,6 +9,8 @@ points imports it; its contributions' Python lives in modules the hub imports wh
 
 - ``builder``, ``srs`` and ``tasks``: @builder, which changes the hub's settings through chat once an admin approves,
   BA documents to a template, and the backlog (``docs/plugins.md``, sections Builder and SRS and tasks).
+- ``canvas``: a living Lean Canvas per product, whose claims carry a status, a test card, evidence and every rev
+  (plan living-lean-canvas).
 
 telegram and chats, the Telegram channel and the history of group chats in the knowledge graph, left for the
 distribution evo-agents-core-plugins (repository maycuatroi1/evo-agents-core-plugins), which deploy/hub/core-plugins.txt

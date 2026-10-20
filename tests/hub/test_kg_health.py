@@ -29,7 +29,7 @@ from sqlalchemy import delete, func, insert, select
 
 from evo_agents.hub import tables
 from evo_agents.hub.kg_push import Pusher
-from evo_agents.hub.migrate import migrate
+from evo_agents.hub.migrate import migrate, revisions
 from evo_agents.hub.server import kg_health
 from evo_agents.hub.server.collect import collect
 from evo_agents.kg.project import load_project_at
@@ -409,20 +409,7 @@ def test_schema_0055_takes_the_lens_kg_health_and_going_back_deletes_what_it_wro
     assert sql(world.db, select(func.to_regclass("public.kg_health"), func.to_regclass("public.kg_source_files"))) == [
         (None, None)
     ]
-    assert migrate(world.db.dsn).applied == (
-        "0055",
-        "0056",
-        "0057",
-        "0058",
-        "0059",
-        "0060",
-        "0061",
-        "0062",
-        "0063",
-        "0064",
-        "0065",
-        "0066",
-    )
+    assert migrate(world.db.dsn).applied == revisions()[revisions().index("0055") :]
     b = tables.kg_builds
     assert sql(world.db, select(func.count(), func.count(b.c.coverage)))[0] == (3, 0)  # the column came back empty
     again = finding(
