@@ -639,6 +639,24 @@ async def _revoke_made(app: GitHubApp | None, made: list[InstallationToken] | No
             log.warning("a GitHub token made for a run that ended is left to expire", extra={"why": str(exc)})
 
 
+async def _ask_github(
+    state, app: GitHubApp | None, survey: _Survey, curator: bool
+) -> tuple[list[InstallationToken] | None, dict[str, str]]:
+    """Ask the App for a token for each repo of the run on github.com: (the tokens it made, None without an App;
+    repo -> why the repo gets none, GitHub's reason or the App the hub lacks)."""
+    if app is None:
+        unset = ", ".join(state.config.curator_app_missing() if curator else state.config.github_app_missing())
+        refusal = NO_CURATOR_APP if curator else NO_APP
+        return None, {repo: refusal.format(missing=unset) for repo in survey.github}
+    pusher = Pusher(survey.run.owner, survey.run.owner_github_id)
+    found = await app.tokens(survey.github.values(), pusher, github_permissions(survey.run.kind))
+    reasons: dict[str, str] = {}
+    for repo, (owner, name) in survey.github.items():
+        if f"{owner}/{name}" in found.missing:
+            reasons[repo] = found.missing[f"{owner}/{name}"]
+    return found.tokens, reasons
+
+
 @worker_router.post("/runs/{run_id}/credentials", response_model=Credentials, responses=REFUSALS)
 async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, response: Response) -> Credentials:
     """The leases of a run this worker holds: the owner's secrets for its project and a GitHub token for its repos on
@@ -661,17 +679,7 @@ async def lease_credentials(request: Request, run_id: RunId, user: CurrentUser, 
         unchecked = await _rulesets_now(engine, app, survey)
         _drop_github(survey, unchecked)
     if sealer is not None and survey.github and not survey.reusable():
-        if app is None:
-            unset = ", ".join(state.config.curator_app_missing() if curator else state.config.github_app_missing())
-            refusal = NO_CURATOR_APP if curator else NO_APP
-            reasons = {repo: refusal.format(missing=unset) for repo in survey.github}
-        else:
-            pusher = Pusher(survey.run.owner, survey.run.owner_github_id)
-            found = await app.tokens(survey.github.values(), pusher, github_permissions(survey.run.kind))
-            made = found.tokens
-            for repo, (owner, name) in survey.github.items():
-                if f"{owner}/{name}" in found.missing:
-                    reasons[repo] = found.missing[f"{owner}/{name}"]
+        made, reasons = await _ask_github(state, app, survey, curator)
     try:
         async with engine.begin() as conn:
             worker_id, survey = await survey_run(conn, user, run_id, lock=True)
