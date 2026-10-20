@@ -194,7 +194,9 @@ def own_plugin(plugin) -> Plugin:
 
 def own_kind(plugin: Plugin, kind: str) -> str:
     if kind not in plugin.kinds:
-        raise ValueError(f"{kind!r} is not a kind of channel plugin {plugin.id} contributes ({', '.join(plugin.kinds)})")
+        raise ValueError(
+            f"{kind!r} is not a kind of channel plugin {plugin.id} contributes ({', '.join(plugin.kinds)})"
+        )
     return kind
 
 

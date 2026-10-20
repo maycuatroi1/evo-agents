@@ -24,9 +24,18 @@ from evo_agents.hub.credentials import (
     [
         ("https://github.com/maycuatroi1/evo-agents.git", "https://github.com/maycuatroi1/evo-agents"),
         ("https://github.com/heron-team/lumen-identity.git", "https://github.com/heron-team/lumen-identity"),
-        ("git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"),
-        ("ssh://git@gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"),
-        ("ssh://git@gitlab.lumenops.example:2222/fir-gb-lumen/lumen-kb-docs.git", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"),
+        (
+            "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git",
+            "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs",
+        ),
+        (
+            "ssh://git@gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs",
+            "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs",
+        ),
+        (
+            "ssh://git@gitlab.lumenops.example:2222/fir-gb-lumen/lumen-kb-docs.git",
+            "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs",
+        ),
         ("https://user@GitHub.com/maycuatroi1/evo-agents/", "https://github.com/maycuatroi1/evo-agents"),
         ("https://git.example.com:8443/a/b.git", "https://git.example.com:8443/a/b"),
     ],
@@ -46,9 +55,13 @@ def test_matches_whole_path_parts():
     prefix = "https://gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs"
     assert matches(prefix, "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git")
     assert matches(prefix, "ssh://git@gitlab.lumenops.example/fir-gb-lumen/lumen-kb-docs")
-    assert matches("https://gitlab.lumenops.example/fir-gb-lumen", "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git")
+    assert matches(
+        "https://gitlab.lumenops.example/fir-gb-lumen", "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git"
+    )
     assert not matches(prefix, "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs-old.git")
-    assert not matches("https://gitlab.lumenops.example/fir", "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git")
+    assert not matches(
+        "https://gitlab.lumenops.example/fir", "git@gitlab.lumenops.example:fir-gb-lumen/lumen-kb-docs.git"
+    )
     assert not matches(prefix, "https://github.com/maycuatroi1/evo-agents.git")
     assert not matches("ssh-not-a-url", "ssh-not-a-url")
 
