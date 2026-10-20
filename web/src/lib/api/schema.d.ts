@@ -3617,6 +3617,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Version
+         * @description Take a version out of review for good, as its author or an admin of the project; ``comment`` is kept as a
+         *     comment on it. A withdrawn version is never submitted, reviewed or approved again, and approving a later one leaves
+         *     it withdrawn. The agent of a run never withdraws one.
+         */
+        post: operations["withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}/comments": {
         parameters: {
             query?: never;
@@ -15572,7 +15594,7 @@ export interface components {
             /** Latest Version */
             latest_version: number | null;
             /** Latest State */
-            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            latest_state: ("draft" | "in_review" | "approved" | "superseded" | "withdrawn") | null;
             /**
              * Label
              * @description the label every row of the document carries
@@ -15617,7 +15639,7 @@ export interface components {
             /** Latest Version */
             latest_version: number | null;
             /** Latest State */
-            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            latest_state: ("draft" | "in_review" | "approved" | "superseded" | "withdrawn") | null;
             /**
              * Label
              * @description the label every row of the document carries
@@ -15976,7 +15998,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "draft" | "in_review" | "approved" | "superseded";
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
             /**
              * Round
              * @description how many times it was submitted
@@ -16019,7 +16041,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "draft" | "in_review" | "approved" | "superseded";
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
             /**
              * Round
              * @description how many times it was submitted
@@ -16053,6 +16075,14 @@ export interface components {
             items: components["schemas"]["SrsItem"][];
             /** Problems */
             problems: components["schemas"]["SrsProblem"][];
+        };
+        /** SrsWithdrawIn */
+        SrsWithdrawIn: {
+            /**
+             * Comment
+             * @description why, kept as a comment on the version
+             */
+            comment?: string | null;
         };
         /**
          * StateCounts
@@ -31459,6 +31489,90 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["SrsReviewIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SrsWithdrawIn"] | null;
             };
         };
         responses: {

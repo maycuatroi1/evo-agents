@@ -1187,6 +1187,30 @@ def test_0063_makes_telegrams_codes_link_codes_of_kind_telegram_and_going_back_k
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0063") :]
 
 
+def test_0064_lets_a_version_in_review_be_withdrawn_and_going_back_makes_it_a_draft_again(hub_db):
+    move_to(hub_db, "0063")
+    s = hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "author_id": ids["user"], "content_sha256": "a" * 64, "submitted_at": func.now()}
+        conn.execute(insert(s.versions).values(number=1, state="in_review", round=1, **version))
+        with pytest.raises(errors.CheckViolation):  # 0046 knows no withdrawn version
+            conn.execute(update(s.versions).values(state="withdrawn", decided_at=func.now()))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0064")
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # a withdrawn version carries the moment it was withdrawn
+            conn.execute(update(s.versions).values(state="withdrawn"))
+        conn.execute(update(s.versions).values(state="withdrawn", decided_at=func.now()))
+    assert query(hub_db, select(s.versions.c.state)) == [("withdrawn",)]
+    move_to(hub_db, "0063", down=True)
+    assert query(hub_db, select(s.versions.c.state, s.versions.c.decided_at)) == [("draft", None)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

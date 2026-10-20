@@ -228,6 +228,14 @@ class SrsReviewIn(BaseModel):
     body: str = Field("", max_length=MAX_REVIEW_CHARS)
 
 
+class SrsWithdrawIn(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = Field(
+        None, min_length=1, max_length=MAX_COMMENT_CHARS, description="why, kept as a comment on the version"
+    )
+
+
 class SrsDiffItem(BaseModel):
     key: str
     kind: Literal[ITEM_KINDS]

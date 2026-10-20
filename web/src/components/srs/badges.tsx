@@ -19,6 +19,7 @@ import {
   Route as RouteIcon,
   Scale,
   Signature,
+  Undo2,
 } from "lucide-react";
 import type { Route } from "next";
 import { useTranslations } from "next-intl";
@@ -33,12 +34,16 @@ import type { ItemKind, SrsDiffItem, VersionState } from "./api";
  * rather than in `STATUS_LOOKS` (web/DESIGN.md, status-badge.tsx), with their words under `srs` in both message files.
  */
 
-/** A version's state: a draft, in review (violet, waiting to be checked), approved (green), superseded by a newer one. */
+/**
+ * A version's state: a draft, in review (violet, waiting to be checked), approved (green), superseded by a newer one,
+ * or withdrawn from review by its author or an admin. Superseded and withdrawn are last states, so both are outlines.
+ */
 export const VERSION_LOOKS = {
   draft: { tone: "neutral", icon: CircleDashed },
   in_review: { tone: "review", icon: Eye },
   approved: { tone: "success", icon: CircleCheck },
   superseded: { tone: "outline", icon: CircleMinus },
+  withdrawn: { tone: "outline", icon: Undo2 },
 } as const satisfies Record<VersionState, StatusLook>;
 
 export function VersionBadge({ state, ...props }: StatusPillProps & { state: VersionState }) {
