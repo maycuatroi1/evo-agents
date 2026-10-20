@@ -24,9 +24,10 @@ import { cn } from "@/lib/utils";
 import { AccountField } from "./account-field";
 import { accountField, BY_RULES } from "./account-model";
 import { AgentBlocked, AgentField, useAgentChoice } from "./agent-field";
-import { ModelField, Outlook } from "./dispatch-fields";
+import { Outlook } from "./dispatch-fields";
 import { useDispatchAuthorRun } from "./hooks";
 import { authorWorker, dispatchOutlook, dispatchWorkers, harnessRepo, modelSuggestions, readModel, readRequest, workerFitsNow } from "./model";
+import { ModelField } from "./model-field";
 import {
   AUTHOR_RUNTIME,
   AUTHOR_TIMEOUT_CHOICES,
@@ -252,7 +253,14 @@ function AuthorRunForm({
           <p className="text-xs text-pretty text-muted-foreground">{t("runtimeHint")}</p>
         </div>
 
-        <ModelField value={modelText} onChange={setModelText} runtime={AUTHOR_RUNTIME} suggestions={suggestions} problem={model.problem} disabled={pending} />
+        <ModelField
+          value={modelText}
+          onChange={setModelText}
+          runtime={AUTHOR_RUNTIME}
+          models={{ [AUTHOR_RUNTIME]: suggestions }}
+          problem={model.problem}
+          disabled={pending}
+        />
 
         <div className="flex min-w-0 flex-col gap-1.5" data-testid="author-run-worker">
           <label htmlFor={`${ids}-worker`} className="text-sm font-medium">

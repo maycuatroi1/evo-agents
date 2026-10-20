@@ -1,33 +1,55 @@
 "use client";
 
-import { CircleCheck, Info, Server, TriangleAlert } from "lucide-react";
+import { CircleCheck, Info, Server } from "lucide-react";
 import Link from "next/link";
 import { useFormatter, useTranslations } from "next-intl";
 import { type ReactNode, useId } from "react";
 
-import { useStatusText } from "@/components/status/status-badge";
-import { Input } from "@/components/ui/input";
+import { InfoTip } from "@/components/feedback/info-tip";
 import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select";
+import { Skeleton } from "@/components/ui/skeleton";
 import { KNOWN_RUNTIMES } from "@/components/workers/model";
-import { type Worker, WORKERS_HREF } from "@/components/workers/queries";
+import { WORKERS_HREF } from "@/components/workers/queries";
 import { cn } from "@/lib/utils";
 
-import { type DispatchOutlook, type FitProblem, type ModelProblem, runtimeCount, type WorkerFit } from "./model";
-import { MAX_MODEL_CHARS, type RequestedRuntime } from "./queries";
+import { FieldLabel } from "./field-label";
+import type { DispatchOutlook, FitProblem, WorkerFit } from "./model";
 
 /**
- * The parts the Dispatch and Run plan dialogs share: fieldsets of bordered choices, the runtime's reach among the
- * visitor's workers, the worker picker, the model field and the footer's outlook. `subject` says what is dispatched:
- * runs of steps, one plan run, or one author run (New plan and Revise with agent, whose dialog picks its worker itself).
+ * The parts the dispatch dialogs share (Dispatch, Run plan, and New plan and Revise with agent): fieldsets of bordered
+ * choices whose details show from an info icon beside the legend, the worker dropdown and the outlook of a worker.
+ * `subject` says what is dispatched: runs of steps, one plan run, or one author run.
  */
 export type DispatchSubject = "runs" | "plan" | "author";
-export type Target = "auto" | "pin";
 
-export function Section({ legend, hint, children, testId }: { legend: string; hint?: ReactNode; children: ReactNode; testId?: string }) {
+/** A fieldset: its legend, with an info icon for `info`, a line below it for `hint`, then its choices. */
+export function Section({
+  legend,
+  hint,
+  info,
+  children,
+  testId,
+  className,
+}: {
+  legend: string;
+  hint?: ReactNode;
+  info?: ReactNode;
+  children: ReactNode;
+  /** Of the fieldset; its info icon takes it with `-info`. */
+  testId?: string;
+  className?: string;
+}) {
   const id = useId();
   return (
-    <fieldset className="flex min-w-0 flex-col gap-2" aria-describedby={hint ? id : undefined} data-testid={testId}>
-      <legend className="mb-1 text-sm font-medium">{legend}</legend>
+    <fieldset className={cn("flex min-w-0 flex-col gap-2", className)} aria-describedby={hint ? id : undefined} data-testid={testId}>
+      <legend className="mb-1 flex items-center gap-1.5 text-sm font-medium">
+        {legend}
+        {info ? (
+          <InfoTip label={legend} testId={testId ? `${testId}-info` : undefined}>
+            {info}
+          </InfoTip>
+        ) : null}
+      </legend>
       {hint ? (
         <p id={id} className="-mt-0.5 mb-0.5 text-xs text-pretty text-muted-foreground">
           {hint}
@@ -35,6 +57,68 @@ export function Section({ legend, hint, children, testId }: { legend: string; hi
       ) : null}
       {children}
     </fieldset>
+  );
+}
+
+/**
+ * A radio as a compact tile: an icon, the name, and a short note below it for what is wrong with the choice (a runtime
+ * none of the workers has). The tiles of a fieldset sit side by side; the fieldset's info icon says what each one does.
+ */
+export function Tile({
+  name,
+  value,
+  checked,
+  onChange,
+  icon,
+  title,
+  note,
+  disabled = false,
+  testId,
+}: {
+  name: string;
+  value: string;
+  checked: boolean;
+  onChange: () => void;
+  icon?: ReactNode;
+  title: ReactNode;
+  note?: ReactNode;
+  disabled?: boolean;
+  testId?: string;
+}) {
+  const id = useId();
+  return (
+    <label
+      htmlFor={id}
+      className={cn(
+        "flex min-h-11 min-w-0 items-center gap-2.5 rounded-md border px-3 py-2 transition-colors duration-150 has-[:focus-visible]:ring-3 has-[:focus-visible]:ring-ring/50",
+        disabled ? "cursor-not-allowed border-dashed bg-muted/40 text-muted-foreground" : "cursor-pointer hover:bg-muted/50",
+        checked && !disabled && "border-brand/40 bg-surface-selected",
+      )}
+      data-testid={testId}
+      data-checked={checked || undefined}
+    >
+      <input
+        id={id}
+        type="radio"
+        name={name}
+        value={value}
+        checked={checked}
+        disabled={disabled}
+        onChange={onChange}
+        className={cn("size-4 shrink-0 accent-primary", disabled ? "cursor-not-allowed" : "cursor-pointer")}
+        aria-describedby={note ? `${id}-note` : undefined}
+      />
+      {icon}
+      <span className="flex min-w-0 flex-col">
+        <span className="text-sm leading-5 [overflow-wrap:anywhere]">{title}</span>
+        {note ? (
+          // Out of the radio's name, which the label around it gives; the radio reads it as its description.
+          <span id={`${id}-note`} className="text-xs leading-4 text-attention" aria-hidden="true">
+            {note}
+          </span>
+        ) : null}
+      </span>
+    </label>
   );
 }
 
@@ -98,106 +182,56 @@ export function Choice({
   );
 }
 
-/** What a runtime choice runs, and how many of the visitor's workers for the project report it. */
-export function RuntimeHint({ runtime, workers, loaded }: { runtime: RequestedRuntime; workers: Worker[]; loaded: boolean }) {
-  const t = useTranslations("runs.dispatch");
-  const what = runtime === "any" ? t("runtimeAnyHint") : t(`runtimeCommand.${runtime}`);
-  if (!loaded || workers.length === 0) return <>{what}</>;
-  const count = runtimeCount(workers, runtime);
-  const total = workers.length;
-  const reach =
-    count === 0
-      ? t("runtimeWorkers.none")
-      : count === total
-        ? t("runtimeWorkers.all", { total })
-        : t("runtimeWorkers.some", { count, total });
-  return (
-    <>
-      {what}
-      <span className="block" data-testid="dispatch-runtime-reach" data-count={count}>
-        {reach}
-      </span>
-    </>
-  );
-}
+/** The worker dropdown's choice of the hub's: the first worker that fits and has a free slot. */
+export const ANY_WORKER = "any";
+/** What the visitor picked in the worker dropdown: a worker's id, or any worker that fits. */
+export type WorkerChoice = number | typeof ANY_WORKER;
 
 /**
- * Match a worker or pin one of `workers`. `registered` is how many workers of the visitor's serve the project before
- * the agent picked narrowed them: with some but none left, the agent's problem says why, not the note about registering
- * a worker.
+ * The worker the runs go to, as a dropdown filled with the worker found for them (`chosenWorker` of model.ts): each of
+ * the visitor's workers for the project with whether it can take them now, then any worker that fits, which leaves the
+ * choice to the hub. A worker that cannot take them as it is stays listed with the reason but cannot be picked.
+ * `registered` is how many of the visitor's workers serve the project before the agent narrowed them: with some but
+ * none left, the agent's problem says why, not the note about registering one. `note` goes below the dropdown, for
+ * what is wrong with the choice.
  */
-export function WorkerPicker({
+export function WorkerField({
   project,
-  workers,
-  registered = workers.length,
+  fits,
+  value,
+  onChange,
   loading,
-  target,
-  pinned,
-  onTarget,
-  onPinned,
-  subject = "runs",
+  registered,
+  subject,
+  note,
+  disabled = false,
 }: {
   project: string;
-  workers: Worker[];
-  registered?: number;
+  fits: WorkerFit[];
+  value: number | null;
+  onChange: (value: WorkerChoice) => void;
   loading: boolean;
-  target: Target;
-  pinned: number | null;
-  onTarget: (target: Target) => void;
-  onPinned: (id: number) => void;
-  subject?: DispatchSubject;
+  registered: number;
+  subject: DispatchSubject;
+  note?: ReactNode;
+  disabled?: boolean;
 }) {
   const t = useTranslations("runs.dispatch");
-  const tStatus = useStatusText("worker");
+  const problem = useProblem();
   const ids = useId();
-  const none = !loading && registered === 0;
+  const option = (fit: WorkerFit): string => {
+    const name = fit.worker.shared ? t("workerShared", { name: fit.worker.name, owner: fit.worker.owner }) : fit.worker.name;
+    if (fit.fit === "now") return t("workerFree", { name, count: fit.free });
+    if (fit.fit === "busy") return t("workerBusy", { name });
+    if (fit.fit === "offline") return t("workerOffline", { name });
+    return t("workerNo", { name, problem: problem(fit.problem ?? { kind: "draining" }) });
+  };
   return (
-    <Section legend={t("worker")} testId="dispatch-worker">
-      <Choice
-        type="radio"
-        name="target"
-        value="auto"
-        checked={target === "auto"}
-        onChange={() => onTarget("auto")}
-        title={t("workerAuto")}
-        hint={t("workerAutoHint", { subject })}
-      />
-      <Choice
-        type="radio"
-        name="target"
-        value="pin"
-        checked={target === "pin"}
-        disabled={!loading && workers.length === 0}
-        onChange={() => onTarget("pin")}
-        title={t("workerPin")}
-        hint={t("workerPinHint", { subject })}
-        testId="dispatch-target-pin"
-      />
-      {target === "pin" && workers.length > 0 ? (
-        <div className="flex flex-col gap-1.5 pl-1">
-          <label htmlFor={`${ids}-worker`} className="text-xs font-medium text-muted-foreground">
-            {t("workerSelect")}
-          </label>
-          <NativeSelect
-            id={`${ids}-worker`}
-            value={pinned === null ? "" : String(pinned)}
-            onChange={(event) => onPinned(Number(event.target.value))}
-            className="w-full sm:w-80 md:[&_select]:h-9 [&_select]:font-mono"
-            data-testid="dispatch-pinned-worker"
-          >
-            {workers.map((worker) => (
-              <NativeSelectOption key={worker.id} value={String(worker.id)}>
-                {t(worker.shared ? "workerOptionShared" : "workerOption", {
-                  name: worker.name,
-                  owner: worker.owner,
-                  status: tStatus(worker.status === "online" ? (worker.held_runs > 0 ? "busy" : "idle") : worker.status),
-                })}
-              </NativeSelectOption>
-            ))}
-          </NativeSelect>
-        </div>
-      ) : null}
-      {none ? (
+    <div className="flex min-w-0 flex-col gap-1.5" data-testid="dispatch-worker">
+      <FieldLabel htmlFor={`${ids}-worker`} label={t("worker")} info={t("workerInfo", { subject })} testId="dispatch-worker-info" />
+      {loading ? (
+        <Skeleton className="h-9 w-full" role="status" aria-label={t("workersLoading")} />
+      ) : registered === 0 ? (
         <p className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-dashed px-3 py-2 text-sm text-muted-foreground" data-testid="dispatch-no-workers">
           <Server className="size-4 shrink-0" aria-hidden="true" />
           <span>{t("noWorkers", { project })}</span>
@@ -205,78 +239,25 @@ export function WorkerPicker({
             {t("registerWorker")}
           </Link>
         </p>
-      ) : null}
-    </Section>
-  );
-}
-
-/**
- * The model a run uses, as its runtime names it: free text, with the models the visitor's workers list for the runtime
- * picked offered as suggestions (a datalist, so any other name can still be typed). Empty leaves the choice to the
- * runtime. The API takes a model with any runtime; this field asks for a runtime first, since a model name means
- * something only to the runtime it was written for.
- */
-export function ModelField({
-  value,
-  onChange,
-  runtime,
-  suggestions,
-  problem,
-  disabled = false,
-}: {
-  value: string;
-  onChange: (value: string) => void;
-  runtime: RequestedRuntime;
-  suggestions: string[];
-  problem: ModelProblem | null;
-  disabled?: boolean;
-}) {
-  const t = useTranslations("runs.planRun.model");
-  const tRuntime = useTranslations("runs.runtime");
-  const ids = useId();
-  const listId = `${ids}-models`;
-  const hint =
-    runtime === "any"
-      ? t("hintAny")
-      : suggestions.length > 0
-        ? t("hintSuggested", { count: suggestions.length, runtime: tRuntime(runtime) })
-        : t("hintNone", { runtime: tRuntime(runtime) });
-  const message = problem === null ? null : problem === "long" ? t("long", { max: MAX_MODEL_CHARS }) : t(problem);
-  return (
-    <div className="flex min-w-0 flex-col gap-1.5" data-testid="plan-run-model">
-      <label htmlFor={`${ids}-input`} className="text-sm font-medium">
-        {t("label")} <span className="font-normal text-muted-foreground">{t("optional")}</span>
-      </label>
-      <Input
-        id={`${ids}-input`}
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        list={suggestions.length > 0 ? listId : undefined}
-        placeholder={t("placeholder")}
-        autoComplete="off"
-        spellCheck={false}
-        disabled={disabled}
-        aria-invalid={problem !== null || undefined}
-        aria-describedby={`${ids}-hint${message ? ` ${ids}-error` : ""}`}
-        className="h-9 font-mono placeholder:font-sans"
-        data-testid="plan-run-model-input"
-      />
-      {suggestions.length > 0 ? (
-        <datalist id={listId} data-testid="plan-run-model-suggestions">
-          {suggestions.map((model) => (
-            <option key={model} value={model} />
+      ) : (
+        <NativeSelect
+          id={`${ids}-worker`}
+          value={value === null ? ANY_WORKER : String(value)}
+          onChange={(event) => onChange(event.target.value === ANY_WORKER ? ANY_WORKER : Number(event.target.value))}
+          disabled={disabled}
+          aria-describedby={note ? `${ids}-note` : undefined}
+          className="w-full md:[&_select]:h-9"
+          data-testid="dispatch-worker-select"
+        >
+          {fits.map((fit) => (
+            <NativeSelectOption key={fit.worker.id} value={String(fit.worker.id)} disabled={fit.fit === "no"}>
+              {option(fit)}
+            </NativeSelectOption>
           ))}
-        </datalist>
-      ) : null}
-      <p id={`${ids}-hint`} className="text-xs text-pretty text-muted-foreground">
-        {hint}
-      </p>
-      {message ? (
-        <p id={`${ids}-error`} className="flex items-start gap-1.5 text-xs font-medium text-danger" data-testid="plan-run-model-error">
-          <TriangleAlert className="mt-px size-3.5 shrink-0" aria-hidden="true" />
-          {message}
-        </p>
-      ) : null}
+          <NativeSelectOption value={ANY_WORKER}>{t("workerAny")}</NativeSelectOption>
+        </NativeSelect>
+      )}
+      {note && !loading && registered > 0 ? <div id={`${ids}-note`}>{note}</div> : null}
     </div>
   );
 }
@@ -294,8 +275,18 @@ export function useProblem() {
 
 const MAX_NAMED = 3;
 
-/** What the dialog's footer says will happen to what is dispatched, from the workers that may take it. */
-export function Outlook({ outlook, project, subject = "runs" }: { outlook: DispatchOutlook; project: string; subject?: DispatchSubject }) {
+/** What will happen to what is dispatched, from the workers that may take it: in a footer, or below the worker field. */
+export function Outlook({
+  outlook,
+  project,
+  subject = "runs",
+  className,
+}: {
+  outlook: DispatchOutlook;
+  project: string;
+  subject?: DispatchSubject;
+  className?: string;
+}) {
   const t = useTranslations("runs.dispatch.outlook");
   const format = useFormatter();
   const problem = useProblem();
@@ -351,6 +342,7 @@ export function Outlook({ outlook, project, subject = "runs" }: { outlook: Dispa
       className={cn(
         "flex min-w-0 flex-1 items-start gap-2 text-sm text-pretty",
         tone === "ok" ? "text-success" : tone === "warn" ? "text-attention" : "text-muted-foreground",
+        className,
       )}
       role="status"
       aria-live="polite"

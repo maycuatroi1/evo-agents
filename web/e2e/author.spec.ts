@@ -79,7 +79,7 @@ test("a writer starts New plan, answers the agent in the run's chat, follows the
   await expect(dialog.getByTestId("author-run-request-problem")).toHaveText("Say what the plan should achieve first.");
   await axeBoth(page, "the New plan dialog, with a blank request refused");
   await dialog.getByTestId("author-run-request").fill(REQUEST);
-  await dialog.getByTestId("plan-run-model-input").fill(MODELS[1]);
+  await dialog.getByTestId("plan-run-model-select").selectOption({ label: MODELS[1] });
   await dialog.getByTestId("author-run-timeout").selectOption("4");
   await dialog.getByTestId("author-run-submit").click();
   await expect(dialog).toBeHidden();
