@@ -640,6 +640,13 @@ medium findings as `warning:` lines; they never stop the install.
   end its own run and claim the next queued one); and run a worker for each project of a different sensitivity
   under a user of its own (its own uid, home, `~/.evo/worker` and service), whose files and sockets the others cannot
   read.
+- **A shared worker extends this to every member it is shared with** (`docs/workers.md`, Shared workers). The claim
+  holds the runs of one member at a time, so no two members' runs are held side by side, but the agent of a member's
+  run still reads the worker's token: it can end its own run and claim the next queued one, another member's, with
+  its leases and prompt, and the token works from elsewhere until the worker is revoked. The machine's own
+  credentials, and the worktrees of earlier runs, are the daemon user's for every member's run. Share a worker only
+  among members who trust each other's runs with their leases, on a machine whose user holds no credential of its
+  owner beyond the worker's token.
 - A static secret (a GitLab project access token, a `claude setup-token` token) read during a run works until it
   expires on its own service: 90 days, a year. Keep one per project, with the least role (Developer), with an end
   date, bound to the workers that need it.

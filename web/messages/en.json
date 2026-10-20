@@ -1733,6 +1733,7 @@
       "runtimes": "Runtimes",
       "projects": "Projects",
       "owner": "Owner",
+      "shared": "Shared",
       "heartbeat": "Last heartbeat"
     },
     "empty": {
@@ -1813,6 +1814,8 @@
         "dispatch": "Who dispatches",
         "dispatchValue": "{owner} only",
         "dispatchWeb": "{owner} only, from the web",
+        "dispatchShared": "{owner} and the writers of its projects",
+        "dispatchSharedWeb": "{owner} and the writers of its projects, from the web",
         "terminal": "Web terminal",
         "terminalOn": "Allowed",
         "terminalOff": "Not allowed",
@@ -1871,6 +1874,15 @@
       "anySuccess": "{name} takes runs from the command line again",
       "anySuccessText": "It claims runs dispatched with any of your credentials, from the command line and the web.",
       "failed": "Couldn't change who dispatches to {name}"
+    },
+    "shared": {
+      "label": "Share with the writers of its projects",
+      "hint": "On: every member who holds writer on a project it serves may dispatch to it, and it takes their runs too, one member's runs at a time, with their accounts and secrets. Their agents run as this machine's user, with what it can read. Off: it takes your runs alone.",
+      "sharedSuccess": "{name} is shared",
+      "sharedSuccessText": "The writers of its projects may dispatch to it from now on.",
+      "privateSuccess": "{name} takes your runs alone",
+      "privateSuccessText": "The runs of other members it holds finish; it claims none of theirs from now on.",
+      "failed": "Couldn't change whether {name} is shared"
     },
     "settings": {
       "title": "Settings",
@@ -3077,11 +3089,12 @@
       },
       "worker": "Worker",
       "workerAuto": "Match a worker automatically",
-      "workerAutoHint": "One of yours that is online, with a free slot, the runtime and {subject, select, plan {a checkout of every repo the plan runs in} other {a checkout of the step's repo}}.",
+      "workerAutoHint": "One of yours, or one shared with you, that is online, with a free slot, the runtime and {subject, select, plan {a checkout of every repo the plan runs in} other {a checkout of the step's repo}}.",
       "workerPin": "Pin to one worker",
       "workerPinHint": "{subject, select, plan {The plan run stays} other {The runs stay}} queued until this worker has a free slot.",
       "workerSelect": "Pinned worker",
       "workerOption": "{name} ({status})",
+      "workerOptionShared": "{name} of {owner}, shared ({status})",
       "noWorkers": "You have no worker registered for project {project} yet.",
       "registerWorker": "Register a worker",
       "approval": "When the step's verify commands pass",

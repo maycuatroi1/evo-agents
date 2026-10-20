@@ -64,7 +64,12 @@ Reason = Annotated[str, Field(min_length=1, max_length=REASON_CHARS, description
 
 
 class RerunOptions(BaseModel):
-    worker: str | None = Field(None, max_length=200, description="a worker of the owner, by name; a fit candidate")
+    worker: str | None = Field(
+        None,
+        max_length=200,
+        description="a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name "
+        "one of theirs has too); a fit candidate",
+    )
     runtime: str | None = Field(None, max_length=100, description="a runtime that worker has, for the rerun")
     account: AccountName | None = Field(None, description="one of the owner's accounts ready on that worker")
     cause_confirmed: bool = Field(
@@ -248,10 +253,13 @@ def _unfit(found: RerunCandidates, options: RerunOptions, failed) -> tuple[int |
             )
     chosen = None
     if name is not None:
-        chosen = next((w for w in found.workers if w.worker == name), None)
+        named = [w for w in found.workers if name in (w.worker, f"{w.owner}/{w.worker}")]
+        chosen = next((w for w in named if not w.shared), None) or next(iter(named), None)  # their own first
         if chosen is None:
-            known = ", ".join(w.worker for w in found.workers) or "none"
-            raise HTTPException(422, f"the owner has no worker {name}: their workers are {known}")
+            known = ", ".join(f"{w.owner}/{w.worker}" if w.shared else w.worker for w in found.workers) or "none"
+            raise HTTPException(
+                422, f"the owner has no worker {name}, nor one shared with them: their workers are {known}"
+            )
         if not chosen.fit:
             raise HTTPException(422, f"worker {name} is no fit to run it: {'; '.join(chosen.reasons)}")
         if cause in triage_rules.SAME_WORKER and chosen.worker_id != failed.worker_id:

@@ -1541,23 +1541,21 @@ def agent_tool(hub, worker, run_id: int, name: str, arguments: dict | None = Non
 
 def agent_principal(hub, worker, run_id: int):
     """The principal the gate gives the agent of run ``run_id`` on ``worker``."""
-    from dataclasses import replace
-
-    from evo_agents.hub.server.mcp import run_scope
+    from evo_agents.hub.server.mcp_run import run_principal
     from evo_agents.hub.server.security import WORKER, authenticate
 
     async def find():
         engine = hub.app.state.engine
         user = await authenticate(engine, worker.token, WORKER, hub.app.state.config)
         async with engine.begin() as conn:
-            return replace(user, scope=await run_scope(conn, user, run_id))
+            return await run_principal(conn, user, run_id)
 
     return hub.client.portal.call(find)
 
 
 @needs_pg
 def test_a_worker_token_opens_mcp_only_with_x_evo_run_naming_a_run_its_worker_holds(hub):
-    from evo_agents.hub.server.mcp import NOT_HELD
+    from evo_agents.hub.server.mcp_run import NOT_HELD
 
     push_plan(hub)
     grant(hub, "eve", "writer", "internal")
@@ -1705,8 +1703,35 @@ def test_a_run_scope_is_never_a_hub_admin_and_at_most_a_writer(hub):
 
 
 @needs_pg
+def test_the_agent_of_a_run_on_a_shared_worker_acts_as_the_member_who_dispatched_it(hub):
+    """alice, a writer up to internal, shares her worker; bob, a writer up to customer, dispatches to it. His run's
+    agent is bob within his grant, never alice, and alice's own run on her worker stays hers."""
+    push_plan(hub)
+    grant(hub, "bob", "writer", "customer")
+    worker = worker_of(hub, "alice", "lab")
+    shared = hub.client.patch(f"/v1/workers/{worker.id}", json={"shared": True}, headers=hub.alice)
+    assert shared.status_code == 200, shared.text
+    run_id = run_on(hub, "bob", worker, 1)
+
+    principal = agent_principal(hub, worker, run_id)
+    assert (principal.login, principal.admin) == ("bob", False)
+    assert (principal.scope.run_id, principal.scope.role, principal.scope.max_level) == (run_id, "writer", "customer")
+    shown = agent_tool(hub, worker, run_id, "hub_projects")
+    assert shown["content"][0]["text"].startswith("alpha (this session): role writer, max level customer;")
+
+    grant(hub, "bob", "reader", "customer")  # bob's grant, not alice's, bounds his run's agent
+    assert agent_principal(hub, worker, run_id).scope.role == "reader"
+    assert report(hub, worker, run_id, "failed", error="the agent gave up").status_code == 200
+    own = run_on(hub, "alice", worker, 2)
+    assert (agent_principal(hub, worker, own).login, agent_principal(hub, worker, own).scope.max_level) == (
+        "alice",
+        "internal",
+    )
+
+
+@needs_pg
 def test_a_run_scope_holds_while_the_run_is_held_and_ends_with_it(hub):
-    from evo_agents.hub.server.mcp import NOT_HELD
+    from evo_agents.hub.server.mcp_run import NOT_HELD
 
     push_plan(hub)
     worker = worker_of(hub, "alice", "mac-mini")

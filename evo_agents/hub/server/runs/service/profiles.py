@@ -41,6 +41,7 @@ from evo_agents.hub.server.profile_store import Profile, by_handle, by_id, ensur
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.runs.models import RunProfile, available
 from evo_agents.hub.server.runs.service import plugin_environments, plugin_runtimes
+from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import Principal
 from evo_agents.plugins.run_environments import HOST
 
@@ -149,12 +150,13 @@ async def _worker(conn: AsyncConnection, user: Principal, access: ProjectAccess,
         return
     w, wp = tables.workers, tables.worker_projects
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
-    rows = await conn.execute(
-        select(w.c.name, w.c.labels).where(w.c.owner_id == user.user_id, w.c.revoked_at.is_(None), serves)
-    )
+    mine_or_shared = or_(w.c.owner_id == user.user_id, shared_in(access.project_id))
+    rows = await conn.execute(select(w.c.name, w.c.labels).where(mine_or_shared, w.c.revoked_at.is_(None), serves))
     if not any(profiles.allows_worker(profile.permissions, row.name, row.labels) for row in rows):
         raise _refuse(
-            profile, f"allows none of your workers of project {access.name} to take the run: {_workers_text(profile)}"
+            profile,
+            f"allows none of your workers of project {access.name}, nor any shared there, to take the run: "
+            f"{_workers_text(profile)}",
         )
 
 

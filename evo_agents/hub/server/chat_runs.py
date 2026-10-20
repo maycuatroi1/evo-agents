@@ -139,7 +139,7 @@ def _no_worker(hand: Hand) -> str:
     if route is None:
         return (
             f"{hand.dispatcher} has no worker that takes runs of project {profile.project}, which @{profile.handle} "
-            "works in: join one, or add the project to one"
+            "works in, and no member shares one there: join one, or add the project to one"
         )
     named = f" among those its agent type names ({', '.join(route.workers)})" if route.workers else ""
     return (
@@ -149,12 +149,14 @@ def _no_worker(hand: Hand) -> str:
 
 
 async def pick_worker(conn: AsyncConnection, hand: Hand):
-    """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher, or of the run_as
-    of the agent's type among the workers it names (``hand.route``), fit for the profile (``unfit_worker``), the one
-    with a checkout of the most repos of the project, then the most free slots."""
+    """(the worker a new session goes to, None) or (None, why none can take it): of the dispatcher or one another member
+    shares in the project, or of the run_as of the agent's type among its own workers the type names (``hand.route``),
+    fit for the profile (``unfit_worker``); the dispatcher's own before a shared one, then the one with a checkout of
+    the most repos of the project, then the most free slots."""
     profile = hand.profile
     rows = (await conn.execute(workers_of(hand.owner_id, profile.project_id))).all()
-    rows = [row for row in rows if hand.route is None or hand.route.named(row.name)]
+    if hand.route is not None:
+        rows = [row for row in rows if row.owner_id == hand.owner_id and hand.route.named(row.name)]
     if not rows:
         return None, _no_worker(hand)
     repos = await project_repos(conn, profile.project_id)
@@ -170,7 +172,7 @@ async def pick_worker(conn: AsyncConnection, hand: Hand):
 
     def rank(row):
         held = sum(1 for name in repos if f"{profile.project}/{name}" in (row.checkouts or {}))
-        return (-held, row.holding - row.slots, row.id)
+        return (row.owner_id != hand.owner_id, -held, row.holding - row.slots, row.id)
 
     return min(fit, key=rank), None
 

@@ -287,8 +287,8 @@ def test_chat_mentions_are_read_once_and_kept_with_the_message(client, hub, hub_
     no_worker = f"{OWNER} has no worker that takes runs of project {PROJECT}"
     assert [m["refusal"] for m in message["mentions"]] == [
         None,
-        f"@reviewer: {no_worker}, which @reviewer works in: join one, or add the project to one",
-        f"@{PROJECT}: {no_worker}, which @{PROJECT} works in: join one, or add the project to one",
+        f"@reviewer: {no_worker}, which @reviewer works in, and no member shares one there: join one, or add the project to one",
+        f"@{PROJECT}: {no_worker}, which @{PROJECT} works in, and no member shares one there: join one, or add the project to one",
     ]
     cm = tables.chat_mentions
     kept = sql(hub_db, select(cm.c.ordinal, cm.c.name).where(cm.c.message_id == message["id"]).order_by(cm.c.ordinal))

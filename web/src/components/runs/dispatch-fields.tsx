@@ -187,7 +187,11 @@ export function WorkerPicker({
           >
             {workers.map((worker) => (
               <NativeSelectOption key={worker.id} value={String(worker.id)}>
-                {t("workerOption", { name: worker.name, status: tStatus(worker.status === "online" ? (worker.held_runs > 0 ? "busy" : "idle") : worker.status) })}
+                {t(worker.shared ? "workerOptionShared" : "workerOption", {
+                  name: worker.name,
+                  owner: worker.owner,
+                  status: tStatus(worker.status === "online" ? (worker.held_runs > 0 ? "busy" : "idle") : worker.status),
+                })}
               </NativeSelectOption>
             ))}
           </NativeSelect>

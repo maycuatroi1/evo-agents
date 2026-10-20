@@ -14,6 +14,7 @@ from __future__ import annotations
 import json
 from datetime import timedelta
 
+import psycopg
 import pytest
 
 from tests.hub import pg
@@ -21,8 +22,7 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
-from sqlalchemy import func, insert, select
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy import func, insert, literal, select
 
 from evo_agents.hub import facets, tables
 from evo_agents.hub.migrate import migrate
@@ -321,8 +321,14 @@ def test_schema_0061_takes_the_two_lenses_and_going_back_deletes_what_they_wrote
     move_to(busy.db, "0060", down=True)
     assert sql(busy.db, select(tables.findings.c.lens)) == [("cost",)]
     assert sql(busy.db, select(func.count()).select_from(tables.proposals))[0][0] == 0
-    with pytest.raises(IntegrityError, match="findings_lens_check"):  # the check of 0060 refuses the lens
-        finding(client, worker, run_id, lens="runtime", title="again", evidence=evidence)
-    assert migrate(busy.db.dsn).applied == ("0061",)
+    # the check of 0060 refuses the lens; written in the table, as the routes of this release need schema 0062
+    f = tables.findings
+    copied = select(
+        f.c.project_id, f.c.run_id, literal("runtime"), f.c.severity, literal("again"), f.c.evidence, f.c.label
+    )
+    names = ("project_id", "run_id", "lens", "severity", "title", "evidence", "label")
+    with pytest.raises(psycopg.errors.CheckViolation, match="findings_lens_check"):
+        sql(busy.db, insert(f).from_select(names, copied.where(f.c.lens == "cost")))
+    assert migrate(busy.db.dsn).applied == ("0061", "0062")
     again = finding(client, worker, run_id, lens="runtime", title="again", evidence=evidence)
     assert again.status_code == 201, again.text

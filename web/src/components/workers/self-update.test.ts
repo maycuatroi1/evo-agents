@@ -27,6 +27,7 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     labels: [],
     plugins: [],
     version_locked: false,
+    shared: false,
     self_update: report(),
     projects: ["evo-agents"],
     runtimes: {},

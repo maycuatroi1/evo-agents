@@ -1,8 +1,8 @@
 """``evo-agents hub run candidates RUN [--json]``, for ``evo_agents.hub.run_cli``: who can run a failed run again, as the
-hub computes it (GET /v1/projects/{p}/runs/{id}/rerun-candidates, ``evo_agents.hub.server.runs.service.candidates``).
-It prints each worker of yours that serves the project, each agent profile of the project and each of your accounts
-bound to it, the workers and agents with whether they fit, their rank and why. Standard library only, like the rest
-of the client."""
+hub computes it (GET /v1/projects/{p}/runs/{id}/rerun-candidates, ``evo_agents.hub.server.runs.service.candidates``). It
+prints each worker of yours that serves the project, and each one another member shares with you there, each agent
+profile of the project and each of your accounts bound to it, the workers and agents with whether they fit, their rank
+and why. Standard library only, like the rest of the client."""
 
 from __future__ import annotations
 
@@ -26,6 +26,11 @@ CANDIDATES_KEYS = (
 )
 
 
+def _worker(candidate: dict) -> str:
+    """A worker as `--worker` names it: its name, or owner/name for one another member shares."""
+    return f"{candidate['owner']}/{candidate['worker']}" if candidate.get("shared") else candidate["worker"]
+
+
 def _fit(candidate: dict) -> str:
     return f"#{candidate['rank']}" if candidate["fit"] else "no"
 
@@ -40,7 +45,7 @@ def _print(found: dict) -> None:
             "Workers",
             ("WORKER", "FIT", "RUNTIMES", "FREE", "WHY"),
             [
-                (w["worker"], _fit(w), ", ".join(w["runtimes"]) or "-", w["free_slots"], "; ".join(w["reasons"]))
+                (_worker(w), _fit(w), ", ".join(w["runtimes"]) or "-", w["free_slots"], "; ".join(w["reasons"]))
                 for w in found["workers"]
             ],
             "none of your workers serves the project",
