@@ -7,7 +7,8 @@ that waits; the build holds the use cases of the approved version and the task, 
 to the task, the plan step it links and the commit the step's evidence names; the plugins' data carries the project's
 label and a member whose grant is below it sees none of it; a build of unchanged data points at the artifact of the
 build before, and ``kg build --verify`` on the worker's store gives its hash; a changed task is built again, and a
-plugin the project turns off leaves the graph.
+plugin the project turns off leaves the graph. Archiving a document and unarchiving it each queue a build, and an
+archived document is out of the graph (criterion a1 of plan srs-document-lifecycle).
 
 The api and the worker run in this process and the blob store is moto's, as in ``tests.hub.test_kg``; the machine is a
 harness of project alpha that reads the hub's plans and pushes its runs.
@@ -190,4 +191,25 @@ def test_srs_tasks_plugin_graph_on_the_hub_traces_a_use_case_to_its_task_step_an
     assert hub.client.post(f"/v1/kg/{PROJECT}/builds", headers=hub.alice).status_code == 202
     run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert call_tool(hub, "kg_node", {"id": TICKET}).json()["isError"]  # the plugin's tickets left with it
+    assert node(hub, USE_CASE)["status"] == "declared"
+
+
+def test_srs_plugin_graph_leaves_out_an_archived_document_and_takes_it_back_once_unarchived(hub, tmp_path):
+    machine(hub, tmp_path)
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    approve_sample(hub)
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert node(hub, USE_CASE)["status"] == "declared"
+    doc = f"/v1/x/srs/{PROJECT}/documents/demo-shop"
+    archived = hub.client.post(f"{doc}/archive", headers=hub.owner)
+    assert archived.status_code == 200 and archived.json()["archived_at"] is not None, archived.text
+    assert queued(hub) == 1
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
+    assert build_rows(hub)[0]["status"] == "succeeded"
+    for gone in (USE_CASE, "plugin.srs:document:demo-shop"):
+        assert call_tool(hub, "kg_node", {"id": gone}).json()["isError"], gone
+    unarchived = hub.client.post(f"{doc}/unarchive", headers=hub.owner)
+    assert unarchived.status_code == 200, unarchived.text
+    assert queued(hub) == 1
+    run_jobs(hub.db, hub.s3, hub.worker_dir)
     assert node(hub, USE_CASE)["status"] == "declared"
