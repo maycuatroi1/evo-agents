@@ -3576,6 +3576,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents/{slug}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Items
+         * @description Drop the items of the latest version that hold ``codes`` (codes or aliases), each with its subtree, as the
+         *     document's next version, a draft built on the latest through the same save as any other, so its checks hold and a
+         *     code dropped is never given again; as an admin of the project, never the agent of a run. 422 listing each code no
+         *     item of the latest version holds, one dropped before included; ``dry_run`` answers what would be dropped and writes
+         *     nothing.
+         */
+        post: operations["retire_items_v1_x_srs__project__documents__slug__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}/versions/{number}/submit": {
         parameters: {
             query?: never;
@@ -15965,6 +15989,56 @@ export interface components {
              * @description the code or key of the item it links to
              */
             to: string;
+        };
+        /** SrsRetireIn */
+        SrsRetireIn: {
+            /**
+             * Codes
+             * @description the codes or aliases of the items to retire
+             */
+            codes: string[];
+            /**
+             * Summary
+             * @description the new version's; from the codes if left out
+             * @default
+             */
+            summary: string;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** SrsRetireResult */
+        SrsRetireResult: {
+            /** Document */
+            document: string;
+            /**
+             * Version
+             * @description the version saved, a draft; null for a dry run
+             */
+            version: number | null;
+            /** Dry Run */
+            dry_run: boolean;
+            /**
+             * Dropped
+             * @description every item the version drops: each one retired and the items under it, in document order
+             */
+            dropped: components["schemas"]["SrsRetiredItem"][];
+        };
+        /** SrsRetiredItem */
+        SrsRetiredItem: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Code */
+            code: string | null;
+            /** Title */
+            title: string;
         };
         /** SrsReview */
         SrsReview: {
@@ -31381,6 +31455,89 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsImportResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    retire_items_v1_x_srs__project__documents__slug__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsRetireIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsRetireResult"];
                 };
             };
             /** @description Unauthorized */

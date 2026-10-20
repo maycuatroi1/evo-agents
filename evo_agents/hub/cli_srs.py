@@ -1,19 +1,20 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|archive|unarchive``: the BA documents of a
-project that enabled the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core
+"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive``: the BA documents of
+a project that enabled the core plugin srs, through its routes under /v1/x/srs/<project>/ (``docs/plugins.md``, Core
 plugins). The plugin's code is ``evo_agents.core_plugins.srs``, which this client never imports: it speaks HTTP only.
 
 ``list`` prints the documents with their latest and approved versions, ``--all`` the archived ones too. ``show SLUG``
-prints a document's versions and
-the items of its latest version (``--version N`` another), ``--item CODE`` one item with its fields and children.
-``import FILE`` reads Markdown (``-`` for stdin) whose headings follow the template, as a new document (``--slug``,
-``--title``) or as the next version of ``--doc``; ``--dry-run`` prints the preview only. ``export SLUG`` prints a
-version as Markdown (``--no-anchors`` leaves out the screens' code comments, ``--output`` writes a file). ``submit
-SLUG N`` sends a draft to review; ``approve SLUG N`` approves it, ``--request-changes`` sends it back with
-``--comment``. ``withdraw SLUG N`` takes a version in review out of review for good, as its author or an admin, with
-the reason as a comment on it (``--comment``). ``archive SLUG``, an admin's, takes a document out of the list, @ba's
-search and the knowledge graph and closes it to changes; ``unarchive SLUG`` opens it again. ``--json`` prints what the
-hub answered. A refusal prints the hub's reason and each problem it listed.
-Standard library only, like the rest of the client.
+prints a document's versions and the items of its latest version (``--version N`` another), ``--item CODE`` one item
+with its fields and children. ``import FILE`` reads Markdown (``-`` for stdin) whose headings follow the template, as
+a new document (``--slug``, ``--title``) or as the next version of ``--doc``; ``--dry-run`` prints the preview only.
+``export SLUG`` prints a version as Markdown (``--no-anchors`` leaves out the screens' code comments, ``--output``
+writes a file). ``submit SLUG N`` sends a draft to review; ``approve SLUG N`` approves it, ``--request-changes`` sends
+it back with ``--comment``. ``withdraw SLUG N`` takes a version in review out of review for good, as its author or an
+admin, with the reason as a comment on it (``--comment``). ``retire SLUG CODE...``, an admin's, saves the next version
+without the items holding those codes or aliases and their subtrees (POST .../documents/{slug}/retire), a draft, and
+prints its number and every item dropped; ``--dry-run`` prints the items only and writes nothing. ``archive SLUG``, an
+admin's, takes a document out of the list, @ba's search and the knowledge graph and closes it to changes;
+``unarchive SLUG`` opens it again. ``--json`` prints what the hub answered. A refusal prints the hub's reason and each
+problem it listed. Standard library only, like the rest of the client.
 """
 
 from __future__ import annotations
@@ -46,6 +47,7 @@ DOCUMENT_KEYS = (*SUMMARY_KEYS, "versions", "shown")
 ITEM_KEYS = ("key", "kind", "code", "aliases", "title", "parent", "heading_level", "fields", "body", "refs")
 ITEM_DETAIL_KEYS = (*ITEM_KEYS, "document", "version", "path", "children")
 IMPORT_KEYS = ("document", "created", "version", "dry_run", "preview")
+RETIRE_KEYS = ("document", "version", "dry_run", "dropped")
 VERSION_KEYS = (
     "number",
     "parent_number",
@@ -263,6 +265,33 @@ def cmd_withdraw(args) -> int:
     return 0
 
 
+def _items(count: int) -> str:
+    return f"{count} item" if count == 1 else f"{count} items"
+
+
+@client_command
+def cmd_retire(args) -> int:
+    body = {"codes": args.codes, "dry_run": args.dry_run}
+    if args.summary:
+        body["summary"] = args.summary
+    done = _call("POST", _path(args.project, "documents", args.slug, "retire"), body)
+    if args.json:
+        print_json(done)
+        return 0
+    gone = done["dropped"]
+    if done["dry_run"]:
+        print(f"Retiring would drop {_items(len(gone))} of {args.slug}; nothing is written (a dry run):")
+    else:
+        print(f"Saved {args.slug} version {done['version']}, a draft without {_items(len(gone))}:")
+    for item in gone:
+        name = f"{item['code']}: {item['title']}" if item["code"] else item["title"]
+        print(f"  - {name} ({item['kind'].replace('_', ' ')})")
+    if not done["dry_run"]:
+        submit = f"evo-agents hub srs submit {args.slug} {done['version']} --project {args.project}"
+        print(f"`{submit}` sends it to review.")
+    return 0
+
+
 @client_command
 def cmd_archive(args) -> int:
     found = _call("POST", _path(args.project, "documents", args.slug, args.srs_command))  # archive or unarchive
@@ -349,6 +378,15 @@ def _register_review(ssub) -> None:
 
 
 def _register_documents(ssub) -> None:
+    retire = ssub.add_parser("retire", help="drop coded items by code, subtrees too, as the next version (an admin)")
+    retire.add_argument("slug", metavar="SLUG")
+    retire.add_argument("codes", metavar="CODE", nargs="+", help='a code or an alias of an item, such as "UC ORD-1"')
+    _project(retire)
+    retire.add_argument("--summary", metavar="TEXT", help="what the version changes (default: Retired and the codes)")
+    retire.add_argument("--dry-run", action="store_true", help="print the items that would be dropped, write nothing")
+    json_option(retire, returns_object(*RETIRE_KEYS, schema="SrsRetireResult"))
+    retire.set_defaults(func=cmd_retire)
+
     for name, what in (
         ("archive", "archive a document: out of list, search and the graph, closed to changes (an admin)"),
         ("unarchive", "open an archived document again (an admin)"),

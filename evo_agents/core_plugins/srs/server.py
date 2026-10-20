@@ -4,13 +4,15 @@
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
 between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (a
 version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
-the one approved last) and comment; dropping a coded item takes an admin. The author of a version in review, or an
-admin, withdraws it (POST .../versions/{n}/withdraw), for good. An admin archives a document (POST
-.../documents/{slug}/archive) and unarchives it (POST .../unarchive): an archived one is out of the list of documents
-unless ``all`` asks for it, still read by its slug, and refuses every write with 409 (``store.writable``). Approving a
-version, archiving a document and unarchiving it queue a build of the project's knowledge graph, which reads the
-approved versions of the documents not archived. Reads go through the sink X-Evo-Sink names, else the project's hub
-sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in ``detail``.
+the one approved last) and comment; dropping a coded item takes an admin. An admin also retires items by their codes
+(POST .../documents/{slug}/retire, ``dry_run`` to see what would go): the next version, a draft saved as any other,
+without those items and their subtrees. The author of a version in review, or an admin, withdraws it (POST
+.../versions/{n}/withdraw), for good. An admin archives a document (POST .../documents/{slug}/archive) and unarchives
+it (POST .../unarchive): an archived one is out of the list of documents unless ``all`` asks for it, still read by its
+slug, and refuses every write with 409 (``store.writable``). Approving a version, archiving a document and unarchiving
+it queue a build of the project's knowledge graph, which reads the approved versions of the documents not archived.
+Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with the
+problems that refused it (or a conflict's two texts) in ``detail``.
 """
 
 from __future__ import annotations
@@ -35,6 +37,8 @@ from evo_agents.core_plugins.srs.models import (
     SrsImport,
     SrsImportResult,
     SrsItemDetail,
+    SrsRetireIn,
+    SrsRetireResult,
     SrsReviewIn,
     SrsSave,
     SrsVersion,
@@ -46,18 +50,19 @@ from evo_agents.core_plugins.srs.models import (
     edit_changes,
     item_detail_model,
     preview_model,
+    retire_model,
     summary_model,
     version_model,
 )
 from evo_agents.core_plugins.srs.template import code_key
-from evo_agents.core_plugins.srs.writes import Writer, give_screen_codes, write_version
+from evo_agents.core_plugins.srs.writes import Writer, dropped, give_screen_codes, unheld_problems, write_version
 from evo_agents.hub.access import has_role
 from evo_agents.hub.kg_build import queue_if_configured
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.tables_srs import SLUG
+from evo_agents.hub.tables_srs import MAX_SUMMARY_CHARS, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
 RACE = "another save in the project took a code or a version number at the same moment: nothing was written; try again"
@@ -278,6 +283,45 @@ async def save_version(
         template = (await store.settings(conn, access)).template
         number = await write_version(conn, writer, content, latest, template, body.summary)
         return await _detail(conn, access, await store.document(conn, access, slug, sink), number)
+
+    return await _answer(request, work)
+
+
+def _retired_summary(changes: list[edits.Change], latest: store.Snapshot) -> str:
+    keys = {change.key for change in changes}
+    named = [item.code or item.title for item in latest.doc.items if item.key in keys]
+    return f"Retired {', '.join(named)}"[:MAX_SUMMARY_CHARS]
+
+
+@router.post("/{project}/documents/{slug}/retire", response_model=SrsRetireResult)
+async def retire_items(
+    request: Request, project: ProjectName, slug: Slug, body: SrsRetireIn, user: CurrentUser, sink: Sink = None
+):
+    """Drop the items of the latest version that hold ``codes`` (codes or aliases), each with its subtree, as the
+    document's next version, a draft built on the latest through the same save as any other, so its checks hold and a
+    code dropped is never given again; as an admin of the project, never the agent of a run. 422 listing each code no
+    item of the latest version holds, one dropped before included; ``dry_run`` answers what would be dropped and writes
+    nothing."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        reviews.admin(access, user, "retires items by their codes")
+        doc = store.writable(access, await store.document(conn, access, slug, sink, lock=not body.dry_run))
+        latest = await store.snapshot(conn, await store.version(conn, doc))
+        writer = Writer(access.project_id, doc.id, user.user_id, admin=True)
+        changes, unknown = edits.retiring(latest.doc, body.codes)
+        if unknown:
+            where = f"version {latest.version.number} of {slug}"
+            found = await unheld_problems(conn, writer, where, unknown)
+            raise SrsError(422, f"nothing is retired: {found[0].message}", found)
+        content = edits.edited(latest, latest, changes)
+        gone = dropped(content, latest)
+        if body.dry_run:
+            return retire_model(slug, None, True, gone)
+        await give_screen_codes(conn, access.project_id, content)
+        template = (await store.settings(conn, access)).template
+        summary = body.summary or _retired_summary(changes, latest)
+        return retire_model(slug, await write_version(conn, writer, content, latest, template, summary), False, gone)
 
     return await _answer(request, work)
 

@@ -14,14 +14,15 @@ versions compare item by item. A Markdown file whose headings follow the templat
 next version, and a version exports as Markdown with the same structure and codes.
 
 The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
-readers read, writers write, admins drop coded items. The hub's web shows them on the plugin's native pages
-(``PAGES``): the documents, a document's contents with each section read and edited in place, an item's page with
-the trace the knowledge graph holds, the versions, the comparison of two versions, the review and the comments.
-``evo-agents hub srs list|show|import|export|submit|approve|withdraw`` is their client. The tables are the hub's
-(``evo_agents.hub.tables_srs``, migrations 0046 and 0064), every row of a document carrying its label, the project's
-by default. The version of each document approved last is a source of the project's
-knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the ids a mention of their
-codes gets.
+readers read, writers write, admins drop coded items (by their codes too: ``retire``), archive documents and
+unarchive them. The hub's web shows them on the plugin's native pages (``PAGES``): the documents, a document's
+contents with each section read and edited in place, an item's page with the trace the knowledge graph holds, the
+versions, the comparison of two versions, the review and the comments.
+``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive`` is their client. The
+tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046 and 0064), every row of a document carrying its
+label, the project's by default. The version of each document approved last, of the documents not archived, is a
+source of the project's knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the
+ids a mention of their codes gets.
 
 The plugin contributes the agent type ``ba`` (criterion a7): the profile @ba with the pack ``srs/ba`` (``packs/ba``:
 its instructions and the skills srs-writing and srs-review), which a project's writers mention in a group chat. Its

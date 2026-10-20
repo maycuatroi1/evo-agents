@@ -5,7 +5,8 @@ included, stay when an item is renamed, and are never given again; a version goe
 approved by a writer who wrote none of the versions since the one approved last, as the config's policy asks; its
 author or an admin withdraws a version in review for good (criterion a2 of plan srs-document-lifecycle); two versions
 compare item by item; a version exports as the Markdown it came from. Readers read, writers write, admins
-drop coded items; a document carries the project's label and reads follow it. An admin archives a document, which
+drop coded items, by their codes too, after a dry run if they like, as the next draft (criterion a3 of that plan); a
+document carries the project's label and reads follow it. An admin archives a document, which
 leaves the list, is still read by its slug, takes no write and keeps its codes and slug, and unarchives it (criterion
 a1 of plan srs-document-lifecycle). A project that did not enable the plugin answers 404.
 """
@@ -141,6 +142,10 @@ def withdraw(client, headers, number: int, **body):
 
 def states(client, headers) -> dict[int, str]:
     return {v["number"]: v["state"] for v in client.get(f"{DOC}/versions", headers=headers).json()}
+
+
+def retire(client, headers, *codes: str, **body):
+    return client.post(f"{DOC}/retire", json={"codes": list(codes), **body}, headers=headers)
 
 
 def archive(client, headers, verb: str = "archive"):
@@ -405,6 +410,110 @@ def test_srs_the_agent_of_a_run_never_withdraws_a_version():
     assert refused.value.status == 403 and "the agent of a run never withdraws" in refused.value.message
 
 
+# Retiring by code
+
+
+def dropped(answer) -> list[tuple[str, str, str | None]]:
+    assert answer.status_code == 200, answer.text
+    return [(entry["kind"], entry["code"], entry["title"]) for entry in answer.json()["dropped"]]
+
+
+ORDER_1 = [
+    ("use_case", "UC ORD-1", "Place an order"),
+    ("business_rule", "BR ORD1-1", "Cart rules"),
+    ("business_rule", "BR ORD1-2", "Stock reservation"),
+]
+
+
+def test_srs_an_admin_retires_items_by_code_with_their_subtrees_as_the_next_draft_after_a_dry_run(client, hub, hub_db):
+    imported(client, hub["alice"], slug="demo-shop")
+    keys = {entry["code"]: entry["key"] for entry in client.get(DOC, headers=hub["eve"]).json()["shown"]["items"]}
+    # compared as srs_codes compares; a rule under the use case and a second code of it add nothing
+    preview = retire(client, hub["owner"], "uc  ord-1", "BR ORD1-2", "UC-ORD-001", dry_run=True)
+    assert dropped(preview) == ORDER_1
+    assert (preview.json()["document"], preview.json()["version"], preview.json()["dry_run"]) == (
+        "demo-shop",
+        None,
+        True,
+    )
+    assert [entry["key"] for entry in preview.json()["dropped"]] == [keys[code] for _, code, _ in ORDER_1]
+    assert states(client, hub["eve"]) == {1: "draft"}  # a dry run writes nothing
+
+    done = retire(client, hub["owner"], "uc  ord-1", "BR ORD1-2")
+    assert dropped(done) == ORDER_1
+    assert (done.json()["version"], done.json()["dry_run"]) == (2, False)
+    [latest, first] = client.get(f"{DOC}/versions", headers=hub["eve"]).json()
+    assert (latest["number"], latest["parent_number"], latest["state"]) == (2, 1, "draft")
+    assert (latest["author"], latest["summary"]) == ("owner", "Retired UC ORD-1")
+    assert first["state"] == "draft"
+    codes = {entry["code"] for entry in client.get(DOC, headers=hub["eve"]).json()["shown"]["items"]}
+    assert not codes & {"UC ORD-1", "BR ORD1-1", "BR ORD1-2"} and {"UC ORD-2", "UC RET-1"} <= codes
+    i = tables.srs.items
+    gone = sql(hub_db, select(i.c.code, i.c.retired_in).where(i.c.retired_in.is_not(None)))
+    assert sorted(gone) == [("BR ORD1-1", 2), ("BR ORD1-2", 2), ("UC ORD-1", 2)]
+
+    by_alias = retire(client, hub["owner"], "ord-02", summary="Payments move to their own document")
+    assert dropped(by_alias) == [
+        ("use_case", "UC ORD-2", "Pay for an order"),
+        ("business_rule", "BR ORD2-1", "Payment retries"),
+    ]
+    assert client.get(DOC, headers=hub["eve"]).json()["versions"][0]["summary"] == "Payments move to their own document"
+    # the version goes through submit and review as any other, and a code retired is never given again
+    assert submitted(client, hub["owner"], 3)["state"] == "in_review"
+    assert review(client, hub["bao"], 3).json()["state"] == "approved"
+    assert states(client, hub["eve"]) == {1: "superseded", 2: "superseded", 3: "approved"}
+    again = "# 1. Orders\n\n### UC ORD-1: Place an order\n\n| Item | Content |\n|---|---|\n| Actor | Customer |\n"
+    refused = client.post(f"{BASE}/import", json={"markdown": again, "slug": "orders"}, headers=hub["owner"])
+    assert refused.status_code == 422 and "never given again" in refused.json()["detail"][0]["message"]
+
+
+def test_srs_retiring_lists_every_code_no_item_of_the_latest_version_holds_and_writes_nothing(client, hub):
+    imported(client, hub["alice"], slug="demo-shop")
+    other = "# 1. Payments\n\n### UC PAY-1: Refund\n\n| Item | Content |\n|---|---|\n| Actor | Clerk |\n"
+    imported(client, hub["alice"], other, slug="refunds")
+    assert retire(client, hub["owner"], "UC ORD-1").status_code == 200
+    for dry_run in (False, True):
+        refused = retire(client, hub["owner"], "UC RET-1", "BR ORD1-1", "uc nope-9", "UC PAY-1", dry_run=dry_run)
+        assert refused.status_code == 422, refused.text
+        assert refused.json()["message"].startswith("nothing is retired: 'BR ORD1-1' was the code of an item dropped")
+        found = [(p["check"], p["code"], p["message"]) for p in refused.json()["detail"]]
+        assert found == [
+            (
+                "code_unknown",
+                "BR ORD1-1",
+                "'BR ORD1-1' was the code of an item dropped in version 2: it is retired already",
+            ),
+            ("code_unknown", "uc nope-9", "no item of version 2 of demo-shop holds the code 'uc nope-9'"),
+            (
+                "code_unknown",
+                "UC PAY-1",
+                "'UC PAY-1' is the code of an item of another document of the project, not of version 2 of demo-shop",
+            ),
+        ]
+    assert states(client, hub["eve"]) == {1: "draft", 2: "draft"}
+    for who in ("alice", "eve"):  # a writer, a reader
+        denied = retire(client, hub[who], "UC RET-1")
+        assert denied.status_code == 403, who
+        assert f"only an admin of project {PROJECT} retires items by their codes" in denied.json()["message"]
+    assert retire(client, hub["owner"]).status_code == 422  # no code
+    assert (
+        client.post(f"{BASE}/documents/nothing/retire", json={"codes": ["UC RET-1"]}, headers=hub["owner"]).status_code
+        == 404
+    )
+
+
+def test_srs_the_agent_of_a_run_never_retires_items():
+    """As for withdrawing: the run's scope refuses before anything is read."""
+    scope = RunScope(run_id=7, project=PROJECT, role="admin", max_level="internal")
+    agent = Principal(601, "owner", False, 9, "worker", "a" * 64, scope=scope)
+    with pytest.raises(SrsError) as refused:
+        reviews.admin(None, agent, "retires items by their codes")
+    assert refused.value.status == 403
+    assert (
+        refused.value.message == "the agent of a run never retires items by their codes: an admin of the project does"
+    )
+
+
 # Archiving
 
 
@@ -454,6 +563,8 @@ def test_srs_an_archived_document_takes_no_write_and_keeps_its_codes_and_its_slu
         "submit": (f"{DOC}/versions/1/submit", None),
         "review": (f"{DOC}/versions/2/reviews", {"decision": "approve"}),
         "withdraw": (f"{DOC}/versions/2/withdraw", None),
+        "retire": (f"{DOC}/retire", {"codes": ["UC RET-1"]}),
+        "retire dry run": (f"{DOC}/retire", {"codes": ["UC RET-1"], "dry_run": True}),
         "comment": (f"{DOC}/comments", {"body": "Still?", "version": 2}),
         "resolve": (f"{DOC}/comments/{thread['id']}/resolve", None),
     }.items():

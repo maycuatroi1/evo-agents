@@ -13,6 +13,8 @@
 - ``archive``: an admin of the project archives a document, or unarchives it. An archived document is out of the list
   of documents (unless asked for), of @ba's search and of the knowledge graph, still read by its slug, and takes no
   write (``store.writable``); its codes stay held and its slug taken. The agent of a run never archives one.
+- ``admin``: what only an admin of the project does, never the agent of a run: archiving, unarchiving, and retiring
+  coded items by their codes (``server``, ``retire_items``).
 - ``comments``, ``comment``, ``resolve``: threads on a document, a version or an item; writers write them and close
   them, readers read them.
 """
@@ -183,14 +185,19 @@ async def withdraw(
     return await store.version(conn, doc, number)
 
 
+def admin(access: ProjectAccess, user: Principal, what: str) -> None:
+    """Only an admin of the project does ``what`` (such as "archives a document"), and never the agent of a run, whose
+    scope refuses it before anything else is read."""
+    if user.scope is not None:
+        raise SrsError(403, f"the agent of a run never {what}: an admin of the project does")
+    if not has_role(access.role, "admin"):
+        raise SrsError(403, f"only an admin of project {access.name} {what}")
+
+
 async def archive(conn: AsyncConnection, access: ProjectAccess, user: Principal, doc: DocumentRow, archived: bool):
     """Archive ``doc`` (``archived``) or unarchive it, as ``user``, an admin of the project; 409 when it is so already.
     The caller holds the document's row lock and reads the document again."""
-    what = "archives" if archived else "unarchives"
-    if user.scope is not None:
-        raise SrsError(403, f"the agent of a run never {what} a document: an admin of the project does")
-    if not has_role(access.role, "admin"):
-        raise SrsError(403, f"only an admin of project {access.name} {what} a document")
+    admin(access, user, f"{'archives' if archived else 'unarchives'} a document")
     if (doc.archived_at is not None) == archived:
         state = "archived already" if archived else "not archived"
         raise SrsError(409, f"document {doc.slug} of project {access.name} is {state}")
@@ -335,6 +342,7 @@ __all__ = [
     "CommentRequest",
     "CommentRow",
     "ReviewRequest",
+    "admin",
     "approved_by",
     "archive",
     "comment",
