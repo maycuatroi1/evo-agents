@@ -46,7 +46,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``hub.release_schedules``, every minute: each project's release schedule whose local time came within the hour gets
   the check of that day, once: without any model, the newest release tag and the commit of the target ref are compared
   on the packaging paths, and a change opens a cycle and queues its cut run, with the workers' App reading GitHub
-  (``evo_agents.hub.server.release_check``, ``evo_agents.hub.releases``).
+  (``evo_agents.hub.server.release_check``, ``evo_agents.hub.releases``); then each release run that is done with its
+  branch is landed: its pull request opened and merged, and its merge commit tagged, with the same App
+  (``evo_agents.hub.server.release_land``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
 - ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
@@ -308,10 +310,10 @@ async def read_nightly(context: JobContext, timestamp: int | None = None) -> dic
 @queue.periodic(cron="* * * * *")
 @queue.task(name=jobs.RELEASE_SCHEDULES, pass_context=True, queueing_lock=jobs.RELEASE_SCHEDULES)
 async def release_schedules(context: JobContext, timestamp: int | None = None) -> dict:
-    from evo_agents.hub.server.release_check import fire_release_schedules
+    from evo_agents.hub.server.release_check import release_pass
 
     found = hub(context)
-    return await fire_release_schedules(found.engine, found.github_app)
+    return await release_pass(found.engine, found.github_app)
 
 
 @queue.periodic(cron="13 4 * * *")

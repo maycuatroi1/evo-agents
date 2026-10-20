@@ -3,7 +3,8 @@
 
 GET /v1/projects/{p}/releases (reader) says where the release stands: the schedule, or null before an admin sets one;
 whether it is paused; the moment of its next check; the latest checks, newest first, with the last one apart; and the
-cycle of the schedule that is open or stopped, with its runs and their cost against the cycle's cap.
+cycle of the schedule that is open or stopped, with its runs and their cost against the cycle's cap, and for each run
+the version and branch it pushed and how the hub landed it (its pull request, merge commit and tag, or why not).
 
 PUT .../releases/schedule (admin of the project) sets the schedule: a key left out keeps what the schedule holds, or
 takes its default (``releases.DEFAULT_*``) when there is none yet. The repo is one of the project's, on GitHub; with
@@ -32,7 +33,7 @@ from sqlalchemy import Text, case, cast, column, exists, func, insert, literal, 
 from sqlalchemy.dialects.postgresql import INTERVAL
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import releases, tables
+from evo_agents.hub import release_runs, releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
@@ -133,6 +134,17 @@ class ReleaseCycleRun(BaseModel):
     tag: str | None = Field(description="the red tag a fix run fixes forward")
     state: str
     cost_usd: float
+    version: str | None = Field(None, description="the version the run pushed; null before it pushed")
+    branch: str | None = Field(None, description="release/<version>, the branch it pushed")
+    decision: str | None = Field(None, description="the agent's Decision line on the version")
+    pull_url: str | None = Field(None, description="the pull request the hub opened of the branch")
+    merge_commit: str | None = Field(None, description="the commit the hub merged it as")
+    tagged: str | None = Field(None, description="the tag the hub made on the merge commit")
+    tagged_at: datetime | None = None
+    land_state: Literal[release_runs.LAND_STATES] | None = Field(
+        None, description="tagged; refused, with the reason; failed, GitHub failing; null while it waits to land"
+    )
+    land_reason: str | None = None
 
 
 class ReleaseCycle(BaseModel):
@@ -251,15 +263,24 @@ async def _cycle_view(conn: AsyncConnection, cycle_id: int) -> ReleaseCycle:
             select(c, u.c.login.label("owner")).join_from(c, u, u.c.id == c.c.owner_id).where(c.c.id == cycle_id)
         )
     ).one()
+    landed = (rr.c.version, rr.c.branch, rr.c.decision, rr.c.pull_url, rr.c.merge_commit, rr.c.tagged, rr.c.tagged_at)
     query = (
-        select(rr.c.run_id, rr.c.mode, rr.c.tag, r.c.state, usage_cost(r.c.usage).label("cost"))
+        select(
+            rr.c.run_id,
+            rr.c.mode,
+            rr.c.tag,
+            r.c.state,
+            usage_cost(r.c.usage).label("cost"),
+            *landed,
+            rr.c.land_state,
+            rr.c.land_reason,
+        )
         .join_from(rr, r, r.c.id == rr.c.run_id)
         .where(rr.c.cycle_id == cycle_id)
         .order_by(rr.c.run_id)
     )
     items = [
-        ReleaseCycleRun(run_id=row.run_id, mode=row.mode, tag=row.tag, state=row.state, cost_usd=float(row.cost))
-        for row in (await conn.execute(query)).all()
+        ReleaseCycleRun(**{**row._mapping, "cost_usd": float(row.cost)}) for row in (await conn.execute(query)).all()
     ]
     return ReleaseCycle(
         id=found.id,

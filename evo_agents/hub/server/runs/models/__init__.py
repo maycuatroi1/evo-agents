@@ -21,6 +21,7 @@ from evo_agents.hub.server.runs.models.run_parts import (
     ClaimedBudget,
     PlanCopy,
     PluginRuntime,
+    ReleaseSpec,
     RunBudget,
     RunEnvironment,
     RunPack,
@@ -501,6 +502,9 @@ class RunSpec(BaseModel):
         default_factory=list,
         description="the agent packs the run's profile attaches, in its order, each at the version it pins, which the "
         "worker builds into the run's directory for its runtime; empty for a profile that attaches none",
+    )
+    release: ReleaseSpec | None = Field(
+        None, description="a release run's cycle, mode and start commit; null for any other run"
     )
 
 

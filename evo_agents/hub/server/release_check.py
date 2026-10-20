@@ -12,9 +12,10 @@ token. The scheduled check of a day happens once: a check of that day that did n
 the job passes the schedule over, and the unique index on the day (``release_checks_day_key``) holds when two passes
 meet. No model is called by any of this.
 
-``fire_release_schedules`` is the job, run every minute by the hub's worker: each schedule whose local time came in
-the last CATCH_UP_MINUTES gets the check of that day, in its own transactions, one failing leaving the others their
-turn. ``cancel_queued`` and ``close_idle`` are what pausing does: the release runs of the project still queued are
+``fire_release_schedules`` is the job's checks, run every minute by the hub's worker: each schedule whose local time
+came in the last CATCH_UP_MINUTES gets the check of that day, in its own transactions, one failing leaving the others
+their turn; ``release_pass`` is the whole job, those checks and then the landing of the release runs that are done
+(``evo_agents.hub.server.release_land``). ``cancel_queued`` and ``close_idle`` are what pausing does: the release runs of the project still queued are
 cancelled, and an open cycle left with no active run closes, with the pause as its reason.
 """
 
@@ -37,6 +38,7 @@ from evo_agents.hub.server import audit
 from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.projects import project_access
 from evo_agents.hub.server.release_github import ReadFailed, Reading, read_release
+from evo_agents.hub.server.release_land import land_releases
 from evo_agents.hub.server.run_state import move_run, notify_queued, write_event
 from evo_agents.hub.server.runs.service.dispatch import insert_run
 from evo_agents.hub.server.security import MACHINE, Principal
@@ -182,6 +184,7 @@ async def _open(conn: AsyncConnection, row, day: date, reading: Reading) -> tupl
         return None
     cycle = {"project_id": row.project_id, "schedule_id": row.id, "start": "cut", "owner_id": row.owner_id}
     cycle |= {"local_day": day, "target_ref": row.target_ref, "budget_usd": cap, **_read_values(reading)}
+    cycle["span"] = reading.span  # the range the claim of its cut run builds the prompt from
     try:
         async with conn.begin_nested():
             cycle_id = (await conn.execute(insert(c).values(**cycle).returning(c.c.id))).scalar_one()
@@ -295,6 +298,14 @@ async def fire_release_schedules(engine: AsyncEngine, app: GitHubApp | None, *, 
             continue
         outcomes[found.outcome if found else "done"] += 1
     return dict(sorted(outcomes.items()))
+
+
+async def release_pass(engine: AsyncEngine, app: GitHubApp | None, *, now: datetime | None = None) -> dict:
+    """One pass of ``hub.release_schedules``: the checks that are due, then the landing of the release runs done;
+    how many of each ended each way, the landings under ``landed_<how>``."""
+    found = await fire_release_schedules(engine, app, now=now)
+    landed = await land_releases(engine, app)
+    return {**found, **{f"landed_{how}": count for how, count in landed.items()}}
 
 
 # Pausing

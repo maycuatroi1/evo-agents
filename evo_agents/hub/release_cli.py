@@ -89,12 +89,26 @@ def _print_status(status: dict) -> None:
             f"{short(cycle['target_commit'])} since {cycle['base_tag'] or '-'}, {money(cycle['cost_usd'])} of "
             f"{money(cycle['budget_usd'])}"
         )
+        if cycle.get("stop_reason"):
+            print(f"    stopped: {cycle['stop_reason']}")
         for run in cycle["runs"]:
-            print(f"    run #{run['run_id']} {run['mode']}: {run['state']}, {money(run['cost_usd'])}")
+            print(f"    run #{run['run_id']} {run['mode']}: {run['state']}, {money(run['cost_usd'])}{_landed(run)}")
     if status["last_check"] is not None:
         print(f"  last check {_check_line(status['last_check'])}")
     else:
         print("  no check yet")
+
+
+def _landed(run: dict) -> str:
+    """What a cycle's run pushed and how the hub landed it, for its line of `release status`."""
+    if not run.get("version"):
+        return ""
+    said = f", pushed {run['branch']}"
+    if run.get("tagged"):
+        return f"{said}, tagged {run['tagged']} on {short(run.get('merge_commit'))}"
+    if run.get("land_state"):
+        return f"{said}, {run['land_state']}: {run.get('land_reason') or 'no reason given'}"
+    return f"{said}, waiting to land"
 
 
 @client_command

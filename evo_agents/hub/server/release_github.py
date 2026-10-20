@@ -6,7 +6,11 @@ One token of the App's installation on the repo, for that repo alone and with co
 ``<github_url>/<owner>/<repo>.git/git-upload-pack``, git's own HTTP protocol as ``evo_agents.hub.nightly`` speaks it for
 the tag nightly, with the token as the password of ``x-access-token`` so a private repo answers too: the tags under
 the pattern's prefix and the target ref, each as the commit an annotated tag peels to. The trees of the newest tag's
-commit and of the target's are read whole (``pulls.tree``); a tree GitHub cuts is never compared in part.
+commit and of the target's are read whole (``pulls.tree``); a tree GitHub cuts is never compared in part. When a
+packaging path changed, the range of the release is read too (``evo_agents.hub.release_runs.span_of``): the
+migrations the target's tree adds, and the commits GitHub's comparison lists from the tag's commit to the target's
+(``pulls.compare_commits``); a comparison GitHub refuses or fails leaves the range without its commits, saying why, and
+the check goes on.
 
 GitHub failing or refusing becomes ``ReadFailed``, whose text is safe to show and becomes the reason of the check.
 """
@@ -17,7 +21,7 @@ import base64
 from dataclasses import dataclass, field
 
 from evo_agents import __version__
-from evo_agents.hub import releases
+from evo_agents.hub import release_runs, releases
 from evo_agents.hub.nightly import DELIM, FLUSH, pkt_line, pkt_lines
 from evo_agents.hub.server import pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
@@ -38,13 +42,14 @@ class ReadFailed(Exception):
 
 @dataclass(frozen=True)
 class Reading:
-    """What a check read: the newest tag the pattern matches and its commit, the commit of the target ref, and the
-    packaging paths that changed between the two."""
+    """What a check read: the newest tag the pattern matches and its commit, the commit of the target ref, the
+    packaging paths that changed between the two, and the range of the release when one did."""
 
     base_tag: str
     base_commit: str
     target_commit: str
     changed: list[str] = field(default_factory=list)
+    span: dict | None = None
 
 
 def ls_refs(prefixes: list[str]) -> bytes:
@@ -113,7 +118,28 @@ async def _read(app: GitHubApp, token: str, owner: str, repo: str, schedule) -> 
         return Reading(base_tag, base_commit, target)
     base = await _tree(app, token, owner, repo, base_commit)
     head = await _tree(app, token, owner, repo, target)
-    return Reading(base_tag, base_commit, target, releases.changed_paths(base, head, list(schedule.paths)))
+    changed = releases.changed_paths(base, head, list(schedule.paths))
+    if not changed:
+        return Reading(base_tag, base_commit, target, changed)
+    migrations = release_runs.new_migrations(base, head)
+    return Reading(
+        base_tag, base_commit, target, changed, await _span(app, token, (owner, repo), base_commit, target, migrations)
+    )
+
+
+async def _span(
+    app: GitHubApp, token: str, where: tuple[str, str], base: str, head: str, migrations: list[str]
+) -> dict:
+    """The range of a release from commit ``base`` to ``head`` (``release_runs.span_of``); without its commits, saying
+    why, when GitHub does not list them."""
+    try:
+        listed, total = await pulls.compare_commits(
+            app, token, *where, base, head, page=release_runs.SPAN_PAGE, pages=release_runs.MAX_SPAN_PAGES
+        )
+    except (GitHubRefused, GitHubUnavailable) as exc:
+        return release_runs.span_of([], None, migrations, problem=str(exc))
+    commits = [found for found in map(release_runs.commit_of, listed) if found is not None]
+    return release_runs.span_of(commits, total, migrations)
 
 
 async def read_release(app: GitHubApp, owner: str, repo: str, schedule) -> Reading:

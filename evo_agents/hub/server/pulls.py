@@ -17,7 +17,10 @@ as it may not be for a moment after the push; any other refusal is final.
 
 For the measure of a knowledge graph's health (``evo_agents.hub.server.kg_health``) the workers' App reads, with
 ``contents: read``, the commit a default branch points at (``branch_head``), the files of a commit's tree
-(``tree``), and how many commits of the branch a commit lacks (``compare``); for the tier of a change of knowledge.yaml
+(``tree``), and how many commits of the branch a commit lacks (``compare``); for the range of a release
+(``evo_agents.hub.server.release_github``), the commits a commit has that the newest release tag lacks
+(``compare_commits``), and for landing it (``evo_agents.hub.server.release_land``), the tag made on its merge commit
+(``create_ref``, with the merge's token); for the tier of a change of knowledge.yaml
 (``evo_agents.hub.server.change_tiers``), a pull request's merge base (``compare``) and the text of a file at a commit
 (``file_text``); for a global skill the hub publishes from a merge commit (``evo_agents.hub.server.skill_release``),
 the files of the skill's directory at that commit, its tree and then each file's blob (``directory_files``).
@@ -240,6 +243,43 @@ async def compare(app: GitHubApp, token: str, owner: str, repo: str, base: str, 
         "oldest": oldest if isinstance(oldest, str) else None,
         "merge_base": merge_base if isinstance(merge_base, str) else None,
     }
+
+
+async def compare_commits(
+    app: GitHubApp, token: str, owner: str, repo: str, base: str, head: str, *, page: int, pages: int
+) -> tuple[list[dict], int | None]:
+    """The commits ``head`` of owner/repo has that ``base`` lacks, oldest first, as GitHub's comparison lists them
+    ``page`` at a time over at most ``pages`` pages (GitHub lists 250 at most), and how many there are in all
+    (``total_commits``; None when GitHub does not say)."""
+    doing = f"listing the commits from {base[:12]} to {head[:12]} on {owner}/{repo}"
+    path = _path("repos", owner, repo, "compare", f"{base}...{head}")
+    found: list[dict] = []
+    total = None
+    for number in range(1, pages + 1):
+        response = await _api(app, token, "GET", path, doing, params={"per_page": page, "page": number})
+        if response.status_code != 200:
+            raise _refused(response, doing)
+        data = app._json(response, doing)
+        listed = data.get("commits") if isinstance(data.get("commits"), list) else []
+        found += [item for item in listed if isinstance(item, dict)]
+        total = data.get("total_commits") if type(data.get("total_commits")) is int else total
+        if len(listed) < page or (total is not None and len(found) >= total):
+            break
+    return found, total
+
+
+async def create_ref(app: GitHubApp, token: str, owner: str, repo: str, ref: str, sha: str) -> bool:
+    """Make the ref ``ref`` (refs/tags/<tag>) of owner/repo point at commit ``sha``: True when it was made now, False
+    when GitHub says it exists already; ``Refused`` for any other refusal."""
+    doing = f"making {ref} of {owner}/{repo} at {sha[:12]}"
+    payload = {"ref": ref, "sha": sha}
+    response = await _api(app, token, "POST", _path("repos", owner, repo, "git", "refs"), doing, json=payload)
+    if response.status_code == 201:
+        return True
+    refusal = _refused(response, doing)
+    if response.status_code == 422 and "already exists" in str(refusal).lower():
+        return False
+    raise refusal
 
 
 async def file_text(app: GitHubApp, token: str, owner: str, repo: str, path: str, ref: str) -> str | None:
