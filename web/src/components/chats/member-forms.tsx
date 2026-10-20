@@ -1,17 +1,15 @@
 "use client";
 
-import { useQuery } from "@tanstack/react-query";
-import { Bot, UserPlus } from "lucide-react";
+import { Bot } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 import { type FormEvent, useId, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NativeSelect, NativeSelectOptGroup, NativeSelectOption } from "@/components/ui/native-select";
-import { browserApi } from "@/lib/api/browser";
-import { chatsQuery } from "@/lib/chat-queries";
-import { type Chat, knownPeople, LOGIN, MAX_AGENTS, MAX_BUDGET_USD, MAX_PEOPLE } from "@/lib/chats";
+import { type Chat, MAX_AGENTS, MAX_BUDGET_USD, MAX_PEOPLE } from "@/lib/chats";
 
+import { PeoplePicker } from "./people-picker";
 import { useAddableAgents } from "./use-addable-agents";
 
 const FIELD = "flex flex-col gap-1.5";
@@ -78,60 +76,30 @@ export function AddAgentForm({ chat, pending, onAdd }: { chat: Chat; pending: bo
   );
 }
 
-/** Add person: a login, with the people of the visitor's other chats suggested. */
-export function AddPersonForm({ chat, me, pending, onAdd }: { chat: Chat; me: string | null; pending: boolean; onAdd: (login: string) => void }) {
+/** Add person: the people the visitor may add, searched, each added at once (`PeoplePicker`); who is in it left out. */
+export function AddPersonForm({ chat, pending, onAdd }: { chat: Chat; pending: boolean; onAdd: (login: string) => void }) {
   const t = useTranslations("chats.members");
   const ids = useId();
-  const list = useQuery(chatsQuery(browserApi));
-  const [login, setLogin] = useState("");
-  const [problem, setProblem] = useState(false);
-  const suggestions = knownPeople(list.data ?? [], me, chat.people.map((person) => person.login));
   const full = chat.people.length >= MAX_PEOPLE;
-  const submit = (event: FormEvent) => {
-    event.preventDefault();
-    const value = login.trim().replace(/^@/, "");
-    if (!LOGIN.test(value)) return setProblem(true);
-    setProblem(false);
-    onAdd(value);
-    setLogin("");
-  };
   return (
-    <form onSubmit={submit} noValidate className={FIELD} data-testid="chat-add-person">
-      <label htmlFor={`${ids}-login`} className="text-[13px] font-medium">
+    <div className={FIELD} data-testid="chat-add-person">
+      <label htmlFor={`${ids}-people`} className="text-[13px] font-medium">
         {t("addPerson")}
       </label>
-      <div className={ROW}>
-        <Input
-          id={`${ids}-login`}
-          value={login}
-          onChange={(event) => {
-            setLogin(event.target.value);
-            setProblem(false);
-          }}
-          list={`${ids}-people`}
-          autoComplete="off"
-          spellCheck={false}
-          placeholder={t("loginPlaceholder")}
-          disabled={full}
-          aria-invalid={problem || undefined}
-          aria-describedby={`${ids}-login-hint`}
-          className="min-w-0 flex-1"
-          data-testid="chat-add-person-login"
-        />
-        <datalist id={`${ids}-people`}>
-          {suggestions.map((person) => (
-            <option key={person} value={person} />
-          ))}
-        </datalist>
-        <Button type="submit" variant="outline" disabled={full || !login.trim()} busy={pending} data-testid="chat-add-person-submit">
-          <UserPlus aria-hidden="true" />
-          {pending ? t("adding") : t("add")}
-        </Button>
-      </div>
-      <p id={`${ids}-login-hint`} className={problem ? "text-xs font-medium text-danger" : "text-xs text-pretty text-fg-subtle"} data-testid="chat-add-person-hint">
-        {problem ? t("badLogin") : full ? t("peopleFull", { max: MAX_PEOPLE }) : t("personHint")}
+      <PeoplePicker
+        id={`${ids}-people`}
+        mode="add"
+        agents={chat.agents.map((agent) => agent.handle)}
+        exclude={chat.people.map((person) => person.login)}
+        full={full}
+        busy={pending}
+        describedBy={`${ids}-people-hint`}
+        onPick={(login) => onAdd(login)}
+      />
+      <p id={`${ids}-people-hint`} className="text-xs text-pretty text-fg-subtle" data-testid="chat-add-person-hint">
+        {full ? t("peopleFull", { max: MAX_PEOPLE }) : t("personHint")}
       </p>
-    </form>
+    </div>
   );
 }
 
