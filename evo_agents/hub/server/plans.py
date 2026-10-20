@@ -3,8 +3,9 @@
 A plan is a row of ``plans`` (its area, label, body as jsonb, revision and digest) with one row of
 ``plan_revisions`` per revision, only ever appended. Every write takes the plan's row lock, checks the body against
 plan.schema.json and ``plan_semantics`` (repos against the repos registered for the project; a schema error is a
-422, a semantic finding a warning in the answer), writes the plan and its revision, and adds one audit row naming
-the plan and the revision, never its content, all in one transaction.
+422, a semantic finding a warning in the answer), refuses with a 422 a verify new in the write that cannot be one shell
+command line on a step not done (``evo_agents.hub.plans.unrunnable_verify``), writes the plan and its revision, and
+adds one audit row naming the plan and the revision, never its content, all in one transaction.
 
 - PUT creates a plan, or replaces it when ``if_revision`` is the revision the hub holds; anything else is a 409
   ``revision_conflict`` whose ``current`` is the plan as the hub holds it. A body equal to the one held (same digest
@@ -61,8 +62,10 @@ from evo_agents.hub.plans import (
     step_key,
     summarize,
     undone_steps,
+    unrunnable_verify,
     update_item,
     update_summary,
+    verify_refusal,
 )
 from evo_agents.hub.server import audit
 from evo_agents.hub.server.admin import ProjectName
@@ -524,10 +527,14 @@ async def _store(
     plan first. The stored body is read back and must carry the digest of the body given. A write of a plan the
     Curator made that names another repo or branch, or changes more than the progress of its steps, and a new plan
     with an id of the Curator's that the hub does not make from a proposal (``made_by_curator``), are a 409
-    (``changes.plan_write_refusal``). ``run_id`` is the run that writes it, an author run's, recorded on the
-    revision."""
+    (``changes.plan_write_refusal``). A verify that is new against ``held`` and cannot be one shell command line, on a
+    step not done, is a 422 (``plans.unrunnable_verify``): every write of a plan comes through here. ``run_id`` is the
+    run that writes it, an author run's, recorded on the revision."""
     from evo_agents.hub.server.changes import plan_write_refusal  # it reads plans through this module
 
+    unrunnable = unrunnable_verify(None if held is None else held.body, body)
+    if unrunnable:
+        raise PlanError(422, verify_refusal(body["id"], unrunnable))
     refusal = await plan_write_refusal(
         conn,
         access.project_id,
