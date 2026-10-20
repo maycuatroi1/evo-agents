@@ -80,6 +80,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | health | `GET /v1/health`, `GET /v1/health/live` |
 | sign-in | `/v1/auth/config`, `/v1/auth/github`, `/v1/auth/whoami`, `/v1/auth/logout`, `/v1/auth/web/{login,callback,csrf,logout}` |
 | tokens | `GET /v1/tokens`, `DELETE /v1/tokens/{id}` |
+| emails | `GET` and `POST /v1/emails` (`?user=LOGIN` for another member, a hub admin only), `DELETE /v1/emails/{id}` |
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
@@ -209,6 +210,24 @@ evo-agents hub logout                                 # revokes this machine's t
 
 The token and the hub URL stay in `~/.evo/hub` (mode 0700, files 0600). A hub URL must be https, or http to a
 loopback address. No command prints a token.
+
+The hub names a member by an email too, such as the author of a commit, from the addresses the member lists. An
+address belongs to one member on the hub, whatever its case: adding one another member holds is refused (409), adding
+one you hold already does nothing. A hub admin lists, adds and removes the emails of anyone with `--user LOGIN`; anyone
+else gets 403. GitHub's noreply address of a login, `ID+LOGIN@users.noreply.github.com` or
+`LOGIN@users.noreply.github.com`, names that login without a row, so the hub refuses one that names another login. The
+hub does not check that you read an address, since sign-in asks GitHub for `read:user` alone: it takes 20 addresses a
+member at most, and an admin removes one listed by the wrong member.
+
+```sh
+evo-agents hub email list                              # your emails; --json prints the hub's rows
+evo-agents hub email add octo@northwind.example
+evo-agents hub email remove octo@northwind.example
+evo-agents hub email add ops@lumen.example --user lumen-dev   # a hub admin, for another member
+```
+
+An address travels in the body of a request, never in its path, so no access line holds it, and the audit rows of
+`user_email.add` and `user_email.remove` name the row and the member, never the address.
 
 One machine can be signed in to two hubs. `EVO_HUB_HOME` names the directory of a second login, and every command,
 hook and the MCP proxy then read the token, the hub URL and their state files (`hook-state.json`, `memory-state.json`,

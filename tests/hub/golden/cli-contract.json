@@ -3069,6 +3069,115 @@
         "schema": "Decision"
       }
     },
+    "hub email add": {
+      "positionals": [
+        {
+          "name": "email",
+          "metavar": "EMAIL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--user"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "email",
+          "login",
+          "created_at"
+        ],
+        "schema": "UserEmail"
+      }
+    },
+    "hub email list": {
+      "positionals": [],
+      "options": [
+        {
+          "flags": [
+            "--user"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "array",
+        "keys": [
+          "id",
+          "email",
+          "login",
+          "created_at"
+        ],
+        "schema": "UserEmail"
+      }
+    },
+    "hub email remove": {
+      "positionals": [
+        {
+          "name": "email",
+          "metavar": "EMAIL",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--user"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "id",
+          "email",
+          "login",
+          "created_at"
+        ],
+        "schema": "UserEmail"
+      }
+    },
     "hub hook local-ask": {
       "positionals": [],
       "options": [],
@@ -10236,6 +10345,279 @@
                 }
               },
               "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/emails": {
+        "get": {
+          "tags": [
+            "emails"
+          ],
+          "summary": "List Emails",
+          "description": "The emails of the caller, or of the member ``user`` names, in the order of their addresses.",
+          "operationId": "list_emails_v1_emails_get",
+          "parameters": [
+            {
+              "name": "user",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the member, any case; another's needs a hub admin",
+                "title": "User"
+              },
+              "description": "the member, any case; another's needs a hub admin"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/UserEmail"
+                    },
+                    "title": "Response List Emails V1 Emails Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "post": {
+          "tags": [
+            "emails"
+          ],
+          "summary": "Add Email",
+          "description": "Give the caller, or the member ``user`` names, the address ``email``: 201 with the new row, 200 with the row\nthey had, 409 when another member holds it.",
+          "operationId": "add_email_v1_emails_post",
+          "parameters": [
+            {
+              "name": "user",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "pattern": "^[A-Za-z0-9][A-Za-z0-9_-]{0,99}$"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the member, any case; another's needs a hub admin",
+                "title": "User"
+              },
+              "description": "the member, any case; another's needs a hub admin"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/EmailAdd"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserEmail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "200": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserEmail"
+                  }
+                }
+              },
+              "description": "OK"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/emails/{email_id}": {
+        "delete": {
+          "tags": [
+            "emails"
+          ],
+          "summary": "Remove Email",
+          "description": "Remove the email ``email_id`` of the caller, or of anyone for a hub admin; answers the row it removed.",
+          "operationId": "remove_email_v1_emails__email_id__delete",
+          "parameters": [
+            {
+              "name": "email_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Email Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/UserEmail"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
             },
             "404": {
               "content": {
@@ -48068,6 +48450,22 @@
           "title": "EffectiveConfig",
           "description": "The config a plugin gets in a project, for runs of an agent profile: each field from the highest layer."
         },
+        "EmailAdd": {
+          "properties": {
+            "email": {
+              "type": "string",
+              "maxLength": 1000,
+              "minLength": 1,
+              "title": "Email",
+              "description": "one address; case does not matter"
+            }
+          },
+          "type": "object",
+          "required": [
+            "email"
+          ],
+          "title": "EmailAdd"
+        },
         "ErrorBody": {
           "properties": {
             "error": {
@@ -70107,6 +70505,35 @@
           },
           "type": "object",
           "title": "UsageWindow"
+        },
+        "UserEmail": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "email": {
+              "type": "string",
+              "title": "Email"
+            },
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "email",
+            "login",
+            "created_at"
+          ],
+          "title": "UserEmail"
         },
         "UserGrant": {
           "properties": {
