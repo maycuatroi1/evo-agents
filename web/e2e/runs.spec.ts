@@ -17,6 +17,7 @@ import {
   STEP_TITLES,
   WAITING_STEP,
   workerHeartbeat,
+  pickTile,
 } from "./support/runs";
 import { toast } from "./support/toast";
 
@@ -87,9 +88,9 @@ test("dispatch queues runs of the ready steps only, and the list follows a worke
   await expect(dialog.getByTestId("dispatch-picked")).toHaveText("2 of 2 ready steps picked");
   // One free slot for two runs: the dropdown leaves them to any worker that fits.
   await expect(dialog.getByTestId("dispatch-worker-select")).toHaveValue("any");
-  await dialog.getByRole("radio", { name: /^Codex CLI/ }).check();
+  await pickTile(dialog, /^Codex CLI/);
   await expect(dialog.getByTestId("dispatch-outlook")).toContainText(`${live.worker.name}: no Codex CLI`);
-  await dialog.getByRole("radio", { name: "Claude Code" }).check();
+  await pickTile(dialog, /^Claude Code/);
   await expect(dialog.getByRole("radio", { name: /^Hold for review/ })).toBeChecked();
   await expect(dialog.getByTestId("dispatch-submit")).toHaveText("Dispatch 2 runs");
   await dialog.getByTestId("dispatch-submit").click();
@@ -218,7 +219,7 @@ test("a plan step's page runs the step, and lists its runs", async ({ page, memb
   await expect(dialog.getByTestId("dispatch-step-2").getByRole("checkbox")).not.toBeChecked();
   await expect(dialog.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
   await expect(dialog.getByTestId("dispatch-outlook")).toHaveCount(0);
-  await dialog.getByRole("radio", { name: "Mark done" }).check();
+  await pickTile(dialog, /^Mark done/);
   await dialog.getByTestId("dispatch-submit").click();
   await expect(dialog).toBeHidden();
 

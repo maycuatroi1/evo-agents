@@ -527,3 +527,11 @@ export async function chooseRunAction(page: Page, testId: string): Promise<void>
     await item.click({ timeout: 1_000 });
   }).toPass();
 }
+
+/**
+ * Pick a tile of the dispatch and Run plan dialogs (runtime, mode, approval) by its name. The radio inside a tile is
+ * out of sight (sr-only), so a click on it lands on the dialog around it; the label around the radio takes the click.
+ */
+export async function pickTile(scope: Locator, name: string | RegExp): Promise<void> {
+  await scope.locator("label").filter({ hasText: name }).click();
+}

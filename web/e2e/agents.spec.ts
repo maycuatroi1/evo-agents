@@ -8,7 +8,7 @@ import { expect, isDeployed, test } from "./support/fixtures";
 import { newAccount, uniqueName } from "./support/hub";
 import { apiOf } from "./support/memories";
 import { open } from "./support/plans";
-import { PLAN_RUN_PLAN, RUN_PLAN, runsOf, seedPlanRunPlan, seedRunPlan } from "./support/runs";
+import { PLAN_RUN_PLAN, pickTile, RUN_PLAN, runsOf, seedPlanRunPlan, seedRunPlan } from "./support/runs";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import { packSkill, publishSkill } from "./support/skills";
 import { toast } from "./support/toast";
@@ -210,10 +210,10 @@ test("Dispatch, Run plan and New plan queue their runs under the agent picked, a
   await expect(pick).toHaveValue(project);
   await pick.selectOption(handle);
   await expect(dispatch.getByTestId("dispatch-agent-info")).toHaveAccessibleDescription(`It limits workers to ${live.worker.name} and runtimes to Claude Code.`);
-  await dispatch.getByRole("radio", { name: /^Codex CLI/ }).check();
+  await pickTile(dispatch, /^Codex CLI/);
   await expect(dispatch.getByTestId("dispatch-agent-problem")).toHaveText(`@${handle} does not allow Codex CLI: it allows Claude Code.`);
   await expect(dispatch.getByTestId("dispatch-submit")).toBeDisabled();
-  await dispatch.getByRole("radio", { name: /^Claude Code/ }).check();
+  await pickTile(dispatch, /^Claude Code/);
   await expect(dispatch.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
   await dispatch.getByTestId("dispatch-submit").click();
   await expect(dispatch).toBeHidden();
@@ -223,7 +223,7 @@ test("Dispatch, Run plan and New plan queue their runs under the agent picked, a
   await main(page).getByTestId("run-plan").click();
   const planRun = page.getByTestId("plan-run-dialog");
   await planRun.getByTestId("dispatch-agent-select").selectOption(handle);
-  await planRun.getByRole("radio", { name: /^Claude Code/ }).check();
+  await pickTile(planRun, /^Claude Code/);
   await planRun.getByTestId("plan-run-submit").click();
   await expect(planRun).toBeHidden();
 

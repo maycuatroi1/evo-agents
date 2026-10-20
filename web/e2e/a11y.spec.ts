@@ -52,6 +52,7 @@ import {
   startRun,
   tool,
   uploadDiff,
+  pickTile,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
 import { putSecretByApi, secretValue } from "./support/secrets";
@@ -895,7 +896,7 @@ const PAGES: Entry[] = [
       const dialog = page.getByTestId("dispatch-dialog");
       await dialog.getByTestId("dispatch-step-4").click();
       await dialog.getByTestId("dispatch-agent-select").selectOption(handle);
-      await dialog.getByRole("radio", { name: /^Codex CLI/ }).check();
+      await pickTile(dialog, /^Codex CLI/);
       await expect(dialog.getByTestId("dispatch-agent-problem").first()).toBeVisible();
       await expect(dialog.getByTestId("dispatch-agent-blocked")).toBeVisible();
     },
@@ -923,7 +924,7 @@ const PAGES: Entry[] = [
       await expectNoSeriousViolations(page, "chats list");
       await page.locator("#main").getByTestId("chats-new").click();
       const dialog = page.getByTestId("new-chat-dialog");
-      await dialog.getByTestId("new-chat-login").fill("not a login");
+      await dialog.getByTestId("people-search").fill("not a login"); // the people picker replaced the login field
       await dialog.getByTestId("new-chat-submit").click();
       await expect(dialog.getByTestId("new-chat-title-hint")).toHaveText("Give the chat a title.");
     },
