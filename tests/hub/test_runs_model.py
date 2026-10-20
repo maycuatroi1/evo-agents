@@ -634,7 +634,7 @@ def test_the_plan_run_prompt_holds_the_rules_the_repos_and_the_open_steps(plan):
         "EVO_RUN_KIND=plan",
         ".evo-run/plan.yaml holds the whole plan",
         "`evo-agents worker plan`",
-        "Checkpoint steps (a verification, a review, a deploy) are yours too",
+        "Checkpoint steps (a verification, a review, a merge, a deploy, a release) are yours too, with no question",
         "`evo-agents worker step KEY in_progress --repo REPO`",
         "`evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND`",
         "refuses done when one exits other than 0",
@@ -664,8 +664,9 @@ def test_the_plan_run_prompt_holds_the_rules_the_repos_and_the_open_steps(plan):
         "- 10 [pending] Release (repo evo-agents; after 1, 42)",
     ):
         assert text in prompt, text
-    for category, text in runs.DECISION_CATEGORY_TEXT.items():
-        assert f"\n  - {category}: {text}\n" in prompt, category
+    for category in runs.PROMPTED_DECISION_CATEGORIES:
+        assert f"\n  - {category}: {runs.DECISION_CATEGORY_TEXT[category]}\n" in prompt, category
+    assert "\n  - deploy:" not in prompt, "merging, deploying and releasing are the agent's"
     for done in (1, 11):
         assert f"\n- {done} [" not in prompt
     assert step(plan, 2)["what"] not in prompt and step(plan, 1)["evidence"] not in prompt

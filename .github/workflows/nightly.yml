@@ -1,9 +1,9 @@
 name: nightly
 
-# The tag nightly: the newest commit of main whose ci passed on its push, moved there every night. The team's machines
-# install from it, `uv tool install --force 'evo-ak[worker,graphify] @ git+<this repository>@nightly'`, and the
-# update-evo-agents skill compares what a machine runs with it. It runs no ci of its own: the light ci of main
-# already passed on the commit it points at, and the full one runs on a v* tag (release.yml). A manual run moves it now.
+# The tag nightly: the tip of main, moved there every night. The team's machines install from it,
+# `uv tool install --force 'evo-ak[worker,graphify] @ git+<this repository>@nightly'`, and the update-evo-agents skill
+# compares what a machine runs with it. No ci gates it: main runs none, and the full one runs on a v* tag
+# (release.yml). A manual run moves it now.
 on:
   schedule:
     - cron: "0 19 * * *" # 02:00 in Vietnam
@@ -11,7 +11,6 @@ on:
 
 permissions:
   contents: write
-  actions: read
 
 concurrency:
   group: nightly
@@ -23,14 +22,9 @@ jobs:
     env:
       GH_TOKEN: ${{ github.token }}
     steps:
-      - name: Move nightly to the newest green commit of main
+      - name: Move nightly to the tip of main
         run: |
-          runs="repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?branch=main&event=push&status=success&per_page=1"
-          sha=$(gh api "$runs" --jq '.workflow_runs[0].head_sha // empty')
-          if [ -z "$sha" ]; then
-            echo "::error::no push to main has a green ci run"
-            exit 1
-          fi
+          sha=$(gh api "repos/$GITHUB_REPOSITORY/commits/main" --jq .sha)
           now=$(gh api "repos/$GITHUB_REPOSITORY/git/matching-refs/tags/nightly" \
             --jq '[.[] | select(.ref == "refs/tags/nightly")][0].object.sha // empty')
           if [ "$now" = "$sha" ]; then

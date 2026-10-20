@@ -24,10 +24,11 @@ Inbox come in the same release.
 
 ## Decisions
 
-The agent of a plan run asks with `evo-agents worker ask`, and only about these categories (`DECISION_CATEGORIES`).
-The prompt of a plan run lists them, the route that takes a decision refuses any other, and the agent decides
-everything else itself and writes each such choice, with why, into the evidence of its step on a line that starts
-with `Decision:`.
+The agent of a plan run asks with `evo-agents worker ask`, and only about these categories (`DECISION_CATEGORIES`). The
+prompt of a plan run lists all of them but `deploy` (`PROMPTED_DECISION_CATEGORIES`): merging, deploying and releasing
+are the agent's to do, and the route still takes a `deploy` decision from a worker of an older prompt. The route that
+takes a decision refuses any other, and the agent decides everything else itself and writes each such choice, with why,
+into the evidence of its step on a line that starts with `Decision:`.
 
 | Category | What it covers |
 | --- | --- |

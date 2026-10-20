@@ -2352,12 +2352,12 @@ lets every client do that. The default trusts nobody new.
 
 ### Deploying main
 
-`.github/workflows/deploy.yml` deploys every push to main once `ci` passes on it. The platform (Dokploy) holds the
-compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds the three images there with
-`docker compose up -d --build`; no image of main goes through GHCR. The job:
+`.github/workflows/deploy.yml` deploys every push to main, with no `ci` run first: `ci` runs on a v* tag only. The
+platform (Dokploy) holds the compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds the three
+images there with `docker compose up -d --build`; no image of main goes through GHCR. The job:
 
-1. stops when main has moved past its commit, since the platform clones main as it is and the newer commit's own `ci`
-   run deploys it;
+1. stops when main has moved past its commit, since the platform clones main as it is and the run of the newer push
+   deploys it;
 2. reads the schema the hub runs from `/v1/health`, fails when this commit does not know it, and runs the platform's
    Postgres backup first when the newest file under `evo_agents/hub/migrations/versions/` is another revision, or
    when the hub does not answer, since api and worker migrate as they start;

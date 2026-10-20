@@ -260,6 +260,9 @@ DECISION_CATEGORY_TEXT = {
     "architecture": "an architectural choice the plan leaves open",
     "scope": "a question of scope the plan leaves open: adding, dropping or reshaping a step or what it delivers",
 }
+# What the prompt of a plan run tells its agent to ask: every category but deploy, since merging, deploying and releasing
+# are the agent's to do (main deploys on every push, deploy.yml). A worker of an older prompt may still ask a deploy.
+PROMPTED_DECISION_CATEGORIES = tuple(name for name in DECISION_CATEGORIES if name != "deploy")
 LOCAL_DECISION_CATEGORY = "question"  # what the agent of a local run asks that is none of DECISION_CATEGORIES
 LOCAL_DECISION_CATEGORIES = (*DECISION_CATEGORIES, LOCAL_DECISION_CATEGORY)
 CHAT_DECISION_CATEGORY = "triage"  # the one category the agent of a chat run asks in (see the triage of a failed run)
@@ -715,7 +718,7 @@ def _decision_lines(where: str) -> list[str]:
     """The categories of decision the agent of a plan run may ask its owner, and where it writes the others."""
     return [
         "- Ask the run's owner only a decision of one of these categories:",
-        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in DECISION_CATEGORIES),
+        *(f"  - {name}: {DECISION_CATEGORY_TEXT[name]}" for name in PROMPTED_DECISION_CATEGORIES),
         f"  Decide everything else yourself, and write each such choice and why into the evidence of {where}, on a "
         'line that starts with "Decision:".',
     ]
@@ -730,7 +733,8 @@ def _plan_rules() -> list[str]:
         f"- {PLAN_FILE} holds the whole plan as this run was claimed. Before each step, read the plan as the hub "
         "holds it now with `evo-agents worker plan`: the hub keeps the plan's progress, not your memory of it.",
         "- A step is ready when its status is pending and every step its depends_on names is done. Do ready steps "
-        "until every step is done. Checkpoint steps (a verification, a review, a deploy) are yours too.",
+        "until every step is done. Checkpoint steps (a verification, a review, a merge, a deploy, a release) are "
+        "yours too, with no question to the owner.",
         "- Record progress only with `evo-agents worker step`: `evo-agents worker step KEY in_progress --repo REPO` "
         "when you start a step, and `evo-agents worker step KEY done --repo REPO --evidence TEXT --verify COMMAND` "
         "(--verify once for each command) when it is done. The worker runs each verify command again in that repo's "

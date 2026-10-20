@@ -2427,8 +2427,8 @@ service uninstall` removes it.
 
 ### Updating itself to nightly
 
-The tag `nightly` of maycuatroi1/evo-agents points to the newest commit of main whose CI passed, and a workflow moves
-it every night (`.github/workflows/nightly.yml`). A worker installed from it keeps itself there:
+The tag `nightly` of maycuatroi1/evo-agents points to the tip of main, with no CI run on it (CI runs on a v* tag), and
+a workflow moves it every night (`.github/workflows/nightly.yml`). A worker installed from it keeps itself there:
 
 ```sh
 uv tool install --force 'evo-ak[worker] @ git+https://github.com/maycuatroi1/evo-agents@nightly'
