@@ -329,16 +329,16 @@ def cmd_attach(args) -> int:
 
 @_worker_command
 def cmd_git_credential(args) -> int:
-    from evo_agents.worker import credentials
+    from evo_agents.worker import credential_commands
 
-    return credentials.git_credential(args.run, args.action, sys.stdin, sys.stdout, sys.stderr)
+    return credential_commands.git_credential(args.run, args.action, sys.stdin, sys.stdout, sys.stderr)
 
 
 @_worker_command
 def cmd_env(args) -> int:
-    from evo_agents.worker import credentials
+    from evo_agents.worker import credential_commands
 
-    return credentials.print_env(args.run, sys.stdout, sys.stderr)
+    return credential_commands.print_env(args.run, sys.stdout, sys.stderr)
 
 
 @_worker_command
@@ -689,9 +689,9 @@ def cmd_step(args) -> int:
             curator = agent.record.get("curator") if isinstance(agent.record.get("curator"), dict) else None
             if curator is not None and curator.get("role") == "builder":
                 # A Builder of the Curator holds no credential: the daemon pushes the run's branch for it.
-                from evo_agents.worker import credentials
+                from evo_agents.worker import credential_commands
 
-                answer = await asyncio.to_thread(credentials.ask_push, agent.home, agent.run_id, name, title)
+                answer = await asyncio.to_thread(credential_commands.ask_push, agent.home, agent.run_id, name, title)
                 if answer.get("error") or not isinstance(answer.get("head"), str):
                     why = answer.get("error") or "the daemon did not say what it pushed"
                     raise WorkerStateError(f"{name}: {why}; step {args.key} is not reported done")
