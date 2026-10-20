@@ -1860,6 +1860,10 @@ compose file from the git branch `main` with `EVO_HUB_VERSION=main`, and builds 
    when the hub does not answer, since api and worker migrate as they start;
 3. asks the platform to deploy, waits for the deployment to end `done`, then for `/v1/health` to report `status` ok
    and this commit's schema.
+4. moves the tag `nightly` to this commit once `/v1/health` confirmed it, even when a newer commit of main is green
+   already: its job `nightly` calls `.github/workflows/nightly.yml` with the commit, writes the tag with the
+   repository's token, and holds no secret of `production`. The hub reads the tag every minute, so idle workers
+   follow the deployment. A run that stopped at step 1, or failed, leaves `nightly` where it is.
 
 The environment `production` of the repository, open to main only, holds the secret `DOKPLOY_API_KEY` and the
 variables `DOKPLOY_URL`, `DOKPLOY_COMPOSE_ID`, `DOKPLOY_BACKUP_ID` and `EVO_HUB_URL`. A run of the workflow by hand
