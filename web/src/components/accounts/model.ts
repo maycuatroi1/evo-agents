@@ -93,10 +93,11 @@ export const RENEW_WITHIN_DAYS = 30;
 
 /**
  * When the account's token ends, if that is within RENEW_WITHIN_DAYS from `now` and still ahead; null for an account
- * without an end, one ending later, or one that has ended (its state says Expired then).
+ * without an end, one ending later, or one that has ended (its state says Expired then). An OAuth account's end is
+ * its access token's, which the hub renews when a run takes it: nothing to remind.
  */
-export function renewalDue(account: Pick<Account, "expires_at">, now: number): { at: string; days: number } | null {
-  if (!account.expires_at) return null;
+export function renewalDue(account: Pick<Account, "expires_at"> & Partial<Pick<Account, "auth">>, now: number): { at: string; days: number } | null {
+  if (!account.expires_at || account.auth === "oauth") return null;
   const left = Date.parse(account.expires_at) - now;
   if (!Number.isFinite(left) || left <= 0 || left > RENEW_WITHIN_DAYS * DAY_MS) return null;
   return { at: account.expires_at, days: Math.ceil(left / DAY_MS) };

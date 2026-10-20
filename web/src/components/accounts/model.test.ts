@@ -90,4 +90,8 @@ describe("the renewal reminder", () => {
     expect(renewalDue(at(NOW + 2 * 60 * 60 * 1000), NOW)?.days).toBe(1);
     expect(renewalDue(at(NOW - DAY), NOW)).toBeNull();
   });
+
+  it("is never due for an OAuth account: the end is its access token's, which the hub renews", () => {
+    expect(renewalDue({ auth: "oauth", expires_at: new Date(NOW + 2 * 60 * 60 * 1000).toISOString() }, NOW)).toBeNull();
+  });
 });

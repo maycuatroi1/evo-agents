@@ -147,6 +147,16 @@ const tokenField = () => screen.getByLabelText("Token") as HTMLInputElement;
 const puts = () => api.seen.filter((request) => request.method === "PUT");
 
 describe("LoginDialog", () => {
+  it("tells an OAuth account's renewal to be the command of a terminal and asks the hub for nothing", async () => {
+    api.answer = (request) => reads(request) ?? json({}, 500);
+    renderVi(<Harness account={{ ...ACCOUNT, auth: "oauth", state: "needs-relogin" }} />);
+    const dialog = await screen.findByTestId("login-dialog");
+    expect(within(dialog).getByTestId("login-command-text").textContent).toBe("evo-agents hub account oauth-login claude-a");
+    expect(within(dialog).queryByTestId("login-form")).toBeNull();
+    expect(within(dialog).queryByTestId("login-token")).toBeNull();
+    expect(api.seen.filter((request) => request.method !== "GET")).toEqual([]);
+  });
+
   it("adds a Claude account once the form's checks pass, and keeps none of the token", async () => {
     const user = userEvent.setup();
     api.answer = (request) => reads(request) ?? (request.method === "PUT" ? json(written("claude-work", true)) : json({ error: "not_found" }, 404));

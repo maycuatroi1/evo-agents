@@ -2725,7 +2725,14 @@
       "ready": "Sẵn sàng",
       "cooling": "Đang nghỉ",
       "paused": "Tạm dừng",
-      "expired": "Hết hạn"
+      "expired": "Hết hạn",
+      "needs-relogin": "Cần đăng nhập lại"
+    },
+    "oauthEnds": "OAuth, access token đến <time></time>",
+    "oauthRenew": {
+      "title": "Đăng nhập lại cho {name}",
+      "description": "Chạy <code>evo-agents hub account oauth-login</code> trong terminal để thay bộ token. Tài khoản giữ nguyên.",
+      "descriptionRelogin": "Refresh token bị từ chối. Chạy <code>evo-agents hub account oauth-login</code> trong terminal để đăng nhập lại."
     },
     "until": "đến <time></time>",
     "rank": "trọng số {weight}, ưu tiên {priority}",

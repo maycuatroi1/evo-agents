@@ -49,6 +49,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.credentials import SECRET_NAME
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.account_choice import RELOGIN_REASON
 from evo_agents.hub.server.account_views import AccountUsage, Figures, HeldBy, account_figures
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.auth import NO_STORE
@@ -86,7 +87,10 @@ class Account(BaseModel):
     cooldown_reason: str | None = Field(description="why it cools down")
     last_leased_at: datetime | None = Field(description="when a run last took it")
     expires_at: datetime | None
-    state: Literal[ACCOUNT_STATES] = Field(description="ready, cooling, paused or expired, now")
+    state: Literal[ACCOUNT_STATES] = Field(
+        description="ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was "
+        "refused: run oauth-login again), now"
+    )
     last_usage: AccountUsage | None = Field(description="what a run's CLI last said of its usage; null before any")
     last_usage_at: datetime | None = Field(description="when a run reported that usage")
     runs_24h: int = Field(description="the runs that took it in the last 24 hours")
@@ -158,7 +162,11 @@ def _account(row, figures: Figures | None = None) -> Account:
     values = dict(row._mapping)
     del values["id"]
     now = values.pop("now")
-    state = account_state(row.paused_at, row.cooldown_until, row.expires_at, now)
+    oauth = row.auth == "oauth"
+    # The end of an OAuth account is its access token's, which the hub renews when a run leases it: not an expiry.
+    state = account_state(row.paused_at, row.cooldown_until, None if oauth else row.expires_at, now)
+    if oauth and state == "cooling" and (row.cooldown_reason or "").startswith(RELOGIN_REASON):
+        state = "needs-relogin"
     return Account(**values, state=state, **vars(figures or Figures()))
 
 
