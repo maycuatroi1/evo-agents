@@ -488,9 +488,10 @@ daemon with the feature `lazy_chat_repos`, the project's harness alone: [Repos a
 opens](#repos-a-chat-run-opens)). Only that worker claims it, with `chat` in its heartbeat's `run_kinds`, and the claim
 hands the prompt the hub builds then (`chat_runs.build_chat_prompt`): the rules, the chat and its members, the repos, a
 snapshot of the chat of at most 12 KiB (the first message of the thread, the 30 latest of the thread, the 10 of the chat
-before it, the oldest left out first, as the reader clears their labels; a line counts those left out and says how to
-find them: `kg_search` with kinds `ChatMessage`, then `chat_message`, `chat_thread` or `evo-agents worker chat read`)
-and the message that started the run, whole. Its budget is what is left of the chat's for 24 hours, and 30 minutes of
+before it, or in a direct chat the 30 latest of its earlier threads, the person's messages and the agent's answers, the
+oldest left out first, as the reader clears their labels; a line counts those left out and says how to find them:
+`kg_search` with kinds `ChatMessage`, then `chat_message`, `chat_thread` or `evo-agents worker chat read`) and the
+message that started the run, whole. Its budget is what is left of the chat's for 24 hours, and 30 minutes of
 agent time. It ends `done` with its agent's turn, without verify results, never waits and is never rerun (409); a lost
 one is tried again with its chat. The worker posts the agent's last message of each turn with `POST
 /v1/worker/runs/{id}/chat`, which the hub keeps as the agent's message in the thread (and in the run's log). A message

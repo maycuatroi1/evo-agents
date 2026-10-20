@@ -5,10 +5,9 @@ import { useTranslations } from "next-intl";
 import { type ReactNode, useId, useRef, useState } from "react";
 
 import { Button } from "@/components/ui/button";
-import { AVATAR_MAX_BYTES, AVATAR_TYPES, inkOn, PALETTE } from "@/lib/agent-rules";
+import { PALETTE } from "@/lib/agent-rules";
+import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarProblem, inkOn } from "@/lib/avatars";
 import { cn } from "@/lib/utils";
-
-import { avatarProblem } from "./model";
 
 /** A field of the agent form: its label, the control (given the ids to point at), a hint, and its error. */
 export function Field({

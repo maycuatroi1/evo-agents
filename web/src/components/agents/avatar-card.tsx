@@ -10,10 +10,10 @@ import { notify, notifyFailure } from "@/components/feedback/toast";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import type { Agent } from "@/lib/agents";
+import { fileBase64 } from "@/lib/avatars";
 
 import { AvatarPicker } from "./form-parts";
 import { useAgentFailure, useAvatarWrite } from "./hooks";
-import { fileBase64 } from "./model";
 
 /**
  * The agent's face on its page: the avatar, or its initial on its colour. An admin of the project uploads an image

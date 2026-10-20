@@ -17,6 +17,10 @@ run (``evo_agents.hub.chat_runs``): ``chat_id``, ``chat_message_id`` (the messag
 ``chat_tables`` adds them, their foreign keys and the index of a chat's runs to the runs table it is given, so that
 ``evo_agents.hub.tables`` describes runs whole. Revision 0049 gives runs ``seen_audience``, the principals of what the
 hub returned to the run's agent with an audience (``evo_agents.hub.server.run_audience``), which ``chat_tables`` adds too.
+Revision 0050 gives chats ``kind`` (``chats.CHAT_KINDS``: group, or direct) and, for a direct chat, its person
+(``direct_user_id``) and its agent (``direct_profile_id``), one direct chat per pair (chats_direct_key). Revision 0051
+gives a group chat its image: the SHA-256 and the size of a blob of the blob store (``image_sha256``, ``image_size``),
+which the chat's row refers to, as ``blob_gc`` counts it, so that the collection of unreferenced blobs leaves it.
 """
 
 from __future__ import annotations
@@ -64,9 +68,18 @@ def _chats(metadata: MetaData) -> tuple[Table, Table]:
         _stamp("created_at"),
         Column("event_seq", BigInteger, nullable=False, server_default="0"),
         Column("budget_usd", Double, nullable=False, server_default="5"),  # 0032
+        Column("kind", Text, nullable=False, server_default="group"),  # 0050
+        Column("direct_user_id", BigInteger),  # 0050
+        Column("direct_profile_id", BigInteger),  # 0050
+        Column("image_sha256", Text),  # 0051
+        Column("image_size", BigInteger),  # 0051
         _fk("chats", "created_by", "users.id", ondelete="RESTRICT"),
+        _fk("chats", "direct_user_id", "users.id", ondelete="RESTRICT"),
+        _fk("chats", "direct_profile_id", "agent_profiles.id", ondelete="RESTRICT"),
         PrimaryKeyConstraint("id", name="chats_pkey"),
+        UniqueConstraint("direct_user_id", "direct_profile_id", name="chats_direct_key"),
     )
+    Index("chats_image_sha256_idx", chats.c.image_sha256, postgresql_where=chats.c.image_sha256.is_not(None))  # 0051
     members = Table(
         "chat_members",
         metadata,

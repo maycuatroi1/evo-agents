@@ -1,8 +1,9 @@
 import { describe, expect, it } from "vitest";
 
 import type { Agent } from "@/lib/agents";
+import { avatarProblem, fileBase64 } from "@/lib/avatars";
 
-import { avatarProblem, createBody, draftOf, draftProblems, editBody, emptyDraft, fileBase64, hasProblems, packKey, versionChanges, withItem, withoutItem, withoutPack, withPack } from "./model";
+import { createBody, draftOf, draftProblems, editBody, emptyDraft, hasProblems, packKey, versionChanges, withItem, withoutItem, withoutPack, withPack } from "./model";
 import { optionsFrom } from "./options";
 import { packRows } from "./packs-field";
 

@@ -10,6 +10,9 @@ already in the chat changes nothing. A person added gets the notice chat_added.
 
 A person leaves a chat, or its creator removes them; any member removes an agent. Each change is audited (chat.add,
 chat.remove; for an agent in its project) and is an event of the chat's stream.
+
+The members of a direct chat (``chat_direct``) never change: adding or removing anyone there, its person leaving
+included, is refused (409, ``refuse_direct``), and a group chat is made for more people or agents.
 """
 
 from __future__ import annotations
@@ -90,6 +93,16 @@ def refuse_clash(logins, handles) -> None:
         )
 
 
+def refuse_direct(chat: ChatAccess, doing: str) -> None:
+    """409 when ``chat`` is a direct chat, whose members never change."""
+    if chat.kind == chats.DIRECT:
+        raise HTTPException(
+            409,
+            f"chat {chat.chat_id} is a direct chat of one person and one agent, whose members never change: {doing} "
+            "is refused. Start a group chat (New chat, or POST /v1/chats) to talk with more people or agents",
+        )
+
+
 def refuse_uncleared(found: list[str], doing: str) -> None:
     if found:
         raise HTTPException(
@@ -137,6 +150,7 @@ async def label_problems(conn: AsyncConnection, chat: ChatAccess, profile: Profi
 
 async def put_agent(conn: AsyncConnection, user: Principal, chat: ChatAccess, profile: Profile) -> bool:
     """Add agent ``profile`` to ``chat`` once the checks pass; whether it was not in it."""
+    refuse_direct(chat, f"adding @{profile.handle}")
     people, agents = await _members(conn, chat.chat_id)
     if profile.handle in agents:
         return False
@@ -155,6 +169,7 @@ async def put_agent(conn: AsyncConnection, user: Principal, chat: ChatAccess, pr
 
 async def put_person(conn: AsyncConnection, user: Principal, chat: ChatAccess, user_id: int, login: str) -> bool:
     """Add person ``login`` to ``chat`` once the checks pass, with their notice; whether they were not in it."""
+    refuse_direct(chat, f"adding {login}")
     people, agents = await _members(conn, chat.chat_id)
     if user_id in people:
         return False
@@ -177,6 +192,7 @@ async def add_person(request: Request, chat_id: ChatId, login: LoginPath, user: 
     """Add a person to the chat; nothing changes when they are in it."""
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id, lock=True)
+        refuse_direct(chat, f"adding {login}")
         user_id, found = await person(conn, login)
         added = await put_person(conn, user, chat, user_id, found)
         view = await chat_view(conn, chat)
@@ -189,6 +205,7 @@ async def add_agent(request: Request, chat_id: ChatId, handle: HandlePath, user:
     """Add an agent to the chat (the writer role on its project); nothing changes when it is in it."""
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id, lock=True)
+        refuse_direct(chat, f"adding @{handle}")
         profile = await addable_agent(conn, user, handle)
         added = await put_agent(conn, user, chat, profile)
         view = await chat_view(conn, await label_now(conn, chat))
@@ -204,6 +221,7 @@ async def remove_person(request: Request, chat_id: ChatId, login: LoginPath, use
     """Leave the chat, or, for its creator, take a person out of it."""
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id, lock=True)
+        refuse_direct(chat, f"taking {login} out" if login.lower() != user.login.lower() else "leaving it")
         user_id, found = await person(conn, login)
         if user_id != user.user_id and user.user_id != chat.created_by:
             raise HTTPException(403, f"only {chat.creator}, who created chat {chat_id}, takes others out of it")
@@ -219,7 +237,7 @@ async def remove_person(request: Request, chat_id: ChatId, login: LoginPath, use
 async def remove_agent(request: Request, chat_id: ChatId, handle: HandlePath, user: CurrentUser) -> Response:
     """Take an agent out of the chat."""
     async with request.app.state.engine.begin() as conn:
-        await chat_access(conn, user, chat_id, lock=True)
+        refuse_direct(await chat_access(conn, user, chat_id, lock=True), f"taking @{handle} out")
         profile = await by_handle(conn, handle)
         if profile is None or not await remove_member(conn, chat_id, profile_id=profile.id):
             raise HTTPException(404, f"@{handle} is not in chat {chat_id}")

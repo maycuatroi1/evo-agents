@@ -51,8 +51,10 @@ never its message. For a repo whose origin is on GitHub it also reads the pull r
 and the merge commit, labelled integrity U; ``pulls: false`` on the source turns that off. A run whose cursor has the
 input of this run reads only the commits since the cursor's commit and the pull requests updated since the newest one
 it saw (``pulls.since`` in the cursor); their listings are then not complete, so nothing read before goes. Any other
-run reads the whole history, and its complete listing of commits removes those the ref no longer reaches. A pull
-request is never removed.
+run reads the whole history, and its complete listing of commits removes those the ref no longer reaches. So does a
+run whose ref no longer reaches the cursor's commit (a force-push or a rewrite of the history, ``rewritten``), with a
+warning that says so; the deletion guard holds its removals as any others, so a rewrite of much of the history waits
+for ``kg sync --accept-removals``. A pull request is never removed.
 """
 
 from __future__ import annotations
@@ -230,16 +232,32 @@ def commit_item(sid: str, repo_name: str, origin: str, commit: dict, exclude, al
     return finalize_item(item)
 
 
+def rewritten(repo: Path, ref: str, since: str, commit: str) -> str | None:
+    """Why the history of ``ref`` cannot be read on from ``since``, the prior cursor's commit: it is not an ancestor
+    of ``commit`` (a force-push, a filter-repo, a reset to an older commit) or the clone no longer has it (the same,
+    then a gc). None when ``since`` is ``commit`` or one of its ancestors. A commit object that outlived the rewrite
+    would still let ``git log since..commit`` run, and list the new history without dropping the old."""
+    try:
+        if _git.is_ancestor(repo, since, commit):
+            return None
+        why = f"{since[:10]}, the commit the last run read, is not an ancestor of {commit[:10]}"
+    except _git.GitError:
+        why = f"{since[:10]}, the commit the last run read, is not in the clone"
+    return f"history of {ref} rewritten: {why}; read the whole history, so the commits only on the old one go"
+
+
 def history_items(ctx, repo: Path, commit: str, repo_name: str, origin: str, prior: dict):
     """The commit items of the ref's history since the prior cursor's commit, then their listing, not complete; or,
-    without a prior cursor, of the whole history, then a complete listing, so a commit the ref no longer reaches (a
-    force-push, another ref) goes, under the deletion guard like a file."""
+    without a prior cursor or when the ref's history was rewritten since (``rewritten``, a warning), of the whole
+    history, then a complete listing, so a commit the ref no longer reaches (a force-push, a rewrite, another ref)
+    goes, under the deletion guard like a file."""
     exclude, allow = ctx.source.get("exclude"), ctx.source.get("allow")
     since = prior.get("commit")
-    try:
-        commits = _git.history(repo, commit, since)
-    except _git.GitError:  # the prior commit is gone from the clone (a force-push, a gc): read the whole history
-        commits, since = _git.history(repo, commit), None
+    why = rewritten(repo, ctx.source.get("ref") or "HEAD", since, commit) if since else None
+    if why:
+        yield {"type": "log", "level": "warning", "message": why}
+        since = None
+    commits = _git.history(repo, commit, since)
     for found in commits:
         yield commit_item(ctx.source_id, repo_name, origin, found, exclude, allow)
     yield {"type": "listing", "scope": f"{ctx.source_id}:commit:", "complete": since is None, "count": len(commits)}
