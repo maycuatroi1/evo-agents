@@ -33,15 +33,23 @@ are redacted before they are written there. The files of sessions untouched for 
 registers.
 
 It never fails or holds a session, as every hook of the plugin: the exit status is 0 whatever happens; a hub that did
-not answer one hook of the machine is left alone for COOLDOWN seconds (a dialog's questions and answers try it anyway)
-while events wait on disk for a later hook; one that refused
-the session is left alone for REFUSAL_COOLDOWN; a hook past its deadline sends nothing more; PostToolUse asks the hub at
+not answer one hook of the machine, or answered with a failure that may pass (``client.transient``: a 502 or a 404 of
+the proxy in front of it while it is redeployed, a 503, 429), is left alone for COOLDOWN seconds (a dialog's questions
+and answers try it anyway) while events wait on disk for a later hook; one that refused the session is left alone for
+REFUSAL_COOLDOWN; a hook past its deadline sends nothing more; PostToolUse asks the hub at
 most once every FLUSH_EVERY seconds and waits LOCK_WAIT_TOOL for the session's file at most, so a tool call costs a
 file write and, now and then, one short request. A session outside a hub project sends nothing: its first hook asks
 the hub which project the directory belongs to (``MemorySync.project_of``, as the digest does) and writes the answer in
 the file, and the later hooks stop at that file. ``EVO_HUB_LOCAL_SYNC=0`` (or ``off``) turns all of it off, and the
 agent of a worker run (EVO_RUN_ID) never registers one: its run is on the hub already. The digest of the Stop hook is
 not touched by either. Standard library only.
+
+The last hook of a turn is Stop, so what it could not send (the hub was down then) has no later hook of its session to
+send it: the run would stay ``running`` on the hub until the person's next message, or until the hub ends it silent.
+Each session's file keeps the state its last hook wanted, and a Stop that reached the hub then sends, before its
+deadline, what up to SWEEP other sessions of the machine left waiting: their events and the end of their turn
+(``idle``, ``ended``), for sessions touched in the last SWEEP_HOURS and not refused lately. A session whose hook holds
+its file at that moment is left to that hook.
 """
 
 from __future__ import annotations
@@ -62,9 +70,9 @@ from evo_agents.hub.client import (
     FILE_MODE,
     Hub,
     HubError,
-    Unreachable,
     hub_dir,
     load_credentials,
+    transient,
     write_atomic,
 )
 
@@ -112,6 +120,9 @@ BUDGET = {
     "ask": 10.0,
 }  # of the commands that are a hook of their own
 STATES = {"user-prompt": "running", "tool": "running", "stop": "idle", "session-end": "ended", "ask": "running"}
+ENDS = ("idle", "ended")  # what a turn or a session ends in: no later hook of that session sends it again
+SWEEP = 3  # other sessions whose waiting events and end of turn one Stop sends at most, after its own
+SWEEP_HOURS = 24  # sessions touched longer ago are left as they are: the hub ends a run silent for 24 hours itself
 ASK_TOOL = "AskUserQuestion"
 MAX_QUESTIONS = 4  # questions of one dialog put to the hub
 MAX_ASKS = 5  # dialogs whose answers are still awaited, kept in the session's file
@@ -219,6 +230,7 @@ class Store:
             "resolved": False,
             "run_id": None,
             "sent": None,
+            "wanted": None,
             "seq": 0,
             "events": [],
             "offset": None,
@@ -412,6 +424,7 @@ class Delivery:
         hook: str,
         state: hooks.HookState,
         payload: dict | None = None,
+        deadline: float | None = None,
     ):
         self.hub, self.login, self.rec, self.sid, self.where, self.hook, self.state = (
             hub,
@@ -424,7 +437,9 @@ class Delivery:
         )
         self.payload = payload or {}
         self.notes: list[str] = []
-        self.deadline = time.monotonic() + LIMITS[limit_key(hook, self.payload)][1]
+        self.deadline = (
+            deadline if deadline is not None else time.monotonic() + LIMITS[limit_key(hook, self.payload)][1]
+        )
 
     def call(self, method: str, path: str, body: dict | None = None):
         if time.monotonic() > self.deadline:
@@ -470,7 +485,7 @@ class Delivery:
                 self.rec["sent"] = wanted
                 return
             except HubError as exc:
-                if attempt or isinstance(exc, Unreachable) or exc.status not in (404, 409):
+                if attempt or transient(exc) or exc.status not in (404, 409):
                     raise
                 if wanted == "ended":
                     self.rec["sent"] = "ended"  # it ended already, or the hub never had it
@@ -538,7 +553,7 @@ class Delivery:
             try:
                 view = self.call("POST", f"{self.base()}/{rec['run_id']}/decisions", body)
             except HubError as exc:
-                if isinstance(exc, Unreachable) or exc.status not in (404, 409, 422):
+                if transient(exc) or exc.status not in (404, 409, 422):
                     raise
                 continue  # the hub will not take this question: the dialog still opens
             entries.append({"decision": int(view["id"]), "question": q["question"], "keys": keys})
@@ -574,7 +589,7 @@ class Delivery:
             try:
                 self.call("POST", f"{self.base()}/{rec['run_id']}/decisions/{entry['decision']}/answered", body)
             except HubError as exc:
-                if isinstance(exc, Unreachable) or exc.status not in (404, 409, 422):
+                if transient(exc) or exc.status not in (404, 409, 422):
                     raise  # kept in the file: the next hook tells the hub
         for name in [k for k, v in asks.items() if v is entries]:
             del asks[name]
@@ -590,7 +605,7 @@ class Delivery:
                 "POST", f"{self.base()}/{rec['run_id']}/inbox", {"ack": ack} if isinstance(ack, int) else None
             )
         except HubError as exc:
-            if isinstance(exc, Unreachable) or exc.status not in (404, 405):
+            if transient(exc) or exc.status not in (404, 405):
                 raise
             return  # a hub that has no inbox for local runs: nothing to hand over
         messages = answer.get("messages") if isinstance(answer, dict) else None
@@ -713,6 +728,7 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         if asking:
             _keep_answers(rec, payload)
         rec["touched"] = now
+        rec["wanted"] = STATES[hook]
         store.save(rec)
     if _refused_lately(rec, now):
         return []
@@ -728,18 +744,67 @@ def sync(hook: str, payload: dict, hub: Hub, login: str, now: float | None = Non
         rec = store.load() or rec
         delivery = Delivery(hub, login, rec, session_id, where, hook, state, payload)
         try:
-            delivery.run(title, STATES[hook], due)
-            rec["refused_at"] = None
-            state.mark_up(hub.url)
-        except Late:
-            pass
-        except Unreachable:
-            state.mark_down(hub.url, _now())
-        except HubError:  # a refusal: the token, the role, another member's session
-            rec["refused_at"] = now
+            reached = _deliver(delivery, title, STATES[hook], due, now)
         finally:
             store.save(rec)
+    if reached and hook == "stop":
+        sweep(hub, login, state, session_id, delivery.deadline, now)
     return delivery.notes if hook == "user-prompt" else []
+
+
+def _deliver(delivery: Delivery, title: str | None, wanted: str, due: bool, now: float) -> bool:
+    """``delivery.run``, with what its outcome means for the session's record and the machine's hook state; True when
+    the hub took it all."""
+    try:
+        delivery.run(title, wanted, due)
+    except Late:
+        return False
+    except HubError as exc:
+        if transient(exc):  # no answer, or the hub restarting or busy: any hook tries again after COOLDOWN
+            delivery.state.mark_down(delivery.hub.url, _now())
+        else:  # a refusal: the token, the role, another member's session
+            delivery.rec["refused_at"] = now
+        return False
+    delivery.rec["refused_at"] = None
+    delivery.state.mark_up(delivery.hub.url)
+    return True
+
+
+def _waiting(rec: dict | None, url: str, now: float) -> bool:
+    """Whether the session of ``rec`` left events or the end of its turn waiting for the hub at ``url``, in the last
+    SWEEP_HOURS, and the hub did not refuse it lately."""
+    if not rec or rec.get("hub") != url or rec.get("project") is None or not isinstance(rec.get("run_id"), int):
+        return False
+    if not 0 <= now - float(rec.get("touched") or 0) < SWEEP_HOURS * 3600 or _refused_lately(rec, now):
+        return False
+    return bool(rec.get("events")) or (rec.get("wanted") in ENDS and rec.get("wanted") != rec.get("sent"))
+
+
+def sweep(hub: Hub, login: str, state: hooks.HookState, skip: str, deadline: float, now: float) -> None:
+    """Send what up to SWEEP other sessions of this machine left waiting for ``hub``, the newest first, until
+    ``deadline`` (``time.monotonic``) or a failure. A session whose file another hook holds is skipped."""
+    found = []
+    with contextlib.suppress(OSError):
+        for path in _directory().glob("*.json"):
+            rec = _read(path)
+            if path.stem != skip and digest.SESSION_ID.fullmatch(path.stem) and _waiting(rec, hub.url, now):
+                found.append((float(rec["touched"]), path.stem))
+    for _, sid in sorted(found, reverse=True)[:SWEEP]:
+        if time.monotonic() > deadline:
+            return
+        store = Store(sid, hub.url)
+        with locked(store.lock, 0.0) as got:
+            rec = store.load() if got else None
+            if not _waiting(rec, hub.url, now):
+                continue
+            wanted = rec["wanted"] if rec.get("wanted") in ENDS else rec["sent"]
+            delivery = Delivery(hub, login, rec, sid, Path(rec["cwd"]), "sweep", state, deadline=deadline)
+            try:
+                reached = _deliver(delivery, None, wanted, True, now)
+            finally:
+                store.save(rec)
+        if not reached:
+            return
 
 
 def hook_run(hook: str, payload: dict) -> list[str]:

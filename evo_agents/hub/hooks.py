@@ -37,8 +37,10 @@ A hook never fails the session and never holds it long:
 - every request gives up after REQUEST_TIMEOUT seconds and the whole run after BUDGETS seconds (SIGALRM, a timer on
   Windows), keeping what it finished: files are written atomically and memory-state.json records what was
   synced, so the next run does the rest. Claude Code's own hook timeout (hooks.json) is the last guard;
-- a hub that did not answer is not asked again by Stop for COOLDOWN seconds (when it failed is kept in
-  ~/.evo/hub/hook-state.json): the memory files and the digests wait on this machine and a later Stop pushes them;
+- a hub that did not answer, or answered with a failure that may pass (``client.transient``: a 502 or a 404 of the
+  proxy in front of it while it is redeployed, a 503, 429), is not asked again by Stop for COOLDOWN seconds (when it
+  failed is kept in ~/.evo/hub/hook-state.json): the memory files and the digests wait on this machine and a later
+  Stop pushes them;
 - one memory sync runs at a time per machine: a hook waits LOCK_WAIT seconds for another, then leaves its work to the
   next run.
 
@@ -85,6 +87,7 @@ from evo_agents.hub.client import (
     Unreachable,
     hub_dir,
     load_credentials,
+    transient,
     write_atomic,
 )
 
@@ -386,17 +389,17 @@ def session_start(payload: dict, line: Line) -> None:
         if harness is not None and run_id is None:
             _export_plans(hub, *harness, line)
         _check_skills(hub, line)
-    except Unreachable as exc:
+    except HubError as exc:
+        if not transient(exc):  # the token was refused
+            line.add(
+                f"the hub refused this machine's token ({exc}), so nothing more was synced; {LOGIN_HINT}", trouble=True
+            )
+            return
         state.mark_down(hub.url, _now())
         line.add(
             f"the hub did not answer ({exc}), so the rest was not synced; memory files stay here and a later Stop "
             "pushes them",
             trouble=True,
-        )
-        return
-    except HubError as exc:  # the token was refused
-        line.add(
-            f"the hub refused this machine's token ({exc}), so nothing more was synced; {LOGIN_HINT}", trouble=True
         )
         return
     state.mark_up(hub.url)
@@ -481,12 +484,12 @@ def _push_memories(hub: Hub, login: str, where: Path, state: HookState, outcome:
         return
     try:
         report = sync.push(where)
-    except Unreachable as exc:
+    except HubError as exc:
+        if not transient(exc):
+            outcome.say(f"evo-hub: memories not pushed: {exc}")
+            return
         state.mark_down(hub.url, _now())
         outcome.say(f"evo-hub: memories not pushed, the hub did not answer ({exc}); they stay here for a later Stop")
-        return
-    except HubError as exc:
-        outcome.say(f"evo-hub: memories not pushed: {exc}")
         return
     state.mark_up(hub.url)
     if report.conflicts:
@@ -562,15 +565,15 @@ def _push_digest(
             return True
         path = f"/v1/projects/{quote(record['project'], safe='')}/digests/{session_id}"
         hub.call("PUT", path, redact_data(built, [hub.token]))
-    except Unreachable as exc:
+    except HubError as exc:
+        if not transient(exc):
+            digests.put(session_id, {**record, "refused_at": now})
+            outcome.say(f"evo-hub: session digest not pushed: {exc}")
+            return exc.status != 401
         state.mark_down(hub.url, _now())
         digests.put(session_id, record)
         outcome.say(f"evo-hub: session digest not pushed, the hub did not answer ({exc}); a later Stop pushes it")
         return False
-    except HubError as exc:
-        digests.put(session_id, {**record, "refused_at": now})
-        outcome.say(f"evo-hub: session digest not pushed: {exc}")
-        return exc.status != 401
     state.mark_up(hub.url)
     record.pop("refused_at", None)
     digests.put(session_id, {**record, "sha256": digest.fingerprint(built), "pending": False})
