@@ -34,7 +34,7 @@ import yaml
 from evo_agents.kg.extract import python as py_extract
 from evo_agents.kg.schema import node_kind_for_item
 
-MAP_VERSION = "5"
+MAP_VERSION = "6"
 STRUCTURE_VERSION = "9"
 # Connectors whose items are the files of a repo tree: their directories become Directory nodes.
 DIRECTORY_CONNECTORS = {"git", "harness"}
@@ -43,7 +43,7 @@ GRAPHIFY_INSTALL = "pip install 'evo-ak[graphify]' or uv tool install 'evo-ak[gr
 
 # Props of a commit, a pull request, a ticket or a chat's item that its node keeps, besides path and repo (``map_item``).
 NODE_PROPS = {
-    "commit": ("sha", "files", "merge"),
+    "commit": ("sha", "files", "merge", "author_email"),
     "pr": ("number", "status", "head", "base", "merge_commit"),
     "ticket": ("number", "type", "status", "status_group", "priority", "sprint", "assignees", "due_on"),
     "chat": ("chat",),
