@@ -54,6 +54,7 @@ import {
   uploadDiff,
 } from "./support/runs";
 import { enablePlugin, installedSample, installPlugin, pluginPagePath, publishSample } from "./support/plugins";
+import { seedRelease } from "./support/releases";
 import { putSecretByApi, secretValue } from "./support/secrets";
 import {
   documentPath,
@@ -469,6 +470,19 @@ const PAGES: Entry[] = [
       await expect(page.locator("#main").getByTestId("ledger-figures")).toBeVisible();
       await page.locator("#main").getByTestId("evidence-digest-toggle").first().click();
       await expect(page.locator("#main").getByTestId("evidence-digest")).toBeVisible();
+    },
+  },
+  {
+    name: "a project's Releases with a stopped cycle and the cycles before it, read by a writer",
+    open: async ({ page, me }) => {
+      // The schedule is an admin's: another member is the project's admin and owns it.
+      const project = me.projects[0];
+      const owner = newAccount("owner");
+      await new HubAdmin().grant(project, owner.login, "admin", "internal");
+      await seedRelease(owner, project, { stopped: true });
+      await page.goto(`/p/${project}/releases`);
+      await expect(page.locator("#main").getByTestId("release-stopped")).toBeVisible();
+      await expect(page.locator("#main").getByTestId("release-past")).toBeVisible();
     },
   },
   {
