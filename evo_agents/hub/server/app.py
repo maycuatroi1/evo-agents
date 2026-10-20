@@ -332,6 +332,7 @@ def create_app(config: HubConfig) -> FastAPI:
         chat_direct,
         chat_images,
         chat_members,
+        chat_people,
         chat_read,
         chats,
         credentials,
@@ -360,6 +361,7 @@ def create_app(config: HubConfig) -> FastAPI:
         agent_types.router,
         task_dispatch.router,
         task_dispatch.worker_router,
+        chat_people.router,  # before chats.router, whose GET /{chat_id} would take /people
         chats.router,
         chat_direct.router,
         chat_members.router,
