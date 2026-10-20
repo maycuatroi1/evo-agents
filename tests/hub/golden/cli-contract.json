@@ -18,6 +18,7 @@
         "keys": [
           "name",
           "env_var",
+          "auth",
           "projects",
           "workers",
           "weight",
@@ -96,6 +97,86 @@
         "keys": [
           "name",
           "env_var",
+          "auth",
+          "projects",
+          "workers",
+          "weight",
+          "priority",
+          "paused_at",
+          "cooldown_until",
+          "cooldown_reason",
+          "last_leased_at",
+          "expires_at",
+          "state",
+          "last_usage",
+          "last_usage_at",
+          "runs_24h",
+          "runs_7d",
+          "cost_24h_usd",
+          "cost_7d_usd",
+          "held_by"
+        ],
+        "schema": "Account"
+      }
+    },
+    "hub account oauth-login": {
+      "positionals": [
+        {
+          "name": "name",
+          "metavar": "NAME",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--worker"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": true
+        },
+        {
+          "flags": [
+            "--no-browser"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--paste"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "name",
+          "env_var",
+          "auth",
           "projects",
           "workers",
           "weight",
@@ -142,6 +223,7 @@
         "keys": [
           "name",
           "env_var",
+          "auth",
           "projects",
           "workers",
           "weight",
@@ -267,6 +349,7 @@
         "keys": [
           "name",
           "env_var",
+          "auth",
           "projects",
           "workers",
           "weight",
@@ -329,6 +412,7 @@
         "keys": [
           "name",
           "env_var",
+          "auth",
           "projects",
           "workers",
           "weight",
@@ -375,6 +459,7 @@
         "keys": [
           "name",
           "env_var",
+          "auth",
           "projects",
           "workers",
           "weight",
@@ -41445,6 +41530,15 @@
               "title": "Workers",
               "description": "the workers it is bound to; empty for any worker of its owner"
             },
+            "auth": {
+              "type": "string",
+              "enum": [
+                "token",
+                "oauth"
+              ],
+              "title": "Auth",
+              "description": "oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given"
+            },
             "weight": {
               "type": "integer",
               "title": "Weight",
@@ -41524,10 +41618,11 @@
                 "ready",
                 "cooling",
                 "paused",
-                "expired"
+                "expired",
+                "needs-relogin"
               ],
               "title": "State",
-              "description": "ready, cooling, paused or expired, now"
+              "description": "ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now"
             },
             "last_usage": {
               "anyOf": [
@@ -41588,6 +41683,7 @@
             "env_var",
             "projects",
             "workers",
+            "auth",
             "weight",
             "priority",
             "paused_at",
@@ -53725,6 +53821,72 @@
           ],
           "title": "NotificationList"
         },
+        "OAuthTokens": {
+          "properties": {
+            "refresh_token": {
+              "type": "string",
+              "maxLength": 16384,
+              "minLength": 1,
+              "format": "password",
+              "title": "Refresh Token",
+              "description": "the refresh token; sealed, never shown again",
+              "writeOnly": true
+            },
+            "access_expires_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Access Expires At",
+              "description": "when the access token (the value) ends"
+            },
+            "account_uuid": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Account Uuid",
+              "description": "the Claude account's id"
+            },
+            "organization_uuid": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Organization Uuid",
+              "description": "its organization's id"
+            },
+            "email": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 200
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Email",
+              "description": "the Claude account's address"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "refresh_token",
+            "access_expires_at"
+          ],
+          "title": "OAuthTokens",
+          "description": "The tokens beside the access token (which is the secret's value) that PUT /v1/secrets/{name} takes for an\naccount of OAuth; never shown again."
+        },
         "OptionIn": {
           "properties": {
             "key": {
@@ -62962,6 +63124,17 @@
               ],
               "title": "Expires At",
               "description": "after this no run gets it; in the future"
+            },
+            "oauth": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/OAuthTokens"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "kind env, env_var CLAUDE_CODE_OAUTH_TOKEN only: the account signed in with OAuth. The value is its access token; this holds the refresh token and when the access token ends, and the hub keeps all of them sealed. expires_at, when given, is that end"
             },
             "value": {
               "type": "string",

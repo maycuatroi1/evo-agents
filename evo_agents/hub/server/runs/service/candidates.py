@@ -131,7 +131,7 @@ async def _accounts(conn: AsyncConnection, owner_id: int, project_id: int, run_i
     state with the worker ids it is bound to (None: any), and the secret ids the run took."""
     s, a, b, ra = tables.secrets, tables.accounts, tables.secret_bindings, tables.run_accounts
     rows = await conn.execute(
-        select(s.c.id, s.c.name, s.c.expires_at, a.c.paused_at, a.c.cooldown_until)
+        select(s.c.id, s.c.name, s.c.expires_at, a.c.oauth_sealed, a.c.paused_at, a.c.cooldown_until)
         .outerjoin_from(s, a, a.c.secret_id == s.c.id)
         .where(s.c.owner_id == owner_id, s.c.kind == "env", s.c.deleted_at.is_(None))
         .order_by(s.c.name)
@@ -151,7 +151,12 @@ async def _accounts(conn: AsyncConnection, owner_id: int, project_id: int, run_i
         if row.id not in bound:
             continue
         where = bound[row.id]
-        state = account_state(row.paused_at, row.cooldown_until, row.expires_at, now)
+        state = account_state(
+            row.paused_at,
+            row.cooldown_until,
+            None if row.oauth_sealed is not None else row.expires_at,  # an OAuth token is renewed at lease time
+            now,
+        )
         workers = ["any"] if None in where else sorted(names[w] for w in where if w in names)
         found.append(
             (row.id, AccountCandidate(name=row.name, state=state, workers=workers, used_by_run=row.id in used))

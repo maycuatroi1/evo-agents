@@ -42,6 +42,7 @@ const json = (body: unknown, status = 200) => Response.json(body, { status, head
 const account = (name: string, projects: string[], extra: Record<string, unknown> = {}) => ({
   name,
   env_var: "CLAUDE_CODE_OAUTH_TOKEN",
+  auth: "token",
   projects,
   workers: [],
   weight: 100,

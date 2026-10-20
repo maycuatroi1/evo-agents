@@ -178,10 +178,12 @@ def test_a_fresh_database_gets_the_one_hundred_and_two_tables(hub_db):
     assert tables(hub_db) == TABLES | {"alembic_version"}
     assert query(hub_db, select(ALEMBIC_VERSION.c.version_num)) == [(HEAD,)]
     # skills and skill_versions keep metadata and the blob key, never the bundle's bytes: the only bytes the hub keeps
-    # are the sealed values of credentials (0011) and their nonces
+    # are the sealed values of credentials (0011) and their nonces, and the sealed tokens of OAuth accounts (0066)
     columns = INFO_COLUMNS.c
     public = select(columns.table_name, columns.column_name).where(columns.table_schema == "public")
     assert sorted(query(hub_db, public.where(columns.data_type == "bytea"))) == [
+        ("accounts", "oauth_nonce"),
+        ("accounts", "oauth_sealed"),
         ("credential_leases", "nonce"),
         ("credential_leases", "sealed_value"),
         ("secrets", "nonce"),
@@ -1254,6 +1256,36 @@ def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_
     assert not added & columns(hub_db, "workers")
     assert not columns(hub_db, "hub_nightly")
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
+
+
+def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0065")
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0066")
+    accounts = hub_tables.accounts
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        secret = insert(hub_tables.secrets).values(
+            owner_id=ids["user"],
+            name="claude-o",
+            kind="env",
+            env_var="CLAUDE_CODE_OAUTH_TOKEN",
+            sealed=b"s" * 20,
+            nonce=b"n" * 12,
+            key_id="0123abcd",
+        )
+        secret_id = conn.execute(secret.returning(hub_tables.secrets.c.id)).scalar_one()
+        conn.execute(insert(accounts).values(secret_id=secret_id))  # no tokens: every account that exists
+        conn.execute(
+            update(accounts)
+            .values(oauth_sealed=b"x", oauth_nonce=b"n", oauth_key_id="k")
+            .where(accounts.c.secret_id == secret_id)
+        )
+        with pytest.raises(errors.CheckViolation):  # a set is whole or absent
+            conn.execute(update(accounts).values(oauth_sealed=None).where(accounts.c.secret_id == secret_id))
+    move_to(hub_db, "0065", down=True)
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
