@@ -44,6 +44,11 @@ class OAuthError(Exception):
     """The sign-in failed; ``str`` says why, never with a code or a token."""
 
 
+class RefreshRejected(OAuthError):
+    """The token endpoint refused the refresh token (revoked, expired or already used): only a new sign-in helps. Any
+    other failure of a refresh (the endpoint down, a timeout) is a plain OAuthError and may pass."""
+
+
 class ListenError(OAuthError):
     """This machine cannot listen for the browser's answer: the member pastes it instead."""
 
@@ -160,7 +165,7 @@ def wait_for_callback(state: str, timeout: float = WAIT_S, port: int = CALLBACK_
     return found["code"]
 
 
-def _post(url: str, payload: dict) -> dict:
+def _post(url: str, payload: dict, what: str = "code") -> dict:
     request = urllib.request.Request(
         url,
         data=json.dumps(payload).encode(),
@@ -171,7 +176,10 @@ def _post(url: str, payload: dict) -> dict:
         with urllib.request.urlopen(request, timeout=TIMEOUT_S) as response:  # noqa: S310 (https, or a test's)
             return json.loads(response.read())
     except urllib.error.HTTPError as exc:
-        raise OAuthError(f"the token endpoint refused the code (HTTP {exc.code})") from None
+        refused = f"the token endpoint refused the {what} (HTTP {exc.code})"
+        if what == "refresh token" and exc.code in (400, 401, 403):
+            raise RefreshRejected(refused) from None
+        raise OAuthError(refused) from None
     except (urllib.error.URLError, TimeoutError, OSError) as exc:
         raise OAuthError(f"cannot reach the token endpoint: {getattr(exc, 'reason', exc)}") from None
     except ValueError:
@@ -212,4 +220,19 @@ def exchange(code: str, pkce: Pkce, now: datetime | None = None) -> Tokens:
             "code_verifier": pkce.verifier,
         },
     )
+    return tokens_from(answer, now or datetime.now(UTC))
+
+
+def refresh(refresh_token: str, now: datetime | None = None) -> Tokens:
+    """The tokens ``refresh_token`` buys at the token endpoint: a new access token, its end and, as Anthropic rotates
+    it at every use, a new refresh token (the old one is spent; when the answer names none it stays). RefreshRejected
+    when the endpoint refuses the refresh token."""
+    url = os.environ.get("EVO_CLAUDE_OAUTH_TOKEN_URL") or TOKEN_URL
+    answer = _post(
+        url,
+        {"grant_type": "refresh_token", "refresh_token": refresh_token, "client_id": CLIENT_ID},
+        "refresh token",
+    )
+    if not answer.get("refresh_token"):
+        answer = {**answer, "refresh_token": refresh_token}
     return tokens_from(answer, now or datetime.now(UTC))
