@@ -7881,6 +7881,68 @@
         "schema": "SrsDocumentSummary"
       }
     },
+    "hub srs retire": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "codes",
+          "metavar": "CODE",
+          "value": "string",
+          "required": true,
+          "repeatable": true
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--summary"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--dry-run"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "document",
+          "version",
+          "dry_run",
+          "dropped"
+        ],
+        "schema": "SrsRetireResult"
+      }
+    },
     "hub srs show": {
       "positionals": [
         {
@@ -29553,6 +29615,136 @@
                 "application/json": {
                   "schema": {
                     "$ref": "#/components/schemas/SrsImportResult"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/retire": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Retire Items",
+          "description": "Drop the items of the latest version that hold ``codes`` (codes or aliases), each with its subtree, as the\ndocument's next version, a draft built on the latest through the same save as any other, so its checks hold and a\ncode dropped is never given again; as an admin of the project, never the agent of a run. 422 listing each code no\nitem of the latest version holds, one dropped before included; ``dry_run`` answers what would be dropped and writes\nnothing.",
+          "operationId": "retire_items_v1_x_srs__project__documents__slug__retire_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SrsRetireIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsRetireResult"
                   }
                 }
               }
@@ -64754,6 +64946,126 @@
             "to"
           ],
           "title": "SrsRefIn"
+        },
+        "SrsRetireIn": {
+          "properties": {
+            "codes": {
+              "items": {
+                "type": "string",
+                "maxLength": 100,
+                "minLength": 1
+              },
+              "type": "array",
+              "maxItems": 500,
+              "minItems": 1,
+              "title": "Codes",
+              "description": "the codes or aliases of the items to retire"
+            },
+            "summary": {
+              "type": "string",
+              "maxLength": 500,
+              "title": "Summary",
+              "description": "the new version's; from the codes if left out",
+              "default": ""
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run",
+              "default": false
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "required": [
+            "codes"
+          ],
+          "title": "SrsRetireIn"
+        },
+        "SrsRetireResult": {
+          "properties": {
+            "document": {
+              "type": "string",
+              "title": "Document"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "the version saved, a draft; null for a dry run"
+            },
+            "dry_run": {
+              "type": "boolean",
+              "title": "Dry Run"
+            },
+            "dropped": {
+              "items": {
+                "$ref": "#/components/schemas/SrsRetiredItem"
+              },
+              "type": "array",
+              "title": "Dropped",
+              "description": "every item the version drops: each one retired and the items under it, in document order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "document",
+            "version",
+            "dry_run",
+            "dropped"
+          ],
+          "title": "SrsRetireResult"
+        },
+        "SrsRetiredItem": {
+          "properties": {
+            "key": {
+              "type": "string",
+              "title": "Key"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "section",
+                "use_case",
+                "business_rule",
+                "screen",
+                "nfr",
+                "cbr",
+                "glossary",
+                "approval_page",
+                "revision_history"
+              ],
+              "title": "Kind"
+            },
+            "code": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Code"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            }
+          },
+          "type": "object",
+          "required": [
+            "key",
+            "kind",
+            "code",
+            "title"
+          ],
+          "title": "SrsRetiredItem"
         },
         "SrsReview": {
           "properties": {
