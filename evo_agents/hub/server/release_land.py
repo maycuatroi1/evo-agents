@@ -10,15 +10,18 @@ the repo, for that repo alone with contents and pull_requests write (``pulls.wit
 whole landing and is revoked after it. Before the pull request merges, the hub reads the version VERSION_FILE names on
 the default branch's tip and on the run's commit and the release tags (``release_github.read_refs``), and refuses
 (``release_runs.land_problem``) a version that is not greater, changes the major, whose tag exists, or that the branch
-does not name. Then: the pull request opened (or the one open found), its number kept; merged at the run's commit
-alone (``pulls.merge_pull``: GitHub refuses once the branch moved), the merge commit kept; and the tag made on it
-(``pulls.create_ref``), or found there already. Each part is kept as it is done, so a pass that GitHub failed goes on
-from there: a pull request merged already gives its merge commit, one closed without a merge is refused.
+does not name. Then: the pull request opened (or the one open found), its number kept; its files read, and a change
+that shows a sign of test hacking (``release_ci.release_signs``: a test removed, an assertion removed or loosened, a
+skip added but for importorskip and a skip on one platform with its reason) is never merged; merged at the run's
+commit alone (``pulls.merge_pull``: GitHub refuses once the branch moved), the merge commit kept; and the tag made on
+it (``pulls.create_ref``), or found there already. Each part is kept as it is done, so a pass that GitHub failed goes
+on from there: a pull request merged already gives its merge commit, one closed without a merge is refused.
 
 A refusal (``land_problem``, a pull request closed, GitHub refusing a call, a tag elsewhere) marks the run refused and
-stops the cycle with the reason (``release_claims.stop_cycle``); GitHub failing marks a try, and LAND_TRIES in a row
-mark it failed and stop the cycle too. A run tagged is audited as release.tag, with the cycle's owner as actor and no
-token; its cycle stays open for the hub to follow the tag's CI.
+stops the cycle with the reason (``release_cycles.stop_cycle``, cause refused, or hacking for signs of test hacking,
+whose pull request stays open); GitHub failing marks a try, and LAND_TRIES in a row mark it failed and stop the cycle
+too (cause github). A run tagged is audited as release.tag, with the cycle's owner as actor and no token; its cycle
+stays open, and follows the tag (a row of release_tags) for the hub to watch its CI (``release_watch``).
 """
 
 from __future__ import annotations
@@ -28,14 +31,15 @@ from collections import Counter
 from dataclasses import dataclass
 
 from sqlalchemy import func, select, update
+from sqlalchemy.dialects.postgresql import insert as upsert
 from sqlalchemy.ext.asyncio import AsyncEngine
 
-from evo_agents.hub import release_runs, releases, tables
+from evo_agents.hub import judge, release_ci, release_runs, releases, tables
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit, pulls
 from evo_agents.hub.server.github import GitHubRefused, GitHubUnavailable
 from evo_agents.hub.server.github_app import GitHubApp
-from evo_agents.hub.server.release_claims import stop_cycle
+from evo_agents.hub.server.release_cycles import stop_cycle
 from evo_agents.hub.server.release_github import ReadFailed, read_refs
 from evo_agents.hub.server.run_state import write_event
 
@@ -47,6 +51,14 @@ TAGS = "refs/tags/"
 
 class Refusal(Exception):
     """Why the hub does not land a run, in words safe to show."""
+
+    cause = "refused"
+
+
+class Hacking(Refusal):
+    """The run's change shows signs of test hacking."""
+
+    cause = "hacking"
 
 
 @dataclass(frozen=True)
@@ -207,6 +219,13 @@ async def _merged(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[
         if type(number) is not int:
             raise GitHubUnavailable(f"GitHub answered without the number of the pull request of {row.branch}")
         await _save(engine, row.run_id, pull_number=number, pull_url=url if isinstance(url, str) else None)
+    files = judge.from_github_files(await pulls.pull_files(app, token, owner, name, number))
+    signs = release_ci.release_signs(files, row.repo)
+    if signs:
+        raise Hacking(
+            f"the change of {row.branch} (pull request #{number}) shows signs of test hacking: "
+            f"{release_ci.signs_text(signs)}; the hub does not merge it"
+        )
     title = f"Merge pull request #{number} from {owner}/{row.branch}"
     merge = await pulls.merge_pull(app, token, owner, name, number, sha=row.head_commit, title=title)
     await _save(engine, row.run_id, merge_commit=merge)
@@ -231,8 +250,10 @@ async def _land(engine: AsyncEngine, app: GitHubApp, token: str, where: tuple[st
     return merge
 
 
-async def _refuse(engine: AsyncEngine, row: Landing, reason: str, state: str = "refused") -> str:
-    """Mark ``row`` ``state`` (refused, or failed) for ``reason`` and stop its cycle."""
+async def _refuse(
+    engine: AsyncEngine, row: Landing, reason: str, state: str = "refused", cause: str = "refused"
+) -> str:
+    """Mark ``row`` ``state`` (refused, or failed) for ``reason`` and stop its cycle of ``cause``."""
     rr = tables.release_runs
     async with engine.begin() as conn:
         await conn.execute(
@@ -241,7 +262,7 @@ async def _refuse(engine: AsyncEngine, row: Landing, reason: str, state: str = "
             .values(land_state=state, land_reason=releases.clip_reason(reason))
         )
         await stop_cycle(
-            conn, row.cycle_id, f"the hub did not land {row.branch} of release run #{row.run_id}: {reason}"
+            conn, row.cycle_id, f"the hub did not land {row.branch} of release run #{row.run_id}: {reason}", cause
         )
         await _event(conn, row.run_id, {"text": f"The hub did not land {row.branch}: {reason}", "land_state": state})
     log.warning("release not landed", extra={"run_id": row.run_id, "state": state, "reason": reason})
@@ -263,7 +284,7 @@ async def _try_failed(engine: AsyncEngine, row: Landing, reason: str) -> str:
     log.warning("release landing tried again later", extra={"run_id": row.run_id, "tries": tries, "why": reason})
     if tries < release_runs.LAND_TRIES:
         return "waiting"
-    return await _refuse(engine, row, f"GitHub failed {tries} passes in a row: {reason}", "failed")
+    return await _refuse(engine, row, f"GitHub failed {tries} passes in a row: {reason}", "failed", "github")
 
 
 async def _done(engine: AsyncEngine, row: Landing, merge: str) -> str:
@@ -274,9 +295,14 @@ async def _done(engine: AsyncEngine, row: Landing, merge: str) -> str:
             .where(rr.c.run_id == row.run_id)
             .values(merge_commit=merge, tagged=row.tag, tagged_at=func.now(), land_state="tagged", land_reason=None)
         )
+        t = tables.release_tags
+        followed = upsert(t).values(cycle_id=row.cycle_id, tag=row.tag, commit=merge, run_id=row.run_id)
+        await conn.execute(  # a watch that saw the tag before this pass followed it as a person's: it is the run's
+            followed.on_conflict_do_update(constraint="release_tags_cycle_id_tag_key", set_={"run_id": row.run_id})
+        )
         text = (
             f"The hub merged {row.branch} as {releases.short(merge)} and tagged it {row.tag}: {row.workflow} of the "
-            "tag publishes the release."
+            "tag publishes the release, and the hub follows its CI."
         )
         await _event(conn, row.run_id, {"text": text, "tag": row.tag, "merge_commit": merge})
         await audit.record(
@@ -301,7 +327,7 @@ async def land(engine: AsyncEngine, app: GitHubApp | None, row: Landing) -> str:
     try:
         merge = await pulls.with_token(app, *where, "merge", lambda token: _land(engine, app, token, where, row))
     except Refusal as exc:
-        return await _refuse(engine, row, str(exc))
+        return await _refuse(engine, row, str(exc), cause=exc.cause)
     except GitHubUnavailable as exc:
         return await _try_failed(engine, row, str(exc))
     except GitHubRefused as exc:

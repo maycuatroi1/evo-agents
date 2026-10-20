@@ -3,8 +3,11 @@
 
 GET /v1/projects/{p}/releases (reader) says where the release stands: the schedule, or null before an admin sets one;
 whether it is paused; the moment of its next check; the latest checks, newest first, with the last one apart; and the
-cycle of the schedule that is open or stopped, with its runs and their cost against the cycle's cap, and for each run
-the version and branch it pushed and how the hub landed it (its pull request, merge commit and tag, or why not).
+cycle of the schedule that is open or stopped, with its runs and their cost against the cycle's cap, for each run the
+version and branch it pushed and how the hub landed it (its pull request, merge commit and tag, or why not), the tags
+it follows with the state of their CI, the workflow run, the tests that failed and what kept the hub from reading it
+(``actions_permission`` when the App's installation grants no actions), and for a stopped cycle why, the decision it
+asks its owner and its thread in the triage chat.
 
 PUT .../releases/schedule (admin of the project) sets the schedule: a key left out keeps what the schedule holds, or
 takes its default (``releases.DEFAULT_*``) when there is none yet. The repo is one of the project's, on GitHub; with
@@ -33,7 +36,7 @@ from sqlalchemy import Text, case, cast, column, exists, func, insert, literal, 
 from sqlalchemy.dialects.postgresql import INTERVAL
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import release_runs, releases, tables
+from evo_agents.hub import chats, release_ci, release_runs, releases, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import github_repo
 from evo_agents.hub.server import audit
@@ -147,6 +150,22 @@ class ReleaseCycleRun(BaseModel):
     land_reason: str | None = None
 
 
+class ReleaseTag(BaseModel):
+    tag: str
+    commit: str
+    run_id: int | None = Field(description="the run whose merge commit the hub tagged; null for a tag a person made")
+    ci_state: Literal[release_ci.CI_STATES] = Field(description="the CI of the schedule's workflow for the tag")
+    workflow_url: str | None = Field(description="the run of the workflow for the tag")
+    run_attempt: int | None
+    reruns: int = Field(description="times the hub ran its failed jobs again, for a fault of the infrastructure")
+    failed_tests: list[str] = Field(description="the test ids that failed, else each failed job and its step")
+    failed_jobs: list[str]
+    infra: bool = Field(description="whether the infrastructure alone failed it")
+    problem: str | None = Field(description="what kept the hub from reading its CI: actions_permission, GitHub failing")
+    watched_since: datetime = Field(description="what its deadlines count from")
+    checked_at: datetime | None
+
+
 class ReleaseCycle(BaseModel):
     id: int
     state: Literal[releases.CYCLE_STATES]
@@ -161,9 +180,13 @@ class ReleaseCycle(BaseModel):
     budget_usd: float = Field(description="what the cycle's runs may cost")
     cost_usd: float = Field(description="what they cost so far, each agent session once")
     stop_reason: str | None
+    stop_cause: Literal[release_ci.STOP_CAUSES] | None = Field(description="why it stopped last")
+    decision_id: int | None = Field(description="the decision its last stop asked the owner")
+    thread: str | None = Field(description="the thread its last stop opened in the project's triage chat")
     opened_at: datetime
     ended_at: datetime | None
     runs: list[ReleaseCycleRun]
+    tags: list[ReleaseTag] = Field(description="the tags it follows, in the order it began to")
 
 
 class ReleaseStatus(BaseModel):
@@ -282,6 +305,9 @@ async def _cycle_view(conn: AsyncConnection, cycle_id: int) -> ReleaseCycle:
     items = [
         ReleaseCycleRun(**{**row._mapping, "cost_usd": float(row.cost)}) for row in (await conn.execute(query)).all()
     ]
+    t = tables.release_tags
+    tags = [_tag_view(row) for row in (await conn.execute(select(t).where(t.c.cycle_id == cycle_id).order_by(t.c.id)))]
+    thread = chats.chat_link(found.triage_chat_id, found.triage_root_id) if found.triage_root_id else None
     return ReleaseCycle(
         id=found.id,
         state=found.state,
@@ -296,9 +322,32 @@ async def _cycle_view(conn: AsyncConnection, cycle_id: int) -> ReleaseCycle:
         budget_usd=float(found.budget_usd),
         cost_usd=round(sum(item.cost_usd for item in items), 4),
         stop_reason=found.stop_reason,
+        stop_cause=found.stop_cause,
+        decision_id=found.decision_id,
+        thread=thread,
         opened_at=found.opened_at,
         ended_at=found.ended_at,
         runs=items,
+        tags=tags,
+    )
+
+
+def _tag_view(row) -> ReleaseTag:
+    failures = row.failures or {}
+    return ReleaseTag(
+        tag=row.tag,
+        commit=row.commit,
+        run_id=row.run_id,
+        ci_state=row.ci_state,
+        workflow_url=row.workflow_url,
+        run_attempt=row.run_attempt,
+        reruns=row.reruns,
+        failed_tests=list(failures.get("ids") or []),
+        failed_jobs=[str(job.get("job")) for job in failures.get("jobs") or [] if isinstance(job, dict)],
+        infra=failures.get("infra") is True,
+        problem=row.problem,
+        watched_since=row.watched_since,
+        checked_at=row.checked_at,
     )
 
 

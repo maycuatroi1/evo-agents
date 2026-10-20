@@ -1,4 +1,4 @@
-"""The daily release of a project: its schedule, its cycles, the runs of each cycle and every check.
+"""The daily release of a project: its schedule, its cycles, the runs and the tags of each cycle and every check.
 
 Revision ID: 0067
 Revises: 0066
@@ -20,21 +20,28 @@ the commit of the target ref it started from, the packaging paths that changed, 
 when it ended (exactly when it is published or closed).
 
 release_cycles also keeps the range its check read (span: the commits from the newest tag to the target, the pull
-requests they name and the migrations the target adds, a JSON object, ``evo_agents.hub.release_runs.span_of``).
+requests they name and the migrations the target adds, a JSON object, ``evo_agents.hub.release_runs.span_of``), why
+it stopped last (stop_cause, ``evo_agents.hub.release_ci.STOP_CAUSES``, which every stop of the hub sets), and the decision
+and the thread of the project's triage chat that stop opened.
 
 release_runs holds the runs of each cycle with their mode (cut or fix) and, for a fix, the tag it fixes forward; what
 the run pushed (the version, its branch release/<version>, the commit and the agent's Decision line); and how the hub
 landed it: its pull request, the merge commit, the tag it made and when, or why it refused (land_state tagged,
 refused or failed, land_reason, land_tries).
+release_tags holds each tag a cycle follows (one row a tag of the cycle): its commit, the run whose merge commit the
+hub tagged (none for a tag a person made), when the hub began to follow it, and the CI of the schedule's workflow
+there: its state (pending, running, passed, failed, timeout), the workflow run, its attempt and start, how often the
+hub ran its failed jobs again, the failures it read (a JSON object) and what kept it from reading.
 release_checks holds every check: scheduled or manual (by an admin, requested_by), its local day, its outcome and
 reason, what it read and the cycle and run it opened; the scheduled check of a day is kept once, a failed one aside.
 
 runs.kind takes ``release``: a run on no plan and no single repo (its repos a JSON array), dispatched only by the
 release schedule (dispatched_via ``release``, ``runs_release_check``), one active at a time per project
-(``runs_active_release_key``).
+(``runs_active_release_key``). decisions.category takes ``release``, what the hub asks the owner of a cycle that
+stopped; notifications.notice_kind takes ``release``, a cycle published or its CI cannot be read.
 
-Going back deletes the release runs, drops the four tables and the index, and puts back the checks of 0066, which is
-the schema that schema 0066 runs on.
+Going back deletes the release runs (and so their decisions), the release notices, drops the five tables and the index,
+and puts back the checks of 0066, which is the schema that schema 0066 runs on.
 """
 
 import sqlalchemy as sa
@@ -76,6 +83,44 @@ VERSION = r"^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$"  # 
 BRANCH_PREFIX = "release/"  # evo_agents.hub.release_runs.BRANCH_PREFIX
 LAND_STATES = ("tagged", "refused", "failed")  # evo_agents.hub.release_runs.LAND_STATES
 MAX_URL_CHARS = 500  # evo_agents.hub.release_runs.MAX_URL_CHARS
+CI_STATES = ("pending", "running", "passed", "failed", "timeout")  # evo_agents.hub.release_ci.CI_STATES
+STOP_CAUSES = (  # evo_agents.hub.release_ci.STOP_CAUSES
+    "run_failed",
+    "run_cancelled",
+    "refused",
+    "github",
+    "hacking",
+    "budget",
+    "same_test",
+    "timeout",
+    "ci",
+)
+CATEGORIES_0066 = (  # decisions_category_check as 0045 set it
+    "deploy",
+    "delete_data",
+    "live_migration",
+    "external_send",
+    "spend_money",
+    "architecture",
+    "scope",
+    "question",
+    "triage",
+)
+CATEGORIES = (*CATEGORIES_0066, "release")  # evo_agents.hub.runs.SHOWN_DECISION_CATEGORIES
+NOTICE_KINDS_0066 = (  # notifications_notice_kind_check as 0043 set it
+    "push_default_branch",
+    "merge_default_branch",
+    "plan_finished",
+    "run_failed",
+    "curator_brief",
+    "curator_paused",
+    "author_waiting",
+    "chat_mention",
+    "chat_added",
+    "plugin_disabled",
+    "builder_proposal",
+)
+NOTICE_KINDS = (*NOTICE_KINDS_0066, "release")  # evo_agents.hub.runs.NOTICE_KINDS
 
 col = sa.column
 
@@ -206,12 +251,25 @@ def _create_cycles() -> None:
         _stamp("opened_at"),
         _stamp("updated_at"),
         _when("ended_at"),
+        sa.Column("stop_cause", sa.Text(), nullable=True),
+        sa.Column("decision_id", sa.BigInteger(), nullable=True),
+        sa.Column("triage_chat_id", sa.BigInteger(), nullable=True),
+        sa.Column("triage_root_id", sa.BigInteger(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["decision_id"], ["decisions.id"], ondelete="SET NULL", name="release_cycles_decision_id_fkey"
+        ),
         sa.ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="release_cycles_owner_id_fkey"),
         sa.ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="release_cycles_project_id_fkey"
         ),
         sa.ForeignKeyConstraint(
             ["schedule_id"], ["release_schedules.id"], ondelete="CASCADE", name="release_cycles_schedule_id_fkey"
+        ),
+        sa.ForeignKeyConstraint(
+            ["triage_chat_id"], ["chats.id"], ondelete="SET NULL", name="release_cycles_triage_chat_id_fkey"
+        ),
+        sa.ForeignKeyConstraint(
+            ["triage_root_id"], ["chat_messages.id"], ondelete="SET NULL", name="release_cycles_triage_root_id_fkey"
         ),
         sa.PrimaryKeyConstraint("id", name="release_cycles_pkey"),
         sa.CheckConstraint(
@@ -227,6 +285,7 @@ def _create_cycles() -> None:
                 _text("stop_reason", MAX_REASON_CHARS),
                 sa.or_(col("span").is_(None), sa.func.jsonb_typeof(col("span")) == "object"),
                 col("state").in_(ENDED) == col("ended_at").is_not(None),
+                sa.or_(col("stop_cause").is_(None), col("stop_cause").in_(STOP_CAUSES)),
             ),
             name="release_cycles_check",
         ),
@@ -294,6 +353,58 @@ def _create_runs() -> None:
         sa.CheckConstraint(_run_rule(), name="release_runs_check"),
     )
     op.create_index("release_runs_cycle_idx", "release_runs", ["cycle_id", "run_id"])
+
+
+def _tag_rule():
+    """What a row of release_tags holds: a tag and its commit, the state of its CI, the workflow run and its attempt,
+    the hub's runs again, the failures as a JSON object and the problem it last met."""
+    return sa.and_(
+        _text("tag", MAX_TAG_CHARS),
+        col("commit").regexp_match(OBJECT_NAME),
+        col("ci_state").in_(CI_STATES),
+        sa.or_(col("workflow_run_id").is_(None), col("workflow_run_id") > 0),
+        _text("workflow_url", MAX_URL_CHARS),
+        sa.or_(col("run_attempt").is_(None), col("run_attempt") > 0),
+        col("reruns") >= 0,
+        sa.or_(col("rerun_of_attempt").is_(None), col("rerun_of_attempt") > 0),
+        sa.or_(col("failures").is_(None), sa.func.jsonb_typeof(col("failures")) == "object"),
+        _text("problem", MAX_REASON_CHARS),
+    )
+
+
+def _create_tags() -> None:
+    op.create_table(
+        "release_tags",
+        _id(),
+        sa.Column("cycle_id", sa.BigInteger(), nullable=False),
+        sa.Column("tag", sa.Text(), nullable=False),
+        sa.Column("commit", sa.Text(), nullable=False),
+        sa.Column("run_id", sa.BigInteger(), nullable=True),
+        _stamp("created_at"),
+        _stamp("watched_since"),
+        sa.Column("ci_state", sa.Text(), server_default="pending", nullable=False),
+        sa.Column("workflow_run_id", sa.BigInteger(), nullable=True),
+        sa.Column("workflow_url", sa.Text(), nullable=True),
+        sa.Column("run_attempt", sa.Integer(), nullable=True),
+        sa.Column("reruns", sa.Integer(), server_default="0", nullable=False),
+        sa.Column("rerun_of_attempt", sa.Integer(), nullable=True),
+        _when("started_at"),
+        _when("checked_at"),
+        sa.Column("failures", postgresql.JSONB(), nullable=True),
+        sa.Column("problem", sa.Text(), nullable=True),
+        sa.ForeignKeyConstraint(
+            ["cycle_id"], ["release_cycles.id"], ondelete="CASCADE", name="release_tags_cycle_id_fkey"
+        ),
+        sa.ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="release_tags_run_id_fkey"),
+        sa.PrimaryKeyConstraint("id", name="release_tags_pkey"),
+        sa.UniqueConstraint("cycle_id", "tag", name="release_tags_cycle_id_tag_key"),
+        sa.CheckConstraint(_tag_rule(), name="release_tags_check"),
+    )
+
+
+def _replace_in(table: str, name: str, column: str, values) -> None:
+    op.drop_constraint(name, table, type_="check")
+    op.create_check_constraint(name, table, col(column).in_(values))
 
 
 def _create_checks() -> None:
@@ -364,18 +475,27 @@ def upgrade() -> None:
         unique=True,
         postgresql_where=sa.and_(col("kind") == "release", col("state").in_(ACTIVE)),
     )
+    _replace_in("decisions", "decisions_category_check", "category", CATEGORIES)
+    _replace_in("notifications", "notifications_notice_kind_check", "notice_kind", NOTICE_KINDS)
     _create_schedules()
     _create_cycles()
     _create_runs()
+    _create_tags()
     _create_checks()
 
 
 def downgrade() -> None:
-    for name in ("release_checks", "release_runs", "release_cycles", "release_schedules"):
+    for name in ("release_checks", "release_tags", "release_runs", "release_cycles", "release_schedules"):
         op.drop_table(name)
     runs = sa.table("runs", col("kind"), col("attempt"))
     for attempt in (3, 2, 1):  # a retry names the attempt before it: delete the retries first
         op.execute(runs.delete().where(runs.c.kind == "release", runs.c.attempt == attempt))
+    decisions = sa.table("decisions", col("category"))
+    op.execute(decisions.delete().where(decisions.c.category == "release"))
+    notifications = sa.table("notifications", col("notice_kind"))
+    op.execute(notifications.delete().where(notifications.c.notice_kind == "release"))
+    _replace_in("notifications", "notifications_notice_kind_check", "notice_kind", NOTICE_KINDS_0066)
+    _replace_in("decisions", "decisions_category_check", "category", CATEGORIES_0066)
     op.drop_index("runs_active_release_key", table_name="runs")
     op.drop_constraint("runs_release_check", "runs", type_="check")
     _run_checks(KINDS_0066, NO_PLAN_0066, VIA_0066)

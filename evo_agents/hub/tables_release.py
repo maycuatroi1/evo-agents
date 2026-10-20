@@ -3,11 +3,12 @@ attributes (``tables.release_schedules``, ``tables.release_cycles``, ``tables.re
 ``tables.release_checks``): queries name them there.
 
 release_schedules (0067) holds the release schedule of each project, at most one; release_cycles (0067) each cycle a
-check opened, at most one unfinished per schedule (``release_cycles_unfinished_key``); release_runs (0067) the runs of
-each cycle with their mode, what each pushed and how the hub landed it (``evo_agents.hub.release_runs``);
-release_checks (0067) every check, the scheduled one of a local day once
-(``release_checks_day_key``, a check that failed aside). runs gains ``runs_active_release_key``: a project has one
-release run active at a time. ``evo_agents.hub.releases`` describes the model.
+check opened, at most one unfinished per schedule (``release_cycles_unfinished_key``), with why it stopped and the
+decision and triage thread its stop opened; release_runs (0067) the runs of each cycle with their mode, what each pushed
+and how the hub landed it (``evo_agents.hub.release_runs``); release_tags (0067) each tag a cycle follows and the CI of
+its workflow there (``evo_agents.hub.release_ci``), one row a tag; release_checks (0067) every check, the scheduled one
+of a local day once (``release_checks_day_key``, a check that failed aside). runs gains ``runs_active_release_key``: a
+project has one release run active at a time. ``evo_agents.hub.releases`` describes the model.
 """
 
 from __future__ import annotations
@@ -105,12 +106,25 @@ def _cycles(metadata: MetaData) -> Table:
         _stamp("opened_at"),
         _stamp("updated_at"),
         _when("ended_at"),
+        Column("stop_cause", Text),  # release_ci.STOP_CAUSES: why it stopped last
+        Column("decision_id", BigInteger),  # what its last stop asked the owner, on its last run
+        Column("triage_chat_id", BigInteger),  # the thread its last stop opened in the project's triage chat
+        Column("triage_root_id", BigInteger),
+        ForeignKeyConstraint(
+            ["decision_id"], ["decisions.id"], ondelete="SET NULL", name="release_cycles_decision_id_fkey"
+        ),
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="release_cycles_owner_id_fkey"),
         ForeignKeyConstraint(
             ["project_id"], ["projects.id"], ondelete="CASCADE", name="release_cycles_project_id_fkey"
         ),
         ForeignKeyConstraint(
             ["schedule_id"], ["release_schedules.id"], ondelete="CASCADE", name="release_cycles_schedule_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["triage_chat_id"], ["chats.id"], ondelete="SET NULL", name="release_cycles_triage_chat_id_fkey"
+        ),
+        ForeignKeyConstraint(
+            ["triage_root_id"], ["chat_messages.id"], ondelete="SET NULL", name="release_cycles_triage_root_id_fkey"
         ),
         PrimaryKeyConstraint("id", name="release_cycles_pkey"),
     )
@@ -151,6 +165,36 @@ def _runs(metadata: MetaData) -> Table:
         ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="release_runs_run_id_fkey"),
         PrimaryKeyConstraint("run_id", name="release_runs_pkey"),
         Index("release_runs_cycle_idx", "cycle_id", "run_id"),
+    )
+
+
+def _tags(metadata: MetaData) -> Table:
+    return Table(
+        "release_tags",
+        metadata,
+        _id(),
+        Column("cycle_id", BigInteger, nullable=False),
+        Column("tag", Text, nullable=False),
+        Column("commit", Text, nullable=False),
+        Column("run_id", BigInteger),  # the run whose merge commit the hub tagged; null for a tag a person made
+        _stamp("created_at"),
+        _stamp("watched_since"),  # what the deadlines of its CI count from
+        Column("ci_state", Text, nullable=False, server_default="pending"),
+        Column("workflow_run_id", BigInteger),  # the run of the schedule's workflow for the tag, as GitHub numbers it
+        Column("workflow_url", Text),
+        Column("run_attempt", Integer),
+        Column("reruns", Integer, nullable=False, server_default="0"),  # the hub's runs again of its failed jobs
+        Column("rerun_of_attempt", Integer),  # the attempt the hub's last run again followed
+        _when("started_at"),  # when the run of the workflow started, as GitHub says
+        _when("checked_at"),
+        Column("failures", JSONB),  # release_ci.summary of its failed jobs
+        Column("problem", Text),  # what kept the hub from reading its CI the last time
+        ForeignKeyConstraint(
+            ["cycle_id"], ["release_cycles.id"], ondelete="CASCADE", name="release_tags_cycle_id_fkey"
+        ),
+        ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="SET NULL", name="release_tags_run_id_fkey"),
+        PrimaryKeyConstraint("id", name="release_tags_pkey"),
+        UniqueConstraint("cycle_id", "tag", name="release_tags_cycle_id_tag_key"),
     )
 
 
@@ -199,8 +243,10 @@ def _checks(metadata: MetaData) -> Table:
     return checks
 
 
-def release_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -> tuple[Table, Table, Table, Table]:
-    """The four tables of the daily release on ``metadata``, and ``runs_active_release_key`` on ``runs``, whose
+def release_tables(
+    metadata: MetaData, runs: Table, active: tuple[str, ...]
+) -> tuple[Table, Table, Table, Table, Table]:
+    """The five tables of the daily release on ``metadata``, and ``runs_active_release_key`` on ``runs``, whose
     ``active`` states hold one release run of a project at a time."""
     Index(
         "runs_active_release_key",
@@ -208,4 +254,4 @@ def release_tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -> 
         unique=True,
         postgresql_where=(runs.c.kind == "release") & runs.c.state.in_(active),
     )
-    return _schedules(metadata), _cycles(metadata), _runs(metadata), _checks(metadata)
+    return _schedules(metadata), _cycles(metadata), _runs(metadata), _tags(metadata), _checks(metadata)

@@ -27,6 +27,10 @@ says when the first of them is ready again.
 
 ``on_failed`` does it in a savepoint of the caller's transaction: whatever goes wrong inside (a label the owner does
 not clear, a full chat, a database error) rolls back to it and leaves the run failed with the notice it always had.
+
+``project_thread`` is the hub's thread of something that is no failed run, a release cycle that stopped
+(``release_cycles``): the hub writes it in the project's triage chat, with its owner put in it, and mentions no agent,
+since the owner decides.
 """
 
 from __future__ import annotations
@@ -68,6 +72,16 @@ class Thread:
     chat_id: int
     root_id: int
     link: str
+
+
+@dataclass(frozen=True)
+class About:
+    """What the chat helpers read of what a thread is about, when it is no run: its project."""
+
+    project_id: int
+    project: str
+    plan_id: str | None = None
+    run_id: int | None = None
 
 
 def _thread(chat_id: int, root_id: int) -> Thread:
@@ -177,7 +191,7 @@ async def _apart(conn: AsyncConnection, found: RunStep) -> bool:
     return plan is None or default is None or not plan.below(replace(default, integrity=UNTRUSTED))
 
 
-async def _made(conn: AsyncConnection, found: RunStep, owner: Principal, plan_id: str | None) -> int:
+async def _made(conn: AsyncConnection, found: RunStep | About, owner: Principal, plan_id: str | None) -> int:
     """The id of the triage chat of ``plan_id`` (the project's for None) the hub makes now, with ``owner`` its creator."""
     title = f"Triage: {plan_id or found.project}"[: chats.MAX_TITLE_CHARS]
     c = tables.chats
@@ -217,7 +231,9 @@ async def _as_member(conn: AsyncConnection, chat_id: int) -> tuple[ChatAccess, P
     raise refused
 
 
-async def _joined(conn: AsyncConnection, found: RunStep, owner: Principal, profile, plan_id: str | None) -> ChatAccess:
+async def _joined(
+    conn: AsyncConnection, found: RunStep | About, owner: Principal, profile, plan_id: str | None
+) -> ChatAccess:
     """The triage chat of ``plan_id`` (the project's for None) as ``owner`` sees it: made when there is none; the owner
     and agent ``profile`` put in it, as the group chat's rules let them (``put_person``, ``put_agent``)."""
     tc = tables.triage_chats
@@ -232,13 +248,36 @@ async def _joined(conn: AsyncConnection, found: RunStep, owner: Principal, profi
     return await chat_access(conn, owner, row)
 
 
+def _lock(project_id: int):
+    return select(func.pg_advisory_xact_lock(func.hashtextextended(f"triage:{project_id}", 0)))
+
+
+async def project_thread(
+    conn: AsyncConnection, project_id: int, project: str, owner_id: int, body: str
+) -> Thread | None:
+    """A thread of the hub's in the project's triage chat whose first message is ``body``, the member ``owner_id``
+    put in the chat, no agent mentioned; None while the project's triage, or the hub's chats, are off. The caller
+    holds a savepoint: a chat that cannot take the owner raises."""
+    if not await _due(conn, project_id):
+        return None
+    owner = await _person(conn, owner_id)
+    await conn.execute(_lock(project_id))
+    profile = await ensure_default(conn, project_id)
+    chat = await _joined(conn, About(project_id, project), owner, profile, None)
+    message_id, _ = await insert_message(
+        conn, chat, runs.clip(body, chats.MAX_MESSAGE_BYTES - 200), thread_root_id=None
+    )
+    log.info("triage thread opened", extra={"project": project, "chat_id": chat.chat_id, "message_id": message_id})
+    return _thread(chat.chat_id, message_id)
+
+
 async def _chat(conn: AsyncConnection, found: RunStep, owner: Principal):
     """(the triage chat of the run as ``owner`` sees it, the project's default agent): the project's (``plan_id``
     NULL), the owner and the agent put in it. A run of a plan kept apart (``_apart``) goes to the chat of its plan
     instead, and so does one whose owner the project's chat cannot take (the refusal of its checks, rolled back to a
     savepoint); for a run with no plan that refusal stands. One lock per project, taken before the savepoint so its
     rollback keeps it: two failures at once make one chat of each key."""
-    await conn.execute(select(func.pg_advisory_xact_lock(func.hashtextextended(f"triage:{found.project_id}", 0))))
+    await conn.execute(_lock(found.project_id))
     profile = await ensure_default(conn, found.project_id)
     if found.plan_id is not None and await _apart(conn, found):
         return await _joined(conn, found, owner, profile, found.plan_id), profile

@@ -1,7 +1,8 @@
 """``evo-agents hub release``: the daily release of a project (``evo_agents.hub.releases``).
 
-``release status`` shows the schedule, whether it is paused, its next check, the latest checks and the cycle open now
-(GET /v1/projects/{p}/releases). ``release set`` sets the schedule, which only an admin of the project may, and makes
+``release status`` shows the schedule, whether it is paused, its next check, the latest checks and the cycle open now,
+with its runs, the tags it follows and their CI, and for a stopped cycle why and the decision it waits for (GET
+/v1/projects/{p}/releases). ``release set`` sets the schedule, which only an admin of the project may, and makes
 that admin its owner (PUT .../releases/schedule): each option left out keeps what the schedule holds, or its default
 the first time; ``--path`` repeats and replaces the packaging paths whole. ``release pause`` pauses it, cancels the
 release runs still queued and closes an open cycle left idle; ``release resume`` lets it check again; ``release run``
@@ -90,13 +91,28 @@ def _print_status(status: dict) -> None:
             f"{money(cycle['budget_usd'])}"
         )
         if cycle.get("stop_reason"):
-            print(f"    stopped: {cycle['stop_reason']}")
+            print(f"    stopped ({cycle.get('stop_cause') or '-'}): {cycle['stop_reason']}")
+        if cycle["state"] == "stopped" and cycle.get("decision_id"):
+            print(f"    waits for the owner's answer to decision #{cycle['decision_id']}")
         for run in cycle["runs"]:
             print(f"    run #{run['run_id']} {run['mode']}: {run['state']}, {money(run['cost_usd'])}{_landed(run)}")
+        for tag in cycle.get("tags") or []:
+            print(f"    tag {tag['tag']}: CI {tag['ci_state']}{_ci(tag)}")
     if status["last_check"] is not None:
         print(f"  last check {_check_line(status['last_check'])}")
     else:
         print("  no check yet")
+
+
+def _ci(tag: dict) -> str:
+    """The CI of a tag the cycle follows, for its line of `release status`."""
+    said = f", {tag['workflow_url']}" if tag.get("workflow_url") else ""
+    if tag.get("failed_tests"):
+        shown = ", ".join(tag["failed_tests"][:3]) + (" and more" if len(tag["failed_tests"]) > 3 else "")
+        said += f", failed: {shown}"
+    if tag.get("reruns"):
+        said += f", run again {tag['reruns']} time(s)"
+    return said + (f"; {tag['problem']}" if tag.get("problem") else "")
 
 
 def _landed(run: dict) -> str:

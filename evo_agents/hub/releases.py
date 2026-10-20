@@ -177,6 +177,33 @@ def cut_title(repo: str, base_tag: str | None, target_ref: str, target_commit: s
     return title[:MAX_TITLE_CHARS]
 
 
+def fix_title(repo: str, red_tag: str) -> str:
+    """The title of a fix run: the red tag it fixes forward."""
+    return f"Release {repo}: fix {red_tag} forward with the next patch"[:MAX_TITLE_CHARS]
+
+
+def run_values(*, project_id: int, owner_id: int, repo: str, title: str, budget: dict) -> dict:
+    """The columns of a run of a cycle (kind release): dispatched as the cycle's owner by the release schedule, pinned
+    to no worker, headless, with ``budget`` (``run_budget``) and tried once."""
+    return {
+        "kind": RELEASE_KIND,
+        "project_id": project_id,
+        "title": title,
+        "dispatched_by": owner_id,
+        "dispatched_via": "release",
+        "pinned_worker_id": None,
+        "requested_runtime": RUNTIME,
+        "runtime": RUNTIME,
+        "model": None,
+        "mode": "headless",
+        "approval": "auto",
+        "timeout_s": budget["max_seconds"] + GRACE_SECONDS,
+        "max_attempts": MAX_ATTEMPTS,
+        "repos": [{"repo": repo}],
+        "budget": budget,
+    }
+
+
 def run_budget(left_usd: float) -> dict:
     """The caps of a release run when ``left_usd`` of its cycle's cap is left: that cost, and RUN_MINUTES of agent
     time."""

@@ -979,6 +979,6 @@ curator_changes, curator_repo_checks, curator_ledger, replay_tasks, curator_repl
 )  # the Curator's changes, ledger and replays (0017, 0018, 0019, 0056), and runs_active_replay_key
 curator_playbook, curator_playbook_deltas = tables_curator.playbook_tables(metadata)  # 0060
 kg_ingests, kg_configs, kg_pending_runs, kg_builds, kg_source_files, kg_health = tables_kg.kg_tables(metadata)
-release_schedules, release_cycles, release_runs, release_checks = tables_release.release_tables(
+release_schedules, release_cycles, release_runs, release_tags, release_checks = tables_release.release_tables(
     metadata, runs, RUN_ACTIVE
 )
