@@ -15,34 +15,37 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 - the caller needs a live machine token as ``Authorization: Bearer``, else 401: the web session cookie is not taken;
 - or the live token of a worker with X-Evo-Run, the id of a run that worker holds now (``runs.HELD_STATES``, waiting
   among them) and whose owner still holds a grant on its project; else 403, as for a worker token without the header.
-  The caller is then the agent of that run: its owner with a ``RunScope`` (``security``), the run's project alone,
-  the owner's grant there capped at writer, and never a hub admin, so ``projects.project_access`` holds every tool to
+  The caller is then the agent of that run: its owner, the member who dispatched it (on a shared worker another member
+  than the worker's), with a ``RunScope`` (``security``), the run's project alone, the owner's grant there capped at
+  writer, and never a hub admin, so ``projects.project_access`` holds every tool to
   it. Once the run leaves the held states, its id opens nothing. The agent of a judge run gets the code graph's tools
   and hub_projects alone (JUDGE_TOOLS): never a run's events, a plan, a memory or a digest, which the Builder it judges
-  wrote or could have written for it. ``tools/list`` shows a run's agent only what it may call (``mcp_tools.offered``):
-  a judge run JUDGE_TOOLS, any other run all but ask_member. X-Evo-Run with a machine token is 400;
+  wrote or could have written for it; the agent of a replay run gets none of the tools (REPLAY_TOOLS), which hold the
+  project as it is now. ``tools/list`` shows a run's agent only what it may call (``mcp_tools.offered``): a judge run
+  JUDGE_TOOLS, a replay run none, any other run all but ask_member. X-Evo-Run with a machine token is 400;
 - X-Evo-Project names the session's project and X-Evo-Sink its sink (default claude-code@anthropic); a malformed one is
   400. The session of a run's agent is the run's project: X-Evo-Project naming another is 403.
 
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 25 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+The 32 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
 kg_more continues any cut result of the same user and session project whose audience the caller still holds
 (``kg_audience``), with or without a graph. chat_message and chat_thread read the messages of group chats whole, as
 ``chat_read`` rules who may, from the chats and grants as they are at each call. The others call the
 hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
-review run reads (the night's figures, session digests, the events of a run, decisions) in this process, so they read
-and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the write rule,
-revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text goes through
-the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a tool's answer
-is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its structuredContent comes only
-when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend hub`` does. A refusal of the hub
-becomes a tool error carrying its message, an unexpected failure one carrying the request id only; so does a tool of a
-feature a hub admin turned off (``hub_settings.require_tool``: kg_*, curator_figures, chat_*). The log has one
-line per tool call with its name, project, outcome and duration, never its arguments or its result.
+review run reads (the night's figures, session digests, the events of a run, decisions, replays, and the project's
+whole history, ``history_mcp``) in this process, so they read and write under the same rules: the read rule of
+``evo_agents.hub.access`` through the session's sink, the write rule, revisions, conflicts and audit rows. Their
+arguments are checked against their schema first, and their text goes through the envelope of ``kg serve``: over
+CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a tool's answer is its text alone
+(``evo_agents.kg.serve.for_model``), which is what the model reads; its structuredContent comes only when the call's
+``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend hub`` does. A refusal of the hub becomes a tool
+error carrying its message, an unexpected failure one carrying the request id only; so does a tool of a feature a hub
+admin turned off (``hub_settings.require_tool``: kg_*, the Curator's, chat_*). The log has one line per tool call with
+its name, project, outcome and duration, never its arguments or its result.
 """
 
 from __future__ import annotations
@@ -51,8 +54,9 @@ import json
 import logging
 import re
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
+from functools import partial
 from urllib.parse import urlsplit
 
 import psycopg
@@ -64,40 +68,37 @@ from mcp.server.transport_security import DEFAULT_MAX_REQUEST_BODY_SIZE, Transpo
 from mcp_types import CallToolResult, ListToolsResult
 from mcp_types import Tool as McpTool
 from pydantic import ValidationError
-from sqlalchemy import and_, select
 from sqlalchemy import exc as sa_exc
-from sqlalchemy.ext.asyncio import AsyncConnection
 from starlette.requests import Request
 
 from evo_agents import __version__
-from evo_agents.hub import runs, tables
-from evo_agents.hub.access import has_role
+from evo_agents.hub import runs
 from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
 from evo_agents.hub.mcp_tools import (
     CHAT_TOOL_NAMES,
     INSTRUCTIONS,
-    JUDGE_TOOLS,
     KG_TOOL_NAMES,
     LOCAL_RUN_HEADER,
     PROJECT_HEADER,
     RUN_HEADER,
+    RUN_TOOLS,
     SCHEMAS,
     SERVER_NAME,
     SINK_HEADER,
     TOOLS,
     offered,
 )
-from evo_agents.hub.memory import AGENT_SINK, FRONTMATTER, HARNESS, frontmatter, memory_type
+from evo_agents.hub.memory import AGENT_SINK, HARNESS, memory_type
 from evo_agents.hub.mirror import ordered_plan, render
 from evo_agents.hub.plan_cli import ATTEMPTS, _check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
-from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server import (
     chat_read,
     decisions,
     digests,
+    history_mcp,
     hub_settings,
     kg,
     kg_audience,
@@ -107,13 +108,25 @@ from evo_agents.hub.server import (
     plugin_tools,
     projects,
     proposals,
+    replays,
     run_events,
     skills,
     tool_stats,
 )
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import error_response
-from evo_agents.hub.server.mcp_text import TEXT_CHARS, digest_json, event_lines, fit_digest, one_line
+from evo_agents.hub.server.mcp_run import MOUNT, run_principal
+from evo_agents.hub.server.mcp_text import (
+    EXCERPT,
+    TEXT_CHARS,
+    digest_json,
+    event_lines,
+    fit_digest,
+    memory_about,
+    memory_line,
+    memory_where,
+    one_line,
+)
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import (
     JOIN_HINT,
@@ -123,7 +136,6 @@ from evo_agents.hub.server.security import (
     WORKER,
     WWW_AUTHENTICATE,
     Principal,
-    RunScope,
     authenticate,
 )
 from evo_agents.kg.serve import Session, _error, for_model, wants_data
@@ -131,7 +143,6 @@ from evo_agents.schema import errors, validate
 
 log = logging.getLogger(__name__)
 
-MOUNT = "/mcp"
 ENDPOINT = MOUNT + "/"  # the path the mounted app answers at
 MAX_BODY = DEFAULT_MAX_REQUEST_BODY_SIZE  # 4 MiB: a memory escaped as JSON fits several times over
 LOOPBACK = ("127.0.0.1", "localhost", "[::1]")
@@ -139,7 +150,6 @@ EVERY_INTERFACE = ("0.0.0.0", "::", "")
 SESSION = "evo_mcp"  # the key of McpSession in request.state
 SHOWN_PROBLEMS = 5
 ASK_WAIT_SECONDS = 20  # ask_member holds this long for an answer, well inside the proxy's 120 s and a tool's deadline
-EXCERPT = 200  # characters of a memory shown by memory_search
 PLAN_WIDTH = 110  # as the copies in git
 _PROJECT = re.compile(PROJECT_NAME)
 _SINK = re.compile(r"[^\x00-\x1f\x7f]{1,100}")
@@ -152,31 +162,12 @@ RUN_ONLY = (
     f"a worker token opens {MOUNT} only for the agent of a run its worker holds, named in {RUN_HEADER}: "
     "`evo-agents hub mcp` sends it inside a run"
 )
-NOT_HELD = (
-    f"this worker does not hold run {{run}} now: it ended, or another worker holds it, and {MOUNT} opens for the "
-    "agent of a run its worker holds only"
-)
-
-
-def _held_run(token_id: int, run_id: int):
-    """The run ``run_id`` that the live worker of token ``token_id`` holds for its owner: its state, its project and
-    the owner's grant there (role and max_level None without one)."""
-    workers, runs, projects, grants = tables.workers, tables.runs, tables.projects, tables.grants
-    return (
-        select(runs.c.state, projects.c.name, grants.c.role, grants.c.max_level, runs.c.kind)
-        .select_from(
-            workers.join(runs, and_(runs.c.worker_id == workers.c.id, runs.c.dispatched_by == workers.c.owner_id))
-            .join(projects, projects.c.id == runs.c.project_id)
-            .outerjoin(grants, and_(grants.c.project_id == runs.c.project_id, grants.c.user_id == workers.c.owner_id))
-        )
-        .where(workers.c.token_id == token_id, workers.c.revoked_at.is_(None), runs.c.id == run_id)
-    )
-
-
-JUDGE_ONLY = (  # what a judge run may call is mcp_tools.JUDGE_TOOLS
-    "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is not for "
-    "a judge run"
-)
+KIND_ONLY = {  # what a judge run, a replay run and a history run may call is mcp_tools.RUN_TOOLS
+    "judge": "the Judge reads the proposal, the diff and the checks its run was given, and the code graph; {tool} is "
+    "not for a judge run",
+    "replay": "a replay run does a past step from its base commit alone; {tool} is not for a replay run",
+    "history": "a history run reads the batch in its prompt alone; {tool} is not for a history run",
+}
 
 
 class Refusal(Exception):
@@ -328,7 +319,7 @@ class McpGate:
             principal = await authenticate(engine, token, kind, config)
             if principal is not None and kind == WORKER:
                 async with engine.begin() as conn:
-                    principal = replace(principal, scope=await run_scope(conn, principal, int(run)))
+                    principal = await run_principal(conn, principal, int(run))
         except (psycopg.OperationalError, sa_exc.OperationalError) as exc:  # PoolTimeout is one; bugs stay 500s
             log.warning("cannot check a credential: database unavailable", extra={"error": type(exc).__name__})
             return error_response(request, 503, "the hub database is unavailable; try again shortly")
@@ -341,19 +332,6 @@ class McpGate:
             return _unauthorized(request, f"the {what} is revoked, expired or unknown: {hint}")
         request.state.principal = principal
         return None
-
-
-async def run_scope(conn: AsyncConnection, user: Principal, run_id: int) -> RunScope:
-    """The scope of the agent of run ``run_id`` for the worker whose token ``user`` authenticated: the run's project,
-    the owner's grant there with its role capped at writer. HTTPException 403 when that worker does not hold the run
-    now (another worker's, one that ended, none) or the owner holds no grant on the project any more."""
-    row = (await conn.execute(_held_run(user.token_id, run_id))).first()
-    if row is None or row.state not in HELD_STATES:
-        raise HTTPException(403, NOT_HELD.format(run=run_id))
-    _, project, role, max_level, kind = row
-    if role is None:
-        raise HTTPException(403, f"the owner of run {run_id} holds no grant on project {project} any more")
-    return RunScope(run_id, project, "writer" if has_role(role, "writer") else role, max_level, kind)
 
 
 def _unauthorized(request: Request, message: str):
@@ -391,26 +369,6 @@ def _problems(exc: ValidationError) -> str:
     return "; ".join(found)
 
 
-def _where(memory) -> str:
-    if memory.scope == "project":
-        return f"project {memory.project}, {memory.location}"
-    return f"personal, {memory.location}"
-
-
-def _summary_line(memory) -> str:
-    deleted = ", deleted" if memory.deleted else ""
-    return f"[{memory.id}] {memory.name}: {memory.type}, {_where(memory)}, revision {memory.revision}{deleted}"
-
-
-def _about(body: str) -> str:
-    """The description of a memory's frontmatter, else the start of its text."""
-    described = frontmatter(body).get("description")
-    if isinstance(described, str) and described.strip():
-        return one_line(described, EXCERPT)
-    found = FRONTMATTER.match(body)
-    return one_line(body[found.end() :] if found else body, EXCERPT)
-
-
 class HubMcp(MCPServer):
     """The hub's MCP server: ``mcp_tools.TOOLS``, answered for the caller ``McpGate`` let through."""
 
@@ -439,6 +397,8 @@ class HubMcp(MCPServer):
             "digest_show": self._digest_show,
             "run_events": self._run_events,
             "decision_list": self._decision_list,
+            "curator_replay": partial(self._delegated, replays.mcp_answer),
+            **{name: partial(self._delegated, partial(history_mcp.answer, name)) for name in history_mcp.NAMES},
         }
 
     async def list_tools(self) -> list[McpTool]:
@@ -486,8 +446,8 @@ class HubMcp(MCPServer):
 
     async def _answer(self, caller: Caller, name: str, arguments: dict, request_id) -> dict:
         scope = caller.user.scope
-        if scope is not None and scope.kind == "judge" and name not in JUDGE_TOOLS:
-            return _error(JUDGE_ONLY.format(tool=name))
+        if scope is not None and scope.kind in RUN_TOOLS and name not in RUN_TOOLS[scope.kind]:
+            return _error(KIND_ONLY[scope.kind].format(tool=name))
         if plugin_tools.split(name) is not None:
             return await plugin_tools.answer(
                 self.hub.state, caller.user, caller.project, name, arguments, sink=caller.sink
@@ -573,8 +533,9 @@ class HubMcp(MCPServer):
         )
         lines, results = [], []
         for memory in found.items:
-            lines += [_summary_line(memory), f"    {_about(memory.body)}"]
-            results.append({**memory.model_dump(mode="json", exclude={"body"}), "description": _about(memory.body)})
+            about = memory_about(memory.body)
+            lines += [memory_line(memory), f"    {about}"]
+            results.append({**memory.model_dump(mode="json", exclude={"body"}), "description": about})
         where = f" in project {project}" if project else " among your personal memories" if scope == "personal" else ""
         text = "\n".join(lines) or f"no memory you can see{where} matches the query"
         data = {"results": results, "summary": f"{len(results)} memories", **({"project": project} if project else {})}
@@ -583,7 +544,7 @@ class HubMcp(MCPServer):
     async def _memory_get(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         memory = await memories.show(caller.request, arguments["id"], caller.user, sink=caller.sink)
         updated = f"updated {memory.updated_at:%Y-%m-%d %H:%M} UTC by {memory.updated_by}"
-        text = f"{_summary_line(memory)}, {updated}\n\n{memory.body}"
+        text = f"{memory_line(memory)}, {updated}\n\n{memory.body}"
         data = {"memory": memory.model_dump(mode="json"), "summary": f"memory {memory.id}"}
         return text, {**data, **({"project": memory.project} if memory.project else {})}
 
@@ -623,7 +584,7 @@ class HubMcp(MCPServer):
             raise Refusal(payload["message"] + held)
         verb = "created" if outcome.created else "changed" if outcome.changed else "unchanged: the hub held this"
         text = (
-            f"Memory {outcome.name} {verb} on the hub ({_where(outcome)}): id {outcome.id}, revision "
+            f"Memory {outcome.name} {verb} on the hub ({memory_where(outcome)}): id {outcome.id}, revision "
             f"{outcome.revision}. Nothing was written on this machine: `evo-agents hub memory pull` brings it into "
             "the memory directory."
         )
@@ -881,6 +842,12 @@ class HubMcp(MCPServer):
         text = head + "\n" + json.dumps(found.figures, ensure_ascii=False, indent=1, default=str)
         data = {**found.model_dump(mode="json"), "summary": f"figures of the night of {found.night}"}
         return text, data
+
+    async def _delegated(self, answer, caller: Caller, arguments: dict) -> tuple[str, dict]:
+        """A tool another module answers: ``answer(request, project, user, arguments, sink=...)``."""
+        project = self._project(caller, arguments)
+        await self._readable(caller, project)
+        return await answer(caller.request, project, caller.user, arguments, sink=caller.sink)
 
     async def _digest_list(self, caller: Caller, arguments: dict) -> tuple[str, dict]:
         project = self._project(caller, arguments)

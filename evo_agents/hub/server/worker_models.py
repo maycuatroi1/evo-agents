@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field, model_validator
 from evo_agents.hub import runs
 from evo_agents.hub.credentials import DISPATCH_FROM
 from evo_agents.hub.server.admin import PROJECT_NAME
-from evo_agents.hub.server.runs.models import NightlyRead, SelfUpdateReport
+from evo_agents.hub.server.runs.models import KgSyncReport, NightlyRead, SelfUpdateReport
 from evo_agents.plugins.manifest import PLUGIN_ID
 
 WORKER_NAME = r"^[A-Za-z0-9][A-Za-z0-9._-]{0,99}$"  # as the workers table accepts it
@@ -119,9 +119,20 @@ class Worker(BaseModel):
         description="its owner locked its version: its daemon stays on the evo-agents it runs and does not update "
         "itself to the tag nightly"
     )
+    shared: bool = Field(
+        False,
+        description="its owner shares it: it also takes the runs of every member who holds writer on a project it "
+        "serves, one member's runs at a time; listed to those members too, who see it but cannot change it",
+    )
     self_update: WorkerSelfUpdate | None = Field(
         description="what its daemon last said of updating itself to the tag nightly; null when its last heartbeat "
         "said nothing of it, as an older daemon does"
+    )
+    kg_sync: KgSyncReport | None = Field(
+        None,
+        description="what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on "
+        "duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat "
+        "said nothing of it",
     )
     update_now: WorkerUpdateNow | None = Field(
         description="the last Update now its owner or a hub admin asked for, open or ended; null when none was"
@@ -180,11 +191,17 @@ class WorkerUpdate(BaseModel):
         description="true: its daemon stays on the evo-agents it runs; false: it updates itself to the tag nightly "
         "again, once idle",
     )
+    shared: bool | None = Field(
+        None,
+        description="true: it also takes the runs of every member who holds writer on a project it serves; false: "
+        "its owner's runs alone, every worker's default",
+    )
 
     @model_validator(mode="after")
     def _some_field(self) -> WorkerUpdate:
-        if all(value is None for value in (self.slots, self.labels, self.name, self.plugins, self.version_locked)):
-            raise ValueError("name at least one of slots, labels, name, plugins and version_locked to change")
+        fields = (self.slots, self.labels, self.name, self.plugins, self.version_locked, self.shared)
+        if all(value is None for value in fields):
+            raise ValueError("name at least one of slots, labels, name, plugins, version_locked and shared to change")
         return self
 
 

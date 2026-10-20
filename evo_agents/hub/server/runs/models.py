@@ -105,7 +105,9 @@ class Dispatch(BaseModel):
     )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     mode: Literal[runs.MODES] = "headless"
-    worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours")
+    worker_id: int | None = Field(
+        None, ge=1, le=MAX_ID, description="pin the runs to this worker of yours, or one shared with you in the project"
+    )
     approval: Literal[runs.APPROVALS] = Field("review", description="auto: verified runs mark the step done")
     timeout_min: int = Field(60, ge=5, le=240)
     model: ModelName | None = Field(
@@ -131,7 +133,12 @@ class AuthorRunDispatch(BaseModel):
         description=f"what the plan should achieve, in the member's words: at most {author.MAX_REQUEST_BYTES} bytes "
         "of UTF-8",
     )
-    worker_id: int = Field(ge=1, le=MAX_ID, description="the worker of yours the run goes to; an author run is pinned")
+    worker_id: int = Field(
+        ge=1,
+        le=MAX_ID,
+        description="the worker of yours, or one shared with you in the project, the run goes to; an author run is "
+        "pinned",
+    )
     plan_id: str | None = Field(
         None,
         pattern=PLAN_ID,
@@ -151,7 +158,9 @@ class AuthorRunDispatch(BaseModel):
 
 class PlanRunDispatch(BaseModel):
     plan_id: str = Field(pattern=PLAN_ID)
-    worker_id: int | None = Field(None, ge=1, le=MAX_ID, description="pin the run to this worker of yours")
+    worker_id: int | None = Field(
+        None, ge=1, le=MAX_ID, description="pin the run to this worker of yours, or one shared with you in the project"
+    )
     runtime: RuntimeName = Field("any", description=RUNTIME_HELP)
     model: ModelName | None = Field(
         None, description="the model to use, as its runtime names it (opencode: provider/model); null: the runtime's"
@@ -373,12 +382,48 @@ class PlanCopy(BaseModel):
     body: dict
 
 
+class ReplayTask(BaseModel):
+    """The task a replay run does again (``evo_agents.hub.replay``): a step of a plan done before, in its repo, from its
+    base commit (null until a replay of it read it from its commits)."""
+
+    id: int
+    plan_id: str
+    step_key: str
+    repo: str
+    title: str | None
+    what: str
+    verify: list[str] = Field(description="the step's verify, one shell line: the worker runs it on each arm's work")
+    commits: list[str] = Field(description="the commits the step made, as its evidence or a run of it named them")
+    base_sha: str | None = Field(description="the first parent of the oldest of its commits; null: the worker finds it")
+
+
+class ReplaySpec(BaseModel):
+    """What the worker of a replay run is told besides the change's branch and head: the replay, its task, and the
+    change's repo, whose harness files the two arms run with."""
+
+    replay_id: int
+    task: ReplayTask
+    repo: str = Field(description="the change's repo")
+
+
+class HistorySpec(BaseModel):
+    """What the worker of a history run is told (``evo_agents.hub.server.history``): how it reads the project's
+    history in batches."""
+
+    batch_items: int = Field(description="items one batch reads at most")
+    batch_chars: int = Field(description="characters of excerpts one batch reads at most")
+    batch_turns: int = Field(description="turns of the agent on one batch")
+    naming_share: float = Field(description="the share of the run's caps kept for naming the clusters")
+
+
 class CuratorSpec(BaseModel):
     """What the worker of a run of the Curator (``evo_agents.hub.server.changes``) is told: the run's role, the
-    charter's protected paths its watchdog compares the worktrees with, and for a Builder or a Judge the change, its
-    branch, its forge and its pull request; for a Judge the commit to judge."""
+    charter's protected paths its watchdog compares the worktrees with, and for a Builder, a Judge or a replay the
+    change, its branch, its forge and its pull request; for a Judge the commit to judge, for a replay the change's
+    head, its task and its own key (``evo_agents.hub.server.replays``), and for a history run its batches and its own
+    key (``evo_agents.hub.server.history``)."""
 
-    role: Literal["reviewer", "builder", "judge"]
+    role: Literal["reviewer", "builder", "judge", "replay", "history"]
     protected_paths: list[str] = Field(default_factory=list, description="globs of the charter, repo:glob for one repo")
     change_id: int | None = None
     branch: str | None = Field(None, description="curator/..., the one branch a Builder pushes")
@@ -390,6 +435,18 @@ class CuratorSpec(BaseModel):
         None,
         description="a judge run's own key, for GET .../judge and POST .../verdict (X-Evo-Judge-Key); the daemon keeps "
         "it in memory alone, never in a file, an environment or a log line",
+    )
+    replay: ReplaySpec | None = Field(None, description="a replay run's replay and task; null for any other run")
+    replay_key: str | None = Field(
+        None,
+        description="a replay run's own key, for POST .../replay (X-Evo-Replay-Key); the daemon keeps it as a judge "
+        "run's",
+    )
+    history: HistorySpec | None = Field(None, description="a history run's batches; null for any other run")
+    history_key: str | None = Field(
+        None,
+        description="a history run's own key, for POST .../history/next and .../history/report (X-Evo-History-Key); "
+        "the daemon keeps it as a judge run's",
     )
 
 
@@ -622,6 +679,62 @@ class SelfUpdateReport(BaseModel):
     )
 
 
+KG_PROJECT = r"^[a-z0-9][a-z0-9-]{0,99}$"  # a project's name, as evo_agents.hub.server.admin.PROJECT_NAME
+KgSyncError = Annotated[str, Field(min_length=1, max_length=runs.KG_SYNC_ERROR_CHARS)]
+
+
+class KgSyncSource(BaseModel):
+    """What the daemon last did for one git source of a project whose night shift it is on duty for."""
+
+    source: str = Field(min_length=1, max_length=200, pattern=LINE, description="the source's id in knowledge.yaml")
+    status: str = Field(
+        pattern=RUN_KIND,
+        description="ok, the source was read, or found at the commit it read last, and every run of it is on the hub; "
+        "failed, reading it, merging the hub's runs of it or pushing went wrong (error says how); skipped, the worker "
+        "does not read it (error says why). A status this hub does not know is kept as named (runs.KG_SYNC_STATES)",
+    )
+    error: KgSyncError | None = None
+    ref: str | None = Field(None, min_length=1, max_length=255, pattern=LINE, description="the ref it reads")
+    commit: str | None = Field(None, pattern=OBJECT_NAME, description="the commit its last ok read read")
+    behind: int | None = Field(
+        None, ge=0, description="commits of the remote's default branch that commit lacked when it was read"
+    )
+    checked_at: datetime | None = Field(None, description="when the daemon last looked at the source")
+    read_at: datetime | None = Field(None, description="when the commit it holds was last read")
+    pushed_at: datetime | None = Field(None, description="when it last pushed a run of the source")
+    pulled: int = Field(0, ge=0, description="runs of other machines the last look merged from the hub")
+    pushed: int = Field(0, ge=0, description="runs the last look pushed")
+
+
+class KgSyncProject(BaseModel):
+    """What the daemon last did for one project whose night shift it is on duty for."""
+
+    project: str = Field(pattern=KG_PROJECT)
+    checked_at: datetime = Field(description="when the daemon last looked at the project")
+    error: KgSyncError | None = Field(
+        None,
+        description="what stopped the look before any source: no checkout of the harness here, a knowledge.yaml that "
+        "does not load, or a hub that refused the push",
+    )
+    sources: list[KgSyncSource] = Field(default_factory=list, max_length=runs.MAX_KG_SYNC_SOURCES)
+
+
+class KgSyncReport(BaseModel):
+    """What a daemon of feature kg_sync last did to keep the graphs of the projects it is on duty for fresh."""
+
+    projects: list[KgSyncProject] = Field(default_factory=list, max_length=runs.MAX_KG_SYNC_PROJECTS)
+
+
+class KgDuty(BaseModel):
+    """A project whose graph the daemon keeps fresh: its night shift names this worker, which serves it."""
+
+    project: str
+    received_at: datetime | None = Field(
+        description="when the hub last took a run of the project's graph, from any machine: a daemon that saw an "
+        "earlier time merges the hub's runs and looks at the project's sources again; null when it holds none"
+    )
+
+
 class HeartbeatRequest(BaseModel):
     runtimes: dict[RuntimeName, RuntimeReport] = Field(
         default_factory=dict,
@@ -666,6 +779,11 @@ class HeartbeatRequest(BaseModel):
         None,
         description="what the daemon last found of updating itself to the tag nightly; each heartbeat sets what the "
         "hub shows, so a daemon sends it every time once it has one",
+    )
+    kg_sync: KgSyncReport | None = Field(
+        None,
+        description="for a daemon of feature kg_sync: what it last did for each project of kg_sync in the answer; each "
+        "heartbeat sets what the hub shows, and none clears it, as from a daemon whose sync is off",
     )
 
     def stored(self) -> tuple[dict, dict]:
@@ -760,11 +878,16 @@ class HeartbeatAnswer(BaseModel):
         description="for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a "
         "project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise",
     )
+    kg_sync: list[KgDuty] = Field(
+        default_factory=list,
+        description="for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph "
+        "is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise",
+    )
     nightly: NightlyRead | None = Field(
         None,
         exclude_if=_absent,
         description="the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it "
-        "instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0052",
+        "instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0064",
     )
     update_now: UpdateNowRequest | None = Field(
         None,

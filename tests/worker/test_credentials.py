@@ -31,7 +31,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents.hub.credentials import Lease
-from evo_agents.worker import credentials, interactive
+from evo_agents.worker import credential_commands, credentials, interactive
 from evo_agents.worker.credentials import MISSING_NOTE, RunCredentials
 from evo_agents.worker.home import WorkerHome
 from tests.worker.git_http import GitHttp
@@ -258,12 +258,12 @@ def test_an_http_origin_a_lease_covers_is_rewritten_to_https_and_its_helper_keye
 
 def test_git_reads_the_attributes_its_helper_gets_and_the_helper_is_this_evo_agents():
     lines = ["protocol=https", "host=github.com", "path=maycuatroi1/evo-agents.git", "", "ignored=after"]
-    assert credentials.read_attributes(line + "\n" for line in lines) == {
+    assert credential_commands.read_attributes(line + "\n" for line in lines) == {
         "protocol": "https",
         "host": "github.com",
         "path": "maycuatroi1/evo-agents.git",
     }
-    found = credentials.read_attributes(["url=http://127.0.0.1:8080/origin.git\n"])
+    found = credential_commands.read_attributes(["url=http://127.0.0.1:8080/origin.git\n"])
     assert (found["protocol"], found["host"], found["path"]) == ("http", "127.0.0.1:8080", "origin.git")
     helper = credentials.helper_command(9)
     assert helper.startswith("!") and helper.endswith(" worker git-credential --run 9")
@@ -947,7 +947,7 @@ def test_op_open_asks_the_chat_runs_opener_on_a_socket_it_opens_without_leases(m
         await leases.take(StubHub({"leases": []}), {})
         await other.take(StubHub({"leases": []}), {})
         exists = credentials.socket_path(machine.worker, RUN).exists()
-        answer = await asyncio.to_thread(credentials.ask_open, machine.worker, RUN, "app")
+        answer = await asyncio.to_thread(credential_commands.ask_open, machine.worker, RUN, "app")
         blank = await asyncio.to_thread(credentials.ask, machine.worker, RUN, {"op": "open", "repo": " "})
         machine.worker.save_run(record)
         printed = await run([*command, "app"], env)
@@ -956,7 +956,7 @@ def test_op_open_asks_the_chat_runs_opener_on_a_socket_it_opens_without_leases(m
         await leases.release()
         machine.worker.save_run(record)
         gone = await run([*command, "app"], env)
-        none = await asyncio.to_thread(credentials.ask_open, machine.worker, RUN + 1, "app")
+        none = await asyncio.to_thread(credential_commands.ask_open, machine.worker, RUN + 1, "app")
         return exists, answer, blank, printed, plan, gone, none
 
     exists, answer, blank, printed, plan, gone, none = asyncio.run(go())

@@ -218,11 +218,11 @@ project is what the project granted that its installed version still asks for, c
 | --- | --- | --- |
 | `runs:read` | read the project's runs, their events and their outcomes | the `run.state` events; the bridge's `runs.list` and `runs.get` |
 | `plans:read` | read the project's plans | the `plan.step` events; the bridge's `plans.list` and `plans.get` |
-| `chats:read` | read the project's group chats | the `chat.message` events |
+| `chats:read` | read the project's group chats | the `chat.message` events; a core plugin's `read_message` and `chat_history_items` (section The core plugin API) |
 | `memories:read` | read the project's memories | the bridge's `memories.list` |
 | `notifications:send` | send notifications to the project's members | an isolated plugin's channel, which gets the project's notifications |
 | `runs:dispatch` | dispatch runs in the project | handing tasks to the plugin's own agent types the project enabled, through the hub's API for plugins, and the `task.result` events (section Agent types) |
-| `chats:write` | post messages in the project's group chats | nothing yet: no route of the hub posts a plugin's message |
+| `chats:write` | post messages in the project's group chats | a core plugin's `open_direct_chat` and `send_message`, as a member whose channel it is (section The core plugin API); no route of the hub posts an isolated plugin's message |
 
 A plugin's routes, MCP tools, jobs and pages need no permission: they work in every project that enabled the plugin,
 for the callers the hub lets through (sections Extension points and Pages).
@@ -316,7 +316,7 @@ hub-wide: the store lists it, installed, with no audit row (it ran before the st
 does; reading, enabling or configuring it in a project is a 404.
 
 **A core plugin owns tables through the hub's migrations.** It lists them under `tables`, each named with its prefix:
-its id with `_` for `-`, then `_` (`telegram_links` for telegram, `srs_docs_items` for srs-docs). Their revisions are
+its id with `_` for `-`, then `_` (`builder_proposals` for builder, `srs_docs_items` for srs-docs). Their revisions are
 in the hub's one chain of migrations, applied under the hub's lock with the rest; the plugin never creates a table at
 run time. The hub records a core plugin only when its schema has every table the plugin owns. Turning the plugin off,
 for a project or for the hub, deletes nothing: its tables and rows stay for when it is on again.
@@ -325,8 +325,8 @@ evo-ak ships its core plugins in `evo_agents.core_plugins`, declared in its own 
 them, the hub's image among them. No package of evo_agents imports them (import-linter contract
 core-plugins-by-entry-point): the hub reaches them through their manifests. The first is **telegram**, the hub's
 Telegram channel (`docs/notifications.md`), which left the core as it was: its channel of kind `telegram`, its routes at
-the paths they had (the empty `prefix`: its routers carry their own under `/v1`), its table `telegram_links` from
-migration 0015. Nothing of it is per project, so it runs hub-wide: `evo-agents hub plugin list` and Administration,
+the paths they had (the empty `prefix`: its routers carry their own under `/v1`), its link codes the rows of kind
+`telegram` of the hub's `channel_link_codes` (migrations 0015 and 0063). Nothing of it is per project, so it runs hub-wide: `evo-agents hub plugin list` and Administration,
 Plugins show it as a core plugin installed with the image, and no project enables it.
 
 ### Builder
@@ -403,10 +403,11 @@ imports the other, and tasks reads the items of srs through the hub's tables (`e
 **chats** (`evo_agents/core_plugins/chats`) puts the history of the hub's group chats into the knowledge graph of each
 project that enables it, granting what it asks for, `chats:read`. Its only contribution is a source of the graph
 (`kg_sources`). Each build of the project's graph on the hub holds every message whose label has a part of the
-project: the item `plugin.chats:message:<id>` (a `ChatMessage` node named by the hub, `#<seq> <login or @handle> <UTC
-time>`, with the chat, the thread, the author, the time and, for an agent's message, its run), in its thread
-`plugin.chats:thread:<chat>/<root>` (`ChatThread`), in its chat `plugin.chats:chat:<id>` (`Chat`). Search indexes a
-message's text and the link stage reads what it mentions; no tool returns the text. The item carries the project's
+project: the item `plugin.chats:message:<id>` (a `ChatMessage` node named by the hub, `#<id> <login or @handle> <UTC
+time>`, by the id `chat_message` and `chat show` call it by, with the chat, the thread, the author, the time and, for
+an agent's message, its run), in its thread `plugin.chats:thread:<chat>/<root>` (`ChatThread`), in its chat
+`plugin.chats:chat:<id>` (`Chat`). Search indexes a message's text and the link stage reads what it mentions; no tool
+returns the text. The item carries the project's
 part of the message's label and the audience `chat:<id>` plus `grant:<project>:<level>` for the part of each other
 project, so a member sees it only while they are in the chat and could read the message there
 (`evo_agents/kg/policy.py`, the audience of a label). A thread and a chat carry the join of their messages' labels; a
@@ -414,6 +415,114 @@ message sent while its chat had no agent is in no graph. A new message queues a 
 whose graph holds its chats, which joins one that waits; a build of such a project shows no totals in `GET
 /v1/kg/{project}/builds`, since they count messages most members may not read, and kg_status names the newest message
 the build read. Import-linter keeps it in its own package (contract chats-plugin-own-package).
+
+## The core plugin API
+
+A core plugin from outside evo-agents reaches the hub through one module, `evo_agents.hub.server.core_plugin_api`,
+version 1.0, and imports nothing else of `evo_agents`: `from evo_agents.hub.server import core_plugin_api as hub`. Its
+`__all__` is the whole API, and `tests/plugins/golden/core-plugin-api.json` holds its surface. The sample plugin
+`tests/fixtures/core_plugins/northwind_chat` is a two-way channel built on it alone, which
+`tests/plugins/test_core_plugin_api.py` drives through a fake chat service.
+
+The API is no sandbox. A core plugin runs in the api and the job worker, holds the hub's connection and reads every
+variable of their environment: installing one is trusting it (`docs/hub-deployment.md`). The API makes the right code
+easy to write and keeps it working from one release to the next.
+
+**Versions.** `API_VERSION` is `(major, minor)`. A plugin calls `hub.require(major, minor)` in the function its entry
+point names, before it returns its manifest; on a hub that serves any other version it raises `UnsupportedApi`
+("northwind_chat needs core plugin API 1.1; this hub serves 1.0"), and `core_plugins()` leaves the plugin out with that
+reason, as for a manifest that does not load: no route, channel, job, event or tool of it, and the deliveries waiting
+for its kind of channel fail with the reason. Its data stays. The match is exact: no range, no older major served.
+
+- A change that only adds to the surface (a name, a keyword with a default, a field with a default, an error, a value
+  of a `Literal`) takes the next minor version; one that removes or changes anything (a name, a signature, a type, a
+  check written here that now refuses what it took) takes the next major version, minor 0. A fix inside that keeps
+  the surface and the checks written here changes no number, and needs no new release of any plugin.
+- `tests/plugins/test_core_plugin_api_surface.py` fails while the surface differs from the golden copy, naming what
+  changed and the version `API_VERSION` must take; once it does, `python -m evo_agents.hub.server.core_plugin_api
+  surface > tests/plugins/golden/core-plugin-api.json` writes the copy again, in the same pull request, which carries
+  the label `core-plugin-api`. The test cannot see a check that changes under the same signature: the review can.
+- `python -m evo_agents.hub.server.core_plugin_api version` prints the version of a checkout.
+- `engines` stays a lower bound only: the version of evo-ak that brought the API is `>=0.23.1`, since main carries the
+  number of the release before it until the next one. It says nothing of the API's version, which two commits of main
+  with one number may differ in. A plugin sets no upper bound.
+
+| API | Brought by | First evo-ak with it | evo-agents-core-plugins |
+| --- | --- | --- | --- |
+| 1.0 | the pull request of branch `feat/core-plugin-api`, after 0.23.1 | the release after 0.23.1 | 1.0.0 |
+
+**The ground.**
+
+| Name | What it is |
+| --- | --- |
+| `plugin(__name__)` | the plugin's handle (`Plugin`: its id and the kinds of channel it contributes), for the module asking: the package of the module its entry point names, or one below it; `NotACorePlugin` otherwise. A plugin calls it where it runs, never while its manifest loads |
+| `WebSession` | a dependency of a route: the caller's web session (`Session`); 403 for a machine token, and for a write (POST, PUT, PATCH, DELETE) whose `Origin` is not the origin of `EVO_HUB_PUBLIC_URL`, beside the hub's own `X-Evo-CSRF` |
+| `HubAdmin` | a dependency of a route: the caller, a hub admin (403 otherwise, as the hub's admin routes answer), with a web session or a machine token as those routes take, a web session's write with the hub's `Origin` |
+| `begin(request)`, `hub_config(request)`, `web_url(config, link)` | a transaction on the hub's engine; the hub's config, which a plugin hands the API and never reads; the absolute URL of a page a notification links to |
+| `Context`, `transaction(context)` | what the hub passes a job, an event, a tool or a source of the graph, read only, and a transaction on its engine |
+| `plugin_environment(plugin)` | the variables `EVO_HUB_<ID>_*` of the process (the id in upper case, `-` as `_`) |
+| `Channel`, `Outgoing`, `RetryAfter`, `Undeliverable`, `ChannelGone`, `SESSION_ENDED` | the class and the errors of the extension point `channels`, version 1 |
+| `ErrorBody`, `Login` | types for a route that keeps the hub's OpenAPI components |
+| `Refused` | what the hub refuses, a FastAPI `HTTPException` with the status and the words of the web route that does the same: in a route of the plugin it is that response, elsewhere the plugin tells its user `detail`. A mistake of the plugin's (a kind it does not contribute, a config too large, a handle it made itself) is a `ValueError` |
+
+**Webhooks.** A service outside the hub calls a core plugin's webhook without a credential of the hub, under the public
+prefix `/v1/hooks/<its id>/`, and the route checks the service's secret itself, compared in constant time, before it
+reads the body (404 otherwise). The hub mounts a router of a core plugin only when every path it has under
+`/v1/hooks/` is under its own plugin's id; another router is left out and logged. Telegram's `/v1/telegram/webhook` is
+the one named exception. A route there has no caller: one that asks for `WebSession` gets 401. A plugin a hub installs
+for itself sets `include_in_schema=False` on its routers, so the hub's OpenAPI document, and the web's types made from
+it, stay the same with it or without it.
+
+**A member's channel.** A channel is one member's of one kind, with the config the plugin stores, bound to the web
+session that linked it, and it speaks for its member only while that session lives. A `Member` comes from these
+functions alone: no token, the channel's kind, never a hub admin, whoever the member is.
+
+| Function | What it does and refuses |
+| --- | --- |
+| `find_member(conn, plugin, kind, match, *, live=True)` | the member whose channel of `kind` holds the 1 to 8 keys and values of `match` (strings or integers) in its config, while its session lives; `live=False` finds it to unlink alone |
+| `link_channel(conn, plugin, session, kind, config, *, unique_on=())` | links the session's member's channel with `config` (a JSON object of 16 KiB at most, without `disabled_reason`, `disabled_at` or `state`), in place of theirs; another member's channel with the same values at `unique_on` goes. 403 for a credential that is not a web session or a session that ended (`SESSION_ENDED`). Audited `<kind>.link` |
+| `unlink_channel(conn, plugin, kind, user_id, *, by, actor=None)` | deletes the channel and its waiting deliveries, `by` the member (`web`, `bot`) or a hub admin (`admin`, with `actor` from `HubAdmin`). Audited `<kind>.unlink` |
+| `link_code`, `redeem_link_code` | a one-time code of 32 characters that lives 10 minutes, made from a live web session (the hub keeps its SHA-256 in `channel_link_codes`), and the session back when the plugin redeems it before then, while that session lives; used once |
+| `direct_chat_member(conn, plugin, kind, chat_id)` | the member of a direct chat whose channel of `kind` is linked and live; None otherwise |
+| `set_channel_state(conn, member, state)` | keeps a JSON object of 16 KiB at most as the channel's `state`, such as the ids it sent; 404 once unlinked |
+| `delivered_notification(conn, member, external_id)` | the member's own notification their channel delivered as `external_id` |
+| `prepare(conn, notification, cleared)`, `restricted(conn, project, cleared)` | what a channel cleared for a `Clearance` may send: `extra` is `{"restricted": true}` alone for a project kept from it (or a decision or proposal of no project), else the decision (`question`, `category`, `plan_id`, `step_key`, `options`, `state`, `run_kind`, `run_title`) and the proposal (`title`, `tier`, `kind`, `lens`, `evidence_count`, `state`). A project is kept from it with no hub sink, a level or location (the sink's or the clearance's) its ladder lacks, or a hub sink above the clearance in level or location; a location of None sits at the top, as `evo_agents.kg.policy` reads one |
+
+**What a member does from it.** Each goes through the code of the web route that does the same, with its checks.
+
+| Function | Checks, in order |
+| --- | --- |
+| `answer_decision(conn, member, decision_id, cleared, *, option, text, via)` | 404 without a grant on its project, the same whether it exists or not; 403 for a project kept from `cleared`; then the route's: 422 for the body, 403 unless the member dispatched its run, 409 when it is not open, 422 for an option it lacks, 409 for a run that takes no answer, 403 for a worker that takes steering from the web only. Audited `via=<via>`, the channel's kind or another kind of the plugin's |
+| `answer_proposal(conn, member, proposal_id, cleared, action, *, defer_days, note, via)` | as above for the grant and `cleared`; 404 while the feature `curator` is off in the project; then the route's 422, 403 without the admin role, 409 for one neither open nor deferred |
+| `open_direct_chat(conn, member, handle)` | 404 while the feature `chats` is off; 403 unless the agent's project grants the plugin `chats:write`; then `PUT /v1/chats/direct/{handle}`'s 404, 403 and 409 |
+| `send_message(conn, member, chat_id, body, *, reply_to)` | 404 while `chats` is off; 422 for the body; 404 for a chat the member is not in, 403 for one whose label they no longer clear; 403 unless the project of every agent in the chat grants `chats:write` (a chat without agents is no project's, so none does); then `POST /v1/chats/{id}/messages`: mentions, runs, the hub's answers, notices, the audit row |
+| `read_message(conn, member, chat_id, message_id, cleared)` | 404 while `chats` is off; the chat's 404 and 403; 403 unless every agent's project grants `chats:read`; 403 when one of them is kept from `cleared` (send a link instead); 404 for a message the member does not clear the label of |
+| `agents(conn, member)` | the agents not deleted of the projects where the member holds writer or above; 404 while `chats` is off |
+
+**The plugin's own.** `plugin_config(conn, plugin, config, *, project=None)` is the plugin's effective config and no
+other's: the defaults of its schema, the hub's layer, then the project's when given (404 unless the project enables
+it, or the plugin is not installed and on), its `x-secret` fields unsealed with the hub's key, those this process
+cannot open named in `missing_secrets` and never logged. `granted(conn, plugin, project, permission)` says whether the
+project enables the plugin and grants it that, still asked for. `chat_history_items(conn, plugin, project)` answers a
+build of the project's graph with the messages of its group chats as the hub labels them (section Chat history), and
+nothing while the project does not grant the plugin `chats:read`: the label rule of chats stays in the hub.
+
+| Function | A channel's member, its session live | The project's grant to the plugin |
+| --- | --- | --- |
+| `answer_decision`, `answer_proposal` | yes | none, as Telegram |
+| `open_direct_chat`, `send_message` | yes | `chats:write` of the project of every agent in the chat |
+| `read_message` | yes | `chats:read` of the project of every agent in the chat |
+| `plugin_config(project=...)` | no | the project enables the plugin |
+| `chat_history_items`, `granted` | no | `chats:read` |
+
+**A class of channel that does not load** (its import or its `__init__` raises) fails the deliveries of its own kind
+at once, with the reason in `last_error`; the web's and every other kind's go on.
+
+**What a plugin imports.** `tests/plugins/test_core_plugin_imports.py` reads every `.py` of a plugin built on the API
+with `ast`: an import of `evo_agents` names `evo_agents.hub.server.core_plugin_api` alone and takes names of its
+`__all__`, nothing imports `sqlalchemy`, and no `importlib.import_module` or `__import__` names a module of
+`evo_agents`. import-linter cannot keep this for a package outside `evo_agents`. A repository of core plugins copies the
+file into its own checks, with its packages in `PACKAGES`.
 
 ## Runtimes
 

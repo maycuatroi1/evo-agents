@@ -195,7 +195,7 @@ def test_chats_source_gives_each_message_with_its_projects_part_and_the_chats_au
     alpha = source_items(hub, A)
     first = alpha.items[message(said.m1)]
     assert first["kind"] == "message" and first["parent"] == thread(said.one, said.m1)
-    assert first["title"].startswith(f"#{said.m1['seq']} alice 20") and first["title"].endswith("Z")
+    assert first["title"].startswith(f"#{said.m1['id']} alice 20") and first["title"].endswith("Z")  # as tools call it
     assert first["body"]["text"] == said.m1["body"]  # indexed for search only: no tool returns it
     assert first["props"]["chat"] == said.one and first["props"]["thread"] == said.m1["id"]
     assert first["props"]["author_kind"] == "person" and first["props"]["author"] == "alice"

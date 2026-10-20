@@ -9,7 +9,11 @@ authenticates the caller first (``security.Authenticate``), as for every other p
   creates the app (``include``), with the check above as a dependency of every route: each of its paths starts with
   ``/{project}``. Its handlers run in this process and use the hub's own dependencies for the caller. A core plugin
   that kept the routes it had before it was one (Telegram) names the prefix its router goes under instead
-  (``prefix``); those routes check their callers themselves, and no project enables them.
+  (``prefix``); those routes check their callers themselves, and no project enables them. A core plugin's webhook,
+  which a service outside the hub calls without a credential of the hub, goes under the public prefix
+  ``/v1/hooks/<its own id>/`` (``security.HOOKS_PREFIX``) and checks the service's secret itself. A router with a path
+  under /v1/hooks/ that is not its own plugin's is left out, logged, as one that does not load; the one webhook
+  outside it is Telegram's, ``/v1/telegram/webhook``, a named exception of ``security.PUBLIC_PATHS``.
 - An isolated plugin's route answers /v1/x/<plugin>/<project>/<name> and every path below it, with the methods it
   declares (GET when it declares none, else 405). The hub hands the request to the plugin's backend through the plugin
   host (method ``route`` of plugin/1): the method, the path below the route, the query, the body in base64 (at most
@@ -45,7 +49,7 @@ from evo_agents.hub.plugin_calls import (
 )
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.projects import ProjectAccess, not_found, project_access
-from evo_agents.hub.server.security import CurrentUser, Principal
+from evo_agents.hub.server.security import HOOKS_PREFIX, CurrentUser, Principal
 from evo_agents.plugins.manifest import PLUGIN_ID
 from evo_agents.plugins.protocol import NAME
 
@@ -109,14 +113,40 @@ def _gate(plugin: str):
     return gate
 
 
+def route_paths(router: APIRouter, prefix: str = "") -> list[str]:
+    """The paths of ``router``'s routes once it is included under ``prefix``, those of the routers it includes too."""
+    found = []
+    for route in getattr(router, "routes", []):
+        path = getattr(route, "path", None)
+        if isinstance(path, str):
+            found.append(prefix + path)
+        elif hasattr(route, "original_router"):  # a router it includes, as FastAPI keeps it since 0.14x
+            found += route_paths(route.original_router, prefix + route.include_context.prefix)
+    return found
+
+
+def stray_hooks(plugin: str, router: APIRouter, prefix: str) -> list[str]:
+    """The paths of ``router`` included under ``prefix`` that are under /v1/hooks/ but not under the public prefix of
+    core plugin ``plugin``'s own webhooks, /v1/hooks/<plugin>/."""
+    own = f"{HOOKS_PREFIX}{plugin}/"
+    paths = route_paths(router, prefix)
+    hooks = [path for path in paths if path.startswith(HOOKS_PREFIX) or path == HOOKS_PREFIX.rstrip("/")]
+    return [path for path in hooks if not path.startswith(own)]
+
+
 def include(app: FastAPI, registry: CoreRegistry | None = None) -> CoreRegistry:
     """Include the routers of the core plugins, then the proxy to isolated plugins' routes; the core plugins."""
     registry = core_registry() if registry is None else registry
     for manifest, item in registry.contributions("routes"):
+        contribution = f"{manifest.id}:{item['name']}"
         try:
             router = load(item["python"])
         except Exception:  # a broken core plugin leaves its routes out, never the hub
-            log.exception("core plugin route not loaded", extra={"contribution": f"{manifest.id}:{item['name']}"})
+            log.exception("core plugin route not loaded", extra={"contribution": contribution})
+            continue
+        stray = stray_hooks(manifest.id, router, item.get("prefix", mount_of(manifest.id)))
+        if stray:  # a webhook under another plugin's public prefix, or under none: the whole router stays out
+            log.error("core plugin route not included", extra={"contribution": contribution, "paths": stray[:5]})
             continue
         if "prefix" in item:
             app.include_router(router, prefix=item["prefix"])

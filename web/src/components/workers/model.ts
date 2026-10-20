@@ -225,3 +225,9 @@ export function registerCommand(input: { name: string; projects: string[]; slots
   for (const label of input.labels) parts.push(`--label ${label}`);
   return parts.join(" ");
 }
+
+/** Who dispatches to a worker, as its Scope card says it: its owner alone, or the writers of its projects too. */
+export function dispatchKey(shared: boolean, webOnly: boolean) {
+  if (shared) return webOnly ? "dispatchSharedWeb" : "dispatchShared";
+  return webOnly ? "dispatchWeb" : "dispatchValue";
+}

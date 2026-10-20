@@ -1,8 +1,10 @@
 """What a worker reports: its heartbeat (POST /v1/worker/heartbeat), which records the machine, the commit its daemon
-runs and what the daemon found of updating itself, extends the leases of the runs it holds and answers what to do
-with each, the worker's settings (its version lock among them), where the tag nightly pointed when the hub last read it, the
-owner's open Update now (``evo_agents.hub.server.update_now``, which the heartbeat may end) and, for a daemon that runs
-them, the runtimes of the plugins its owner accepted (``plugin_runtimes.offered``); and the move of a run it holds (POST
+runs, what the daemon found of updating itself and what it last did for the graphs it keeps fresh (kg_sync), extends
+the leases of the runs it holds and answers what to do with each, the worker's settings (its version lock among them),
+where the tag nightly pointed when the hub last read it, the owner's open Update now
+(``evo_agents.hub.server.update_now``, which the heartbeat may end), for a daemon that runs them the runtimes of the
+plugins its owner accepted (``plugin_runtimes.offered``), and for a daemon of feature kg_sync the projects whose graph
+it keeps fresh (``kg_duties``); and the move of a run it holds (POST
 /v1/worker/runs/{id}/state), checked against the transition table with the worker as actor."""
 
 from __future__ import annotations
@@ -29,6 +31,7 @@ from evo_agents.hub.server.runs.models import (
 )
 from evo_agents.hub.server.runs.service import plugin_runtimes
 from evo_agents.hub.server.runs.service.claims import worker_of
+from evo_agents.hub.server.runs.service.kg_duties import kg_duties
 from evo_agents.hub.server.runs.service.views import beating, run_view
 from evo_agents.hub.server.security import Principal
 
@@ -57,6 +60,11 @@ def _self_update(body: HeartbeatRequest) -> dict:
         "self_update": report.model_dump(mode="json"),
         "self_update_since": case((same, func.coalesce(w.c.self_update_since, func.now())), else_=func.now()),
     }
+
+
+def _kg_sync(body: HeartbeatRequest):
+    """What a heartbeat sets workers.kg_sync to: the report it carries, or SQL NULL when it carries none."""
+    return null() if body.kg_sync is None else body.kg_sync.model_dump(mode="json", exclude_none=True)
 
 
 def _extend(worker_id: int, run_ids: list[int], lease: timedelta):
@@ -119,6 +127,7 @@ async def record_heartbeat(
                 run_kinds=None if body.run_kinds is None else [k for k in body.run_kinds if k in runs.RUN_KINDS],
                 features=None if body.features is None else [k for k in body.features if k in runs.HUB_FEATURES],
                 **_self_update(body),
+                kg_sync=_kg_sync(body),
             )
             .where(w.c.id == worker_id)
             .returning(w.c.slots, w.c.name, w.c.labels, w.c.plugins, w.c.version_locked)
@@ -132,6 +141,7 @@ async def record_heartbeat(
                 PluginRuntime(**runtime.to_json())
                 for runtime in await plugin_runtimes.offered(conn, worker_id, settings.plugins)
             ]
+        duties = await kg_duties(conn, worker_id) if runs.KG_SYNC in (body.features or ()) else []
         extended = {row[0]: row[1:] for row in await conn.execute(_extend(worker_id, reported, lease))}
         others = [run_id for run_id in reported if run_id not in extended]
         parked = {}
@@ -184,6 +194,7 @@ async def record_heartbeat(
         runs=controls,
         settings=settings,
         plugin_runtimes=declared,
+        kg_sync=duties,
         nightly=nightly,
         update_now=asked,
     )
@@ -331,7 +342,7 @@ def _move_reason(body: StateReport, name: str, error: str | None, cancel_request
 def _check_verdict(run_id: int, kind: str, approval: str, body: StateReport) -> None:
     """409 for a verdict the run's approval, or its kind, does not allow. A plan run ends done without verify
     results, since each of its steps was verified when it was reported, and never waits in review."""
-    if kind in ("plan", "review", "judge", "author", "chat", "task"):
+    if kind in ("plan", "review", "judge", "author", "chat", "task", "replay", "history"):
         if body.state == "review":
             article = "an" if kind[:1] in "aeiou" else "a"
             raise HTTPException(409, f"run {run_id} is {article} {kind} run: report done or failed, not review")

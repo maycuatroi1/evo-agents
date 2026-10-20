@@ -104,6 +104,11 @@ export function ChangeFacts({ project, change, repos }: { project: string; chang
             <span className="text-[13px] text-muted-foreground">{t("noPlan")}</span>
           )}
         </Fact>
+        <Fact label={t("tier")} testId="proposal-change-tier">
+          <span className="text-[13px]" data-tier={change.tier}>
+            {t("tierValue", { tier: change.tier })}
+          </span>
+        </Fact>
         {change.repo ? (
           <Fact label={t("repo")} testId="proposal-change-repo">
             <span className="font-mono text-xs">{change.repo}</span>

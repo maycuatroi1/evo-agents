@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from evo_agents import __version__
 from evo_agents.kg import audit
-from evo_agents.kg.corpus import Corpus, LogWriter, kg_home
+from evo_agents.kg.corpus import Corpus, LogWriter, kg_home, run_epoch
 from evo_agents.kg.ids import parse_utc, utc_now, uuid7
 from evo_agents.kg.project import Project, ProjectError, load_project_at, read_index, remember
 from evo_agents.kg.protocol import StreamChecker, sha256
@@ -268,11 +268,13 @@ def sync_source(
     corpus: Corpus | None = None,
     env: dict | None = None,
     plans=None,
+    force: bool = False,
 ) -> SyncResult:
     """Run one source's connector into the corpus. The run gets a row in the runs table and a line in the
     project's audit log, once its state is committed. A git source whose commit and config are those its last ok
-    run read is not read again (``_read_already``). ``plans`` reads the plans of the hub for a harness source
-    (``ConnectorContext.plans``)."""
+    run read is not read again (``_read_already``), unless ``force``: the worker's sync reads it again when the runs
+    of other machines it merged changed what the source holds (``evo_agents.worker.kg_sync``). ``plans`` reads the
+    plans of the hub for a harness source (``ConnectorContext.plans``)."""
     source = project.source(source_id)
     corpus = corpus or project.corpus()
     started_clock = time.monotonic()
@@ -289,7 +291,7 @@ def sync_source(
             return result
 
         ctx = ConnectorContext(project.name, source, project.harness, corpus.cursor(source_id), env, plans)
-        if _read_already(corpus, ctx, result):
+        if not force and _read_already(corpus, ctx, result):
             result.seconds = round(time.monotonic() - started_clock, 3)
             _finish(project, corpus, result, source["connector"], __version__, started)
             return result
@@ -337,6 +339,24 @@ def sync_source(
 
         _finish(project, corpus, result, connector, version, started, commit_state)
     return result
+
+
+def merge_pulled(corpus: Corpus, path: Path) -> int:
+    """Merge the log at ``path``, of a run that another machine wrote and the hub holds, into ``corpus``, which keeps
+    it in its log: its records with the run's epoch, as the hub's build merges them, and its lineage when its epoch is
+    above the recorded one (``Corpus.adopt_lineage``). Its cursor is not taken: a source's cursor stays that of the
+    last run read here, so whether the source moved is still asked of the commit read here. Returns how many items
+    changed; 0 for a file that is not the log of a run."""
+    run_id, records = corpus.run_records(path)
+    if not run_id:
+        return 0
+    header = records[0]
+    with corpus.db:
+        changed = corpus.merge(records, run_id)
+        lineage, epoch = header.get("lineage"), run_epoch(header)
+        if isinstance(header.get("source"), str) and isinstance(lineage, str) and epoch:
+            corpus.adopt_lineage(header["source"], lineage, epoch, run_id)
+    return changed
 
 
 def accept_removals(project: Project, source_id: str, corpus: Corpus | None = None) -> int:

@@ -87,6 +87,9 @@ def _project(args) -> str:
     return harness_project(root)
 
 
+project_of_args = _project  # the public name, for the client modules written since private names stay in their module
+
+
 def _plan_id(text: str) -> str:
     if not PLAN_ID.fullmatch(text):
         raise HubError(f"{text!r} is not a plan id (a-z, 0-9 and -)")

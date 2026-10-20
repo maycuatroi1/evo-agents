@@ -502,10 +502,10 @@ def check_push(branch: str, protected: Collection[str], *, kind: str, plan_branc
     """Whether a push to ``branch`` goes to a default branch of the repo (one of ``protected``): False when it does
     not; True when it does and the run may push it, a plan run (``kind`` plan) whose plan names exactly that branch for
     the repo (``plan_branch``); PushRefused otherwise, so a run of one step never pushes a default branch. A review run,
-    a judge run and an author run push nothing at all, a Builder of the Curator (``kind`` curator) only a branch
-    ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, and a task
-    run (``kind`` task) only its branch ``task/<run>``."""
-    if kind in ("review", "judge", "author"):
+    a judge run, an author run, a replay run and a history run push nothing at all, a Builder of the Curator (``kind`` curator) only a
+    branch ``curator/...`` that is no default branch, a chat run (``kind`` chat) only its branch ``chat/<run>``, and a
+    task run (``kind`` task) only its branch ``task/<run>``."""
+    if kind in ("review", "judge", "author", "replay", "history"):
         raise PushRefused(f"a {kind} run reads and pushes nothing")
     own = _own_branches(kind)
     if own is not None:

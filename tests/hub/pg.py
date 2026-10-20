@@ -64,7 +64,7 @@ DIGEST_TABLES = frozenset({"session_digests", "run_tool_stats"})
 # Tables of migration 0014: the night's figures of a project, and what its review run finds and proposes
 REVIEW_TABLES = frozenset({"curator_figures", "findings", "proposals"})
 # Tables of migration 0015: the Curator's morning briefs, and the codes that link a Telegram chat
-BRIEF_TABLES = frozenset({"curator_briefs", "telegram_links"})
+BRIEF_TABLES = frozenset({"curator_briefs", "channel_link_codes"})  # telegram_links until 0063
 # migration 0017: the Curator's changes, and the repos whose ruleset the hub checked
 CHANGE_TABLES = frozenset({"curator_changes", "curator_repo_checks"})
 # migration 0018: the Curator's ledger
@@ -109,7 +109,19 @@ SRS_TABLES = frozenset(
 TASKS_TABLES = frozenset(
     {"tasks_sprints", "tasks_items", "tasks_people", "tasks_links", "tasks_events", "tasks_comments"}
 )
-# migration 0052: the commit of the tag nightly the hub last read
+# migration 0052: the transcripts of sessions and their parts
+TRANSCRIPT_TABLES = frozenset({"session_transcripts", "transcript_parts"})
+# migration 0054: the deterministic facets of sessions and runs
+FACET_TABLES = frozenset({"session_facets"})
+# migration 0055: the files each git source holds in a project's latest graph, and each measure of the graph's health
+KG_HEALTH_TABLES = frozenset({"kg_source_files", "kg_health"})
+# migration 0056: each project's suite of replay tasks, and the replays of the Curator's changes
+REPLAY_TABLES = frozenset({"replay_tasks", "curator_replays"})
+# migration 0059: the history runs, and the groups of the facets of the model
+HISTORY_TABLES = frozenset({"history_runs", "facet_clusters"})
+# migration 0060: the words of the history for search, and the playbook of the Curator with its deltas
+SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook", "curator_playbook_deltas"})
+# migration 0064: the commit of the tag nightly the hub last read
 NIGHTLY_TABLES = frozenset({"hub_nightly"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

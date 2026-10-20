@@ -61,6 +61,7 @@ from evo_agents.hub.run_cli_options import (
     rerun_options,
     usage_error,
 )
+from evo_agents.hub.run_cli_workers import worker_id as _worker_id
 from evo_agents.hub.runs import (
     EVENT_KINDS,
     MAX_MODEL_CHARS,
@@ -172,16 +173,6 @@ def _runs_path(project: str, run_id: int | None = None, action: str | None = Non
 
 def _clip(text: str, limit: int) -> str:
     return text if len(text) <= limit else text[: limit - 3] + "..."
-
-
-def _worker_id(hub, login: str, worker: str) -> int:
-    """The id ``worker`` names: an id as given, else the id of the caller's own worker of that name."""
-    if worker.isascii() and worker.isdigit():
-        return int(worker)
-    for row in hub.call("GET", "/v1/workers"):
-        if row["name"] == worker and row["owner"] == login:
-            return row["id"]
-    raise HubError(f"you have no worker named {worker!r} (revoked ones aside); the Workers page of the hub lists yours")
 
 
 def _step(run: dict) -> str:
@@ -898,7 +889,9 @@ def register_runs(hsub) -> None:
         )
 
     dispatch = rsub.add_parser(
-        "dispatch", help="queue a run of each step named for a worker of yours, all of them or none (needs writer)"
+        "dispatch",
+        help="queue a run of each step named for a worker of yours or one shared with you, all of them or none "
+        "(needs writer)",
     )
     dispatch.add_argument("plan", metavar="PLAN", help="the plan's id")
     dispatch.add_argument("steps", metavar="STEP", nargs="+", help="a step id (or order); one run each")
@@ -911,8 +904,8 @@ def register_runs(hsub) -> None:
 
     plan = rsub.add_parser(
         "plan",
-        help="queue a plan run: one run, on a worker of yours, that does every step of the plan not done yet "
-        "(needs writer)",
+        help="queue a plan run: one run, on a worker of yours or one shared with you, that does every step of the plan "
+        "not done yet (needs writer)",
     )
     plan.add_argument("plan", metavar="PLAN", help="the plan's id")
     with_project(plan)

@@ -134,6 +134,19 @@ def test_a_reply_in_the_thread_of_a_direct_chat_goes_on_in_its_run_session(clien
     assert run_of(client, hub["owner"], next_id)["branch"] == f"chat/{spec['id']}"
 
 
+def test_an_answer_naming_its_own_agent_is_refused_nothing_and_hands_no_work(client, hub, hub_db):
+    worker = chat_worker(client, hub["owner"], "studio")
+    chat = direct(client, hub["owner"])
+    asked, _ = turn(client, hub, worker, chat, "Who are you?", "I am @reviewer; @fixer knows the CI better.")
+    answer = thread(client, hub["owner"], chat["id"], asked["id"])[-1]
+    assert answer["author"]["handle"] == "reviewer"
+    assert [(m["name"], m["run_id"], m["refusal"]) for m in answer["mentions"]] == [
+        ("reviewer", None, None),
+        ("fixer", None, NOT_IN_DIRECT.format(name="fixer")),
+    ]
+    assert len(chat_runs_of(hub_db)) == 1
+
+
 def test_a_direct_message_with_no_worker_gets_the_hubs_reason_and_makes_no_run(client, hub, hub_db):
     chat = direct(client, hub["owner"])
     asked = sent(client, hub["owner"], chat["id"], "look at the diff of run 120")

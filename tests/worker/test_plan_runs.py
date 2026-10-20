@@ -1126,6 +1126,7 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
             "environments",
             "agent_packs",
             "chat_decisions",
+            "kg_sync",
             "lazy_chat_repos",
             "update_now",
         ]

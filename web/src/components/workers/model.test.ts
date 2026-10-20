@@ -30,6 +30,7 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     plugins: [],
     agent_commit: null,
     version_locked: false,
+    shared: false,
     self_update: null,
     update_now: null,
     nightly: null,

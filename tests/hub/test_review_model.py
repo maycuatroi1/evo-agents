@@ -147,7 +147,7 @@ def test_the_lenses_of_the_nights_take_turns_and_each_comes_round():
     for offset in range(len(review.LENSES)):
         seen |= set(review.lenses_for(night + timedelta(days=offset), 3))
     assert seen == set(review.LENSES)
-    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 11
+    assert review.lenses_for(night, 0) == review.lenses_for(night, 1) and len(review.lenses_for(night, 99)) == 14
 
 
 @pytest.mark.parametrize(
@@ -333,7 +333,12 @@ def test_the_prompt_of_a_review_run_says_it_reads_only_and_treats_what_it_reads_
 def test_the_commands_the_prompt_of_a_review_run_names_are_in_the_contract():
     prompt = review.build_review_prompt("evo-agents", date(2026, 10, 8), ["tool_errors"], ["evo-agents"], {})
     found = [item.text for item in find_commands(prompt, "prompt")]
-    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"finding", "propose"}
+    assert {text.split()[2] for text in found if text.split()[1] == "worker"} == {"finding", "propose", "playbook"}
+    assert {" ".join(text.split()[2:4]) for text in found if text.split()[2] == "playbook"} == {
+        "playbook add",
+        "playbook helpful",
+        "playbook retire",
+    }  # harmful is named beside helpful, in the same sentence
     assert {text: check_command(commands(), text) for text in found} == {text: [] for text in found}
 
 

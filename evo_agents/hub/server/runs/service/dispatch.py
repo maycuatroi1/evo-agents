@@ -40,6 +40,7 @@ from evo_agents.hub.server.runs.service.views import (
     run_view,
     run_views,
 )
+from evo_agents.hub.server.runs.service.worker_fit import shared_in
 from evo_agents.hub.server.security import WEB, Principal
 from evo_agents.plugins.runtimes import is_plugin_runtime
 
@@ -70,12 +71,14 @@ class Pinned:
 
 
 async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess, worker_id: int) -> Pinned:
-    """403 unless worker ``worker_id`` is ``user``'s own, and unless ``user`` dispatches from a web session when the
-    worker takes runs dispatched from the web only; 409 when it is revoked or does not serve the project."""
+    """403 unless worker ``worker_id`` is ``user``'s own, or one its owner shares and that serves the project while the
+    owner holds writer on it (``docs/workers.md``, Shared workers), and unless ``user`` dispatches from a web session
+    when the worker takes runs dispatched from the web only; 409 when it is revoked or does not serve the project."""
     w, wp = tables.workers, tables.worker_projects
     serves = exists().where(wp.c.worker_id == w.c.id, wp.c.project_id == access.project_id)
     query = select(
         w.c.owner_id,
+        shared_in(access.project_id).label("shared_here"),
         w.c.name,
         w.c.revoked_at,
         serves.label("serves"),
@@ -89,9 +92,11 @@ async def pinnable(conn: AsyncConnection, user: Principal, access: ProjectAccess
         w.c.plugins,
     ).where(w.c.id == worker_id)
     row = (await conn.execute(query)).one_or_none()
-    if row is None or row.owner_id != user.user_id:  # the same answer for another member's worker and for no worker
+    if row is None or (row.owner_id != user.user_id and not row.shared_here):  # one answer for both, and for none
         raise HTTPException(
-            403, f"a run goes only to a worker of the member who dispatches it, and you have no worker {worker_id}"
+            403,
+            f"a run goes only to a worker of the member who dispatches it or to one shared in project {access.name}, "
+            f"and worker {worker_id} is neither",
         )
     name = row.name
     if row.revoked_at is not None:

@@ -32,9 +32,10 @@ Jobs (names in ``evo_agents.hub.jobs``):
   inside its window and within its night's budget, the night's review run first, and cancels its queued runs outside
   it; its circuit breaker pauses a project's night shift once the charter's max_failed_in_a_row jobs of a night in a
   row failed or were reverted (``evo_agents.hub.server.curator``, ``evo_agents.hub.server.outcomes``).
-- ``curator.collect``, every minute: in each charter's window, the night's figures of the project, counted once
-  without any model, and its review run; and the deferred proposals whose time has passed open again
-  (``evo_agents.hub.server.collect``).
+- ``curator.collect``, every minute: the health of each charter's knowledge graph, measured every 6 hours against the
+  default branches on GitHub (``evo_agents.hub.server.kg_health``); in each charter's window, the night's figures of
+  the project, counted once without any model, and its review run; and the deferred proposals whose time has passed
+  open again (``evo_agents.hub.server.collect``).
 - ``hub.plugin_jobs``, every minute: a ``hub.plugin_job`` for each job of a plugin enabled in a project whose cron
   takes the minute, queued once at a time; ``hub.plugin_job`` runs it (``evo_agents.hub.plugin_jobs``).
 - ``hub.deliver_plugin_events``, every minute: the events and notifications due for plugins, at least once, tried
@@ -44,6 +45,13 @@ Jobs (names in ``evo_agents.hub.jobs``):
   its heartbeat answer; a read that fails keeps the last one and logs a line (``evo_agents.hub.nightly``).
 - ``hub.prune_digests``, daily: the session digests not pushed again for 90 days
   (``evo_agents.hub.server.digests``).
+- ``hub.prune_transcripts``, daily: the content of the session transcripts that got no part for
+  EVO_HUB_TRANSCRIPT_DAYS days, and the blobs of kind transcript no part names (``evo_agents.hub.transcript_prune``).
+- ``hub.analyze_facets``, every 5 minutes, one pass at a time: the deterministic facet of each session whose transcripts
+  or digest came, and of each run that ended, made once and again when its content or the facet's version changed
+  (``evo_agents.hub.facet_job``).
+- ``hub.index_history``, every 5 minutes, one pass at a time: the words of each part of a transcript and of each run
+  that ended, for search, once (``evo_agents.hub.history_index``).
 - ``curator.brief``, every minute: at each charter's brief_at, in its time zone, the morning brief of the night to the
   owner of the project's schedule, once a day (``evo_agents.hub.server.brief``).
 - ``curator.changes``, every minute: the Curator's changes move on: their pull requests opened, the Judge's check runs
@@ -53,6 +61,9 @@ Jobs (names in ``evo_agents.hub.jobs``):
 - ``curator.outcomes``, every 10 minutes: the figures of each change of the Curator merged the charter's outcome_days
   ago counted again, its outcome (keep, revert or unclear) in its proposal's ledger, and a revert proposed when they
   got worse (``evo_agents.hub.server.outcomes``).
+- ``curator.replay_suite``, hourly, one pass at a time: each project with a charter gets a replay task for each step
+  of its plans that is done, has a verify of one line and names its commits, added once with its fixed split (keyed by
+  the session secret, none without it) and never changed (``evo_agents.hub.replay_suite``).
 
 procrastinate allows one App per process; ``queue`` is that App here. ``run`` gives it a connector of its own for
 the time it runs, and the jobs reach the hub's tables, the blob store, the sealing key and the GitHub App through
@@ -226,7 +237,9 @@ async def fire_schedules(context: JobContext, timestamp: int | None = None) -> d
 async def curator_collect(context: JobContext, timestamp: int | None = None) -> dict:
     from evo_agents.hub.server.collect import collect
 
-    return await collect(hub(context).engine)
+    found = hub(context)
+    app = found.github_app or found.curator_app
+    return await collect(found.engine, github_app=app, blobs=found.blobs, data_dir=found.data_dir)
 
 
 @queue.periodic(cron="* * * * *")
@@ -243,7 +256,8 @@ async def curator_changes(context: JobContext, timestamp: int | None = None) -> 
     from evo_agents.hub.server.changes import advance
 
     found = hub(context)
-    return await advance(found.engine, found.github_app, getattr(found, "curator_app", None))
+    curator_app = getattr(found, "curator_app", None)
+    return await advance(found.engine, found.github_app, curator_app, blobs=found.blobs, data_dir=found.data_dir)
 
 
 @queue.periodic(cron="*/10 * * * *")
@@ -309,6 +323,41 @@ async def prune_digests(context: JobContext, timestamp: int | None = None) -> di
     from evo_agents.hub.server.digests import prune_digests as prune
 
     return await prune(hub(context).engine)
+
+
+@queue.periodic(cron="53 4 * * *")
+@queue.task(name=jobs.PRUNE_TRANSCRIPTS, pass_context=True, queueing_lock=jobs.PRUNE_TRANSCRIPTS)
+async def prune_transcripts(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.transcript_prune import prune_transcripts as prune
+
+    found = hub(context)
+    return await prune(found.engine, found.blobs, found.config.transcript_days)
+
+
+@queue.periodic(cron="41 * * * *")
+@queue.task(name=jobs.REPLAY_SUITE, pass_context=True, lock=jobs.REPLAY_SUITE, queueing_lock=jobs.REPLAY_SUITE)
+async def replay_suite(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.replay_suite import build_suites
+
+    return await build_suites(hub(context).engine, hub(context).config.session_secret)
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.ANALYZE_FACETS, pass_context=True, lock=jobs.ANALYZE_FACETS, queueing_lock=jobs.ANALYZE_FACETS)
+async def analyze_facets(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.facet_job import analyze_facets as analyze
+
+    found = hub(context)
+    return await analyze(found.engine, found.blobs, scratch=found.data_dir / "facets")
+
+
+@queue.periodic(cron="*/5 * * * *")
+@queue.task(name=jobs.INDEX_HISTORY, pass_context=True, lock=jobs.INDEX_HISTORY, queueing_lock=jobs.INDEX_HISTORY)
+async def index_history(context: JobContext, timestamp: int | None = None) -> dict:
+    from evo_agents.hub.history_index import index_history as index
+
+    found = hub(context)
+    return await index(found.engine, found.blobs, scratch=found.data_dir / "history")
 
 
 @queue.periodic(cron="43 3 * * *")

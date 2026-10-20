@@ -1,4 +1,5 @@
 import datetime as dt
+import gc
 import sqlite3
 from pathlib import Path
 
@@ -270,6 +271,37 @@ def test_search_splits_camel_case_reads_d_for_dj_and_indexes_docstrings(tmp_path
     assert any(h.startswith("app:file:docs/long.md") for h in found(store, NEEDLE))  # past 4,000 characters
 
 
+def test_search_ranks_the_three_ways_together_by_score(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    filler = "Notes on the weekly review of the team. " * 80
+    write(app / "docs/tour.md", f"# Tour\n\n{filler}kiwi {filler}rollout {filler}search {filler}outage\n")
+    write(app / "docs/kiwi.md", "# Kiwi rollout outage\n\nThe kiwi rollout outage of last week.\n")
+    commit(app, "a page holding every word once, and one about them")
+    sync_build(project)
+    store = Store.for_project(project)
+    question = "kiwi rollout search outage"
+    assert found(store, question, any_word=False)[0].startswith("app:file:docs/tour.md")  # all words: only there
+    hits = found(store, question)
+    assert hits[0].startswith("app:file:docs/kiwi.md")  # three of the words, in its title, before all four once
+    assert any(h.startswith("app:file:docs/tour.md") for h in hits)  # still found, ranked by its own score
+
+
+def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
+    # The tokenizer folds accents: "án" is "an" in the index and "cua" is "của", so either would match all of them.
+    assert text_search.query_words("Phương án A") == ["Phương", "án"]
+    assert list(text_search.fts_queries(["Phương", "án"])) == ['"phương" AND "án"', '"phương"* AND "án"*', '"phương"']
+    assert list(text_search.fts_queries(["loi", "cua", "evo"]))[-1] == '"loi" OR "evo"'
+    assert list(text_search.fts_queries(["kiểm", "thật"]))[0] == '"kiểm" AND "thật"'  # all words: each one kept
+    assert list(text_search.fts_queries(["thật", "án"])) == ['"thật" AND "án"', '"thật"* AND "án"*']
+    assert text_search.phrases('("hubsession" OR ("hub" AND "session")) AND "x"* OR "hub"') == [
+        '"hubsession"',
+        '"hub"',
+        '"session"',
+        '"x"*',
+    ]
+
+
 def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
     sync_build(project)
@@ -320,6 +352,29 @@ def make_schema_2(path) -> None:
     db.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
     db.commit()
     db.close()
+
+
+def test_a_build_leaves_no_connection_to_its_store_open(tmp_path, kg_env):
+    # Since Python 3.11 a connection left open waits for the cycle collector, and Windows cannot replace a file a
+    # connection holds: a rebuild then failed on graph.sqlite-wal (WinError 32).
+    project = make_project(tmp_path, kg_env)
+    store = (project.root / "graph.sqlite").resolve()
+    gc.collect()
+    gc.disable()
+    try:
+        sync_build(project)
+        sync_build(project, force=True)
+        held = []
+        for conn in (o for o in gc.get_objects() if isinstance(o, sqlite3.Connection)):
+            try:
+                path = conn.execute("PRAGMA database_list").fetchone()[2]
+            except sqlite3.ProgrammingError:  # closed
+                continue
+            if Path(path).resolve() == store:
+                held.append(path)
+        assert held == []
+    finally:
+        gc.enable()
 
 
 def test_a_store_of_schema_2_is_rebuilt_by_the_next_build_and_refused_by_readers(tmp_path, kg_env):

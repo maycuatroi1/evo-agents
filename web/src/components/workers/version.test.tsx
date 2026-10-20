@@ -9,6 +9,7 @@ import { createApiClient } from "@/lib/api/client";
 import { renderVi } from "@/test/render";
 
 import type { Worker } from "./queries";
+import { SharedSwitch } from "./shared-switch";
 import { UpdateBadge } from "./update-badge";
 import { UpdateNotes, VersionCard } from "./version-card";
 import { VersionLockSwitch } from "./version-lock";
@@ -50,6 +51,7 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     labels: [],
     plugins: [],
     version_locked: false,
+    shared: false,
     self_update: { state: "current", nightly_commit: SHA, checked_at: new Date().toISOString(), since: new Date().toISOString() },
     update_now: null,
     nightly: null,
@@ -120,6 +122,37 @@ describe("VersionLockSwitch", () => {
     await user.click(screen.getByRole("switch", { name: "Khoá phiên bản" }));
     expect(await screen.findByText("Không khoá được phiên bản của lab-ws-01")).toBeInTheDocument();
     expect(screen.queryByTestId("worker-version-lock-error")).toBeNull();
+  });
+});
+
+describe("SharedSwitch", () => {
+  it("shares the worker with a PATCH that carries the CSRF header, and says so in a toast", async () => {
+    const user = userEvent.setup();
+    api.answer = () => json(worker({ shared: true }));
+    renderWithQueries(<SharedSwitch worker={worker()} />);
+
+    const toggle = screen.getByRole("switch", { name: "Chia sẻ với writer của các dự án của nó" });
+    expect(toggle).not.toBeChecked();
+    expect(toggle).toHaveAccessibleDescription(/mỗi lúc run của một member/);
+    await user.click(toggle);
+
+    expect(await screen.findByText("lab-ws-01 đã được chia sẻ")).toBeInTheDocument();
+    const patch = api.seen.find((request) => request.method === "PATCH");
+    expect(new URL(patch?.url ?? "").pathname).toBe("/v1/workers/9");
+    expect(patch?.headers.get("X-Evo-CSRF")).toBe("csrf-1");
+    expect(await patch?.clone().json()).toEqual({ shared: true });
+  });
+
+  it("says in a toast what the hub refused, and shows what it holds", async () => {
+    const user = userEvent.setup();
+    api.answer = () => json({ error: "forbidden", message: "only octo, who owns worker 9, may change its settings" }, 403);
+    renderWithQueries(<SharedSwitch worker={worker({ shared: true })} />);
+
+    const toggle = screen.getByRole("switch", { name: "Chia sẻ với writer của các dự án của nó" });
+    await user.click(toggle);
+
+    expect(await screen.findByText("Không đổi được chế độ chia sẻ của lab-ws-01")).toBeInTheDocument();
+    expect(toggle).toBeChecked();
   });
 });
 

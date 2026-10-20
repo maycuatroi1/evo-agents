@@ -3,9 +3,7 @@
   "maxLines": {
     "src/components/admin/grant-dialog.tsx": 413,
     "src/components/admin/member-page.tsx": 405,
-    "src/components/curator/charter-form.tsx": 477,
     "src/components/curator/curator-page.tsx": 442,
-    "src/components/curator/model.ts": 613,
     "src/components/inbox/decision-view.tsx": 630,
     "src/components/inbox/mobile-decision.tsx": 442,
     "src/components/kg/build-status.tsx": 429,
@@ -17,7 +15,7 @@
     "src/components/runs/run-log.tsx": 582,
     "src/components/runs/trace-model.ts": 548,
     "src/components/secrets/secret-dialog.tsx": 501,
-    "src/components/shell/shortcuts.tsx": 520,
+    "src/components/shell/shortcuts.tsx": 487,
     "src/components/ui/sidebar.tsx": 712,
     "src/components/workers/register-dialog.tsx": 726
   },
