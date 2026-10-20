@@ -64,7 +64,7 @@ test.describe("runs screenshots", () => {
       const form = page.getByTestId("dispatch-dialog");
       await form.getByTestId("dispatch-plan").selectOption(fresh);
       await form.getByTestId("dispatch-step-2").click();
-      await expect(form.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "now");
+      await expect(form.getByTestId("dispatch-worker-select")).toHaveValue(String(live.worker.id));
       await page.screenshot({ path: path.join(dir!, `dispatch-ready-${scheme}.png`) });
       await page.keyboard.press("Escape");
 
@@ -80,7 +80,7 @@ test.describe("runs screenshots", () => {
         await page.locator("#main").getByTestId("runs-dispatch").click();
         const dialog = page.getByTestId("dispatch-dialog");
         await dialog.getByTestId("dispatch-settled").locator("summary").click();
-        await expect(dialog.getByTestId("dispatch-outlook")).toBeVisible();
+        await expect(dialog.getByTestId("dispatch-worker-select")).toBeVisible();
         await page.screenshot({ path: path.join(dir!, `dispatch${suffix}-${scheme}.png`) });
         await page.keyboard.press("Escape");
         await open(page, `/p/${project}/plans/${RUN_PLAN}/steps/2`);
@@ -109,9 +109,10 @@ test.describe("runs screenshots", () => {
       await main.getByTestId("run-plan").click();
       const dialog = page.getByTestId("plan-run-dialog");
       await expect(dialog.getByTestId("plan-run-summary")).toBeVisible();
-      // The worker's one slot holds the other plan's run: the footer says the new one waits for it.
+      // The worker's one slot holds the other plan's run: below the worker it says the new one waits for it.
       await expect(dialog.getByTestId("dispatch-outlook")).toHaveAttribute("data-kind", "later");
       await page.screenshot({ path: path.join(dir!, `plan-run-dialog-${scheme}.png`) });
+      await dialog.getByTestId("plan-run-model-select").selectOption({ label: "Another model…" });
       await dialog.getByTestId("plan-run-model-input").fill("sonnet");
       await expect(dialog.getByTestId("plan-run-model-error")).toBeVisible();
       await page.screenshot({ path: path.join(dir!, `plan-run-dialog-model-${scheme}.png`) });

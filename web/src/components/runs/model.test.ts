@@ -7,6 +7,7 @@ import { readySelection, selectedRepos, splitSteps } from "./dispatch-steps";
 import {
   activePlanRun,
   authorWorker,
+  chosenWorker,
   dispatchOutlook,
   dispatchWorkers,
   durationParts,
@@ -446,6 +447,22 @@ describe("author runs", () => {
     expect(authorWorker([without, free], request, 1)).toBe(1);
     expect(authorWorker([free], request, 9)).toBe(3);
     expect(authorWorker([], request, null)).toBeNull();
+  });
+
+  it("fills the worker that can take every run now, keeps one picked, and leaves the rest to the hub", () => {
+    const request = { project: "demo", runtime: "claude-code" as const, repos: ["harness"] };
+    const without = worker({ id: 1, checkouts: {} });
+    const busy = worker({ id: 2, checkouts: { "demo/harness": { path: "~/h" } }, slots: 1, held_runs: 1 });
+    const one = worker({ id: 3, checkouts: { "demo/harness": { path: "~/h" } }, slots: 2, held_runs: 1 });
+    const two = worker({ id: 4, checkouts: { "demo/harness": { path: "~/h" } } });
+    expect(chosenWorker([without, busy, one, two], request, null)).toBe(3);
+    expect(chosenWorker([without, busy, one, two], request, null, 2)).toBe(4);
+    expect(chosenWorker([without, busy, one], request, null, 2)).toBeNull();
+    expect(chosenWorker([without, busy], request, null)).toBeNull();
+    expect(chosenWorker([without, busy, two], request, 2)).toBe(2);
+    expect(chosenWorker([without, two], request, "any")).toBeNull();
+    expect(chosenWorker([two], request, 9)).toBe(4);
+    expect(chosenWorker([], request, null)).toBeNull();
   });
 
   it("takes a request of up to 16 KiB of UTF-8 as typed, and nothing but blanks or more is refused", () => {
