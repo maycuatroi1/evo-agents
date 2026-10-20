@@ -154,6 +154,23 @@ export function dispatchOutlook(
   return { kind: "none", fits };
 }
 
+/** Whether `outlook` says nothing is wrong: a worker takes the runs now, or there is nothing to dispatch yet. */
+export function outlookFine(outlook: DispatchOutlook): boolean {
+  return outlook.kind === "now" || outlook.kind === "nothing" || (outlook.kind === "pinned" && outlook.fit.fit === "now");
+}
+
+/**
+ * The worker `runs` runs go to: the one picked while it is still among `workers`, null for any worker that fits when
+ * that was picked, else the first of `workers` (theirs first, then by name) that could take them all now, else null,
+ * which leaves the choice to the hub until a worker frees up.
+ */
+export function chosenWorker(workers: readonly Worker[], request: FitRequest, picked: number | "any" | null, runs = 1): number | null {
+  if (picked === "any") return null;
+  if (picked !== null && workers.some((worker) => worker.id === picked)) return picked;
+  const found = workers.map((worker) => fitWorker(worker, request)).find((fit) => fit.fit === "now" && fit.free >= runs);
+  return found ? found.worker.id : null;
+}
+
 // Models. A dispatch may name the model its runtime uses; the heartbeat reports, per runtime, the models it lists on
 // the machine (`runtimes.<runtime>.models`, null when it lists none), which the dialogs offer as suggestions.
 

@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { CircleCheck, CircleDashed, Loader2, Play } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
@@ -13,12 +14,14 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
-import { DispatchDialog } from "./dispatch-dialog";
 import { useNotReadyReason } from "./dispatch-step-picker";
 import { PlanRunHoldNote } from "./plan-run-hold";
 import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
 import { hasActiveRuns, LIVE_REFRESH_MS, readyStepsQuery, runsHref, runsQuery, stepRunsQuery } from "./queries";
 import { RunsTable } from "./runs-table";
+
+/** The Dispatch dialog, whose code loads after the page: the step page does not carry its form in its first load. */
+const DispatchDialog = dynamic(() => import("./dispatch-dialog").then((module) => module.DispatchDialog), { ssr: false });
 
 /**
  * The runs of one plan step on the step's page: whether the step is ready to run, the Run this step button for a

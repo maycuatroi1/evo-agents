@@ -34,7 +34,7 @@ export function useAgentChoice(project: string): AgentChoice {
  */
 export const AgentField = dynamic(() => import("./agent-picker").then((module) => module.AgentField), {
   ssr: false,
-  loading: () => <Skeleton className="h-[86px] w-full" data-testid="dispatch-agent-loading" />,
+  loading: () => <Skeleton className="h-[62px] w-full" data-testid="dispatch-agent-loading" />,
 });
 
 /** The footer's line in place of the workers' outlook while the agent refuses what the form asks. */

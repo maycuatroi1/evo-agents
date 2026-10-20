@@ -9,6 +9,8 @@ import { NativeSelect, NativeSelectOption } from "@/components/ui/native-select"
 import { Skeleton } from "@/components/ui/skeleton";
 import { type Agent, type AgentProblem, allowed, AXES, type Axis } from "@/lib/agents";
 
+import { FieldLabel } from "./field-label";
+
 // The agent picker of the dispatch forms, loaded when a form opens (agent-field.tsx): the project's agents with the
 // face of the one picked, what it limits, and why it refuses what the form asks.
 
@@ -84,14 +86,17 @@ export function AgentField({ choice, problems, disabled = false }: { choice: Age
   const hint = useAgentHint();
   const problemText = useAgentProblemText();
   const { agents, agent, loading, failed } = choice;
-  const described = [`${ids}-hint`, problems.length ? `${ids}-problems` : null].filter(Boolean).join(" ");
+  const described = [failed ? `${ids}-hint` : null, problems.length ? `${ids}-problems` : null].filter(Boolean).join(" ") || undefined;
   return (
     <div className="flex min-w-0 flex-col gap-1.5" data-testid="dispatch-agent">
-      <label htmlFor={`${ids}-agent`} className="text-sm font-medium">
-        {t("label")}
-      </label>
+      <FieldLabel
+        htmlFor={`${ids}-agent`}
+        label={t("label")}
+        info={loading || failed ? undefined : agent ? hint(agent) : t("defaultOnlyHint")}
+        testId="dispatch-agent-info"
+      />
       {loading ? (
-        <Skeleton className="h-9 w-full sm:w-80" />
+        <Skeleton className="h-9 w-full" />
       ) : (
         <div className="flex min-w-0 items-center gap-2.5">
           {agent ? <AgentAvatar agent={agent} /> : null}
@@ -102,7 +107,7 @@ export function AgentField({ choice, problems, disabled = false }: { choice: Age
             disabled={disabled || agents.length === 0}
             aria-invalid={problems.length > 0 || undefined}
             aria-describedby={described}
-            className="w-full min-w-0 sm:w-80 md:[&_select]:h-9"
+            className="w-full min-w-0 md:[&_select]:h-9"
             data-testid="dispatch-agent-select"
           >
             {agents.length === 0 ? <NativeSelectOption value="">{t("defaultOnly")}</NativeSelectOption> : null}
@@ -116,9 +121,11 @@ export function AgentField({ choice, problems, disabled = false }: { choice: Age
           </NativeSelect>
         </div>
       )}
-      <p id={`${ids}-hint`} className="text-xs text-pretty text-muted-foreground [overflow-wrap:anywhere]" data-testid="dispatch-agent-hint">
-        {failed ? t("failed") : agent ? hint(agent) : loading ? t("loading") : t("defaultOnlyHint")}
-      </p>
+      {failed ? (
+        <p id={`${ids}-hint`} className="text-xs text-pretty text-attention" data-testid="dispatch-agent-hint">
+          {t("failed")}
+        </p>
+      ) : null}
       {agent && problems.length ? (
         <ul id={`${ids}-problems`} className="flex flex-col gap-1" data-testid="dispatch-agent-problems">
           {problems.map((problem) => (
