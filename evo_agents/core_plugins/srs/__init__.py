@@ -29,8 +29,13 @@ its instructions and the skills srs-writing and srs-review), which a project's w
 agent reads, searches and compares documents and proposes and comments with the plugin's tools on the hub's /mcp
 (``agent``): a proposal is the document's next version, in review at once, written as the person who mentioned @ba,
 who therefore never approves it. The type declares ``chat_runs: run_as``: every run of @ba goes to a worker of the
-member the project enabled the type under, and each version that enters review for the first time is reviewed by @ba
-in a task run on that worker (``auto_review``), whose comments are advice and block nothing.
+member the project enabled the type under. Each time a version enters review, in every round, from a member's submit
+or from a proposal, @ba reviews it in a task run on that worker (``auto_review``), while the type is on and within its
+cap; when it is not, the log says why and approval waits for no review. The review compares each use case the version
+changes with every use case of every document, drafts included, and with the project's knowledge graph (kg_search,
+kg_context), records each conflict it can show a source for as a finding, settles from the graph what a plan's
+Decision line, an approved item or a newer document already answers, and resolves the open findings the version
+settles. Its comments on the template are advice and block nothing.
 
 A conflict @ba finds is a finding (``findings``, criteria a4 and a5 of plan srs-conflicts-and-tasks): the agent of a
 run of @ba records it with its sources, which the hub looks up first, and resolves, waives or reopens it with the tool
@@ -274,7 +279,8 @@ TOOLS = (
         "read",
         "Read the SRS documents",
         "Read a BA document of the project: without document, the list of documents; with it, a version as Markdown "
-        "(the latest unless version names one) with its state; with item, that item and the items under it.",
+        "(the latest unless version names one) with its state and the document's open findings; with item, that item "
+        "and the items under it.",
         READ_SCHEMA,
     ),
     (

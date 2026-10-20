@@ -69,7 +69,8 @@ def test_ba_agent_type_of_srs_is_mentioned_by_writers_and_runs_on_the_workers_of
     assert [item["name"] for item in manifest.contributions("agent_packs")] == ["ba"]
     tools = manifest.python_refs("mcp_tools")
     assert tools == {
-        name: f"evo_agents.core_plugins.srs.agent:{name}" for name in ("read", "search", "diff", "propose", "comment")
+        name: f"evo_agents.core_plugins.srs.agent:{name}"
+        for name in ("read", "search", "diff", "propose", "comment", "finding")
     }
     propose = next(item for item in manifest.contributions("mcp_tools") if item["name"] == "propose")
     change = propose["input_schema"]["properties"]["changes"]["items"]
