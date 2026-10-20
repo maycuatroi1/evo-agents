@@ -5920,7 +5920,8 @@
       "draft": "Draft",
       "in_review": "In review",
       "approved": "Approved",
-      "superseded": "Superseded"
+      "superseded": "Superseded",
+      "withdrawn": "Withdrawn"
     },
     "change": {
       "changed": "Changed",

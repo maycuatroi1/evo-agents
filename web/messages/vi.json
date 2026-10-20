@@ -5920,7 +5920,8 @@
       "draft": "Nháp",
       "in_review": "Chờ duyệt",
       "approved": "Đã duyệt",
-      "superseded": "Đã thay thế"
+      "superseded": "Đã thay thế",
+      "withdrawn": "Đã rút"
     },
     "change": {
       "changed": "Đã sửa",

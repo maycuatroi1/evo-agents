@@ -7966,6 +7966,67 @@
         "schema": "SrsVersion"
       }
     },
+    "hub srs withdraw": {
+      "positionals": [
+        {
+          "name": "slug",
+          "metavar": "SLUG",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "name": "number",
+          "metavar": "N",
+          "value": "integer",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--project"
+          ],
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--comment"
+          ],
+          "value": "string",
+          "required": false,
+          "repeatable": false
+        },
+        {
+          "flags": [
+            "--json"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": {
+        "kind": "object",
+        "keys": [
+          "number",
+          "parent_number",
+          "state",
+          "round",
+          "author",
+          "drafted_by_run",
+          "summary",
+          "created_at",
+          "submitted_at",
+          "decided_at",
+          "reviews"
+        ],
+        "schema": "SrsVersion"
+      }
+    },
     "hub task create": {
       "positionals": [],
       "options": [
@@ -9518,7 +9579,7 @@
     "openapi": "3.1.0",
     "info": {
       "title": "evo-agents hub",
-      "version": "0.23.0"
+      "version": "0.23.1"
     },
     "paths": {
       "/v1/health": {
@@ -29639,6 +29700,153 @@
               "application/json": {
                 "schema": {
                   "$ref": "#/components/schemas/SrsReviewIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SrsVersion"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/x/srs/{project}/documents/{slug}/versions/{number}/withdraw": {
+        "post": {
+          "tags": [
+            "plugins"
+          ],
+          "summary": "Withdraw Version",
+          "description": "Take a version out of review for good, as its author or an admin of the project; ``comment`` is kept as a\ncomment on it. A withdrawn version is never submitted, reviewed or approved again, and approving a later one leaves\nit withdrawn. The agent of a run never withdraws one.",
+          "operationId": "withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post",
+          "parameters": [
+            {
+              "name": "project",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Project"
+              }
+            },
+            {
+              "name": "slug",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "title": "Slug"
+              }
+            },
+            {
+              "name": "number",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "minimum": 1,
+                "title": "Number"
+              }
+            },
+            {
+              "name": "X-Evo-Sink",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "title": "X-Evo-Sink"
+              }
+            }
+          ],
+          "requestBody": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "anyOf": [
+                    {
+                      "$ref": "#/components/schemas/SrsWithdrawIn"
+                    },
+                    {
+                      "type": "null"
+                    }
+                  ],
+                  "title": "Body"
                 }
               }
             }
@@ -63272,7 +63480,8 @@
                     "draft",
                     "in_review",
                     "approved",
-                    "superseded"
+                    "superseded",
+                    "withdrawn"
                   ]
                 },
                 {
@@ -63398,7 +63607,8 @@
                     "draft",
                     "in_review",
                     "approved",
-                    "superseded"
+                    "superseded",
+                    "withdrawn"
                   ]
                 },
                 {
@@ -64358,7 +64568,8 @@
                 "draft",
                 "in_review",
                 "approved",
-                "superseded"
+                "superseded",
+                "withdrawn"
               ],
               "title": "State"
             },
@@ -64465,7 +64676,8 @@
                 "draft",
                 "in_review",
                 "approved",
-                "superseded"
+                "superseded",
+                "withdrawn"
               ],
               "title": "State"
             },
@@ -64573,6 +64785,27 @@
           ],
           "title": "SrsVersionDetail",
           "description": "A version with its content and what is wrong with it."
+        },
+        "SrsWithdrawIn": {
+          "properties": {
+            "comment": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 20000,
+                  "minLength": 1
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Comment",
+              "description": "why, kept as a comment on the version"
+            }
+          },
+          "additionalProperties": false,
+          "type": "object",
+          "title": "SrsWithdrawIn"
         },
         "StateCounts": {
           "properties": {

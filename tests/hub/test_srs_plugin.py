@@ -2,8 +2,9 @@
 it: a project that enabled it keeps BA documents. A writer imports the sample SRS (tests/hub/fixtures/srs, no client's
 content) after a preview; every save is a version in one straight line; codes are unique in the project, aliases
 included, stay when an item is renamed, and are never given again; a version goes from draft to review to approved,
-approved by a writer who wrote none of the versions since the one approved last, as the config's policy asks; two
-versions compare item by item; a version exports as the Markdown it came from. Readers read, writers write, admins
+approved by a writer who wrote none of the versions since the one approved last, as the config's policy asks; its
+author or an admin withdraws a version in review for good (criterion a2 of plan srs-document-lifecycle); two versions
+compare item by item; a version exports as the Markdown it came from. Readers read, writers write, admins
 drop coded items; a document carries the project's label and reads follow it. A project that did not enable the
 plugin answers 404.
 """
@@ -20,13 +21,17 @@ from tests.hub import pg
 if not pg.DSN:
     pytest.skip(pg.SKIP_REASON, allow_module_level=True)
 
+import asyncio
+
 import psycopg
 from fastapi.testclient import TestClient
 from sqlalchemy import select, update
 
-from evo_agents.core_plugins.srs import markdown
+from evo_agents.core_plugins.srs import markdown, reviews
+from evo_agents.core_plugins.srs.doc import SrsError
 from evo_agents.hub import plugin_calls, tables
 from evo_agents.hub.server.app import create_app
+from evo_agents.hub.server.security import Principal, RunScope
 from evo_agents.plugins import core
 from evo_agents.plugins.core import ENTRY_POINT_GROUP
 from tests.hub import live
@@ -127,6 +132,14 @@ def submitted(client, headers, number: int) -> dict:
     answer = client.post(f"{DOC}/versions/{number}/submit", headers=headers)
     assert answer.status_code == 200, answer.text
     return answer.json()
+
+
+def withdraw(client, headers, number: int, **body):
+    return client.post(f"{DOC}/versions/{number}/withdraw", json=body or None, headers=headers)
+
+
+def states(client, headers) -> dict[int, str]:
+    return {v["number"]: v["state"] for v in client.get(f"{DOC}/versions", headers=headers).json()}
 
 
 # Enabling
@@ -328,6 +341,59 @@ def test_srs_the_approval_policy_asks_each_required_role(client, hub):
     assert [(r["reviewer"], r["role"]) for r in done["reviews"]] == [("owner", "dev"), ("bao", "ba"), ("chi", "qa")]
 
 
+def test_srs_the_author_withdraws_a_version_in_review_for_good_with_the_reason_as_a_comment(client, hub):
+    imported(client, hub["alice"], slug="demo-shop")
+    early = withdraw(client, hub["alice"], 1)
+    assert early.status_code == 409 and "only a version in review is withdrawn" in early.json()["message"]
+    submitted(client, hub["alice"], 1)
+    for other in ("bao", "eve"):  # another writer, a reader
+        refused = withdraw(client, hub[other], 1)
+        assert refused.status_code == 403, other
+    assert "its author or an admin" in withdraw(client, hub["bao"], 1).json()["message"]
+    assert states(client, hub["eve"]) == {1: "in_review"}
+    done = withdraw(client, hub["alice"], 1, comment="The gateway is not chosen yet")
+    assert done.status_code == 200, done.text
+    assert done.json()["state"] == "withdrawn" and done.json()["decided_at"] is not None
+    listed = client.get(f"{DOC}/comments", headers=hub["eve"]).json()
+    assert [(c["version"], c["author"], c["body"]) for c in listed] == [(1, "alice", "The gateway is not chosen yet")]
+    assert client.get(f"{BASE}/documents", headers=hub["eve"]).json()[0]["latest_state"] == "withdrawn"
+    # a last state: never withdrawn, submitted, reviewed or approved again
+    assert withdraw(client, hub["owner"], 1).status_code == 409
+    resubmitted = client.post(f"{DOC}/versions/1/submit", headers=hub["alice"])
+    assert resubmitted.status_code == 409 and "is withdrawn: only a draft is submitted" in resubmitted.json()["message"]
+    assert review(client, hub["bao"], 1).status_code == 409
+    assert review(client, hub["bao"], 1, "request_changes", body="Back to draft").status_code == 409
+    assert states(client, hub["eve"]) == {1: "withdrawn"}
+    assert len(client.get(f"{DOC}/comments", headers=hub["eve"]).json()) == 1
+
+
+def test_srs_an_admin_withdraws_a_writers_version_and_approving_a_later_one_leaves_it_withdrawn(client, hub):
+    imported(client, hub["alice"], slug="demo-shop")
+    submitted(client, hub["alice"], 1)
+    assert review(client, hub["bao"], 1).json()["state"] == "approved"
+    cart = item(client, hub["alice"], "BR ORD1-1")
+    saved(client, hub["alice"], 1, edit(cart["key"], body="- A cart holds at most 40 lines."))
+    submitted(client, hub["alice"], 2)
+    by_admin = withdraw(client, hub["owner"], 2)  # owner wrote no version of it
+    assert by_admin.status_code == 200 and by_admin.json()["state"] == "withdrawn", by_admin.text
+    assert client.get(f"{DOC}/comments", headers=hub["eve"]).json() == []  # no reason, no comment
+    saved(client, hub["alice"], 2, edit(cart["key"], body="- A cart holds at most 30 lines."))
+    submitted(client, hub["alice"], 3)
+    assert review(client, hub["bao"], 3).json()["state"] == "approved"
+    assert states(client, hub["eve"]) == {1: "superseded", 2: "withdrawn", 3: "approved"}
+    assert withdraw(client, hub["owner"], 3).status_code == 409  # an approved version stays approved
+
+
+def test_srs_the_agent_of_a_run_never_withdraws_a_version():
+    """The routes reach the agent of a run only through /mcp, which has no tool that withdraws; were one to call
+    ``withdraw``, the run's scope refuses it before anything is read."""
+    scope = RunScope(run_id=7, project=PROJECT, role="writer", max_level="internal")
+    agent = Principal(602, "alice", False, 9, "worker", "a" * 64, scope=scope)
+    with pytest.raises(SrsError) as refused:
+        asyncio.run(reviews.withdraw(None, None, agent, None, 1))
+    assert refused.value.status == 403 and "the agent of a run never withdraws" in refused.value.message
+
+
 def test_srs_a_version_with_an_error_is_not_submitted(client, hub):
     text = sample().replace(
         "| Actor | Customer |\n| Trigger | The customer presses", "| Trigger | The customer presses"
@@ -397,12 +463,23 @@ def test_srs_readers_read_and_write_nothing_and_a_label_above_their_grant_hides_
     [
         lambda s: update(s.versions).values(state="approved", decided_at=None),
         lambda s: update(s.versions).values(state="in_review", submitted_at=None),
+        lambda s: update(s.versions).values(state="withdrawn", decided_at=None),
+        lambda s: update(s.versions).values(state="retracted"),
         lambda s: update(s.items).values(retired_in=1),
         lambda s: update(s.documents).values(slug="Not A Slug"),
         lambda s: update(s.documents).values(kind="memo"),
         lambda s: update(s.item_versions).values(heading_level=7),
     ],
-    ids=["approved-undecided", "in-review-unsubmitted", "retired-before-made", "slug", "kind", "level"],
+    ids=[
+        "approved-undecided",
+        "in-review-unsubmitted",
+        "withdrawn-undecided",
+        "state",
+        "retired-before-made",
+        "slug",
+        "kind",
+        "level",
+    ],
 )
 def test_srs_tables_refuse_rows_their_checks_forbid(client, hub, hub_db, change):
     imported(client, hub["alice"], slug="demo-shop")

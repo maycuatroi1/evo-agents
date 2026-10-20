@@ -7,18 +7,19 @@ item with a key the hub gives and keeps: sections, use cases (``UC ORD-3``), bus
 project, aliases included, stays when the item is renamed or moved, and is never given again once the item is dropped.
 
 Each save is a version, never changed after, in one straight line per document: draft, in review, approved, and
-superseded once a newer version is approved. A writer submits a version; a writer who wrote no version since the one
-approved last approves it or asks for changes, as many times per role as the config's ``approval_policy`` asks
-(one approval when it asks nothing). Two versions compare item by item. A Markdown file whose headings follow the
-template imports as a document or as its next version, and a version exports as Markdown with the same structure and
-codes.
+superseded once a newer version is approved; or withdrawn, for good, when its author or an admin takes it out of
+review. A writer submits a version; a writer who wrote no version since the one approved last approves it or asks for
+changes, as many times per role as the config's ``approval_policy`` asks (one approval when it asks nothing). Two
+versions compare item by item. A Markdown file whose headings follow the template imports as a document or as its
+next version, and a version exports as Markdown with the same structure and codes.
 
 The routes are under /v1/x/srs/<project>/ (``server``) for members with a grant on a project that enabled the plugin;
 readers read, writers write, admins drop coded items. The hub's web shows them on the plugin's native pages
 (``PAGES``): the documents, a document's contents with each section read and edited in place, an item's page with
-the trace the knowledge graph holds, the versions, the comparison of two versions, the review and the comments. ``evo-agents hub srs list|show|import|export|submit|approve``
-is their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migration 0046), every row of a document
-carrying its label, the project's by default. The version of each document approved last is a source of the project's
+the trace the knowledge graph holds, the versions, the comparison of two versions, the review and the comments.
+``evo-agents hub srs list|show|import|export|submit|approve|withdraw`` is their client. The tables are the hub's
+(``evo_agents.hub.tables_srs``, migrations 0046 and 0064), every row of a document carrying its label, the project's
+by default. The version of each document approved last is a source of the project's
 knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the ids a mention of their
 codes gets.
 

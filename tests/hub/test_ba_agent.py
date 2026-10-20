@@ -372,8 +372,9 @@ def test_ba_agent_proposes_a_version_in_review_written_as_the_writer_who_asked_w
     assert proposed["summary"] == "Two payment retries, as someone-else asked"
     text, error = tool(client, agent, "srs__diff", document="demo-shop", **{"from": 1, "to": 2})
     assert not error and text.startswith("demo-shop: version 1 to version 2, 2 item(s) changed."), text
-    # nobody approves it through the run, and the writer who asked does not either
+    # nobody approves or withdraws it through the run, and the writer who asked does not approve it either
     assert review(client, agent, 2).status_code in (401, 403)
+    assert client.post(f"{DOC}/versions/2/withdraw", headers=agent).status_code in (401, 403)
     author = review(client, hub["other"], 2)
     assert author.status_code == 403, author.text
     approved = review(client, hub["chi"], 2)

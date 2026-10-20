@@ -4,8 +4,10 @@
 Readers read: the documents, a document with its versions, a version whole with its problems, an item, the difference
 between two versions, a version as Markdown, the comments. Writers import Markdown, save versions, submit them (a
 version's first submit hands @ba its review, ``auto_review``), review them (never one they wrote a version of since
-the one approved last) and comment; dropping a coded item takes an admin. Approving a version queues a build of the project's knowledge graph, which reads the approved versions. Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error
-body, with the problems that refused it (or a conflict's two texts) in ``detail``.
+the one approved last) and comment; dropping a coded item takes an admin. The author of a version in review, or an
+admin, withdraws it (POST .../versions/{n}/withdraw), for good. Approving a version queues a build of the project's
+knowledge graph, which reads the approved versions. Reads go through the sink X-Evo-Sink names, else the project's hub
+sink. A refusal is the hub's error body, with the problems that refused it (or a conflict's two texts) in ``detail``.
 """
 
 from __future__ import annotations
@@ -34,6 +36,7 @@ from evo_agents.core_plugins.srs.models import (
     SrsSave,
     SrsVersion,
     SrsVersionDetail,
+    SrsWithdrawIn,
     comment_model,
     detail_model,
     diff_model,
@@ -307,6 +310,29 @@ async def review_version(
         if decided.state == "approved":  # the knowledge graph reads the version approved last (``kg``)
             await queue_if_configured(request.app.state.jobs, conn, access.project_id, access.name)
         return version_model(decided)
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/versions/{number}/withdraw", response_model=SrsVersion)
+async def withdraw_version(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    number: Number,
+    user: CurrentUser,
+    body: SrsWithdrawIn | None = None,
+    sink: Sink = None,
+):
+    """Take a version out of review for good, as its author or an admin of the project; ``comment`` is kept as a
+    comment on it. A withdrawn version is never submitted, reviewed or approved again, and approving a later one leaves
+    it withdrawn. The agent of a run never withdraws one."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        reason = body.comment if body is not None else None
+        return version_model(await reviews.withdraw(conn, access, user, doc, number, reason))
 
     return await _answer(request, work)
 

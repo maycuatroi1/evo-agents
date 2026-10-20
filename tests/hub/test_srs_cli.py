@@ -1,7 +1,8 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve`` (``evo_agents.hub.cli_srs``), as members run them
-against a hub that serves the core plugin srs: the commands and their ``--json`` keys are in the contract (seam
-hub-cli-v1), an import prints its preview and the problems that refuse it, an export writes the Markdown imported, and
-approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins).
+"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw`` (``evo_agents.hub.cli_srs``), as members run
+them against a hub that serves the core plugin srs: the commands and their ``--json`` keys are in the contract (seam
+hub-cli-v1), an import prints its preview and the problems that refuse it, an export writes the Markdown imported,
+approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins), and a version in review is withdrawn by its
+author or an admin (criterion a2 of plan srs-document-lifecycle).
 
 The parsing runs without Postgres or the hub-server extra, as the client does; everything that needs the hub skips
 without EVO_HUB_TEST_DSN."""
@@ -26,7 +27,7 @@ needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
 
 def test_the_srs_commands_are_in_the_contract():
     printed = commands()
-    names = {f"hub srs {verb}" for verb in ("list", "show", "import", "export", "submit", "approve")}
+    names = {f"hub srs {verb}" for verb in ("list", "show", "import", "export", "submit", "approve", "withdraw")}
     assert names <= set(printed)
     listed = printed["hub srs list"]["json"]
     assert (listed["kind"], listed["schema"]) == ("array", "SrsDocumentSummary")
@@ -35,6 +36,10 @@ def test_the_srs_commands_are_in_the_contract():
     options = {o["flags"][0]: o for o in printed["hub srs approve"]["options"]}
     assert options["--role"]["choices"] == ["ba", "qa", "dev"] and options["--project"]["required"]
     assert printed["hub srs export"]["json"] is None
+    withdraw = printed["hub srs withdraw"]
+    assert [p["metavar"] for p in withdraw["positionals"]] == ["SLUG", "N"]
+    assert [o["flags"][0] for o in withdraw["options"]] == ["--project", "--comment", "--json"]
+    assert withdraw["json"]["schema"] == "SrsVersion"
 
 
 def test_srs_import_takes_no_slug_or_title_with_doc(monkeypatch, capsys, tmp_path):
@@ -126,3 +131,28 @@ def test_srs_import_export_submit_and_approve_from_the_command_line(hub, monkeyp
     assert approved["state"] == "approved"
     final = ok(srs(hub, monkeypatch, capsys, "owner", "list"))
     assert "demo-shop  srs   1       approved  1" in final.out
+
+
+@needs_pg
+def test_srs_withdraw_takes_a_version_out_of_review_for_good_from_the_command_line(hub, monkeypatch, capsys, tmp_path):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    early = srs(hub, monkeypatch, capsys, "alice", "withdraw", "demo-shop", "1")
+    assert early.code == 1 and "only a version in review is withdrawn" in early.err
+    ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1"))
+    other = srs(hub, monkeypatch, capsys, "bao", "withdraw", "demo-shop", "1")
+    assert other.code == 1 and "its author or an admin" in other.err
+    reason = ("--comment", "The gateway is not chosen yet")
+    printed = ok(srs(hub, monkeypatch, capsys, "alice", "withdraw", "demo-shop", "1", *reason))
+    assert printed.out == "demo-shop version 1 is withdrawn (round 1).\n"
+    shown = ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop"))
+    assert "v1 withdrawn by alice" in shown.out
+    again = srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1")
+    assert again.code == 1 and "is withdrawn: only a draft is submitted" in again.err
+
+    fewer = tmp_path / "fewer-retries.md"
+    fewer.write_text(SAMPLE.read_text(encoding="utf-8").replace("retried 3 times", "retried 2 times"), encoding="utf-8")
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(fewer), "--doc", "demo-shop"))
+    ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "2"))
+    by_admin = as_json(srs(hub, monkeypatch, capsys, "owner", "withdraw", "demo-shop", "2", "--json"))
+    assert_json_keys("hub srs withdraw", by_admin)
+    assert (by_admin["number"], by_admin["state"], by_admin["author"]) == (2, "withdrawn", "alice")
