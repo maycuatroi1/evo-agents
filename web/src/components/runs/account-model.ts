@@ -5,7 +5,7 @@ import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
-import { LIVE_REFRESH_MS, type Run, runKey } from "./queries";
+import { LIVE_REFRESH_MS, type RequestedRuntime, type Run, runKey } from "./queries";
 
 /**
  * The account a member picks by hand for a run (docs/credentials.md, section "Accounts"): one of their own env
@@ -42,6 +42,34 @@ export const runAccountsQuery = (api: ApiSource, project: string, id: number, ac
 /** The visitor's accounts a run of `project` may take, by name. */
 export function projectAccounts(accounts: Account[], project: string): Account[] {
   return accounts.filter((account) => account.projects.includes(project)).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/**
+ * The variables each runtime signs in with, for the account a dispatch takes by itself: Claude Code's for any, since a
+ * worker tries Claude Code first. None is known for opencode, whose providers each read their own.
+ */
+const SIGN_IN: Record<RequestedRuntime, readonly string[]> = {
+  any: ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
+  "claude-code": ["CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY"],
+  codex: ["OPENAI_API_KEY", "CODEX_API_KEY"],
+  opencode: [],
+};
+
+/**
+ * The account a dispatch takes when the visitor has not picked one: a ready account of theirs bound to `project`, for a
+ * variable `runtime` signs in with, that `worker` may take (one bound to some workers only goes with a run pinned to
+ * one of them; null is any worker), the lowest priority first, then the one taken least recently; the rules when none.
+ */
+export function pickAccount(accounts: Account[], project: string, runtime: RequestedRuntime, worker: string | null): string {
+  const variables = SIGN_IN[runtime];
+  const ready = projectAccounts(accounts, project).filter(
+    (account) =>
+      account.state === "ready" &&
+      variables.includes(account.env_var) &&
+      (account.workers.length === 0 || (worker !== null && account.workers.includes(worker))),
+  );
+  ready.sort((a, b) => a.priority - b.priority || (a.last_leased_at ?? "").localeCompare(b.last_leased_at ?? "") || a.name.localeCompare(b.name));
+  return ready[0]?.name ?? BY_RULES;
 }
 
 /** What a dispatch body says of the choice: nothing for the rules, so a body without an account reads as before. */

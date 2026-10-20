@@ -129,7 +129,7 @@ function Harness({ onDispatched }: { onDispatched: (runs: Run[]) => void }) {
 }
 
 describe("DispatchDialog", () => {
-  it("offers the ready steps only, says which worker matches, and dispatches with the CSRF header", async () => {
+  it("offers the ready steps only, fills the worker that can take them, and dispatches with the CSRF header", async () => {
     const user = userEvent.setup();
     const dispatched = vi.fn();
     api.answer = answer(() => json([queued(41, "4"), queued(42, "2")], 201));
@@ -151,18 +151,26 @@ describe("DispatchDialog", () => {
     expect(within(dialog).getByRole("checkbox", { name: /Model/ })).toBeDisabled();
     expect(within(dialog).getByTestId("dispatch-step-1")).toHaveTextContent("Trạng thái là Xong, không phải chưa làm");
 
-    // Only the visitor's own worker is matched or offered.
-    await waitFor(() => expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("Phù hợp ngay: lab-ws-01 (còn 2 slot trống)."));
+    // Only the visitor's own worker is offered, and filled in since it can take the runs now.
+    const workerSelect = within(dialog).getByTestId("dispatch-worker-select") as HTMLSelectElement;
+    await waitFor(() => expect(workerSelect.value).toBe("7"));
+    expect(within(workerSelect).getAllByRole("option").map((option) => option.textContent)).toEqual(["lab-ws-01: còn 2 slot trống", "Worker bất kỳ phù hợp"]);
+    expect(within(dialog).queryByTestId("dispatch-outlook")).toBeNull();
     await user.click(within(dialog).getByRole("checkbox", { name: /Queue/ }));
     expect(within(dialog).getByRole("button", { name: "Dispatch 2 run" })).toBeEnabled();
-    await user.click(within(dialog).getByRole("radio", { name: /^Codex CLI/ }));
+
+    // A runtime the worker lacks: the worker cannot be picked, and below the dropdown it says why.
+    const codex = within(dialog).getByRole("radio", { name: "Codex CLI" });
+    expect(codex).toHaveAccessibleDescription("Chưa worker nào có");
+    await user.click(codex);
+    expect(within(workerSelect).getByRole("option", { name: "lab-ws-01: không có Codex CLI" })).toBeDisabled();
+    expect(workerSelect.value).toBe("any");
     expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("lab-ws-01: không có Codex CLI");
-    await user.click(within(dialog).getByRole("radio", { name: /^Claude Code/ }));
-    await user.click(within(dialog).getByRole("radio", { name: /^Ghim vào một worker/ }));
-    const pinned = within(dialog).getByLabelText("Worker được ghim");
-    expect(within(pinned).getAllByRole("option").map((option) => option.textContent)).toEqual(["lab-ws-01 (Rảnh)"]);
-    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("lab-ws-01 nhận được các run này ngay.");
-    await user.click(within(dialog).getByRole("radio", { name: /^Đánh dấu bước xong kèm bằng chứng/ }));
+    await user.click(within(dialog).getByRole("radio", { name: "Claude Code" }));
+    expect(workerSelect.value).toBe("7");
+    expect(within(dialog).queryByTestId("dispatch-outlook")).toBeNull();
+    expect(within(dialog).getByTestId("dispatch-approval-info")).toHaveAccessibleDescription(/Giữ lại chờ duyệt: bạn đọc diff và log/);
+    await user.click(within(dialog).getByRole("radio", { name: "Đánh dấu xong" }));
     await user.selectOptions(within(dialog).getByLabelText("Thời gian tối đa mỗi run"), "120");
     await user.click(within(dialog).getByRole("button", { name: "Dispatch 2 run" }));
 
@@ -194,10 +202,10 @@ describe("DispatchDialog", () => {
     expect(alert).toHaveTextContent("Hub báo: step 4 of plan rollout is not ready");
     expect(screen.getByTestId("open-state")).toHaveTextContent("open");
     expect(dispatched).not.toHaveBeenCalled();
-    expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.worker_id).toBeNull();
+    expect((await api.seen.find((request) => request.method === "POST")?.clone().json())?.worker_id).toBe(7);
   });
 
-  it("dispatches with the account picked by hand, and says why when the hub refuses it", async () => {
+  it("fills the ready account for the runtime, dispatches with it, and says why when the hub refuses it", async () => {
     const user = userEvent.setup();
     const accounts = [
       { name: "claude-b", env_var: "CLAUDE_CODE_OAUTH_TOKEN", projects: ["demo"], workers: [], paused_at: null, state: "ready" },
@@ -211,9 +219,9 @@ describe("DispatchDialog", () => {
     const dialog = screen.getByRole("dialog", { name: "Dispatch run" });
     await waitFor(() => expect(within(dialog).getByRole("checkbox", { name: /Docs/ })).toBeChecked());
     const select = within(dialog).getByTestId("dispatch-account-select") as HTMLSelectElement;
+    // The ready account bound to the project, for Claude Code's variable, is filled in; the rules stay a choice.
     await waitFor(() => expect((within(select).getAllByRole("option") as HTMLOptionElement[]).map((option) => option.value)).toEqual(["", "claude-b"]));
-    expect(select.value).toBe("");
-    await user.selectOptions(select, "claude-b");
+    expect(select.value).toBe("claude-b");
     await user.click(within(dialog).getByRole("button", { name: "Dispatch 1 run" }));
     expect(await within(dialog).findByRole("alert")).toHaveTextContent(`Hub báo: ${reason}`);
     refuse = false;
@@ -260,7 +268,7 @@ describe("DispatchDialog", () => {
     const select = (await within(dialog).findByTestId("dispatch-agent-select")) as HTMLSelectElement;
     expect((within(select).getAllByRole("option") as HTMLOptionElement[]).map((option) => option.value)).toEqual(["demo", "gpu", "reviewer"]);
     expect(select.value).toBe("demo");
-    expect(within(dialog).getByTestId("dispatch-agent-hint")).toHaveTextContent("Agent mặc định của dự án");
+    expect(within(dialog).getByTestId("dispatch-agent-info")).toHaveAccessibleDescription(/^Agent mặc định của dự án/);
 
     // An agent that leaves out every worker of the visitor's: said, and nothing goes out.
     await user.selectOptions(select, "gpu");
@@ -270,7 +278,7 @@ describe("DispatchDialog", () => {
 
     // A runtime the agent leaves out, then one it allows.
     await user.selectOptions(select, "reviewer");
-    expect(within(dialog).getByTestId("dispatch-agent-hint")).toHaveTextContent("Nó giới hạn worker ở lab-ws-01 và runtime ở Claude Code.");
+    expect(within(dialog).getByTestId("dispatch-agent-info")).toHaveAccessibleDescription("Nó giới hạn worker ở lab-ws-01 và runtime ở Claude Code.");
     await user.click(within(dialog).getByRole("radio", { name: /^Codex CLI/ }));
     expect(within(dialog).getByTestId("dispatch-agent-problem")).toHaveTextContent("@reviewer không cho phép Codex CLI: nó chỉ cho Claude Code.");
     await user.click(within(dialog).getByRole("radio", { name: /^Claude Code/ }));
@@ -289,6 +297,6 @@ describe("DispatchDialog", () => {
     await waitFor(() => expect(docs).toBeChecked());
     await userEvent.setup().click(docs);
     expect(within(dialog).getByRole("button", { name: "Dispatch" })).toBeDisabled();
-    expect(within(dialog).getByTestId("dispatch-outlook")).toHaveTextContent("Chọn ít nhất một bước đã sẵn sàng.");
+    expect(within(dialog).queryByTestId("dispatch-outlook")).toBeNull();
   });
 });

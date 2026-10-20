@@ -1,6 +1,7 @@
 "use client";
 
 import { Activity, CircleCheck, CircleX, Clock, Eye, Laptop, type LucideIcon, MonitorPlay, Play, Send } from "lucide-react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useFormatter, useTranslations } from "next-intl";
@@ -24,12 +25,14 @@ import { Button } from "@/components/ui/button";
 import { browserApi } from "@/lib/api/browser";
 import type { ApiErrorInfo } from "@/lib/api/errors";
 
-import { DispatchDialog } from "./dispatch-dialog";
 import { useCanDispatch, useDispatchedToast, useViewer } from "./hooks";
 import { MAX_QUERY, runsQuery, runsSummaryQuery } from "./queries";
 import { facetCount, filtersSearch, isFiltered, KIND_FILTERS, type KindFilter, listQuery, NO_FILTERS, readFilters, RUN_FACETS, type RunFacet, type RunFilters } from "./run-filters";
 import { type RunsSummary, summarizeRuns } from "./runs-summary";
 import { RunsTable } from "./runs-table";
+
+/** The Dispatch dialog, whose code loads after the page: the runs page does not carry its form in its first load. */
+const DispatchDialog = dynamic(() => import("./dispatch-dialog").then((module) => module.DispatchDialog), { ssr: false });
 
 /** The filters in the URL, changed through the History API (Next.js syncs useSearchParams with it). */
 function useFilters(): [RunFilters, (next: RunFilters) => void] {
