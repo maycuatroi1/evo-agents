@@ -25,7 +25,7 @@ The comparison with main reads `origin/main`: run `git fetch origin` first, or i
 | --- | --- | --- |
 | `worker-not-hub-server` | nothing `evo_agents.worker` imports reaches `evo_agents.hub.server`, directly or through another module | the parser of `worker plan`, which borrows the hub CLI's JSON option and plan keys (2) |
 | `kg-not-hub-or-worker` | `evo_agents.kg` imports neither `evo_agents.hub` nor `evo_agents.worker` | its CLI: `kg.cli`, `kg.cli_graph`, `kg.schedule` |
-| `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (eleven job modules) |
+| `hub-server-from-hub-server` | outside `evo_agents.hub.server`, `evo_agents.hub` does not import it | `hub serve` and `hub openapi` (the app), `kg_prune` (audit), `hub worker` (ten job modules) |
 | `plugins-standalone` | `evo_agents.plugins`, the code the hub and the worker share to read, trust and place a plugin, imports neither `cli`, `worker`, `hub`, `kg` nor `harness` | none |
 | `packages-acyclic` | `cli`, `worker`, `hub`, `kg`, `harness`, `plugins` and `schema` import each other without cycles | the kg CLI, the MCP proxy's worker home, the CLI contract, the harness loader's use of kg (8) |
 | `hub-runs-layers` | in `evo_agents.hub.server.runs`, `routes` imports `service` and `models`, `service` imports `models`, never the reverse; every module of the package is in one of the three | none |

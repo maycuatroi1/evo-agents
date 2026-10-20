@@ -48,6 +48,10 @@ from evo_agents.hub.server.github_app import GitHubApp
 from evo_agents.hub.server.hub_settings import FeatureGate
 from evo_agents.hub.server.plugin_bridge import bridge_gate
 from evo_agents.hub.server.plugin_host import PluginHostClient
+
+# The hub worker runs the release pass, but evo_agents.hub.worker imports no server module beyond its job list
+# (docs/structure.md, section Package boundaries): the hub worker command takes it from here and hands it down.
+from evo_agents.hub.server.release_check import release_pass as release_pass
 from evo_agents.hub.server.security import Authenticate
 from evo_agents.plugins.signing import default_sigstore
 

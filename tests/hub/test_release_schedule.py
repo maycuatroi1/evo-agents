@@ -32,7 +32,7 @@ from sqlalchemy import func, insert, select, update
 from evo_agents.hub import jobs, releases, runs, tables
 from evo_agents.hub.release_cli import CHECK_KEYS, STATUS_KEYS
 from evo_agents.hub.server.app import create_app
-from evo_agents.hub.server.release_check import fire_release_schedules
+from evo_agents.hub.server.release_check import fire_release_schedules, release_pass
 from evo_agents.hub.server.release_github import ls_refs, parse_refs
 from evo_agents.hub.worker import queue
 from tests.hub.contract_keys import assert_json_keys
@@ -516,9 +516,39 @@ def test_the_release_schedules_job_runs_every_minute():
 def test_the_release_schedules_job_takes_the_hubs_engine_and_app(world):
     later = (datetime.now(UTC) + timedelta(hours=3)).strftime("%H:%M")  # the job reads the database's clock
     set_schedule(world, repo=REPO, at=later, timezone="UTC")
-    found = SimpleNamespace(engine=world.app.state.engine, github_app=world.app.state.github_app)
+    state = world.app.state
+    found = SimpleNamespace(engine=state.engine, github_app=state.github_app, release_pass=release_pass)
     context = SimpleNamespace(additional_context={"hub": found})
     assert world.client.portal.call(queue.tasks[jobs.RELEASE_SCHEDULES].func, context) == {}
+
+
+def test_a_worker_handed_no_release_pass_checks_no_schedule_and_says_so(world, caplog):
+    set_schedule(world, repo=REPO, at="06:00", timezone="Asia/Ho_Chi_Minh")
+    found = SimpleNamespace(engine=world.app.state.engine, github_app=world.app.state.github_app)
+    context = SimpleNamespace(additional_context={"hub": found})
+    with caplog.at_level("WARNING", logger="evo_agents.hub.worker"):
+        assert world.client.portal.call(queue.tasks[jobs.RELEASE_SCHEDULES].func, context) == {"no_release_pass": 1}
+    assert "no release pass was handed to this worker" in caplog.text
+    assert sql(world.db, select(func.count()).select_from(tables.release_checks)) == [(0,)]
+
+
+def test_the_hub_worker_command_hands_the_worker_the_servers_release_pass(monkeypatch, tmp_path):
+    import argparse
+
+    from evo_agents.hub import cli as hub_cli
+    from evo_agents.hub import worker
+    from evo_agents.hub.config import S3_VARIABLES
+
+    for name, value in zip(S3_VARIABLES, ("https://s3.northwind.test", "northwind-hub", "id", "secret"), strict=True):
+        monkeypatch.setenv(name, value)
+    monkeypatch.delenv("EVO_HUB_SENTRY_DSN", raising=False)
+    handed = []
+    monkeypatch.setattr(worker, "main", lambda config, concurrency, **kwargs: handed.append(kwargs) or 0)
+    args = argparse.Namespace(
+        dsn="postgresql://hub@127.0.0.1:1/hub", data_dir=str(tmp_path), concurrency=1, hub_command="worker"
+    )
+    assert hub_cli.cmd_worker.__wrapped__(args) == 0
+    assert handed == [{"release_pass": release_pass}]
 
 
 # From the command line
