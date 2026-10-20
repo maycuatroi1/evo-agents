@@ -106,11 +106,11 @@ def cmd_worker(args) -> int:
         return _config_error(ConfigError(missing[0], message))
     try:
         from evo_agents.hub import worker
-        from evo_agents.hub.server.app import init_sentry
+        from evo_agents.hub.server.app import init_sentry, release_pass
     except ImportError as exc:
         return _missing_extra(exc, args)
     init_sentry(config)
-    return worker.main(config, args.concurrency)
+    return worker.main(config, args.concurrency, release_pass=release_pass)
 
 
 @_server_command
