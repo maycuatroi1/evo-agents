@@ -9,8 +9,9 @@ that is still good is leased as it is, with no call out.
 
 The secret's row is locked for the whole refresh, so runs of one account that lease close together refresh once: the
 ones that wait read the set the first stored and find it good. A refresh that fails leaves the set as it was (a token
-that has not ended is still leased; one that has is not) and logs why, without a token; marking the account for a new
-sign-in belongs to the failover (``account_choice``).
+that has not ended is still leased; one that has is not) and logs why, without a token; a refresh the endpoint refuses (the
+refresh token is revoked or ended) marks the account as needing a new sign-in (``account_choice.mark_relogin``), and
+``refresh_due`` names it so the lease moves the run to another account.
 """
 
 from __future__ import annotations
@@ -24,6 +25,7 @@ from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncEngine
 
 from evo_agents.hub import claude_oauth, tables
+from evo_agents.hub.server.account_choice import mark_relogin
 from evo_agents.hub.server.account_oauth import OAUTH_ENV_VAR, OAuthTokens, open_tokens, seal_tokens, store_tokens
 from evo_agents.hub.server.sealing import Sealed, Sealer, Unsealable, secret_aad
 
@@ -36,17 +38,29 @@ def is_due(expires_at: datetime | None, now: datetime) -> bool:
     return expires_at is not None and expires_at <= now + REFRESH_WINDOW
 
 
-async def refresh_due(engine: AsyncEngine, sealer: Sealer, owner_id: int, secrets) -> None:
-    """Refresh each of ``secrets`` (env secrets of ``owner_id``) that is an OAuth account whose access token is due."""
+async def refresh_due(engine: AsyncEngine, sealer: Sealer, owner_id: int, secrets) -> set[int]:
+    """Refresh each of ``secrets`` (env secrets of ``owner_id``) that is an OAuth account whose access token is due;
+    the ids of those whose refresh token the endpoint refused, which now need a new sign-in."""
     now = datetime.now(UTC)
+    rejected: set[int] = set()
     for secret in secrets:
         if secret.kind == "env" and secret.env_var == OAUTH_ENV_VAR and is_due(secret.expires_at, now):
-            await refresh_account(engine, sealer, owner_id, secret.id)
+            if await _refresh(engine, sealer, owner_id, secret.id) == REJECTED:
+                rejected.add(secret.id)
+    return rejected
+
+
+STORED, SKIPPED, REJECTED = "stored", "skipped", "rejected"
 
 
 async def refresh_account(engine: AsyncEngine, sealer: Sealer, owner_id: int, secret_id: int) -> bool:
     """Whether this call stored a new set for account ``secret_id``; False when it was good already (another run
     refreshed it first), is no OAuth account, or the refresh failed."""
+    return await _refresh(engine, sealer, owner_id, secret_id) == STORED
+
+
+async def _refresh(engine: AsyncEngine, sealer: Sealer, owner_id: int, secret_id: int) -> str:
+    """STORED, REJECTED (the endpoint refused the refresh token: the account is marked for a new sign-in) or SKIPPED."""
     s, a = tables.secrets, tables.accounts
     async with engine.begin() as conn:
         found = (
@@ -57,12 +71,12 @@ async def refresh_account(engine: AsyncEngine, sealer: Sealer, owner_id: int, se
             )
         ).first()
         if found is None:
-            return False
+            return SKIPPED
         # read once the lock is won, as a statement of its own: it sees what the refresh before it stored
         sets = select(a.c.oauth_sealed, a.c.oauth_nonce, a.c.oauth_key_id).where(a.c.secret_id == secret_id)
         row = (await conn.execute(sets)).first()
         if row is None or row.oauth_sealed is None:
-            return False
+            return SKIPPED
         try:
             held = open_tokens(sealer, secret_id, Sealed(row.oauth_sealed, row.oauth_nonce, row.oauth_key_id))
             ends = datetime.fromisoformat(held["expires_at"])
@@ -70,15 +84,18 @@ async def refresh_account(engine: AsyncEngine, sealer: Sealer, owner_id: int, se
             log.warning(
                 "an OAuth account's tokens do not open", extra={"secret": found.name, "why": type(exc).__name__}
             )
-            return False
+            return SKIPPED
         if not is_due(ends, datetime.now(UTC)):
-            return False
+            return SKIPPED
         try:  # the row stays locked: a run of the same account waits here and then finds the new set
             got = await asyncio.to_thread(claude_oauth.refresh, held["refresh_token"])
         except claude_oauth.OAuthError as exc:
             extra = {"secret": found.name, "why": str(exc), "rejected": isinstance(exc, claude_oauth.RefreshRejected)}
             log.warning("an OAuth account's access token could not be refreshed", extra=extra)
-            return False
+            if not extra["rejected"]:
+                return SKIPPED
+            await mark_relogin(conn, secret_id)
+            return REJECTED
         oauth = OAuthTokens(
             refresh_token=SecretStr(got.refresh_token),
             access_expires_at=got.expires_at,
@@ -100,4 +117,4 @@ async def refresh_account(engine: AsyncEngine, sealer: Sealer, owner_id: int, se
         )
         await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, got.access_token, oauth))
     log.info("an OAuth account's access token was refreshed", extra={"secret": found.name})
-    return True
+    return STORED
