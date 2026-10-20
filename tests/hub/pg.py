@@ -89,7 +89,7 @@ PLUGIN_POINT_TABLES = frozenset({"plugin_deliveries"})
 AGENT_TYPE_TABLES = frozenset({"project_agent_types"})
 # migration 0043: the proposals of @builder, which an admin approves before the hub applies them
 BUILDER_TABLES = frozenset({"builder_proposals"})
-# migration 0044: the chat of a plan's failures and the triage thread of each failed run
+# migration 0044: the triage chats of failed runs and the triage thread of each failed run
 TRIAGE_TABLES = frozenset({"triage_chats", "run_triage"})
 # migration 0046: the BA documents of the core plugin srs, their versions, items, codes, reviews and comments
 SRS_TABLES = frozenset(
