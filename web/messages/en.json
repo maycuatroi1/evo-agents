@@ -2725,7 +2725,14 @@
       "ready": "Ready",
       "cooling": "Cooling",
       "paused": "Paused",
-      "expired": "Expired"
+      "expired": "Expired",
+      "needs-relogin": "Needs sign-in"
+    },
+    "oauthEnds": "OAuth, access token until <time></time>",
+    "oauthRenew": {
+      "title": "Sign in again as {name}",
+      "description": "Run <code>evo-agents hub account oauth-login</code> in a terminal to replace its tokens. The account stays.",
+      "descriptionRelogin": "Its refresh token was refused. Run <code>evo-agents hub account oauth-login</code> in a terminal to sign in again."
     },
     "until": "until <time></time>",
     "rank": "weight {weight}, priority {priority}",

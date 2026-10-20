@@ -40688,10 +40688,11 @@
                 "ready",
                 "cooling",
                 "paused",
-                "expired"
+                "expired",
+                "needs-relogin"
               ],
               "title": "State",
-              "description": "ready, cooling, paused or expired, now"
+              "description": "ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now"
             },
             "last_usage": {
               "anyOf": [

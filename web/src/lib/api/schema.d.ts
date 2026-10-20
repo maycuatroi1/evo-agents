@@ -5594,12 +5594,6 @@ export interface components {
              */
             env_var: string;
             /**
-             * Auth
-             * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
-             * @enum {string}
-             */
-            auth: "token" | "oauth";
-            /**
              * Projects
              * @description the projects whose runs may take it
              */
@@ -5609,6 +5603,12 @@ export interface components {
              * @description the workers it is bound to; empty for any worker of its owner
              */
             workers: string[];
+            /**
+             * Auth
+             * @description oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given
+             * @enum {string}
+             */
+            auth: "token" | "oauth";
             /**
              * Weight
              * @description 0 to 1000: its share in a weighted-round-robin pool; 0 leaves it
@@ -5643,10 +5643,10 @@ export interface components {
             expires_at: string | null;
             /**
              * State
-             * @description ready, cooling, paused or expired, now
+             * @description ready, cooling, paused, expired or needs-relogin (an OAuth account whose refresh token was refused: run oauth-login again), now
              * @enum {string}
              */
-            state: "ready" | "cooling" | "paused" | "expired";
+            state: "ready" | "cooling" | "paused" | "expired" | "needs-relogin";
             /** @description what a run's CLI last said of its usage; null before any */
             last_usage: components["schemas"]["AccountUsage"] | null;
             /**

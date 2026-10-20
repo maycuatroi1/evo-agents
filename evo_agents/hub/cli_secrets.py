@@ -477,6 +477,8 @@ def _state_text(account: dict) -> str:
         return f"paused since {_when(account['paused_at'])} UTC"
     if state == "expired":
         return f"expired at {_when(account['expires_at'])} UTC"
+    if state == "needs-relogin":
+        return f"needs a new sign-in: run `evo-agents hub account oauth-login {account['name']}`"
     return "ready"
 
 
