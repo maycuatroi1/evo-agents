@@ -6,23 +6,34 @@ release run's agent works in EVO_RUN_KIND release, one headless turn, in a workt
 its claim names, on a branch of the run; at its end the daemon commits what the agent left and pushes HEAD to
 release/<version>, the version the agent wrote in .evo-run/result.json, never a default branch and never a tag, and
 tells the hub of the push with the agent's Decision line; a release run pushes no other branch (``gitops.check_push``);
-without a version it pushes nothing and fails; Claude Code gives it no question tool."""
+without a version it pushes nothing and fails; Claude Code gives it no question tool.
+
+A release run is guarded as a run of the Curator is: its agent gets no credential helper, and the run's socket hands
+it no token of the run's leases, while the daemon pushes release/<version> with them; and its preflight fails a push
+that only this machine's own credentials would make."""
 
 from __future__ import annotations
+
+import secrets
+import sys
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
 pytest.importorskip("aiohttp", reason="the daemon needs the worker extra, evo-ak[worker]")
 
 from evo_agents.hub import author, release_runs, runs
+from evo_agents.hub.credentials import Lease
 from evo_agents.worker import gitops
 from evo_agents.worker.run import KINDS, ReleaseRun
+from tests.worker.git_http import GitHttp
 from tests.worker.test_plan_runs import (
     WAIT,
     git,
     machine,  # noqa: F401 (a fixture)
     with_daemon,
 )
+from tests.worker.test_preflight import hermetic, stopped  # noqa: F401 (hermetic is a fixture)
 
 DECISION = "Decision: 0.25.0, a minor: the range merges #7 from feat/release-runs."
 
@@ -110,6 +121,79 @@ def test_a_release_run_that_commits_nothing_fails_without_a_push(machine):  # no
         assert machine.origin_rev("alpha", "refs/heads/release/0.25.0") is None and release_calls(hub) == []
 
     with_daemon(machine, body)
+
+
+def test_a_release_runs_agent_gets_no_credential_of_the_run_and_the_daemon_alone_pushes_with_it(machine):  # noqa: F811
+    token = "ghs_" + secrets.token_hex(18)
+    lease = Lease(
+        1,
+        "git",
+        "github-app",
+        "github-app:acme",
+        url_prefix="https://github.com/acme",
+        username="x-access-token",
+        value=token,
+        expires_at=datetime.now(UTC) + timedelta(hours=1),
+    )
+    attributes = "protocol=https\\nhost=github.com\\npath=acme/alpha.git\\n\\n"
+    machine.scenarios(
+        {
+            "release": [
+                {
+                    "sh": f"printf '{attributes}' | {sys.executable} -m evo_agents worker git-credential "
+                    "--run $EVO_RUN_ID get; echo asked=$?; env | grep '^GIT_CONFIG_' | sort"
+                },
+                {
+                    "sh": "echo 0.25.0 > alpha/VERSION && git -C alpha add -A && git -C alpha commit -qm 'Release 0.25.0'"
+                },
+                {"result": {"version": "0.25.0", "decision": DECISION, "summary": "Bumped."}},
+            ]
+        }
+    )
+
+    async def body(hub, daemon):
+        run_id = hub.queue_release_run("alpha", machine.seeds["alpha"])
+        hub.leases[run_id] = {"leases": [lease.to_json()], "missing": []}  # before the daemon claims it
+        assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "done", hub.texts(run_id)
+        assert ("ask", run_id) in hub.credential_calls, "the run took its leases"
+        (asked,) = [
+            entry for entry in machine.commands() if entry["run"] == run_id and "git-credential" in entry["cmd"]
+        ]
+        out = asked["stdout"]
+        assert token not in out and "password=" not in out, "the socket hands the agent no token of the run"
+        assert "asked=0" in out
+        helpers = [line for line in out.splitlines() if line.startswith("GIT_CONFIG_")]
+        keys = {line.split("=", 1)[1] for line in helpers if line.startswith("GIT_CONFIG_KEY_")}
+        assert keys == {"credential.helper"}, helpers
+        assert not any("git-credential" in line for line in helpers), "no helper of the run for the agent's git"
+        assert machine.origin_rev("alpha", "refs/heads/release/0.25.0") is not None, "the daemon pushed"
+        assert machine.origin_rev("alpha", "refs/heads/main") == machine.seeds["alpha"]
+
+    with_daemon(machine, body)
+
+
+def test_a_release_run_never_pushes_with_this_machines_own_credentials(machine, hermetic):  # noqa: F811
+    with GitHttp(machine.tmp, "oauth2", "never-given", anonymous_reads=True) as server:
+        machine.env.update(server.env)
+        url = server.repo_url("alpha.git")
+        git("remote", "set-url", "origin", url, cwd=machine.checkouts["alpha"])
+        found = {}
+
+        async def body(hub, daemon):
+            run_id = hub.queue_release_run("alpha", machine.seeds["alpha"])
+            hub.leases[run_id] = {"leases": [], "missing": [{"repo": "alpha", "origin": url, "reason": "no secret"}]}
+            assert await hub.wait_state(run_id, "done", "failed", timeout=WAIT) == "failed", hub.texts(run_id)
+            found.update(hub=hub, run=run_id)
+
+        with_daemon(machine, body)
+        served = list(server.requests)
+    run = stopped(found["hub"], found["run"], machine)
+    assert run["failure_cause"] == "credentials"
+    assert (
+        f"alpha: a release run pushes only with the credential the hub leased it, and no lease covers {url}: this "
+        "machine's own credentials are not used"
+    ) in run["error"], run["error"]
+    assert not any(path.endswith("/git-receive-pack") for _, path, _, _ in served), "nothing was pushed"
 
 
 def test_check_push_lets_a_release_run_push_release_version_alone():

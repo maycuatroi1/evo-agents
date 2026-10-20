@@ -29,21 +29,21 @@ on the default branch (its tree whole, or cut for a commit of ``cut_trees``; a c
 oldest first, paged, with its merge base; and of a branch's head ``push`` set, whose merge base is the default branch's
 head at the push); GET .../git/trees/{sha} and GET .../git/blobs/{sha} of a commit ``snapshot`` wrote, its files' bytes
 and modes, which the merge commit of a pull request of that head holds too; GET .../contents/{path}?ref= of the files
-``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files``
-set) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and .../status (``ci`` sets them);
-POST .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409) and a base branch whose ruleset
-the token's App may not bypass (405), and otherwise merges. It answers git's own POST /{o}/{r}.git/git-upload-pack
-with the command ls-refs (protocol version 2), for Basic credentials of x-access-token and an installation token that
-opens the repo with contents read, as GitHub does: the refs ``tag`` and ``set_ref`` set under each ref-prefix asked,
-an annotated tag with the commit it peels to. A pull request names the base's commit it opened on, and
-once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing either on
-GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
+``put_file`` wrote; POST and GET .../pulls (a pull request of a branch whose head ``push`` set, its files ``files`` set;
+GET filters on head, state and base) and GET .../pulls/{n} and .../pulls/{n}/files; GET .../commits/{sha}/check-runs and
+.../status (``ci`` sets them); POST .../check-runs; and PUT .../pulls/{n}/merge, which refuses a head that moved (409)
+and a base branch whose ruleset the token's App may not bypass (405), and otherwise merges. It answers git's own POST
+/{o}/{r}.git/git-upload-pack with the command ls-refs (protocol version 2), for Basic credentials of x-access-token and
+an installation token that opens the repo with contents read, as GitHub does: the refs ``tag`` and ``set_ref`` set under
+each ref-prefix asked, an annotated tag with the commit it peels to. A pull request names the base's commit it opened
+on, and once merged its merge commit, when and by whom; ``merge_by_hand`` and ``close_by_hand`` play a member doing
+either on GitHub's page. A ruleset's ``required_checks`` (a context, or {context, integration_id}) is a rule
 required_status_checks of its own; GET .../pulls/{n}/commits lists the head commit with the message ``push`` gave it
 (``messages``); a pull request says it changes ``claimed_files`` of its branch when the test set it, else as many files
 as it lists. POST .../pulls refuses with 422 and GitHub's ``errors`` as GitHub words them: a head the repo has no branch
-of (field head, code invalid), a pull request of the branch open already, a draft on a repo whose ``drafts`` is False
-(code custom, a message about drafts), and, first of all, each answer a test queued in ``pull_refusals`` for the next
-tries, one a try.
+of (field head, code invalid), a pull request of the branch into that base open already, a draft on a repo whose
+``drafts`` is False (code custom, a message about drafts), and, first of all, each answer a test queued in
+``pull_refusals`` for the next tries, one a try.
 
 For the CI of a release tag it plays GitHub Actions (``workflow_run`` makes a run of a workflow for a tag pushed at a
 commit, with its jobs, their failed steps and logs; ``attempt`` sets what a later attempt of it says): GET
@@ -952,7 +952,7 @@ class FakeGitHub:
                 return queued
             if branch not in repo.heads:
                 return 422, _invalid({"resource": "PullRequest", "field": "head", "code": "invalid"})
-            if any(item.head == branch and item.state == "open" for item in self.pulls.values()):
+            if any(item.head == branch and item.base == base and item.state == "open" for item in self.pulls.values()):
                 return 422, _invalid(
                     {"resource": "PullRequest", "code": "custom", "message": "A pull request already exists"}
                 )
@@ -981,7 +981,9 @@ class FakeGitHub:
             found = [
                 self._pull_answer(item)
                 for item in self.pulls.values()
-                if item.head == branch and item.state == query.get("state", "open")
+                if item.head == branch
+                and item.state == query.get("state", "open")
+                and item.base == query.get("base", item.base)
             ]
             return 200, found
         if rest[:1] == ["pulls"] and len(rest) >= 2 and rest[1].isdigit():

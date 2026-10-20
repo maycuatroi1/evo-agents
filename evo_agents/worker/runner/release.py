@@ -1,16 +1,19 @@
 """A release run (kind ``release``, ``ReleaseRun``, ``evo_agents.hub.release_runs``): the cut of a new version, or the
 fix forward of a red tag, in a cycle of a project's daily release.
 
-The daemon takes the run's leases for the one repo its claim names (``release.repo``), checks it can read it and push
-to it, fetches origin and makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a writable worktree of
-the repo at the commit the claim names (``release.start_commit``: a cut's target commit), on a branch of the run
-(``evo-run/<run>/<folder>``). The agent works in EVO_RUN_KIND ``release``, one headless turn that asks nobody anything:
-it picks the version, runs the bump, looks for the faults its prompt names, commits, and writes the version and its
-Decision line in ``.evo-run/result.json``. When it ends, the daemon commits what the agent left and pushes HEAD to
-``release/<version>`` on origin, never a default branch, never a tag and never forced (``gitops.check_push``, kind
-``release``), tells the hub (POST /v1/worker/runs/{id}/release/branch), and reports ``done``; the hub opens the pull
-request, merges it and tags the merge commit (``evo_agents.hub.server.release_land``). No version X.Y.Z in the
-result file, no commit of the agent, or a hub that does not take the push fails the run, and its cycle stops.
+The daemon takes the run's leases for the one repo its claim names (``release.repo``): a release run is guarded as a run
+of the Curator is (``credentials.RunCredentials.guarded``), so its agent gets no credential helper and no lease that
+pushes, and only the daemon's own git uses the token the hub leased, with a ticket of one command. It checks it can read
+the repo and push to it with that lease alone, never this machine's own credentials (``access.reach``), fetches origin
+and makes the directory ``~/.evo/worker/worktrees/<project>-<run>`` with a writable worktree of the repo at the commit
+the claim names (``release.start_commit``: a cut's target commit), on a branch of the run (``evo-run/<run>/<folder>``).
+The agent works in EVO_RUN_KIND ``release``, one headless turn that asks nobody anything: it picks the version, runs the
+bump, looks for the faults its prompt names, commits, and writes the version and its Decision line in
+``.evo-run/result.json``. When it ends, the daemon commits what the agent left and pushes HEAD to ``release/<version>``
+on origin, never a default branch, never a tag and never forced (``gitops.check_push``, kind ``release``), tells the hub
+(POST /v1/worker/runs/{id}/release/branch), and reports ``done``; the hub opens the pull request, merges it and tags the
+merge commit (``evo_agents.hub.server.release_land``). No version X.Y.Z in the result file, no commit of the agent, or a
+hub that does not take the push fails the run, and its cycle stops.
 """
 
 from __future__ import annotations
@@ -67,7 +70,7 @@ class ReleaseRun:
         cls = run.agent.runtime_class()
         if run.mode == "interactive":
             raise RunFailed("a release run runs headless only")
-        if not repo or not releases.OBJECT_NAME.match(start):
+        if not repo or not releases.OBJECT_NAME.fullmatch(start):
             raise RunFailed("the claim names no repo or no commit to start the release from")
         if run.daemon.checkout_for(run.project, repo) is None:
             raise RunFailed(f"this worker has no checkout of {run.project}/{repo}")

@@ -346,10 +346,14 @@ async def directory_files(
     return found
 
 
-async def find_pull(app: GitHubApp, token: str, owner: str, repo: str, branch: str) -> dict | None:
-    """The open pull request of ``branch`` (of owner/repo itself), or None."""
+async def find_pull(
+    app: GitHubApp, token: str, owner: str, repo: str, branch: str, base: str | None = None
+) -> dict | None:
+    """The open pull request of ``branch`` (of owner/repo itself), into ``base`` when it is given, or None."""
     doing = f"looking for the pull request of {branch} on {owner}/{repo}"
     params = {"head": f"{owner}:{branch}", "state": "open", "per_page": 1}
+    if base is not None:
+        params["base"] = base
     response = await _api(app, token, "GET", _path("repos", owner, repo, "pulls"), doing, params=params)
     if response.status_code != 200:
         raise _refused(response, doing)
@@ -369,8 +373,9 @@ async def open_pull(
     body: str,
     draft: bool = False,
 ) -> dict:
-    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already.
-    Tried again after each of HEAD_WAITS while GitHub says the head is not there; ``Refused`` otherwise."""
+    """The pull request of ``branch`` into ``base``, a draft with ``draft``: opened now, or the one open already into
+    that same base (one into another base is never it). Tried again after each of HEAD_WAITS while GitHub says the head
+    is not there; ``Refused`` otherwise."""
     doing = f"opening a pull request of {branch} on {owner}/{repo}"
     payload = {"title": title, "head": branch, "base": base, "body": body, "maintainer_can_modify": False}
     if draft:
@@ -383,7 +388,7 @@ async def open_pull(
         refusal = _refused(response, doing)
         if response.status_code != 422:
             raise refusal
-        found = await find_pull(app, token, owner, repo, branch)
+        found = await find_pull(app, token, owner, repo, branch, base)
         if found is not None:
             return found
         if not (waits and head_missing(refusal.errors)):
