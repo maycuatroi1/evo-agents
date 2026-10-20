@@ -51,6 +51,7 @@
       "error": "Couldn't read your workers"
     },
     "curator": "Curator",
+    "releases": "Releases",
     "agents": "Agents",
     "chats": "Chats",
     "curatorProposals": "Proposals",
@@ -4344,7 +4345,8 @@
       "architecture": "Architecture",
       "scope": "Scope",
       "question": "Question",
-      "triage": "Failed run"
+      "triage": "Failed run",
+      "release": "Release"
     },
     "noticeKind": {
       "push_default_branch": "Pushed to a default branch",
@@ -4357,7 +4359,8 @@
       "chat_mention": "Someone mentioned you in a chat",
       "chat_added": "Someone added you to a chat",
       "plugin_disabled": "The hub turned off a plugin",
-      "builder_proposal": "@builder proposed a change for you to approve"
+      "builder_proposal": "@builder proposed a change for you to approve",
+      "release": "Daily release"
     },
     "item": {
       "unread": "Unread",
@@ -5588,6 +5591,264 @@
         "runs": "Runs",
         "cost": "Cost"
       }
+    }
+  },
+  "releases": {
+    "metaTitle": "Releases of {project}",
+    "title": "Releases",
+    "newTab": "(opens in a new tab)",
+    "sub": {
+      "daily": "Checks <repo></repo> every day at {at} {timezone}, as {owner}. Next check <next></next>.",
+      "paused": "Paused by {login} <ago></ago>. No check runs until an admin resumes it.",
+      "pausedByHub": "Paused <ago></ago>. No check runs until an admin resumes it.",
+      "repoLink": "{repo} on GitHub (opens in a new tab)",
+      "noNext": "not planned"
+    },
+    "state": {
+      "paused": "Paused"
+    },
+    "runNow": "Run now",
+    "checking": "Checking",
+    "runFailed": "Couldn't run the check",
+    "pause": "Pause",
+    "pausing": "Pausing",
+    "resume": "Resume",
+    "resuming": "Resuming",
+    "paused": {
+      "title": "Release schedule paused",
+      "text": "No check runs and no cycle opens until it is resumed. Release runs still queued were cancelled."
+    },
+    "resumed": {
+      "title": "Release schedule resumed",
+      "text": "The next daily check runs at {at} {timezone}."
+    },
+    "resumeFailed": "Couldn't resume the release schedule",
+    "confirmPause": {
+      "title": "Pause the release schedule?",
+      "text": "No daily check runs for {project} until an admin resumes it. Release runs still queued are cancelled, and an open cycle with no run under way closes. A run already under way finishes. The Curator's night shift is not touched.",
+      "confirm": "Pause schedule",
+      "cancel": "Keep it running"
+    },
+    "checked": {
+      "opened": {
+        "title": "Cycle #{cycle} opened",
+        "text": "Its first run, #{run}, is queued for a worker."
+      },
+      "openRun": "Open run #{run}",
+      "unchanged": {
+        "title": "Nothing to release"
+      },
+      "busy": {
+        "title": "No new cycle"
+      },
+      "paused": {
+        "title": "Not checked: the schedule is paused"
+      },
+      "owner": {
+        "title": "Not checked: the owner holds no admin role"
+      },
+      "error": {
+        "title": "The check failed"
+      }
+    },
+    "errors": {
+      "forbidden": "Only an admin of the project pauses, resumes or runs its release check.",
+      "notFound": "The project is gone, or you can no longer read it.",
+      "conflict": "The project has no release schedule any more.",
+      "apiMessage": "The hub said: {message}"
+    },
+    "empty": {
+      "title": "No release schedule yet",
+      "description": "A release schedule checks every day whether the packaged code changed since the newest release tag. When it did, an agent cuts the next version, the hub merges and tags it, follows its CI, and fixes a red tag forward until the version is published.",
+      "command": "An admin of the project sets it with <command></command>."
+    },
+    "problems": {
+      "stopped": {
+        "title": "Cycle #{id} stopped: {cause}",
+        "decision": "Answer the decision",
+        "thread": "Open the triage thread",
+        "noCause": "see why below",
+        "noReason": "The hub kept no reason.",
+        "waits": "It moves no further until {owner} answers: go on with one more cap, close the cycle, or pause the schedule."
+      },
+      "actions": {
+        "title": "The hub cannot read the CI of {workflow}",
+        "text": "The GitHub App's installation on {repo} does not grant Actions, so the hub follows no CI and fixes no red tag. A member of the GitHub organization accepts the new permission on the App's installation page."
+      }
+    },
+    "cause": {
+      "run_failed": "a run failed",
+      "run_cancelled": "a run was cancelled",
+      "refused": "the hub refused to land a run",
+      "github": "GitHub kept failing",
+      "hacking": "a change shows signs of test hacking",
+      "budget": "its cap is spent",
+      "same_test": "the same test failed at two tags in a row",
+      "timeout": "its CI timed out",
+      "ci": "its CI ended in a way no fix answers"
+    },
+    "ci": {
+      "pending": "Waiting",
+      "running": "Running",
+      "passed": "Passed",
+      "failed": "Failed",
+      "timeout": "Timed out"
+    },
+    "cycleState": {
+      "open": "Open",
+      "stopped": "Stopped",
+      "published": "Published",
+      "closed": "Closed"
+    },
+    "outcome": {
+      "opened": "Opened a cycle",
+      "openedCycle": "Opened cycle #{id}",
+      "unchanged": "Nothing to release",
+      "busy": "A cycle is under way",
+      "paused": "Paused",
+      "owner": "The owner holds no admin role",
+      "error": "Failed"
+    },
+    "cycle": {
+      "title": "Cycle #{id}",
+      "sub": "Opened by the check of {day}; its runs run as {owner}.",
+      "opened": "Opened",
+      "start": "Started with",
+      "startCut": "A cut of {ref}",
+      "startFix": "A fix of the red tag {tag}",
+      "range": "Range",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "noBase": "No tag yet",
+      "to": "to",
+      "commitLink": "Commit {commit} on GitHub (opens in a new tab)",
+      "changed": "Changed paths",
+      "noChange": "None: the cycle fixes a red tag",
+      "cost": "Cost",
+      "costValue": "{cost} of {budget}, {share}%",
+      "costLabel": "Cost of cycle #{id} against its cap",
+      "tags": "Tags",
+      "noTags": "No tag yet: the hub tags the merge commit once the cut run's branch lands.",
+      "runs": "Runs",
+      "noRuns": "No run yet.",
+      "none": {
+        "title": "No cycle open.",
+        "paused": "The schedule is paused: no check opens one.",
+        "next": "The next check is <next></next>.",
+        "noNext": "No check is planned."
+      }
+    },
+    "tags": {
+      "failedTitle": "{count, plural, one {# test failed} other {# tests failed}}",
+      "failedMore": "and {count} more",
+      "infra": "Only the infrastructure failed: the hub ran the failed jobs again {reruns, plural, =0 {not yet} one {one time} other {# times}}.",
+      "problem": "The hub could not read its CI: {problem}",
+      "columns": {
+        "tag": "Tag",
+        "ci": "CI",
+        "workflow": "Workflow",
+        "made": "Tagged by",
+        "checked": "Checked"
+      },
+      "failedCount": "{count, plural, one {# failed test} other {# failed tests}}",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "noWorkflow": "No run yet",
+      "workflow": "Workflow run",
+      "workflowAttempt": "Workflow run, attempt {attempt}",
+      "byPerson": "A person",
+      "byRun": "Run #{id}",
+      "openRun": "Open run #{id}",
+      "notChecked": "Not yet",
+      "caption": "Tags cycle #{id} follows"
+    },
+    "runs": {
+      "tagged": "Tagged {tag}",
+      "pull": "Pull request",
+      "refused": "Refused: {reason}",
+      "failed": "GitHub failed: {reason}",
+      "waitingLand": "Pushed {version}, waiting to land",
+      "notPushed": "Nothing pushed yet",
+      "columns": {
+        "run": "Run",
+        "state": "State",
+        "landing": "Landing",
+        "cost": "Cost"
+      },
+      "version": "Version {version}",
+      "openRun": "Open run #{id}",
+      "fixOf": "Fix of {tag}",
+      "mode": {
+        "cut": "Cut",
+        "fix": "Fix"
+      },
+      "caption": "Runs of cycle #{id}"
+    },
+    "schedule": {
+      "title": "Schedule",
+      "repo": "Repo",
+      "repoLink": "{repo} on GitHub (opens in a new tab)",
+      "daily": "Daily check",
+      "dailyValue": "{at} {timezone}",
+      "next": "Next check",
+      "nextPaused": "None while paused",
+      "ships": "Ships",
+      "shipsValue": "The commit of {ref}, tagged {pattern}",
+      "workflow": "Workflow",
+      "paths": "Packaging paths",
+      "cap": "Cap per cycle",
+      "capValue": "{budget}",
+      "owner": "Runs as",
+      "updated": "Last set",
+      "updatedValue": "By {login} <ago></ago>"
+    },
+    "check": {
+      "title": "Last check",
+      "outcome": "Outcome",
+      "when": "When",
+      "by": "Made by",
+      "since": "Newest tag",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "target": "Target",
+      "commitLink": "Commit {commit} on GitHub (opens in a new tab)",
+      "changed": "Changed paths",
+      "noChange": "None",
+      "reason": "Why",
+      "none": "No check yet. The first runs at {at} {timezone}, or when an admin runs it now.",
+      "manual": "Run now by {login}",
+      "daily": "The daily check of {day}"
+    },
+    "checks": {
+      "title": "Earlier checks",
+      "caption": "The release checks of {project} before the last one",
+      "columns": {
+        "when": "When",
+        "outcome": "Outcome",
+        "reason": "Why"
+      }
+    },
+    "past": {
+      "title": "Previous cycles",
+      "none": "No cycle has ended yet.",
+      "published": "Published {tag}",
+      "closedWhy": "Closed: {reason}",
+      "closed": "Closed",
+      "noTags": "No tag",
+      "tagLink": "Tag {tag} on GitHub (opens in a new tab)",
+      "columns": {
+        "cycle": "Cycle",
+        "state": "State",
+        "tags": "Tags",
+        "runs": "Runs",
+        "cost": "Cost",
+        "ended": "Ended"
+      },
+      "costOf": "Of a cap of {budget}",
+      "mobileMeta": "{ending}, {runs, plural, one {# run} other {# runs}}, {cost}",
+      "mobileTitle": "Cycle #{id}, {day}",
+      "caption": "Release cycles of {project} that ended",
+      "pager": "Pages of previous cycles",
+      "range": "{first} to {last} of {total}",
+      "newer": "Newer",
+      "older": "Older"
     }
   },
   "monitor": {

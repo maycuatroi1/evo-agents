@@ -1,0 +1,105 @@
+import type { ReleaseCycle, ReleaseSchedule, ReleaseStatus, ReleaseTag } from "@/components/releases/queries";
+
+/**
+ * A project's daily release for the Releases page's unit tests, the shape of GET .../releases: the schedule of
+ * northwind/fleet, and cycle #7, whose cut v0.25.0 went red on one test and whose fix run is under way.
+ */
+export const SCHEDULE: ReleaseSchedule = {
+  repo: "fleet",
+  github_repo: "northwind/fleet",
+  at: "06:00",
+  timezone: "Asia/Ho_Chi_Minh",
+  target_ref: "nightly",
+  tag_pattern: "v*",
+  workflow: "release.yml",
+  paths: ["evo_agents/", "web/", "pyproject.toml"],
+  cycle_budget_usd: 200,
+  owner: "octo",
+  updated_by: "octo",
+  created_at: "2026-10-20T01:00:00Z",
+  updated_at: "2026-10-20T01:00:00Z",
+  paused_at: null,
+  paused_by: null,
+};
+
+export const TAG: ReleaseTag = {
+  tag: "v0.25.0",
+  commit: "e".repeat(40),
+  run_id: 41,
+  ci_state: "failed",
+  workflow_url: "https://github.com/northwind/fleet/actions/runs/7001",
+  run_attempt: 1,
+  reruns: 0,
+  failed_tests: ["tests/hub/test_paths.py::test_a_written_file_ends_lines_in_lf[windows]"],
+  failed_jobs: ["ci / test-windows (3.12)"],
+  infra: false,
+  problem: null,
+  watched_since: "2026-10-21T23:40:00Z",
+  checked_at: "2026-10-22T00:10:00Z",
+};
+
+export const CYCLE: ReleaseCycle = {
+  id: 7,
+  state: "open",
+  start: "cut",
+  owner: "octo",
+  local_day: "2026-10-22",
+  base_tag: "v0.24.0",
+  base_commit: "b".repeat(40),
+  target_ref: "nightly",
+  target_commit: "c".repeat(40),
+  changed_paths: ["evo_agents/", "web/"],
+  budget_usd: 200,
+  cost_usd: 12.4,
+  stop_reason: null,
+  stop_cause: null,
+  decision_id: null,
+  thread: null,
+  opened_at: "2026-10-21T23:00:05Z",
+  ended_at: null,
+  runs: [
+    {
+      run_id: 41,
+      mode: "cut",
+      tag: null,
+      state: "done",
+      cost_usd: 8.15,
+      version: "0.25.0",
+      branch: "release/0.25.0",
+      decision: "Decision: 0.25.0, a minor: migration 0068 is new.",
+      pull_url: "https://github.com/northwind/fleet/pull/12",
+      merge_commit: "e".repeat(40),
+      tagged: "v0.25.0",
+      tagged_at: "2026-10-21T23:39:00Z",
+      land_state: "tagged",
+      land_reason: null,
+    },
+    {
+      run_id: 44,
+      mode: "fix",
+      tag: "v0.25.0",
+      state: "running",
+      cost_usd: 4.25,
+      version: null,
+      branch: null,
+      decision: null,
+      pull_url: null,
+      merge_commit: null,
+      tagged: null,
+      tagged_at: null,
+      land_state: null,
+      land_reason: null,
+    },
+  ],
+  tags: [TAG],
+};
+
+export const STATUS: ReleaseStatus = {
+  project: "fleet",
+  schedule: SCHEDULE,
+  paused: false,
+  next_check_at: "2026-10-22T23:00:00Z",
+  last_check: null,
+  checks: [],
+  cycle: CYCLE,
+};
