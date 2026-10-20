@@ -233,6 +233,10 @@ states and the phone top bar. Icons sit before their label and inherit its colou
 | A worker's update that failed; a daemon that cannot update itself; a long wait to update | `CircleX`; `RefreshCwOff`; `ClockAlert` |
 | Insights | `ChartColumn` |
 | Curator, its night shift | `MoonStar` |
+| The Curator's History, its search; Graph health; Runtime and harness | `TextSearch`; `Network`; `Layers` |
+| A change's replays; replays that won | `FlaskConical`; `Trophy` |
+| A skill release: published, published again, nothing published | `PackageCheck`, `Undo2`, `PackageX` |
+| Waiting for a backfill | `HardDriveUpload` |
 | Proposal of the Curator | `Lightbulb` |
 | Morning brief of the Curator | `Sunrise` |
 | Telegram, the member's chat | `Smartphone` |
@@ -1234,7 +1238,9 @@ Shared pieces built on them:
   G then C): one head on its three pages, "Curator" with the night shift's `StatusBadge` (`curator`), Pause (confirmed
   in `ConfirmAction`, since it cancels the runs queued) or Resume (the primary button while paused) for an admin or the
   schedule's owner, and one line naming the worker on duty, the member it runs as and the window, or who paused it;
-  then the area's tabs (Overview, Proposals with the open count in `attention`, Charter), drawn as the admin area's.
+  then the area's tabs (Overview, Proposals with the open count in `attention`, History, Graph health, Runtime,
+  Charter), drawn as the admin area's, Graph health with a `danger` dot while the worker on duty failed to sync the
+  graph (said to screen readers); under 768 px the row scrolls sideways and brings the page shown into view.
   Overview: the MetricStrip of the night now or the last one (its runs against the night's cap, the cost against the
   budget, what waits for an answer, the last review's proposals), the Schedule and Last review run cards of Home's
   shape, and the nights in a DataCard (a night's date over its outcome, a failure in `danger`; runs, cost, the review
@@ -1250,13 +1256,53 @@ Shared pieces built on them:
   draft plan as steps or as its JSON (a segmented control); beside them from xl, the answer (what accepting does, by
   the proposal's tier), the Change card once accepting made one (`change-card.tsx`: its state in the head, the
   Curator's plan as a link, the repo, the branch as an `Identifier` that copies and opens on GitHub or GitLab, the pull
-  request once open, when it last moved, and the hub's reason in a note, `attention` while it is left open), and Why
-  tier N with its reasons and paths. Each answer is confirmed in a dialog (`answer-dialog.tsx`): what it does, the defer days (1 to 90),
+  request once open, the tier it merges at, when it last moved, and the hub's reason in a note, `attention` while it is
+  left open), the Replays card under it (`replay-card.tsx`: whether arm B, the change's harness, beat arm A, the default
+  branch's, on the holdout tasks at the head of its pull request, as a `Trophy` tag when they won and a `FlaskConical`
+  one otherwise, the hub's reason, a `success-soft` note when the win lowers the merge to tier 0, the arms' means and sums
+  side by side in a table of their own, each replay with both arms' results as an icon and a word; one line when the
+  change is not of a kind the night replays), and Why tier N with its reasons and paths. The ledger's lines add the
+  replays a merge of the hub rests on or an outcome kept, and a skill release (`PackageCheck` published, `Undo2`
+  published again, `PackageX` nothing, in `success-soft` once something was published), from `ledger-extras.tsx`. Each answer is confirmed in a dialog (`answer-dialog.tsx`): what it does, the defer days (1 to 90),
   an optional one-line note, Cmd or Ctrl with Enter to send, a refusal shown in place. Charter: the charter in cards
-  (goals, window and worker, budget and caps, what it may do, review, roles, the Judge's hidden checks to admins only)
+  (goals, window and worker, budget and caps, what it may do, review, replays and history, roles, the Judge's hidden
+  checks to admins only)
   with its revisions beside it, any revision readable (`?revision=N`); an admin edits it in a form of the same groups
-  (`?edit=1`, `charter-form.tsx`) whose fields repeat the hub's limits (`model.ts`), so the first wrong field takes
-  focus and nothing goes out; a hub's refusal shows above Save. The Inbox lists a tier 2 proposal with the open
+  (`?edit=1`, `charter-form.tsx`, its parts in `charter-fields.tsx`) whose fields repeat the hub's limits (`vocab.ts`,
+  `charter-model.ts`), so the first wrong field takes focus and nothing goes out, and which writes back the replays and
+  the history run it shows; a hub's refusal shows above Save.
+  History (`/p/{project}/curator/history`, `history-page.tsx`): the MetricStrip of how far the hub holds what the
+  machines reported (sessions with a transcript of those with a digest or a transcript, as the night's figures count
+  them), what waits for a backfill in `attention`, the facets counted without a model and those the cheap model read;
+  under it an `attention` banner with the backfill command while a session has a digest alone, and a `danger` one while
+  facets failed their last attempt, neither otherwise; the transcripts by member with the retention and the sizes, the
+  history runs with their cap and model; the search over every transcript, run log and group chat (`history-search.tsx`:
+  the kit's search field and a source facet in the URL, `?q=`, `?source=`, `?hits=`; each hit with its source, who and
+  when, the matched words on `brand-soft`, the evidence as an `Identifier` that copies, and where it leads: the lines of
+  the transcript around it unfolding in place (`transcript-excerpt.tsx`, the line found on `surface-selected`, Earlier
+  lines and Later lines moving the stretch, a failed tool result in `danger`), the run's log, the chat); the clusters
+  (`history-clusters.tsx`: the model's name and description, task and failure mode as tags, the counts, the latest
+  session to read, and Show its sessions as a pressed toggle that filters the list below); and the sessions and runs
+  (`history-sessions.tsx`: kind as a facet, outcome as a select, the cluster as a removable pressed chip, all in the
+  URL, Previous and Next under it; each with what the model wrote, its outcome and failure modes as tags, the facet's
+  numbers, and its transcript or log a click away). Graph health (`/curator/graph`, `graph-health-page.tsx`): a
+  `danger` banner while the worker on duty failed to sync a source or the latest measure failed; the MetricStrip of
+  commits behind, files off, mentions resolved and recall at 5, each with its sparkline over the measures or builds;
+  each git source against its default branch (the commit read and the head as short `Identifier`s, the commits behind
+  and the wait, missing, stale and deleted, then a row of its own with why and a disclosure of some files); three trend
+  cards (behind and files off by measure, resolved, ambiguous and dangling by build, recall at 5 and MRR by measure);
+  what agents got from the graph in their traces, with the worst sessions to read; and the worker's sync. Runtime
+  (`/curator/runtime`, `runtime-page.tsx`): 7, 14 or 30 nights as the kit's segmented control in the URL
+  (`?nights=7`, none for 14), the MetricStrip of the latest night (fixed context a session, the cache's share, cost a
+  session, the slowest hook's p95), five trend cards over the counted nights (context by source per session as
+  stacked columns in `chart-1` to `chart-5`, the cache's share, cost per session, run and merged pull request, the
+  slowest hook's p95 and median, the sessions' largest context), then the latest night in detail
+  (`runtime-tables.tsx`: hooks with their failures in `danger`, the slowest tools, the always-loaded files by repo, the
+  largest tool output, the heaviest sessions with their transcripts, the runs by kind; two to a row from xl). The trend
+  cards are the Insights cards' (`trend-card.tsx`, `trend-charts.tsx`): Chart or Table, a legend for two series or
+  more, the table kept for screen readers, Recharts loaded with `next/dynamic` behind a skeleton of the plot's height,
+  and one line instead of empty axes when no night holds a value. The pages' cards are `panel.tsx` (the kit's card with
+  a head, a small table in its own focusable region). The Inbox lists a tier 2 proposal with the open
   decisions and opens it in a sheet of its own (`/inbox?proposal=ID`, `inbox/proposal-sheet.tsx`); Home's Projects
   card says each project's Curator state and what waits. A review run's page carries the Review run tag and links to
   the Curator and to the run's proposals.

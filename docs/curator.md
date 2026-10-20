@@ -87,7 +87,9 @@ evo-agents hub curator charter history --project demo         # every revision, 
 What `charter show --json` prints can be written back as it is: the keys it adds (`project`, `revision`,
 `updated_by`, `updated_at`, `worker_id`, `schedule_owner`) are ignored in a write. A body equal to the newest revision
 writes nothing. The web shows the charter with its revisions under `/p/{project}/curator/charter`, and its form to an
-admin.
+admin; the form writes the whole body, the replays (`replay`) and the history run (`history`) included, but not the
+owner's secrets (`git_secret`, `env_secrets`): a revision written from the form has none, so a charter that names them
+is written from the command line.
 
 A charter, as YAML:
 
@@ -322,8 +324,10 @@ accepted proposal of tier 0 to 2 that has no change yet, such as one of tier 2 a
 the answer alone, becomes its plan with `evo-agents hub curator proposal plan ID`, which only an admin of the project
 may. A proposal's page on the web has a Change card once accepting it made one: the change's state, the Curator's plan
 as a link to its page, the branch (a link to it on GitHub or GitLab), the pull request once the hub opened it, and the
-reason the change keeps while it waits or stays open; `evo-agents hub curator proposal show ID` prints the same, and
-`evo-agents hub curator replay show CHANGE` its replays.
+reason the change keeps while it waits or stays open, and the tier it merges at; under it a Replays card says whether
+its replays won and why, sets arm b beside arm a and lists each replay. `evo-agents hub curator proposal show ID`
+prints the same, and `evo-agents hub curator replay show CHANGE` its replays. The proposal's ledger adds the verdict of
+the replays a merge rests on, and each skill release.
 
 **The Judge** runs in a worktree detached at the pull request's head. The daemon reads the diff and runs the detector of
 score hacking before any code of the change runs, then the hidden checks and the verify commands as code it does not
@@ -470,6 +474,14 @@ evo-agents hub curator history sessions --project demo --outcome failed   # the 
 evo-agents hub curator history search "rate limit" --project demo         # then the words, best first
 evo-agents hub curator history lines SESSION 120 --project demo           # and the lines around one
 ```
+
+On the web, the Curator's History page (`/p/{project}/curator/history`) shows the same for any member with a grant:
+how many of the sessions the machines reported have their transcript on the hub (from the night's `facets`), what
+waits for `evo-agents hub sessions backfill`, the facets made with and without the model, the transcripts per member,
+the history runs, the search with the lines around each hit, the clusters with their latest session, and the sessions
+and runs filtered by kind, outcome and cluster. Its Graph health page shows `hub kg health` over time with the night's
+sync of the worker on duty, and its Runtime page the night's `runtime` and `harness` figures over 7, 14 or 30 nights
+(`hub curator figures --night`).
 
 ## Memory
 

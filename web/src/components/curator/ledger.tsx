@@ -26,6 +26,7 @@ import {
   shortSha,
   triggerFigures,
 } from "./ledger-model";
+import { LineRelease, LineReplay } from "./ledger-extras";
 import { TEXT_LINK, useMoney } from "./parts";
 import { type LedgerLine, ledgerQuery, proposalHref } from "./queries";
 
@@ -250,6 +251,8 @@ function Line({ project, line, last }: { project: string; line: LedgerLine; last
     <Verdict key="verdict" line={line} />,
     <TriggerTable key="trigger" line={line} />,
     <Outcome key="outcome" project={project} line={line} />,
+    <LineReplay key="replay" line={line} />,
+    <LineRelease key="release" line={line} />,
   ];
   return (
     <li className="relative flex min-w-0 gap-3 pb-5 last:pb-0" data-testid="ledger-line" data-action={line.action} data-actor={line.actor} data-tone={tone}>

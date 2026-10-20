@@ -29,6 +29,7 @@ import { DraftPlan } from "./draft-plan";
 import { EvidenceList } from "./evidence";
 import { useCuratorViewer } from "./hooks";
 import { LedgerCard } from "./ledger";
+import { ReplayCard } from "./replay-card";
 import type { RepoInfo } from "./model";
 import { TEXT_LINK } from "./parts";
 import { type Change, type Finding, findingQuery, type Proposal, type ProposalAction, proposalHref, proposalQuery } from "./queries";
@@ -243,6 +244,7 @@ export function ProposalBody({ project, proposal, admin, compact = false }: { pr
       <div className={cn("grid min-w-0 items-start gap-4", !compact && "md:grid-cols-2 xl:col-start-2 xl:row-start-1 xl:grid-cols-1")}>
         <AnswerCard project={project} proposal={proposal} admin={admin} />
         {proposal.change ? <ChangeCard project={project} change={proposal.change} repos={repos} /> : null}
+        {proposal.change ? <ReplayCard project={project} change={proposal.change} proposalTier={proposal.tier} /> : null}
         <TierCard proposal={proposal} />
       </div>
     </div>

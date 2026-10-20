@@ -35,14 +35,17 @@ export type TriggerFigure = { key: string; what: string; value: number };
 export type OutcomeFigure = TriggerFigure & { after: number; beforeRate: number; afterRate: number; change: FigureChange };
 
 /**
- * The mark of a line: success for a merge, a Judge that passed and an outcome kept; danger for a Builder that failed, a
- * Judge that failed and an outcome to revert; attention for a change left open for its owner; neutral otherwise.
+ * The mark of a line: success for a merge, a Judge that passed, an outcome kept and a skill the hub published; danger
+ * for a Builder that failed, a Judge that failed and an outcome to revert; attention for a change left open for its
+ * owner; neutral otherwise.
  */
-export function ledgerTone(line: Pick<LedgerLine, "action" | "outcome" | "verdict">): LedgerTone {
+export function ledgerTone(line: Pick<LedgerLine, "action" | "outcome" | "verdict"> & Partial<Pick<LedgerLine, "details">>): LedgerTone {
   const passed = (line.verdict as { passed?: unknown } | null)?.passed;
   switch (line.action) {
     case "merged":
       return "success";
+    case "skill_release":
+      return releaseOf(line.details ?? null)?.published ? "success" : "neutral";
     case "build_failed":
       return "danger";
     case "left_open":
@@ -134,4 +137,48 @@ export function revertProposal(line: Pick<LedgerLine, "details">): number | null
 /** A pull request's address when it is one a browser may open: https only. */
 export function safeUrl(url: string | null): string | null {
   return url !== null && url.startsWith("https://") ? url : null;
+}
+
+/**
+ * A line `skill_release`: the hub published a global skill from the Curator's merge (`publish`), or its version before
+ * again once the merge's figures got worse (`republish`), or why it published nothing.
+ */
+export type Release = {
+  kind: "publish" | "republish";
+  skill: string;
+  published: boolean;
+  /** The version it made; for a publish that changed nothing, the latest one. */
+  version: number | null;
+  /** The version before: the one kept beside a publish, or the one a republish brought back. */
+  previous: number | null;
+  /** The version a republish replaced. */
+  reverted: number | null;
+  why: string | null;
+};
+
+export function releaseOf(details: unknown): Release | null {
+  const found = details as Record<string, unknown> | null;
+  if (typeof found !== "object" || found === null) return null;
+  const kind = found.kind === "republish" ? "republish" : found.kind === "publish" ? "publish" : null;
+  const skill = text(found.skill);
+  if (kind === null || skill === null) return null;
+  return {
+    kind,
+    skill,
+    published: found.published === true,
+    version: number(found.version),
+    previous: number(found.previous),
+    reverted: number(found.reverted),
+    why: text(found.why),
+  };
+}
+
+/**
+ * The replays a line names: the verdict a merge of the hub rests on (`merged`, `details.replay`), or the one kept with
+ * an outcome's figures (`outcome`, `figures.replay`); null otherwise.
+ */
+export function replayOf(line: Pick<LedgerLine, "action" | "details" | "figures">): unknown {
+  const from = line.action === "merged" ? line.details : line.action === "outcome" ? line.figures : null;
+  const found = (from as { replay?: unknown } | null)?.replay;
+  return typeof found === "object" && found !== null ? found : null;
 }

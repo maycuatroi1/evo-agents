@@ -35,6 +35,7 @@ export type Ledger = Schemas["Ledger"];
 export type LedgerLine = Schemas["LedgerLine"];
 export type DigestRecord = Schemas["DigestRecord"];
 export type TranscriptLines = Schemas["TranscriptLines"];
+export type NightFiguresView = Schemas["NightFiguresView"];
 export type CuratorState = NonNullable<CuratorStatus["state"]>;
 export type Runtime = Schemas["Role"]["runtime"];
 /** The lenses the API names: `review.LENSES`, in the order the nights take them. */
@@ -67,11 +68,15 @@ export const curatorKeys = {
   digest: (project: string, session: string) => ["projects", project, "digests", session] as const,
   lines: (project: string, session: string, file: string, line: number) =>
     ["projects", project, "transcripts", session, file, line] as const,
+  figures: (project: string, night: string | null) => ["projects", project, "curator", "figures", night] as const,
 };
 
 export const CURATOR_SEGMENT = "curator";
 
-export function curatorHref(project: string, page: "" | "proposals" | "charter" = ""): Route {
+/** The Curator's own pages, by their segment under `/p/{project}/curator`; "" is the overview. */
+export type CuratorPageSegment = "" | "proposals" | "history" | "graph" | "runtime" | "charter";
+
+export function curatorHref(project: string, page: CuratorPageSegment = ""): Route {
   return projectHref(project, page ? `${CURATOR_SEGMENT}/${page}` : CURATOR_SEGMENT);
 }
 
@@ -211,6 +216,27 @@ export const digestQuery = (api: ApiSource, project: string, session: string) =>
           signal,
         }),
       ),
+  });
+
+/**
+ * A night's figures, the latest when `night` is null; null when there are none yet or the project's default label is
+ * beyond the hub sink (the API answers 404 for both).
+ */
+export const figuresQuery = (api: ApiSource, project: string, night: string | null = null) =>
+  queryOptions({
+    queryKey: curatorKeys.figures(project, night),
+    queryFn: async ({ signal }) => {
+      try {
+        return await call(
+          api().GET("/v1/projects/{project}/curator/figures", { params: { path: { project }, query: night === null ? {} : { night } }, signal }),
+        );
+      } catch (error) {
+        if (isApiError(error) && error.status === 404) return null;
+        throw error;
+      }
+    },
+    // A past night's figures never change once counted; the latest is read again as nights come.
+    ...(night === null ? { refetchInterval: CURATOR_IDLE_MS } : { staleTime: Infinity }),
   });
 
 /** The lines of a transcript around the one a piece of evidence names, read when asked for. */
