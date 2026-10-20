@@ -4987,9 +4987,10 @@ export interface paths {
         put?: never;
         /**
          * Edit Plan
-         * @description Change the ``verify`` or narrow the ``what`` of a pending step of the failed run's plan for its owner, as a new
-         *     revision under their name, inside the frame (``triage_rules.edit_problems``); with ``rerun`` the failed step is run
-         *     again in the same transaction, and a refused rerun leaves the plan as it was.
+         * @description Change the ``verify`` or narrow the ``what`` of pending steps of the failed run's plan for its owner, one step or
+         *     several (``steps``), as one new revision under their name and one ``Decision:`` line, inside the frame
+         *     (``triage_rules.edit_problems``); with ``rerun`` the failed step is run again in the same transaction, and a refused
+         *     rerun leaves the plan as it was.
          */
         post: operations["edit_plan_v1_worker_runs__run_id__triage_plan_post"];
         delete?: never;
@@ -16433,6 +16434,29 @@ export interface components {
              */
             steady_at: string | null;
         };
+        /** StepEdit */
+        StepEdit: {
+            /**
+             * Step
+             * @description the step's id, a step that is pending
+             */
+            step: string;
+            /**
+             * Verify
+             * @description the new verify: no command fewer
+             */
+            verify?: string | null;
+            /**
+             * What
+             * @description the new what: shorter than the old one
+             */
+            what?: string | null;
+            /**
+             * Why
+             * @description why this step, when the call's reason is not all
+             */
+            why?: string | null;
+        };
         /** StepReadiness */
         StepReadiness: {
             /**
@@ -18093,9 +18117,9 @@ export interface components {
             cause_confirmed: boolean;
             /**
              * Step
-             * @description the step's id, a step that is pending
+             * @description the step's id, a step that is pending; or give steps
              */
-            step: string;
+            step?: string | null;
             /**
              * Verify
              * @description the new verify: no command fewer
@@ -18106,6 +18130,11 @@ export interface components {
              * @description the new what: shorter than the old one
              */
             what?: string | null;
+            /**
+             * Steps
+             * @description several steps edited at once, in one revision and one Decision line, instead of step, verify and what
+             */
+            steps?: components["schemas"]["StepEdit"][] | null;
             /**
              * If Revision
              * @description the revision of the plan the edit was made against
