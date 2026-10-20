@@ -39,6 +39,7 @@ DELIVER_NOTIFICATIONS = "hub.deliver_notifications"  # every minute: notificatio
 FIRE_SCHEDULES = "hub.fire_schedules"  # every minute: the night shift of each charter queues its next run
 PRUNE_DIGESTS = "hub.prune_digests"  # daily: session digests not pushed again for 90 days
 PRUNE_TRANSCRIPTS = "hub.prune_transcripts"  # daily: the content of transcripts past EVO_HUB_TRANSCRIPT_DAYS
+PRUNE_SIGNALS = "hub.prune_signals"  # daily: signals measured more than EVO_HUB_SIGNAL_DAYS ago
 ANALYZE_FACETS = "hub.analyze_facets"  # every 5 minutes: the facet of each new transcript, digest and ended run
 INDEX_HISTORY = "hub.index_history"  # every 5 minutes: the words of each new part of a transcript and ended run
 CURATOR_COLLECT = "curator.collect"  # every minute: each charter's night figures and its review run, in its window

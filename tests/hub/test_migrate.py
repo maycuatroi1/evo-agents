@@ -97,6 +97,7 @@ TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 TABLES |= pg.CANVAS_TABLES  # migration 0067
+TABLES |= pg.SIGNAL_TABLES  # migration 0068
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -171,8 +172,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_six_tables(hub_db):
-    assert len(TABLES) == 106  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_nine_tables(hub_db):
+    assert len(TABLES) == 109  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1316,6 +1317,45 @@ def test_0067_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(
     move_to(hub_db, "0066", down=True)
     assert not pg.CANVAS_TABLES & tables(hub_db)
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0067") :]
+
+
+def test_0068_keeps_signal_keys_ingest_keys_and_signals_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0068")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        key = one(
+            conn,
+            insert(t.signal_keys).values(name="kb.search.hits", kind="number", **owner).returning(t.signal_keys.c.id),
+        )
+        with pytest.raises(errors.CheckViolation):  # a key's name has two to six dotted parts
+            conn.execute(insert(t.signal_keys).values(name="hits", kind="number", **owner))
+        ingest = {"name": "northwind-kb", "token_hash": "b" * 64, "max_level": "internal", **owner}
+        ingest_id = one(conn, insert(t.signal_ingest_keys).values(**ingest).returning(t.signal_ingest_keys.c.id))
+        with pytest.raises(errors.UniqueViolation):  # one live key of a name in a project
+            conn.execute(insert(t.signal_ingest_keys).values(**{**ingest, "token_hash": "c" * 64}))
+        signal = {
+            "project_id": ids["project"],
+            "key_id": key,
+            "value": 0.25,
+            "measured_at": func.now(),
+            "label": {"level": "internal"},
+            "via": "ingest",
+            "ingest_key_id": ingest_id,
+            "batch_id": UUID(int=1),
+            "external_id": "a-1",
+        }
+        conn.execute(insert(t.signals).values(**signal))
+        with pytest.raises(errors.UniqueViolation):  # an ingest key sends an external id once
+            conn.execute(insert(t.signals).values(**signal))
+        with pytest.raises(errors.CheckViolation):  # a number or a text, never both
+            conn.execute(insert(t.signals).values(**{**signal, "external_id": "a-2", "text": "slow"}))
+        with pytest.raises(errors.CheckViolation):  # pushed by an ingest key names no member
+            conn.execute(insert(t.signals).values(**{**signal, "external_id": "a-3", "user_id": ids["user"]}))
+    move_to(hub_db, "0067", down=True)
+    assert not pg.SIGNAL_TABLES & tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0068") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

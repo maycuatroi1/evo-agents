@@ -125,6 +125,8 @@ SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook
 NIGHTLY_TABLES = frozenset({"hub_nightly"})
 # migration 0067: the canvases of the core plugin canvas, their claims, the revs of each claim and its evidence
 CANVAS_TABLES = frozenset({"canvas_canvases", "canvas_claims", "canvas_claim_revs", "canvas_evidence"})
+# migration 0068: the registry of a project's signal keys, its signals, and the ingest keys services write them with
+SIGNAL_TABLES = frozenset({"signal_keys", "signals", "signal_ingest_keys"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied
