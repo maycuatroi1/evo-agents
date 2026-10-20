@@ -43,16 +43,19 @@ class Plugin:
 @dataclass(frozen=True)
 class Clearance:
     """What a channel may carry, on each project's own ladder: a level, and a location (None: any location, as
-    ``evo_agents.kg.policy`` reads a clearance that names none)."""
+    ``evo_agents.kg.policy`` reads a clearance that names none). With ``below`` (API 1.1) it carries what sits under
+    them on the ladder, not at them, and on a ladder without the level or location, its lowest rung alone: Telegram's
+    is ``Clearance("customer", "domestic-only", below=True)``."""
 
     level: str
     location: str | None = None
+    below: bool = False
 
 
 @dataclass(frozen=True, eq=False)
 class Session:
-    """A live credential of a member, from ``WebSession``, ``HubAdmin`` or ``redeem_link_code``: ``web`` for a web
-    session, which alone links a channel (``HubAdmin`` also takes a hub admin's machine token)."""
+    """A live credential of a member, from ``WebSession``, ``Caller``, ``HubAdmin`` or ``redeem_link_code``: ``web``
+    for a web session, which alone links a channel (``Caller`` and ``HubAdmin`` also take a machine token)."""
 
     user_id: int
     login: str
@@ -138,6 +141,24 @@ class AgentRef:
 
 
 @dataclass(frozen=True)
+class LinkedChannel:
+    """A member's channel of a kind as the hub keeps it (API 1.1)."""
+
+    config: Mapping[str, Any]  # as stored, its "state" and the hub's "disabled_reason" included
+    linked_at: datetime
+    enabled: bool  # the hub sends to it: it is on, and the web session that linked it lives
+    disabled_reason: str | None  # why the hub does not: what turned it off, or SESSION_ENDED
+
+
+@dataclass(frozen=True)
+class Unlinked:
+    """What a hub admin's unlink of a member's channel did (API 1.1)."""
+
+    login: str  # the member's login as the hub keeps it
+    unlinked: bool  # a channel was linked, and is not any more
+
+
+@dataclass(frozen=True)
 class LinkCode:
     code: str  # one time, for ten minutes
     expires_at: datetime
@@ -217,8 +238,8 @@ def own_member(member) -> Member:
 
 
 def own_clearance(cleared) -> Clearance:
-    if not isinstance(cleared, Clearance):
-        raise ValueError("a clearance is a Clearance(level, location)")
+    if not isinstance(cleared, Clearance) or not isinstance(cleared.below, bool):
+        raise ValueError("a clearance is a Clearance(level, location, below=False)")
     return cleared
 
 

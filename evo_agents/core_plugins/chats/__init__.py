@@ -10,7 +10,9 @@ the chat and could read the message there. Search finds a message by its text, w
 When a message is sent, the hub queues a build of each project its label names that has a plugin reading the chats
 (``evo_agents.hub.server.chat_store``), which joins a build that waits.
 
-The hub imports this package for the manifest only: ``kg`` gives the knowledge graph the messages.
+The hub imports this package for the manifest only: ``kg`` gives the knowledge graph the messages, which it asks the
+hub for through the API of core plugins alone (``evo_agents.hub.server.core_plugin_api``, ``chat_history_items``), so
+the rule of who reads a message in the graph stays in the hub.
 """
 
 KG = "evo_agents.core_plugins.chats.kg"

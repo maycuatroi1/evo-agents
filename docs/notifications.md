@@ -254,16 +254,20 @@ they hold a grant on.
 ## Telegram
 
 Telegram is a core plugin that evo-ak ships, `telegram` (`docs/plugins.md`, section Core plugins): the hub finds it
-in the entry point group `evo_agents.plugins` and reaches it through its manifest only. `evo_agents/hub/telegram.py`
-holds the model (link codes, button data, what may reach a chat, the messages), which the group chats share, and
+in the entry point group `evo_agents.plugins` and reaches it through its manifest only, and the plugin reaches the hub
+through the API of core plugins alone (`docs/plugins.md`, The core plugin API, version 1.1).
+`evo_agents/core_plugins/telegram/model.py` holds the bot's commands, its button data and its messages, and
 `evo_agents/core_plugins/telegram/server.py` the Bot API client, the channel's class, the webhook and the routes, at
-the paths they had before Telegram was a plugin. The hub calls the Bot API with httpx; no bot library.
+the paths they had before Telegram was a plugin. The hub keeps in `evo_agents/hub/telegram.py` what it says itself: the
+link codes, what may reach a chat (which the group chats share) and the words of a minimal message. The plugin calls
+the Bot API with httpx; no bot library.
 
 ### One bot of the hub
 
 The hub admin creates the bot with BotFather and sets `EVO_HUB_TELEGRAM_BOT_TOKEN` and
-`EVO_HUB_TELEGRAM_WEBHOOK_SECRET` (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`). Without either the channel is
-off: linking answers 503, the webhook 404, a delivery to a Telegram channel fails at once, and the hub runs on. Members
+`EVO_HUB_TELEGRAM_WEBHOOK_SECRET` (1 to 256 characters of `A-Z`, `a-z`, `0-9`, `_`, `-`). The hub checks their shape
+as it starts and the plugin reads them from the process's environment, checking it again. Without either the channel
+is off: linking answers 503, the webhook 404, a delivery to a Telegram channel fails at once, and the hub runs on. Members
 only link their chat. The webhook is a path of the hub's own domain, `/v1/telegram/webhook`, which the reverse proxy
 already sends to the api; `evo-agents hub admin telegram --set-webhook` (a hub admin) points the bot there with
 `setWebhook`, the secret as `secret_token`, and the updates `message` and `callback_query`, and `evo-agents hub admin
@@ -317,11 +321,12 @@ that linked it lives. Before it reads anything of the decision or proposal the b
 holds a grant on its project: one of another project gets the same answer as one that does not exist, naming neither,
 and a project whose messages are restricted (below) takes no answer from Telegram, as its messages have no buttons.
 Button data that is not the hub's (an option key a decision cannot have, say) gets a refusal, never an error. Then it
-answers as that channel's member through the same code as the web (`decisions.answer_decision`,
-`proposals.answer_proposal_as`):
+answers as that channel's member through the same code as the web (the API's `answer_decision` and
+`answer_proposal`, over `decisions.answer_decision` and `proposals.answer_proposal_as`):
 the same checks (only the run's owner answers a decision, an admin of the project a proposal; a run on a worker that
 takes runs from the web only is answered on the web), the inbox message, the audit row, which ends `via=telegram` and
-names no token, and the run going on. It then calls `answerCallbackQuery`, so the button stops spinning and shows the
+names no token, and the run going on. A proposal takes no answer while a hub admin has turned the feature `curator`
+off, as on the web. It then calls `answerCallbackQuery`, so the button stops spinning and shows the
 outcome or the refusal, and edits the message to show the answer, or that it was answered first, keeping only the web
 button. A reply to the decision's message is its answer in text: the hub finds the decision by the chat and the message
 id it kept (`external_id`, `<chat>:<message>`), since Telegram numbers messages per chat, with the same checks as a
