@@ -45,6 +45,12 @@
   of runs that ended more than 7 days ago are removed.
 - Each run takes its leases from the hub after the claim and gives them back when it ends here (``credentials``),
   also when the daemon stops.
+- The answer's ``kg_sync`` names the projects whose night shift this worker is on duty for: every
+  ``kg_sync.KG_SYNC_EVERY`` seconds, and at once when the hub took a run of one since the daemon last looked, it
+  syncs their git sources whose ref is origin/<branch> and pushes the runs the hub lacks with its own token
+  (``kg_sync``), one project at a time in a thread, under the lock of each checkout it fetches; each heartbeat says what
+  the last look at each project found (``kg_sync``). EVO_WORKER_KG_SYNC=off turns it off: the daemon then neither says
+  the feature nor sends the report.
 - After each heartbeat, each run of the Curator the hub still holds for this worker is watched (``Run.watch``,
   ``runner.watchdog``): a file of the charter's protected paths changed in its worktrees, or its time or cost cap
   passed, stops it.
@@ -70,8 +76,9 @@ from pathlib import Path
 
 from evo_agents import __version__
 from evo_agents.hub import runs
+from evo_agents.hub.client import Hub
 from evo_agents.plugins.runtimes import AcpRuntime
-from evo_agents.worker import checkouts, gitops, interactive, orphans
+from evo_agents.worker import checkouts, gitops, interactive, kg_sync, orphans
 from evo_agents.worker.adapter import Adapter, detect_adapters, detect_runtimes
 from evo_agents.worker.credentials import socket_path
 from evo_agents.worker.home import EXIT_UPDATED, WorkerConfig, WorkerHome, revoked_exit
@@ -171,6 +178,11 @@ class Daemon:
         self.updater = self_update or SelfUpdate.here(home, self.env)  # updating its install to the tag nightly
         self.outdated = False  # the hub answered 426
         self._claiming = False
+        self.kg_on = kg_sync.enabled(self.env)
+        self.kg_every = kg_sync.every(self.env)
+        self.kg: kg_sync.KgSync | None = None  # made once the loop runs, with the hub's URL and the token
+        self.kg_duties: dict[str, str | None] = {}  # project -> when the hub last took a run of its graph
+        self._kg_wrong: dict[str, tuple] = {}  # project -> what went wrong at its last look
 
     # Shared with the runs
 
@@ -225,6 +237,7 @@ class Daemon:
         self.hard_stop = asyncio.Event()
         self.slot_free = asyncio.Event()
         self.beat_ok = asyncio.Event()
+        self.kg_wake = asyncio.Event()
         loop = asyncio.get_running_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
             loop.add_signal_handler(sig, self._signal, sig)
@@ -243,6 +256,8 @@ class Daemon:
             cleanup = asyncio.create_task(self._cleanup_loop())
             updates = asyncio.create_task(self._self_update_loop())
             background = [leftovers, heartbeat, cleanup, updates]
+            if self.kg_on:
+                background.append(asyncio.create_task(self._kg_sync_loop()))
             await self.stopping.wait()
             claims.cancel()
             with contextlib.suppress(asyncio.CancelledError):
@@ -256,6 +271,8 @@ class Daemon:
             with contextlib.suppress(asyncio.TimeoutError):
                 await asyncio.wait_for(asyncio.shield(leftovers), 0 if self.hard_stop.is_set() else LEFTOVER_GRACE)
         finally:
+            if self.kg is not None:
+                self.kg.stop.set()
             for task in background:
                 task.cancel()
             for task in background:
@@ -341,19 +358,8 @@ class Daemon:
             log.exception("looking at the runtimes and checkouts failed")
         held = self._held()[:MAX_HEARTBEAT_RUNS]
         asked = sorted(self.orphans)[: MAX_HEARTBEAT_RUNS - len(held)]
-        body = {
-            "runtimes": self.runtimes,
-            "checkouts": self.checkouts,
-            "free_slots": min(self.free_slots, runs.MAX_SLOTS),
-            "runs": held + asked,
-            "agent_version": __version__,
-            "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
-            # a plan run with a session for each step (runner.sessions), an author run that asks decisions
-            "features": list(runs.WORKER_FEATURES),
-            **self.updater.heartbeat_fields(),  # agent_commit and self_update, every time (0048)
-        }
         try:
-            answer = await self.hub.heartbeat(body)
+            answer = await self.hub.heartbeat(self._heartbeat_body(held + asked))
         except Unreachable as exc:
             self._beat_failures += 1
             if self._beat_failures <= 3 or self._beat_failures % 20 == 0:
@@ -402,6 +408,25 @@ class Daemon:
                     run.spawn(run.watch())
         return True
 
+    def _heartbeat_body(self, reported: list[int]) -> dict:
+        """What a heartbeat sends: the machine, the runs ``reported``, the install, what the last looks at the graphs
+        found."""
+        body = {
+            "runtimes": self.runtimes,
+            "checkouts": self.checkouts,
+            "free_slots": min(self.free_slots, runs.MAX_SLOTS),
+            "runs": reported,
+            "agent_version": __version__,
+            "run_kinds": list(runs.RUN_KINDS),  # every kind run.KINDS has a class for
+            # a plan run with a session for each step (runner.sessions), an author run that asks decisions
+            "features": [name for name in runs.WORKER_FEATURES if self.kg_on or name != runs.KG_SYNC],
+            **self.updater.heartbeat_fields(),  # agent_commit and self_update, every time (0048)
+        }
+        report = self.kg.report(sorted(self.kg_duties)) if self.kg is not None else None
+        if report and report["projects"]:
+            body["kg_sync"] = report  # what the last looks found (0053)
+        return body
+
     def _take_worker_state(self, answer: dict) -> None:
         """What a heartbeat answer says of the worker itself: whether to drain, and its settings when the hub sends
         them."""
@@ -415,6 +440,22 @@ class Daemon:
         else:
             self.updater.hear_lock(None)
         self._take_plugin_runtimes(answer.get("plugin_runtimes"))
+        if self.kg_on:
+            self._take_kg_duties(answer.get("kg_sync"))
+
+    def _take_kg_duties(self, value) -> None:
+        """The projects whose graph the hub asks this worker to keep fresh, with when it last took a run of each: a
+        project new to the list, or one whose time moved, wakes the loop of ``kg_sync``."""
+        found = {}
+        for item in value if isinstance(value, list) else []:
+            if isinstance(item, dict) and isinstance(item.get("project"), str):
+                received = item.get("received_at")
+                found[item["project"]] = received if isinstance(received, str) else None
+        if found != self.kg_duties:
+            if set(found) != set(self.kg_duties):
+                log.info("graphs to keep fresh", extra={"projects": sorted(found)})
+            self.kg_duties = found
+            self.kg_wake.set()
 
     def _take_plugin_runtimes(self, value) -> None:
         """The declarations of the runtimes of the plugins the owner accepted, as the answer carries them: each one of
@@ -505,6 +546,81 @@ class Daemon:
             updated = False
         if updated:
             self.exit_code = EXIT_UPDATED
+
+    # Keeping the graphs fresh
+
+    def _kg_checkouts(self, project: str) -> dict[str, Path]:
+        """The checkouts of ``project``'s repos here, by repo name."""
+        prefix = f"{project}/"
+        return {
+            key[len(prefix) :]: Path(entry["path"]) for key, entry in self.checkouts.items() if key.startswith(prefix)
+        }
+
+    def _kg_lock(self, loop: asyncio.AbstractEventLoop):
+        """A context manager for the thread of a look: it holds the daemon's lock of a checkout, as a run does."""
+
+        async def acquire(path: Path) -> None:
+            await self.repo_lock(path).acquire()
+
+        @contextlib.contextmanager
+        def locked(path: Path):
+            future = asyncio.run_coroutine_threadsafe(acquire(Path(path)), loop)
+            while True:  # a daemon that stops no longer runs the loop: the look gives up rather than wait forever
+                try:
+                    future.result(timeout=1.0)
+                    break
+                except TimeoutError:
+                    if self.kg is not None and self.kg.stop.is_set():
+                        future.cancel()
+                        raise RuntimeError("the daemon is stopping") from None
+            try:
+                yield
+            finally:
+                loop.call_soon_threadsafe(self.repo_lock(Path(path)).release)
+
+        return locked
+
+    async def _kg_sync_loop(self) -> None:
+        """Look at each project of kg_sync every kg_every seconds, and at once at one whose time moved (``kg_sync``)."""
+        loop = asyncio.get_running_loop()
+        hub = Hub(self.config.url, self.token, headers={runs.PROTOCOL_HEADER: runs.PROTOCOL_VERSION})
+        self.kg = kg_sync.KgSync(self.home.root, hub, lock=self._kg_lock(loop), secrets=(self.token,))
+        looked: dict[str, tuple[float, str | None]] = {}  # project -> when the daemon looked, and the time it saw
+        while not self.stopping.is_set():
+            self.kg_wake.clear()
+            for project, received in sorted(self.kg_duties.items()):
+                last = looked.get(project)
+                if last is not None and last[1] == received and loop.time() - last[0] < self.kg_every:
+                    continue
+                if self.stopping.is_set():
+                    return
+                looked[project] = (loop.time(), received)
+                await self._kg_look(project)
+            waits = [self.kg_every - (loop.time() - at) for at, _ in looked.values()] or [self.kg_every]
+            with contextlib.suppress(asyncio.TimeoutError):
+                await asyncio.wait_for(self.kg_wake.wait(), max(1.0, min(waits)))
+
+    async def _kg_look(self, project: str) -> None:
+        try:
+            state = await asyncio.to_thread(self.kg.look, project, self._kg_checkouts(project))
+        except Exception:  # a bug here must not end the loop
+            log.exception("keeping the graph fresh failed", extra={"project": project})
+            return
+        failed = {sid: found.error for sid, found in state.sources.items() if found.status == "failed"}
+        wrong = (state.error, sorted(failed.items()))
+        level = logging.WARNING if (state.error or failed) and wrong != self._kg_wrong.get(project) else logging.INFO
+        self._kg_wrong[project] = wrong  # a failure that stays is warned of once, then logged at info
+        log.log(
+            level,
+            "graph looked at",
+            extra={
+                "project": project,
+                "error": state.error,
+                "failed": failed,
+                "pushed": sum(found.pushed for found in state.sources.values()),
+                "pulled": sum(found.pulled for found in state.sources.values()),
+            },
+        )
 
     # Claims
 
@@ -735,7 +851,7 @@ class Daemon:
     async def _remove_worktree(self, record: dict) -> None:
         """Remove a run's worktree and its evo-run branch; for a plan run, each repo's, then the run's directory. A
         plan run whose worktrees a resumed run took over names none of them any more."""
-        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task"):
+        if record.get("kind") in ("plan", "review", "judge", "author", "chat", "task", "replay", "history"):
             for item in record.get("repos") or []:
                 if isinstance(item, dict):
                     await self._remove_one(item)

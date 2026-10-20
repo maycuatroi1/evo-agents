@@ -27,6 +27,15 @@ import { usePluginPageTitle } from "./plugin-nav";
 
 type Crumb = { label: string; href?: string };
 
+/** The Curator's own pages as the trail names them, by their segment under `/p/{project}/curator`. */
+const CURATOR_CRUMBS: Record<string, "curatorProposals" | "curatorHistory" | "curatorGraph" | "curatorRuntime" | "curatorCharter"> = {
+  proposals: "curatorProposals",
+  history: "curatorHistory",
+  graph: "curatorGraph",
+  runtime: "curatorRuntime",
+  charter: "curatorCharter",
+};
+
 /** The last part of a page's path as a crumb: a name as it is, a number as #id. */
 function itemLabel(part: string): string {
   let text = part;
@@ -85,9 +94,10 @@ function useCrumbs(): Crumb[] {
         if (section.segment === "agents") crumbs[2].label = `@${itemLabel(parts[3])}`;
         // A run's diff is the one page below an item that names itself in the trail.
         if (section.segment === "runs" && parts[4] === "diff" && !parts[5]) crumbs.push({ label: t("runDiff") });
-        // The Curator's pages name themselves (Proposals, Charter), and a proposal is #id below Proposals.
-        if (section.segment === "curator" && (parts[3] === "proposals" || parts[3] === "charter")) {
-          crumbs[2].label = t(parts[3] === "proposals" ? "curatorProposals" : "curatorCharter");
+        // The Curator's pages name themselves (Proposals, History, Charter), and a proposal is #id below Proposals.
+        const curatorPage = section.segment === "curator" && Object.hasOwn(CURATOR_CRUMBS, parts[3]) ? CURATOR_CRUMBS[parts[3]] : undefined;
+        if (curatorPage) {
+          crumbs[2].label = t(curatorPage);
           if (parts[4]) crumbs.push({ label: itemLabel(parts[4]) });
         }
       }

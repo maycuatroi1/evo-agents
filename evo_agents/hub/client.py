@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import contextlib
 import functools
+import hashlib
 import http.client
 import json
 import os
@@ -364,13 +365,49 @@ def put_presigned(url: str, path: Path, timeout: float = TIMEOUT) -> None:
         raise HubError(f"the blob store at {_origin(url)} answered HTTP {status} to an upload", status)
 
 
-class Hub:
-    """Calls to one hub, as the holder of ``token`` when one is given."""
+def get_presigned(url: str, path: Path, size: int, timeout: float = TIMEOUT) -> str:
+    """GET a presigned URL the hub handed out into the file at ``path``, which must come to exactly ``size`` bytes;
+    return the hex SHA-256 of what was written. A longer or shorter answer, or any status but 200, is a HubError and
+    leaves no file. The URL is a credential until it expires: an error names its host only."""
+    request = urllib.request.Request(url, method="GET", headers={"User-Agent": f"evo-agents/{__version__}"})
+    digest = hashlib.sha256()
+    written = 0
+    try:
+        with _OPENER.open(request, timeout=timeout) as response, open(path, "wb") as handle:
+            while chunk := response.read(1024 * 1024):
+                written += len(chunk)
+                if written > size:
+                    raise HubError(f"the blob store at {_origin(url)} sent more than the {size} bytes asked for")
+                digest.update(chunk)
+                handle.write(chunk)
+    except urllib.error.HTTPError as exc:
+        exc.close()
+        path.unlink(missing_ok=True)
+        raise HubError(f"the blob store at {_origin(url)} answered HTTP {exc.code} to a download", exc.code) from None
+    except (urllib.error.URLError, TimeoutError, OSError, http.client.HTTPException) as exc:
+        path.unlink(missing_ok=True)
+        reason = exc.reason if isinstance(exc, urllib.error.URLError) else str(exc) or type(exc).__name__
+        raise Unreachable(f"cannot reach {_origin(url)}: {reason}") from None
+    except HubError:
+        path.unlink(missing_ok=True)
+        raise
+    if written != size:
+        path.unlink(missing_ok=True)
+        raise HubError(f"the blob store at {_origin(url)} sent {written} of the {size} bytes asked for")
+    return digest.hexdigest()
 
-    def __init__(self, url: str, token: str | None = None, timeout: float = TIMEOUT):
+
+class Hub:
+    """Calls to one hub, as the holder of ``token`` when one is given. ``headers`` go with every request besides the
+    client's own, such as the worker protocol's header on the routes of a worker daemon."""
+
+    def __init__(
+        self, url: str, token: str | None = None, timeout: float = TIMEOUT, headers: Mapping[str, str] | None = None
+    ):
         self.url = check_url(url)
         self.token = token
         self.timeout = timeout
+        self.headers = dict(headers or {})
 
     def __repr__(self) -> str:
         return f"Hub({self.url!r})"
@@ -378,7 +415,7 @@ class Hub:
     def call(self, method: str, path: str, body: dict | None = None, *, timeout: float | None = None):
         """The decoded JSON answer, None for an empty one; HubError with the hub's message otherwise. ``timeout``
         replaces the hub's own for this request, for one whose work grows with its size, such as a blob commit."""
-        headers = {"Accept": "application/json", "User-Agent": f"evo-agents/{__version__}"}
+        headers = {**self.headers, "Accept": "application/json", "User-Agent": f"evo-agents/{__version__}"}
         if self.token:
             headers["Authorization"] = f"Bearer {self.token}"
         data = None

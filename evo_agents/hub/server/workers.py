@@ -44,7 +44,8 @@ worker 409. Giving the values it has changes nothing and is not audited. The dae
 answer to its next heartbeat (``settings``), and the hub's claim counts the runs a worker holds against its slots as
 they are now. A worker shows what its last heartbeat said of its daemon's install: agent_commit, the commit of
 evo-agents it was built from, and self_update, what the daemon found of updating itself (``runs.SELF_UPDATE_STATES``),
-with since, when the hub first got that state.
+with since, when the hub first got that state; and kg_sync, what a daemon on duty for night shifts last did for their
+projects' graphs, the error of each sync that failed included (``evo_agents.worker.kg_sync``).
 
 Every pairing, join, registration, drain, undrain, change of dispatch_from or of settings and revocation adds an audit
 row naming the pairing or worker, never the code or the token, and neither ever reaches a log line.
@@ -249,6 +250,7 @@ def _listed(*where):
             w.c.version_locked,
             w.c.self_update,
             w.c.self_update_since,
+            w.c.kg_sync,
             func.array(names.scalar_subquery(), type_=ARRAY(Text)).label("projects"),
             w.c.runtimes,
             w.c.checkouts,

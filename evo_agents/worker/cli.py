@@ -23,6 +23,7 @@
 - ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
   prints its worktree's path (``chat_cli``).
 - ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
+- ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
   run's project, as the member who dispatched the run (``evo_agents.hub.author``); ``plan`` reads it back, with its
   revision, once the run has one. It refuses to run outside an author run of this worker.
@@ -60,10 +61,10 @@ from evo_agents import __version__
 from evo_agents.hub import runs
 from evo_agents.hub.client import Hub, HubError, check_url, host_name, load_credentials
 from evo_agents.hub.contract import json_option, returns_object
+from evo_agents.worker import chat_cli, playbook_cli, triage_cli
 from evo_agents.worker.agent_input import evidence_items, read_text
-from evo_agents.worker.chat_cli import register_chat, register_repo
 from evo_agents.worker.home import NotJoined, PidLock, WorkerConfig, WorkerHome, WorkerStateError, revoked_exit
-from evo_agents.worker.triage_cli import register_triage
+from evo_agents.worker.run_kinds import kind_refusal, kinds_of
 
 EXIT_FAILED = 1
 EXIT_USAGE = 2
@@ -353,8 +354,7 @@ def cmd_status(args) -> int:
     found = discover(config)
     records = home.load_runs()
     pid = home.read_pid()
-    hub_view = None
-    hub_error = None
+    hub_view = hub_error = None
     member = _member_hub(config.url)
     if member is not None:
         try:
@@ -378,6 +378,7 @@ def cmd_status(args) -> int:
         "runs": [{k: r.get(k) for k in ("id", "state", "worktree", "finished_at")} for r in records],
         "hub": hub_view,
         "hub_error": hub_error,
+        "kg_sync": home.kg_sync(),
         "state_dir": str(home.root),
     }
     if args.json:
@@ -412,7 +413,7 @@ def cmd_status(args) -> int:
         print("  no checkout of the worker's projects found")
     unfinished = [r for r in records if not r.get("finished_at")]
     print(f"  runs kept here: {len(records)} ({len(unfinished)} not ended); spool: {status['spool_bytes']} bytes")
-    print(f"  state: {home.root}")
+    print(*(f"  {line}" for line in [*home.kg_sync_lines(), f"state: {home.root}"]), sep="\n")
     return 0
 
 
@@ -502,7 +503,7 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
     raw = (os.environ.get(RUN_VARIABLE) or "").strip()
     if not raw.isdigit() or int(raw) < 1:
         raise WorkerStateError(
-            f"`evo-agents worker {command}` works only inside {_kinds_of(kinds)} of this worker: {RUN_VARIABLE} is "
+            f"`evo-agents worker {command}` works only inside {kinds_of(kinds)} of this worker: {RUN_VARIABLE} is "
             "not set. The worker sets it, with EVO_RUN_KIND and EVO_WORKER_HOME, for the agent of each run."
         )
     run_id = int(raw)
@@ -517,38 +518,8 @@ def _agent_run(command: str, kinds: tuple[str, ...] = ("plan",)) -> _AgentRun:
         )
     kind = record.get("kind") or "step"
     if kind not in kinds:
-        if kinds in (("review",), ("author",)):
-            raise WorkerStateError(
-                f"run {run_id} is {'an' if kind[:1] in 'aeiou' else 'a'} {kind} run: only the agent of "
-                f"{'an' if kinds[0][:1] in 'aeiou' else 'a'} {kinds[0]} run uses `evo-agents worker {command}`"
-            )
-        if kind == "review":
-            raise WorkerStateError(
-                f"run {run_id} is a review run, which reads only: it records what it finds with `evo-agents worker "
-                f"finding` and `evo-agents worker propose`, not `evo-agents worker {command}`, which only the agent "
-                f"of {_kinds_of(kinds)} uses"
-            )
-        if kind == "author":
-            raise WorkerStateError(
-                f"run {run_id} is an author run, which writes a plan and changes nothing: it does not use "
-                f"`evo-agents worker {command}`"
-            )
-        if kind == "judge":
-            raise WorkerStateError(
-                f"run {run_id} is a judge run, which reads and judges only: its verdict is the JSON object that ends "
-                f"the agent's last message, not `evo-agents worker {command}`, which only the agent of "
-                f"{_kinds_of(kinds)} uses"
-            )
-        raise WorkerStateError(
-            f"run {run_id} is a run of one step: only the agent of {_kinds_of(kinds)} uses `evo-agents worker "
-            f"{command}`; a run of one step writes {runs.RESULT_FILE} instead"
-        )
+        raise WorkerStateError(kind_refusal(run_id, kind, kinds, command))
     return _AgentRun(run_id, home, config, token, record)
-
-
-def _kinds_of(kinds: tuple[str, ...]) -> str:
-    """The runs of ``kinds`` in words: "a plan run", "a plan run or an author run"."""
-    return " or ".join(f"{'an' if kind[:1] in 'aeiou' else 'a'} {kind} run" for kind in kinds)
 
 
 def _with_hub(agent: _AgentRun, work):
@@ -1208,7 +1179,7 @@ def register(sub) -> None:
         action="append",
         required=True,
         metavar="SPEC",
-        help="session:ID[:FIELD:INDEX], run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
+        help="session:ID[:FIELD:INDEX], transcript:ID[:FILE]:LINE, run:ID:SEQ or code:REPO:PATH[:LINE]; repeat it",
     )
     finding.add_argument("--severity", choices=SEVERITIES, default="medium", help="low, medium (default) or high")
     finding.add_argument("--body-file", help="markdown that explains it, at most 16 KiB (- for stdin)")
@@ -1253,6 +1224,6 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    register_chat(wsub)  # the commands of a run's agent in group chats (chat_cli)
-    register_repo(wsub)  # `repo open` of a chat run's agent (chat_cli)
-    register_triage(wsub)  # what the agent of a triage thread does for a failed run (triage_cli)
+    chat = (chat_cli.register_chat, chat_cli.register_repo)  # a run's agent in group chats, `repo open` of a chat run's
+    for extra in (*chat, triage_cli.register_triage, playbook_cli.register_playbook):
+        extra(wsub)  # and a triage thread's for a failed run, a review run's on the playbook

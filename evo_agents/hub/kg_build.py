@@ -32,6 +32,12 @@ it), and the build row gets it with the content hash and the counts. Either way 
 lock shared (``evo_agents.hub.blob_gc``), so the retention of old artifacts (``evo_agents.hub.kg_prune``) never runs
 in between, and an uploaded artifact whose hash waits for deletion is written again before the row names it.
 
+A build that succeeds also keeps what it covers (``kg_builds.coverage``, ``evo_agents.hub.kg_coverage.build_coverage``:
+mentions resolved, ambiguous and dangling per source, the commit each git source read, the Python functions and
+methods no call edge reaches), and the files each git source holds in it, path and blob SHA (kg_source_files, one row a
+source, replaced by each build), which the measure of the graph's health compares with the default branches
+(``evo_agents.hub.server.kg_health``).
+
 The cache can be deleted at any time: the next build fetches everything again and gets the same content hash.
 """
 
@@ -53,7 +59,7 @@ from sqlalchemy.dialects.postgresql import ENUM
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import blob_gc, kg_sources, tables
+from evo_agents.hub import blob_gc, kg_coverage, kg_sources, tables
 from evo_agents.hub.blobs import KIND_LIMITS, PARALLEL, BlobStore, BlobStoreUnavailable, blob_key
 from evo_agents.hub.jobs import KG_BUILD, JobQueue, kg_lock
 from evo_agents.hub.kg_ingest import ONTOLOGY_FILE, blob_refs
@@ -114,6 +120,8 @@ class Built:
     runs: int
     merged: int  # runs merged by this build; the others were in the cache already
     skipped: bool = False  # the cache's graph was current: nothing was built
+    coverage: dict | None = None  # what kg_builds.coverage keeps (``kg_coverage.build_coverage``)
+    files: dict | None = None  # the files of each git source (``kg_coverage.source_files``)
 
 
 @dataclass(frozen=True)
@@ -266,11 +274,26 @@ def build_graph(project: Project) -> tuple[Path, object]:
     return target, report
 
 
+def graph_reach(path: Path) -> dict | None:
+    """The call reach of the graph in the store at ``path`` (``evo_agents.kg.health.call_reach``); None when it has no
+    ready build."""
+    from evo_agents.kg.health import call_reach
+    from evo_agents.kg.store import Store
+
+    graph = Store.open_file(path)
+    try:
+        b = graph.latest_ready()
+        return call_reach(graph, b) if b is not None else None
+    finally:
+        graph.close()
+
+
 def build_in_cache(
     store: BlobStore, data_dir: Path, name: str, config: dict, ingests: list[Ingest], sources: list | None = None
 ) -> Built:
     """Everything a build does on disk: the config with the plugins' ``sources``, their items and the corpus fetched
-    from the blob store, and the graph, which ``record`` uploads unless an earlier build has its content. Blocking."""
+    from the blob store, the graph, which ``record`` uploads unless an earlier build has its content, and what the
+    build covers with the files of each git source, which ``record`` keeps. Blocking."""
     sources = sources or []
     write_config(data_dir, name, kg_sources.knowledge_with(config["knowledge"], sources), config.get("ontology"))
     project = worker_project(data_dir, name)
@@ -278,6 +301,7 @@ def build_in_cache(
     merged = prepare_corpus(store, project, ingests)
     path, report = build_graph(project)
     sha256 = _sha256(path)
+    coverage = kg_coverage.build_coverage(report.coverage, graph_reach(path), skipped=report.skipped)
     return Built(
         path,
         sha256,
@@ -288,6 +312,8 @@ def build_in_cache(
         len(ingests),
         merged,
         report.skipped,
+        coverage,
+        kg_coverage.source_files(project),
     )
 
 
@@ -412,10 +438,35 @@ async def record(
                 edges=built.edges,
                 error=None,
                 finished_at=func.now(),
+                coverage=built.coverage,
             )
             .where(builds.c.id == build_id)
         )
+        await keep_source_files(conn, project_id, build_id, built.files)
     return artifact
+
+
+async def keep_source_files(conn: AsyncConnection, project_id: int, build_id: int, files: dict | None) -> None:
+    """Make kg_source_files the files of each git source of build ``build_id`` (``kg_coverage.source_files``): a row
+    each, and none for a source the build no longer has. Nothing when the build says nothing of them."""
+    if files is None:
+        return
+    held = tables.kg_source_files
+    await conn.execute(delete(held).where(held.c.project_id == project_id, held.c.source.not_in(list(files))))
+    for source, found in sorted(files.items()):
+        values = {
+            "build_id": build_id,
+            "read_commit": found.get("commit"),
+            "files": found.get("files") or {},
+            "file_count": len(found.get("files") or {}),
+            "truncated": bool(found.get("truncated")),
+            "updated_at": func.now(),
+        }
+        await conn.execute(
+            pg_insert(held)
+            .values(project_id=project_id, source=source, **values)
+            .on_conflict_do_update(index_elements=[held.c.project_id, held.c.source], set_=values)
+        )
 
 
 async def _failed(engine, digest: str | None, runs: int, error: str, build_id: int) -> None:

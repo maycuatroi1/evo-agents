@@ -124,14 +124,16 @@ MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or bu
 
 # one step; every step of a plan not done yet; a night's review of a project; the Judge of a change of the Curator; a
 # plan written from a member's request; one turn of an agent a person or an agent mentioned in a group chat; the task a
-# plugin hands an agent type of its own; a Claude Code session on a member's own machine, which no worker runs
-# (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of run a daemon announces and a
-# claim hands out)
-RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task")
+# plugin hands an agent type of its own; the replay of a past step of the project with the harness of the default
+# branch and with that of a change of the Curator (``evo_agents.hub.replay``); the night's reading of the project's
+# sessions and runs with a cheap model (``evo_agents.hub.history``); a Claude Code session on a member's own
+# machine, which no worker runs (LOCAL_KIND, besides RUN_KINDS: only the kinds a worker runs are in it, and the kinds of
+# run a daemon announces and a claim hands out)
+RUN_KINDS = ("step", "plan", "review", "judge", "author", "chat", "task", "replay", "history")
 LOCAL_KIND = "local"
 SHOWN_KINDS = (*RUN_KINDS, LOCAL_KIND)  # every kind a run may be shown as, local runs included
 PLAN_KINDS = ("step", "plan")  # the kinds of run that work on a plan; a review run has none (its plan_id is null)
-CURATOR_KINDS = ("review", "judge")  # the kinds only the night shift queues, besides the Builder's plan runs
+CURATOR_KINDS = ("review", "judge", "replay", "history")  # the kinds only the night shift queues, and the Builder
 PLAN_RUN_AGENT = (0, 4, 0)  # the first daemon release that runs a plan run; an older one reads it as a step run
 SESSION_PER_STEP = "session_per_step"  # a daemon that runs a plan run with a new agent session for each step
 # a daemon whose author run's agent asks decisions (`evo-agents worker ask`) and waits for all of a turn's answers
@@ -149,6 +151,10 @@ ENVIRONMENTS = "environments"
 AGENT_PACKS = "agent_packs"
 # a daemon whose chat run's agent asks decisions (`evo-agents worker ask`), waits for the answers and is parked
 CHAT_DECISIONS = "chat_decisions"
+# a daemon that keeps the graph of each project whose night shift it is on duty for fresh on the hub: it syncs the git
+# sources whose ref is origin/<branch>, fetching it first, and pushes their runs with its own token, no model involved
+# (evo_agents.worker.kg_sync); the heartbeat answer names those projects (kg_sync) only to a daemon that says it
+KG_SYNC = "kg_sync"
 # a daemon whose chat run starts with the project's harness alone and whose agent opens each other repo it needs
 # (`evo-agents worker repo open`, POST /v1/worker/runs/{id}/chat/repos); the hub hands any other daemon's chat run
 # every repo of the project the worker has a checkout of (evo_agents.hub.chat_runs)
@@ -162,6 +168,7 @@ WORKER_FEATURES = (
     ENVIRONMENTS,
     AGENT_PACKS,
     CHAT_DECISIONS,
+    KG_SYNC,
     LAZY_CHAT_REPOS,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
@@ -297,6 +304,14 @@ WORKER_STATUSES = ("online", "offline", "draining", "revoked")
 SELF_UPDATE_STATES = ("current", "waiting", "updating", "locked", "unsupported")
 SELF_UPDATE_REASON_CHARS = 500  # the most characters of self_update.reason a heartbeat carries
 SELF_UPDATE_ERROR_CHARS = 2000  # and of self_update.error
+# What a daemon of feature KG_SYNC last did for each git source of a project it is on duty for (kg_sync of its
+# heartbeat): ok, the source was read or found at the commit read last, and every run of it is on the hub; failed, the
+# sync, the pull of the hub's runs or the push went wrong, and error says how; skipped, the worker does not read it
+# (a ref that is not origin/<branch>, a path: source, no checkout of its repo here), and error says why.
+KG_SYNC_STATES = ("ok", "failed", "skipped")
+KG_SYNC_ERROR_CHARS = 500  # the most characters of an error of kg_sync a heartbeat carries
+MAX_KG_SYNC_PROJECTS = 50  # the projects of kg_sync in one heartbeat
+MAX_KG_SYNC_SOURCES = 50  # and the sources of one project
 
 ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
     "agent_message_chunk",

@@ -56,6 +56,7 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
   const role = (value: { runtime: string; model?: string | null } | undefined) =>
     t("roleValue", { runtime: tRuntime((value?.runtime ?? "claude-code") as "claude-code"), model: value?.model ?? t("modelDefault") });
   const hidden = charter.judge?.hidden_checks;
+  const historyBudget = charter.history?.budget_usd;
   return (
     <div className="grid items-start gap-4 lg:grid-cols-2" data-testid="charter-view" data-revision={charter.revision}>
       <HomeCard title={t("groups.goals")} testId="charter-view-goals">
@@ -131,6 +132,22 @@ function CharterView({ project, charter }: { project: string; charter: Charter }
           <Fact label={t("fields.reviewLenses")}>{charter.review?.lenses ?? 3}</Fact>
           <Fact label={t("fields.reviewDays")}>{t("days", { days: charter.review?.days ?? 7 })}</Fact>
           <Fact label={t("fields.reviewBudget")}>{charter.review?.budget_usd ? money(charter.review.budget_usd) : t("reviewBudgetNone")}</Fact>
+        </Facts>
+      </HomeCard>
+      <HomeCard title={t("groups.nightRuns")} testId="charter-view-night-runs">
+        <Facts>
+          <Fact label={t("fields.replayTasks")} testId="charter-replay-tasks-value">
+            {charter.replay?.tasks ?? 3}
+          </Fact>
+          <Fact label={t("fields.replayBudget")} testId="charter-replay-budget-value">
+            {charter.replay?.budget_usd ? money(charter.replay.budget_usd) : t("replayBudgetNone")}
+          </Fact>
+          <Fact label={t("fields.historyBudget")} testId="charter-history-budget-value">
+            {historyBudget === null || historyBudget === undefined ? t("historyBudgetDefault") : historyBudget === 0 ? t("historyBudgetOff") : money(historyBudget)}
+          </Fact>
+          <Fact label={t("fields.historyModel")}>
+            {charter.history?.model ? <span className="font-mono text-xs">{charter.history.model}</span> : t("historyModelDefault")}
+          </Fact>
         </Facts>
       </HomeCard>
       <HomeCard title={t("groups.roles")} testId="charter-view-roles">

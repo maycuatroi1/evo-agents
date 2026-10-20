@@ -1,5 +1,6 @@
 """The text the hub's MCP tools ``digest_show`` and ``run_events`` give the model (``mcp.HubMcp``), kept under
-TEXT_CHARS characters.
+TEXT_CHARS characters, and the lines that name a memory in what ``memory_search``, ``memory_get`` and ``memory_write``
+give it.
 
 The envelope of ``kg serve`` cuts a text over CAP_CHARS and gives the rest through kg_more, and the spool hook of the
 evo-hub plugin leaves the hub's tools whole, so these two keep under the cut themselves: the Curator's review reads
@@ -11,6 +12,7 @@ from __future__ import annotations
 
 import json
 
+from evo_agents.hub.memory import FRONTMATTER, frontmatter
 from evo_agents.kg.serve import CAP_CHARS
 
 # Characters of the text of digest_show and run_events, under the envelope's cut: the Curator's review reads them
@@ -18,12 +20,33 @@ from evo_agents.kg.serve import CAP_CHARS
 TEXT_CHARS = CAP_CHARS - 1_000
 EVENT_CHARS = 500  # characters of one event's line in run_events
 EVENT_ROOM = 200  # characters run_events keeps for its first and last lines
+EXCERPT = 200  # characters of a memory shown by memory_search
 
 
 def one_line(text: str, limit: int) -> str:
     """``text`` on one line, its runs of white space made one space, cut to ``limit`` characters with ``...``."""
     line = " ".join(text.split())
     return line if len(line) <= limit else line[: limit - 3].rstrip() + "..."
+
+
+def memory_where(memory) -> str:
+    if memory.scope == "project":
+        return f"project {memory.project}, {memory.location}"
+    return f"personal, {memory.location}"
+
+
+def memory_line(memory) -> str:
+    deleted = ", deleted" if memory.deleted else ""
+    return f"[{memory.id}] {memory.name}: {memory.type}, {memory_where(memory)}, revision {memory.revision}{deleted}"
+
+
+def memory_about(body: str) -> str:
+    """The description of a memory's frontmatter, else the start of its text."""
+    described = frontmatter(body).get("description")
+    if isinstance(described, str) and described.strip():
+        return one_line(described, EXCERPT)
+    found = FRONTMATTER.match(body)
+    return one_line(body[found.end() :] if found else body, EXCERPT)
 
 
 def digest_json(body: dict) -> str:

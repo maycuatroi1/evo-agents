@@ -54,6 +54,9 @@
     "agents": "Agents",
     "chats": "Chats",
     "curatorProposals": "Proposals",
+    "curatorHistory": "History",
+    "curatorGraph": "Graph health",
+    "curatorRuntime": "Runtime",
     "curatorCharter": "Charter",
     "plugins": "Plugins"
   },
@@ -4500,7 +4503,11 @@
       "overview": "Overview",
       "proposals": "Proposals",
       "charter": "Charter",
-      "waiting": "{count, plural, one {# proposal waits for an answer} other {# proposals wait for an answer}}"
+      "waiting": "{count, plural, one {# proposal waits for an answer} other {# proposals wait for an answer}}",
+      "history": "History",
+      "graph": "Graph health",
+      "runtime": "Runtime",
+      "syncFailed": "the worker could not keep the graph fresh"
     },
     "sub": {
       "duty": "Night shift on <worker></worker> as {owner}, {start} to {end} {timezone}",
@@ -4678,18 +4685,22 @@
       "environment": "Environment",
       "corrections": "Corrections",
       "failed_runs": "Failed runs",
+      "runtime": "Runtime",
       "tech_debt": "Tech debt",
       "code_health": "Code health",
       "docs_drift": "Docs drift",
+      "harness": "Harness",
       "skills_memory": "Skills and memory",
       "cost": "Cost",
       "security": "Security",
-      "product_goals": "Product goals"
+      "product_goals": "Product goals",
+      "kg_health": "Graph health"
     },
     "kinds": {
       "docs": "Docs",
       "memory": "Memory",
       "test_add": "New tests",
+      "kg_source": "Graph source",
       "fix": "Fix",
       "refactor": "Refactor",
       "lint": "Lint rule",
@@ -4745,7 +4756,9 @@
         "pullPlain": "Open the pull request",
         "newTab": "(opens in a new tab)",
         "moved": "Last moved",
-        "reasonTitle": "{state, select, planned {Why it waits} open {Why it stays open} closed {Why it closed} other {Why it waits}}"
+        "reasonTitle": "{state, select, planned {Why it waits} open {Why it stays open} closed {Why it closed} other {Why it waits}}",
+        "tier": "Merges at",
+        "tierValue": "Tier {tier}"
       },
       "dropped": "Dropped as a repeat of <link>proposal #{id}</link>.",
       "droppedPlain": "Dropped as a repeat of a rejected proposal.",
@@ -4779,7 +4792,8 @@
         "merged": "Merged",
         "left_open": "Left open",
         "closed": "Closed",
-        "outcome": "Outcome"
+        "outcome": "Outcome",
+        "skill_release": "Skill release"
       },
       "outcome": {
         "keep": "Keep",
@@ -4814,7 +4828,22 @@
       },
       "counted": "Sessions and runs counted: {before} before the merge, {after} after",
       "revertProposed": "The hub proposed reverting it: <link>proposal #{id}</link>.",
-      "outcomeDue": "The hub counts its figures again from <at></at>."
+      "outcomeDue": "The hub counts its figures again from <at></at>.",
+      "replay": {
+        "won": "Replays won",
+        "notWon": "Replays did not win",
+        "arms": "{tasks} holdout tasks: A passed {a}, B passed {b}",
+        "means": "Means: A {a}; B {b}",
+        "turns": "{turns} turns"
+      },
+      "release": {
+        "published": "Published",
+        "republished": "Published again",
+        "nothing": "Nothing published",
+        "version": "version {version}",
+        "kept": "version {version} stays",
+        "after": "after version {version}"
+      }
     },
     "finding": {
       "title": "{count, plural, one {The finding it rests on} other {The # findings it rests on}}",
@@ -4837,12 +4866,22 @@
       "digestGone": "The digest is gone (the hub keeps digests 90 days) or beyond your grant.",
       "digestFailed": "Couldn't read the digest.",
       "entryMissing": "The digest no longer has this entry.",
+      "transcriptLine": "Line {line} of {file}",
+      "showLines": "Show the lines",
+      "hideLines": "Hide the lines",
+      "loadingLines": "Loading the transcript's lines",
+      "linesGone": "The transcript is gone (an admin or the retention deleted it) or beyond your grant.",
+      "linesFailed": "Couldn't read the transcript.",
+      "noLines": "These lines hold no text.",
       "opensElsewhere": "(opens the forge in a new tab)",
       "resolved": {
         "digest": "Found in the session's digest",
+        "facet": "Found in the session's facet",
         "run_event": "Found in the run's log",
         "repo": "A file of the project's repo",
-        "graph": "A file of the project's knowledge graph"
+        "graph": "A file of the project's knowledge graph",
+        "unmatched": "A file of the project's repo the knowledge graph does not hold yet",
+        "transcript": "A line of a transcript the hub holds"
       }
     },
     "draft": {
@@ -4955,7 +4994,8 @@
         "budget": "Budget and caps",
         "scope": "What it may do",
         "review": "Review",
-        "roles": "Roles"
+        "roles": "Roles",
+        "nightRuns": "Replays and history"
       },
       "groupHints": {
         "goals": "The product's goals, highest first.",
@@ -4963,7 +5003,8 @@
         "budget": "What a night and each run may cost and take. The hub stops queueing at the first cap reached.",
         "scope": "The plans it runs, how many decisions a day it may ask, what it may merge and what it never touches.",
         "review": "The nightly review run: how many lenses it looks through and how far back it counts.",
-        "roles": "The runtime and model of the Reviewer, the Builder and the Judge."
+        "roles": "The runtime and model of the Reviewer, the Builder and the Judge.",
+        "nightRuns": "The night's runs besides the review: the replays that measure a change of a skill, an AGENTS.md or a CLAUDE.md on the project's own history, and the history run that reads sessions with a cheap model."
       },
       "roles": {
         "reviewer": "Reviewer",
@@ -4997,7 +5038,11 @@
         "runtime": "Runtime",
         "model": "Model",
         "hiddenChecks": "The Judge's hidden checks",
-        "outcomeDays": "Days before its figures are counted again"
+        "outcomeDays": "Days before its figures are counted again",
+        "replayTasks": "Replay tasks a change",
+        "replayBudget": "Replay budget a night, USD",
+        "historyBudget": "History run budget, USD",
+        "historyModel": "History run model"
       },
       "hints": {
         "windowEnd": "Before the start, the window runs past midnight.",
@@ -5017,10 +5062,15 @@
         "reviewBudget": "Empty: as any run of the night.",
         "model": "Empty: the runtime's own choice.",
         "hiddenChecks": "One command a line. The Judge runs them; no Builder sees them.",
-        "outcomeDays": "After a merge, the hub counts the figures that set the proposal off again over this many days, from 1 to 90, and proposes a revert when they got worse."
+        "outcomeDays": "After a merge, the hub counts the figures that set the proposal off again over this many days, from 1 to 90, and proposes a revert when they got worse.",
+        "replayTasks": "Holdout tasks each change is replayed on, from {min} to {max}. Its replays need 6 before they can win.",
+        "replayBudget": "Empty: no replay runs.",
+        "historyBudget": "Empty: the smaller of 1 USD and a quarter of the night's budget. 0: no history run.",
+        "historyModel": "Empty: the cheapest model the worker on duty reports for the Reviewer's runtime."
       },
       "placeholders": {
-        "model": "the runtime's default"
+        "model": "the runtime's default",
+        "historyModel": "the cheapest"
       },
       "errors": {
         "required": "Fill this in.",
@@ -5038,7 +5088,8 @@
         "planId": "Line {line} is not a plan id.",
         "lineTooLong": "Line {line} is over {max} characters.",
         "control": "Line {line} holds a control character.",
-        "model": "One line of at most {max} characters."
+        "model": "One line of at most {max} characters.",
+        "moneyOrZero": "0 or more, at most {max} US dollars."
       },
       "revisions": {
         "title": "Revisions",
@@ -5047,7 +5098,439 @@
         "number": "Revision {revision}",
         "worker": "on {worker}"
       },
-      "outcomeDaysValue": "{count, plural, one {# day after a merge} other {# days after a merge}}"
+      "outcomeDaysValue": "{count, plural, one {# day after a merge} other {# days after a merge}}",
+      "replayBudgetNone": "None: no replay runs",
+      "historyBudgetDefault": "The smaller of 1 USD and a quarter of the night's budget",
+      "historyBudgetOff": "None: no history run",
+      "historyModelDefault": "the cheapest model the worker reports"
+    },
+    "metaHistory": "History of {project}",
+    "metaGraph": "Graph health of {project}",
+    "metaRuntime": "Runtime of {project}",
+    "pages": {
+      "label": "{what} pages",
+      "loading": "Loading the page…",
+      "range": "{first} to {last} of {total}",
+      "previous": "Previous",
+      "next": "Next"
+    },
+    "trend": {
+      "none": "None",
+      "total": "Total",
+      "legend": "Legend of {chart}",
+      "caption": "{chart}, the newest first",
+      "when": "When",
+      "tableRegion": "{chart}, table",
+      "view": "Show {chart} as",
+      "chart": "Chart",
+      "table": "Table",
+      "chartKeys": "{chart}. Use the left and right arrow keys to read each point."
+    },
+    "replay": {
+      "title": "Replays",
+      "sub": "{count, plural, one {# replay} other {# replays}}; the charter asks for {tasks} holdout tasks a change",
+      "unreadable": "The replays could not be read.",
+      "retry": "Try again",
+      "none": "Not replayed. The night shift replays a change of a skill, an AGENTS.md or a CLAUDE.md alone, on {tasks} holdout tasks of the project's own history, once the charter gives replays a budget.",
+      "won": "Replays won",
+      "notWon": "Not won",
+      "holdout": "{tasks} of the {needed} holdout tasks a win needs",
+      "tierZero": "Its replays won, so it merges at tier 0 instead of its proposal's tier {tier}.",
+      "armsCaption": "A, the default branch's harness, against B, this change's",
+      "arm": {
+        "a": "A, default branch",
+        "b": "B, this change"
+      },
+      "armHead": {
+        "a": "A",
+        "b": "B"
+      },
+      "armsNote": "A runs with the default branch's harness, B with this change's.",
+      "measure": "Measure",
+      "rows": {
+        "passed": "Tasks passed, of {tasks}",
+        "cost": "Mean cost",
+        "turns": "Mean turns",
+        "errors": "Tool errors",
+        "time": "Agent time",
+        "peak": "Largest context, tokens"
+      },
+      "lower": "{share} lower",
+      "higher": "{share} higher",
+      "tasks": "Replayed tasks",
+      "split": {
+        "select": "Select",
+        "holdout": "Holdout"
+      },
+      "passed": "Passed",
+      "failed": "Failed",
+      "pending": "Not reported",
+      "replayFailed": "The replay failed",
+      "openRun": "Open run #{id}"
+    },
+    "history": {
+      "coverage": {
+        "label": "How far the hub holds the history",
+        "transcripts": "Transcripts on the hub",
+        "transcriptsMeta": "{share} of {reported} reported",
+        "transcriptsNone": "No session reported yet",
+        "backfill": "Waiting for a backfill",
+        "backfillMeta": "Only a digest on the hub",
+        "backfillNone": "Every reported session has its transcript",
+        "facets": "Facets",
+        "facetsMeta": "Counted without a model",
+        "facetsFailed": "{count, plural, one {# failed its last attempt} other {# failed their last attempt}}",
+        "of": "of {total}",
+        "model": "Read by the model",
+        "modelMeta": "{waiting} waiting, {failed} failed",
+        "when": "Transcripts and facets as counted for the night of {night}; what the model read, as of now.",
+        "noFigures": "The night's figures, which count the sessions the machines reported, are not counted yet."
+      },
+      "backfill": {
+        "title": "{count, plural, one {# session the machines reported has no transcript on the hub} other {# sessions the machines reported have no transcript on the hub}}",
+        "text": "The hub holds only their digests. Run <command></command> on the machine they ran on: it sends what the hub lacks, and a second run sends nothing."
+      },
+      "failed": {
+        "title": "{count, plural, one {# facet failed its last attempt} other {# facets failed their last attempt}}",
+        "text": "The hub tries them again on its own, waiting longer after each failure."
+      },
+      "members": {
+        "title": "Transcripts by member",
+        "caption": "Transcripts on the hub, by the member who uploaded them",
+        "member": "Member",
+        "sessions": "Sessions",
+        "transcripts": "Transcripts",
+        "size": "Stored",
+        "kept": "Kept {days} days after their latest part.",
+        "stored": "{size} in the blob store, of {source} on the machines.",
+        "since": "First part {at}.",
+        "deleted": "{count, plural, one {# deleted by an admin or the retention.} other {# deleted by an admin or the retention.}}",
+        "hidden": "The transcripts' usage is for members who read the project's default label through its hub sink.",
+        "empty": "No transcript on the hub yet. The evo-hub plugin sends each session's transcript within an hour of its end."
+      },
+      "runs": {
+        "title": "History runs",
+        "open": "Open run #{id}",
+        "read": "{analyzed} read, {failed} failed, {named} clusters named",
+        "empty": "No history run yet. The night shift queues one a night, after its review run.",
+        "cheapest": "the cheapest model",
+        "cap": "Up to {budget} a night on {model}, {runtime}",
+        "off": "Off: the charter gives the history run no budget",
+        "noCharter": "Without a charter there is no history run"
+      },
+      "search": {
+        "title": "Search the history",
+        "description": "Every transcript the hub holds, every run log and the group chats you are in, the best match first.",
+        "label": "Search the project's history",
+        "placeholder": "Words, \"a phrase\" or -excluded",
+        "clear": "Clear the search",
+        "sources": "Source",
+        "allSources": "All",
+        "source": {
+          "transcript": "Transcripts",
+          "run": "Run logs",
+          "chat": "Group chats"
+        },
+        "kind": {
+          "transcript": "Transcript",
+          "run": "Run log",
+          "chat": "Group chat"
+        },
+        "hitCount": "{count, plural, one {# hit} other {# hits}}",
+        "total": "{count, plural, =0 {No hit} one {# hit} other {# hits}}",
+        "idle": "Type words to search. A phrase goes in quotes, and a word after a dash is left out.",
+        "none": "Nothing matches",
+        "filterWords": "Search",
+        "filterSource": "Source",
+        "hits": "Hits for {q}",
+        "showLines": "Show the lines",
+        "hideLines": "Hide the lines",
+        "openRun": "Open the log of run #{id}",
+        "openChat": "Open the chat",
+        "copyEvidence": "Copy the evidence {evidence}"
+      },
+      "excerpt": {
+        "loading": "Loading the transcript's lines",
+        "gone": "The transcript is gone (an admin or the retention deleted it) or beyond your grant.",
+        "failed": "Couldn't read the transcript.",
+        "retry": "Try again",
+        "span": "Lines {first} to {last} of {lines} in {file}",
+        "copyEvidence": "Copy the evidence {evidence}",
+        "earlier": "Earlier lines",
+        "later": "Later lines",
+        "empty": "These lines hold no text.",
+        "label": "Lines of session {session}",
+        "asked": "The line found:"
+      },
+      "clusters": {
+        "title": "Clusters",
+        "counted": "Counted {at}.",
+        "notCounted": "Not counted yet.",
+        "hidden": "{count, plural, one {# smaller cluster} other {# smaller clusters}} of fewer than {min} sessions stay out.",
+        "empty": "No cluster yet. The history run groups the sessions it read by kind of task and first failure mode, and lists a group once it holds {min} sessions.",
+        "show": "Show its sessions",
+        "shown": "Its sessions are shown",
+        "noMode": "No failure",
+        "counts": "{sessions, plural, one {# session} other {# sessions}}, {runs, plural, one {# run} other {# runs}}, {members, plural, one {# member} other {# members}}",
+        "unnamed": "Not named yet"
+      },
+      "sessions": {
+        "title": "Sessions and runs",
+        "description": "The whole history the hub has facets of, the latest first, with what the cheap model wrote of each.",
+        "label": "Filter the sessions and runs",
+        "total": "{count, plural, =0 {No session or run} one {# session or run} other {# sessions and runs}}",
+        "kind": "Kind",
+        "kinds": {
+          "all": "All",
+          "session": "Sessions",
+          "run": "Runs"
+        },
+        "outcome": "Outcome",
+        "allOutcomes": "Every outcome",
+        "cluster": "Cluster",
+        "removeCluster": "Show the sessions of every cluster, not only {name}",
+        "none": "No session or run matches",
+        "empty": "No facet yet. The hub makes one of each transcript and each ended run, about ten minutes after it goes quiet.",
+        "notRead": "Not read by the model yet.",
+        "messages": "{count, plural, one {# message} other {# messages}}",
+        "toolErrors": "{count, plural, one {# tool error} other {# tool errors}}",
+        "corrections": "{count, plural, one {# correction} other {# corrections}}",
+        "openRun": "Open the log of run #{id}",
+        "openRunPage": "Open run #{id}",
+        "readTranscript": "Read the transcript",
+        "hideTranscript": "Hide the transcript"
+      },
+      "outcome": {
+        "achieved": "Achieved",
+        "partial": "Partial",
+        "failed": "Failed",
+        "abandoned": "Abandoned",
+        "unclear": "Unclear"
+      },
+      "task": {
+        "feature": "Feature",
+        "fix": "Fix",
+        "debug": "Debug",
+        "refactor": "Refactor",
+        "test": "Test",
+        "docs": "Docs",
+        "review": "Review",
+        "plan": "Plan",
+        "ops": "Ops",
+        "research": "Research",
+        "config": "Config",
+        "other": "Other"
+      },
+      "mast": {
+        "FM-1_1": "Disobeys the task's specification",
+        "FM-1_2": "Disobeys its role",
+        "FM-1_3": "Repeats a step",
+        "FM-1_4": "Loses the conversation's history",
+        "FM-1_5": "Unaware when to stop",
+        "FM-2_1": "Resets the conversation",
+        "FM-2_2": "Does not ask for clarification",
+        "FM-2_3": "Derails from the task",
+        "FM-2_4": "Withholds information",
+        "FM-2_5": "Ignores another's input",
+        "FM-2_6": "Says one thing, does another",
+        "FM-3_1": "Ends too early",
+        "FM-3_2": "No or partial verification",
+        "FM-3_3": "Verifies wrongly"
+      }
+    },
+    "graph": {
+      "empty": {
+        "title": "No measure of the graph yet",
+        "description": "Every six hours the hub measures the knowledge graph of a project with a night shift and a knowledge config on the hub: how far each git source lags its default branch, which files the graph lacks or holds stale, and how well it answers the project's own plan steps.",
+        "cli": "From a terminal: <command></command>."
+      },
+      "hidden": {
+        "title": "The graph's health is not yours to read",
+        "description": "It is for members whose grant reaches the project's default label through its hub sink, as the night's figures are."
+      },
+      "strip": {
+        "label": "The graph's health now",
+        "behind": "Commits behind",
+        "behindMeta": "The oldest waited {hours}",
+        "behindNone": "Every source is up to date",
+        "behindSeries": "Commits behind, measure by measure",
+        "off": "Files off",
+        "offMeta": "Missing, stale or deleted",
+        "offSeries": "Files off, measure by measure",
+        "resolved": "Mentions resolved",
+        "resolvedMeta": "{ambiguous} ambiguous, {dangling} dangling",
+        "resolvedSeries": "Mentions resolved, build by build",
+        "noBuild": "No successful build yet",
+        "recall": "Recall at 5",
+        "recallMeta": "{questions} questions, MRR {mrr}",
+        "recallSeries": "Recall at 5, measure by measure",
+        "recallNone": "Not evaluated yet"
+      },
+      "measured": "Last read of the graph {at}; {count, plural, one {# measure listed} other {# measures listed}}.",
+      "notMeasured": "No measure read the graph yet.",
+      "build": "Build #{id}.",
+      "measureFailed": "The measure of {at} failed",
+      "sources": {
+        "title": "Sources against their default branch",
+        "sub": "Each git source of the latest measure: the commit the graph read, the branch's head, and the files that differ.",
+        "caption": "Git sources of the graph",
+        "empty": "The knowledge config names no git source.",
+        "source": "Source",
+        "commits": "Read, then head",
+        "behind": "Behind",
+        "missing": "Missing",
+        "stale": "Stale",
+        "deleted": "Deleted",
+        "samples": "Some of the files",
+        "copyRead": "Copy the commit {source} read",
+        "copyHead": "Copy the head of {source}'s branch",
+        "then": "then the head of {branch}",
+        "waited": "waited {hours}"
+      },
+      "trend": {
+        "freshTitle": "Behind the default branch",
+        "freshHeadline": "Commits the graph lacks and files off, over {count, plural, one {# measure} other {# measures}}.",
+        "freshEmpty": "No measure compared the graph with the forge yet.",
+        "behind": "Commits behind",
+        "off": "Files off",
+        "coverageTitle": "What each build resolved",
+        "coverageHeadline": "Shares of the mentions, over {count, plural, one {# build} other {# builds}}.",
+        "coverageEmpty": "No successful build kept its coverage yet.",
+        "resolved": "Resolved",
+        "ambiguous": "Ambiguous",
+        "dangling": "Dangling",
+        "evalTitle": "Retrieval evaluation",
+        "evalHeadline": "kg_search on the project's own plan steps: recall at 5 and the mean reciprocal rank.",
+        "evalEmpty": "No measure evaluated the graph yet.",
+        "recall5": "Recall at 5",
+        "mrr": "MRR"
+      },
+      "retrieval": {
+        "title": "What agents got from the graph",
+        "sub": "From the traces of the night's sessions and runs.",
+        "empty": "No session or run of the night's figures called the graph.",
+        "used": "Sessions and runs that called it",
+        "lookups": "Lookups",
+        "emptyLookups": "Empty lookups",
+        "fallbacks": "Fell back to a search",
+        "inTop": "Edited files in its top 5",
+        "ofLookups": "{rate} of the lookups ({count})",
+        "ofEmpty": "{rate} of the empty ones ({count})",
+        "ofEdited": "{rate}: {count} of {edited}",
+        "noRate": "none to count",
+        "worst": "The most empty lookups and fall backs"
+      },
+      "sync": {
+        "title": "Kept fresh by the worker",
+        "sub": "{worker} last looked {at}.",
+        "never": "never",
+        "none": "It reads no source of the project.",
+        "failedTitle": "{worker} could not keep the graph fresh: {count, plural, one {# source failed} other {# sources failed}}",
+        "noReason": "no reason given",
+        "behind": "{count, plural, one {# commit behind} other {# commits behind}}",
+        "status": {
+          "ok": "Read",
+          "failed": "Failed",
+          "skipped": "Skipped"
+        }
+      }
+    },
+    "runtime": {
+      "range": {
+        "label": "Nights shown",
+        "nights": "{nights} nights",
+        "window": "Each night counts the {days, plural, one {# day} other {# days}} before it."
+      },
+      "empty": {
+        "title": "No night's figures yet",
+        "description": "The night shift counts the runtime and the harness with each night's figures, before its review run.",
+        "olderFigures": "The nights of the range were counted before the hub counted the runtime and the harness."
+      },
+      "unread": "{count, plural, one {# night could not be read.} other {# nights could not be read.}}",
+      "detailTitle": "The night of {night} in detail",
+      "strip": {
+        "label": "The latest night",
+        "fixed": "Fixed context a session",
+        "fixedMeta": "Tokens over {sessions} sessions",
+        "fixedNone": "No Claude Code transcript read",
+        "cache": "Cache read share",
+        "cacheMeta": "Sessions; runs {runs}",
+        "cacheNoRuns": "Sessions",
+        "cost": "Cost a session",
+        "costMeta": "Run {run}, merged PR {pr}",
+        "hook": "Slowest hook, p95",
+        "hookNone": "No hook timed"
+      },
+      "trend": {
+        "contextTitle": "Context by source",
+        "contextHeadline": "Tokens each source put into a Claude Code session, on average, at {chars} characters a token.",
+        "contextEmpty": "No Claude Code transcript was read in these nights.",
+        "source": {
+          "always_loaded": "Always-loaded files",
+          "mcp_instructions": "MCP instructions",
+          "skills": "Skill list",
+          "hooks": "Hooks",
+          "tool_output": "Tool output"
+        },
+        "cacheTitle": "Cache",
+        "cacheHeadline": "Share of what the model read that came from the cache.",
+        "cacheEmpty": "No session nor run reported its tokens.",
+        "sessions": "Sessions",
+        "runs": "Runs",
+        "costTitle": "Cost",
+        "costHeadline": "Per session, per run and per merged pull request.",
+        "costEmpty": "Nothing named its cost.",
+        "perSession": "A session",
+        "perRun": "A run",
+        "perPr": "A merged PR",
+        "hooksTitle": "Slowest hook",
+        "hooksHeadline": "The 95th percentile and the median of each night's slowest hook.",
+        "hooksEmpty": "No hook was timed.",
+        "p95": "p95",
+        "p50": "Median",
+        "peakTitle": "Largest context",
+        "peakHeadline": "The sessions' largest context, in tokens: the 95th percentile and the median.",
+        "peakEmpty": "No session reported its context."
+      },
+      "tables": {
+        "hook": "Hook",
+        "tool": "Tool",
+        "timed": "Timed",
+        "p50": "p50",
+        "p95": "p95",
+        "max": "Longest",
+        "failed": "Failed",
+        "failures": "{failed} failed, {timedOut} timed out",
+        "hooksTitle": "Hooks",
+        "hooksSub": "Each hook and its command, the slowest first, the night of {night}.",
+        "hooksEmpty": "No hook was timed.",
+        "toolsTitle": "Slowest tools",
+        "toolsSub": "Tools by their 95th percentile, the night of {night}.",
+        "toolsEmpty": "No tool was timed.",
+        "loadedTitle": "Always-loaded files",
+        "loadedSub": "{files, plural, one {# file} other {# files}}, {tokens} tokens, by repo.",
+        "loadedEmpty": "No always-loaded file was seen.",
+        "folder": "folder",
+        "tokens": "{count, plural, one {# token} other {# tokens}}",
+        "fileLine": "{tokens} tokens, {sessions, plural, one {# session} other {# sessions}}",
+        "outputTitle": "Largest tool output",
+        "outputSub": "What the tools put back into the context, in tokens.",
+        "outputEmpty": "No tool output was counted.",
+        "tokensHead": "Tokens",
+        "sessions": "Sessions",
+        "mcp": "MCP",
+        "heaviestTitle": "Heaviest sessions",
+        "heaviestSub": "By what they read from the cache.",
+        "heaviestEmpty": "No session reported its tokens.",
+        "heavyLine": "{tokens} tokens, {cache} from the cache",
+        "peak": "largest context {tokens}",
+        "kindsTitle": "Runs by kind",
+        "kindsSub": "{runs, plural, one {# run reported its tokens.} other {# runs reported their tokens.}}",
+        "kindsEmpty": "No run ended in these days.",
+        "kind": "Kind",
+        "runs": "Runs",
+        "cost": "Cost"
+      }
     }
   },
   "monitor": {

@@ -538,6 +538,10 @@ def test_curator_plan_builder_gets_the_curators_token_and_a_members_plan_run_the
         "head_sha": None,
         "pr_url": None,
         "judge_key": None,  # a judge run's alone
+        "replay": None,  # a replay run's alone
+        "replay_key": None,
+        "history": None,  # a history run's alone
+        "history_key": None,
     }
     lease = next(
         item for item in leased(world.client, world.worker, spec["id"])["leases"] if item["provider"] == "github-app"

@@ -12,7 +12,7 @@ from pathlib import Path
 import pytest
 
 from evo_agents import __version__
-from evo_agents.hub import contract, kg_cli, memory, skill_sync
+from evo_agents.hub import contract, kg_cli, memory, skill_sync, transcript_sync
 from evo_agents.hub.contract import check_command, commands, contract_parsers, find_commands, hub_parsers
 from evo_agents.hub.mirror import ExportResult
 from evo_agents.hub.plan_cli import ImportResult
@@ -35,6 +35,8 @@ BUILT_HERE = {
     "hub skills sync": lambda: skill_sync.Report(HUB_URL, False).as_json(),
     "hub kg push": lambda: kg_cli.push_json([]),
     "hub kg scrub": lambda: kg_cli.scrub_json(False, []),
+    "hub sessions backfill": lambda: transcript_sync.Report(HUB_URL).as_json(),
+    "hub sessions sync": lambda: transcript_sync.Report(HUB_URL).as_json(),
 }
 
 
@@ -182,6 +184,10 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker finding",
         "worker notify",
         "worker plan",
+        "worker playbook add",
+        "worker playbook harmful",
+        "worker playbook helpful",
+        "worker playbook retire",
         "worker propose",
         "worker put",
         "worker repo open",
@@ -189,6 +195,11 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker triage invite",
         "worker triage plan",
         "worker triage rerun",
+    ]
+    added = printed["worker playbook add"]
+    assert [o["flags"] for o in added["options"]] == [["--text"], ["--evidence"], ["--lens"]]
+    assert [(p["name"], p.get("choices")) for p in printed["worker playbook retire"]["positionals"]] == [
+        ("entry", None)
     ]
     opened = printed["worker repo open"]
     assert [(p["name"], p["required"]) for p in opened["positionals"]] == [("repo", True)]

@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { ChevronDown, ExternalLink, FileCode, MessagesSquare, ScrollText } from "lucide-react";
+import { ChevronDown, ExternalLink, FileCode, MessagesSquare, ScrollText, TextQuote } from "lucide-react";
 import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { useId, useState } from "react";
@@ -15,15 +15,64 @@ import { browserApi } from "@/lib/api/browser";
 import { cn } from "@/lib/utils";
 
 import { digestEntry, type EvidenceView, evidenceView, type RepoInfo } from "./model";
-import { digestQuery } from "./queries";
+import { digestQuery, transcriptLinesQuery } from "./queries";
 
 /**
  * A finding's or a proposal's evidence, each piece where it leads: a run's event opens the run's log; a session's
- * digest shows the entry it cites, read when asked for (the digest is the project's, under its label); a line of code
- * opens on the forge at the commit the review run read, or the repo's default branch.
+ * digest shows the entry it cites, read when asked for (the digest is the project's, under its label); a line of a
+ * transcript shows the lines around it, read when asked for; a line of code opens on the forge at the commit the
+ * review run read, or the repo's default branch.
  */
 
-const ICONS = { run: ScrollText, session: MessagesSquare, code: FileCode, other: ScrollText } as const;
+const ICONS = { run: ScrollText, session: MessagesSquare, transcript: TextQuote, code: FileCode, other: ScrollText } as const;
+
+function Toggle({ open, controls, onClick, show, hide }: { open: boolean; controls: string; onClick: () => void; show: string; hide: string }) {
+  return (
+    <Button type="button" variant="link" size="sm" className="h-auto px-0 text-xs" aria-expanded={open} aria-controls={controls} onClick={onClick} data-testid="evidence-toggle">
+      <ChevronDown className={cn("transition-transform duration-base motion-reduce:transition-none", open && "rotate-180")} aria-hidden="true" />
+      {open ? hide : show}
+    </Button>
+  );
+}
+
+function TranscriptEvidence({ project, piece }: { project: string; piece: Extract<EvidenceView, { kind: "transcript" }> }) {
+  const t = useTranslations("curator.evidence");
+  const ids = useId();
+  const [open, setOpen] = useState(false);
+  const lines = useQuery({ ...transcriptLinesQuery(browserApi, project, piece.session, piece.file, piece.line), enabled: open });
+  return (
+    <div className="flex min-w-0 flex-col gap-1.5">
+      <div className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="text-muted-foreground">{t("session")}</span>
+        <Identifier value={piece.session} title={piece.session} className="max-w-56">
+          {piece.session.slice(0, 13)}
+        </Identifier>
+        <span className="text-muted-foreground">{t("transcriptLine", { line: piece.line, file: piece.file })}</span>
+        <Toggle open={open} controls={`${ids}-lines`} onClick={() => setOpen(!open)} show={t("showLines")} hide={t("hideLines")} />
+      </div>
+      <div id={`${ids}-lines`} hidden={!open}>
+        {open ? (
+          lines.isPending ? (
+            <div role="status" aria-label={t("loadingLines")} className="flex flex-col gap-1.5">
+              <Skeleton className="h-3 w-48" />
+              <Skeleton className="h-10 w-full" />
+            </div>
+          ) : lines.isError ? (
+            <p className="text-xs text-danger" data-testid="evidence-lines-error">
+              {lines.error.status === 404 ? t("linesGone") : t("linesFailed")}
+            </p>
+          ) : lines.data && lines.data.entries.length > 0 ? (
+            <Verbatim className="max-h-48 overflow-y-auto text-xs" testId="evidence-lines">
+              {lines.data.entries.map((entry) => `${entry.line === piece.line ? ">" : " "} L${entry.line} ${entry.role}: ${entry.text}`).join("\n")}
+            </Verbatim>
+          ) : (
+            <p className="text-xs text-muted-foreground">{t("noLines")}</p>
+          )
+        ) : null}
+      </div>
+    </div>
+  );
+}
 
 function SessionEvidence({ project, piece }: { project: string; piece: Extract<EvidenceView, { kind: "session" }> }) {
   const t = useTranslations("curator.evidence");
@@ -95,6 +144,7 @@ function Piece({ project, piece }: { project: string; piece: EvidenceView }) {
     );
   }
   if (piece.kind === "session") return <SessionEvidence project={project} piece={piece} />;
+  if (piece.kind === "transcript") return <TranscriptEvidence project={project} piece={piece} />;
   if (piece.kind === "code") {
     const where = `${piece.repo}: ${piece.path}${piece.line !== null ? `:${piece.line}` : ""}`;
     return (

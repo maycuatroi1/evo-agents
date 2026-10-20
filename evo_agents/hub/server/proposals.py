@@ -6,17 +6,21 @@ POST /v1/worker/runs/{id}/findings and POST /v1/worker/runs/{id}/proposals take 
 worker holds records (404 for any other run, a plan run or a run of one step included), as the member who dispatched
 it, who must still hold writer on the project; each is stored with the project's default label. A finding has a lens of
 ``review.LENSES``, a severity, a title, a markdown body, and 1 to MAX_EVIDENCE pieces of evidence. The hub resolves
-each piece before it stores anything (422 naming the first it cannot find): a session digest of the project, and the
-entry of its list that ``field`` and ``index`` name; an event of a run of the project, of a plan the owner may read or
-a review run, whose ``seq`` the run has reached; a file of a repo of the project, which, when the project has a
-knowledge graph, the graph must have (``graph_view``). Each piece is kept with how the hub found it (``resolved``).
+each piece before it stores anything (422 naming the first it cannot find): a session of the project, and the entry of
+the list that ``field`` and ``index`` name, in the session's facet when the hub made one (``evo_agents.hub.facet_job``),
+else in its digest; a line of a transcript of the project the hub holds and the owner may read (``transcript``); an
+event of a run of the project, of a plan the owner may read, a review run or a local run of the owner, whose ``seq`` the
+run has reached; a file of a repo of the project, ``graph`` or ``unmatched`` (kept: the graph may lag) when the project
+has a knowledge graph (``graph_view``). Each piece is kept with how the hub found it. A finding like a closed one of
+earlier nights whose evidence that one cited already is refused (409, ``earlier.closed_like``).
 
 A proposal names a lens, a kind of change (``tiers.CHANGE_KINDS``), a title, a markdown summary, the paths it would
 edit (``{repo, path}``, each a repo of the project), the findings it rests on (of the project) and evidence of its own,
 at least one of the two, and a draft plan: a plan of plan.schema.json in outcome steps, each step with ``what``,
 ``verify`` and a non-empty ``acceptance`` list (422 otherwise, with what the schema says). The hub computes its tier
 with ``tiers.tier_of`` from the charter's protected paths, the paths, the paths the knowledge graph says those reach
-(when the project has one), and the kind, and keeps the reasons. A proposal whose fingerprint is that of a proposal
+(when the project has one), why the graph cannot tell for some (``change_tiers.unknown_paths``: at least tier 1), and
+the kind, and keeps the reasons. A proposal whose fingerprint is that of a proposal
 rejected in the last REJECTED_DAYS days is stored ``dropped``, with ``duplicate_of`` naming it, unless its evidence (its
 own and its findings') counts at least EVIDENCE_FACTOR times the rejected one's. A review run records at most
 MAX_FINDINGS findings and MAX_PROPOSALS proposals (409 after that).
@@ -63,10 +67,11 @@ from evo_agents.harness import load_schema
 from evo_agents.hub import judge, review, runs, tables, tiers
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plans import PlanProblem, check_body, check_json
-from evo_agents.hub.server import audit
+from evo_agents.hub.server import audit, change_tiers, earlier, facet_figures, history_search
 from evo_agents.hub.server import ledger as ledger_lines
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
+from evo_agents.hub.server.change_tiers import GraphView, graph_view  # noqa: F401 (tests read proposals.GraphView)
 from evo_agents.hub.server.changes import Change, change_view
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.notifications import notify, run_link
@@ -84,7 +89,6 @@ PROPOSAL = "curator.proposal"  # the owner answered: "<project> proposal:<id> ru
 MAX_LIST = 200
 MAX_OFFSET = 100_000
 SHOWN_PROBLEMS = 5
-GRAPH_DEPTH = 2  # hops of kg_impact a proposal's paths are followed
 
 worker_router = APIRouter(prefix="/v1/worker", tags=["worker protocol"], responses={401: {"model": ErrorBody}})
 router = APIRouter(prefix="/v1/projects", tags=["curator"], responses={401: {"model": ErrorBody}})
@@ -103,19 +107,23 @@ class EvidenceIn(BaseModel):
     """One piece of evidence, as ``review.parse_evidence`` reads it from the command line."""
 
     kind: Literal[review.EVIDENCE_KINDS]
-    session_id: str | None = Field(None, pattern=review.SESSION_ID, description="session: the digest's session")
+    session_id: str | None = Field(None, pattern=review.SESSION_ID, description="session, transcript: the session")
+    file: str | None = Field(None, pattern=review.TRANSCRIPT_FILE, max_length=512, description="transcript: its file")
     field: Literal[review.DIGEST_FIELDS] | None = Field(None, description="session: the list of the digest")
     index: int | None = Field(None, ge=0, le=10_000, description="session: the entry of that list, from 0")
     run_id: int | None = Field(None, ge=1, le=MAX_ID, description="run: the run")
     seq: int | None = Field(None, ge=1, le=2**31 - 1, description="run: the seq of its event")
     repo: RepoName | None = Field(None, description="code: a repo of the project")
     path: str | None = Field(None, min_length=1, max_length=tiers.MAX_PATH_CHARS, description="code: within the repo")
-    line: int | None = Field(None, ge=1, le=review.MAX_LINE, description="code: the line")
+    line: int | None = Field(None, ge=1, le=review.MAX_LINE, description="code, transcript: the line")
     commit: str | None = Field(None, pattern=OBJECT_NAME, description="code: the commit the worktree was at")
 
     @model_validator(mode="after")
     def _complete(self):
-        needed = {"session": ("session_id",), "run": ("run_id", "seq"), "code": ("repo", "path")}[self.kind]
+        needed = {"session": ("session_id",), "transcript": ("session_id", "line"), "run": ("run_id", "seq")}
+        needed = {**needed, "code": ("repo", "path")}[self.kind]
+        if self.kind == "transcript":
+            self.file = self.file or review.MAIN_FILE
         missing = [name for name in needed if getattr(self, name) is None]
         if missing:
             raise ValueError(f"{self.kind} evidence needs {', '.join(missing)}")
@@ -296,7 +304,7 @@ class _ReviewRun:
     owner: Principal
 
 
-async def _held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -> _ReviewRun:
+async def held_review_run(conn: AsyncConnection, user: Principal, run_id: int) -> _ReviewRun:
     """The review run ``run_id`` the worker of ``user`` holds, its row locked; 404 for any other run."""
     worker_id = (await worker_of(conn, user))[0]
     r, p, u = tables.runs, tables.projects, tables.users
@@ -318,54 +326,13 @@ async def _held_review_run(conn: AsyncConnection, user: Principal, run_id: int) 
     return _ReviewRun(run_id, row.project_id, row.name, owner)
 
 
-async def _writer(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
+async def writer_of(conn: AsyncConnection, run: _ReviewRun) -> ProjectAccess:
     access = await project_access(conn, run.owner, run.project)
     if not has_role(access.role, "writer"):
         raise HTTPException(
             403, f"{run.owner.login}, who owns run {run.id}, no longer holds the writer role on project {run.project}"
         )
     return access
-
-
-# The knowledge graph
-
-
-@dataclass(frozen=True)
-class GraphView:
-    """What the project's knowledge graph says of some paths: those it has no file for, and the files their edits
-    reach."""
-
-    unmatched: frozenset[str]
-    impacted: frozenset[tuple[str, str]]
-
-
-async def graph_view(request: Request, owner: Principal, access: ProjectAccess, targets: list[str]) -> GraphView | None:
-    """``kg_impact`` of ``targets`` (``repo:path`` each) in the project's latest graph, read as ``owner`` through the
-    project's hub sink with no audience, as every member of the project reads what the review keeps; None when there
-    is no target, or the project has no graph or it cannot be read now."""
-    if not targets:
-        return None
-    from evo_agents.hub.server import kg  # its routes import the plans and runs modules
-
-    sink = access.rules.hub_sink.sink if access.rules.hub_sink else kg.CLI_SINK
-    arguments = {"paths": targets, "depth": GRAPH_DEPTH}
-    try:
-        result = await kg.tool_result(
-            request.app.state, owner, access.name, "kg_impact", arguments, sink, audience=frozenset()
-        )
-    except HTTPException as exc:
-        log.info("no knowledge graph for the review", extra={"project": access.name, "status": exc.status_code})
-        return None
-    data = result.get("structuredContent")
-    if result.get("isError") or not isinstance(data, dict):
-        return None
-    reached = set()
-    for item in data.get("impacted") or []:
-        props = ((item or {}).get("node") or {}).get("props") or {}
-        if isinstance(props.get("repo"), str) and isinstance(props.get("path"), str):
-            reached.add((props["repo"], props["path"]))
-    unmatched = {str(path) for path in data.get("unmatched") or []}
-    return GraphView(frozenset(unmatched), frozenset(reached))
 
 
 # Evidence
@@ -380,11 +347,29 @@ async def _project_repos(conn: AsyncConnection, project_id: int) -> set[str]:
     return set((await conn.execute(select(pr.c.name).where(pr.c.project_id == project_id))).scalars())
 
 
+def _readable_run(row, plans: list[str], owner_id: int) -> bool:
+    """A review run, a run of a plan the owner may read, or the owner's own local run (the figures count its facet)."""
+    return row.kind == "review" or row.plan_id in plans or (row.kind == "local" and row.dispatched_by == owner_id)
+
+
+async def _session_evidence(conn: AsyncConnection, run: _ReviewRun, item: EvidenceIn, where: str) -> str:
+    """Where session evidence ``item`` is: its facet, else its digest (``facet_figures.lists_of``); 422 otherwise."""
+    held = await facet_figures.lists_of(conn, run.project_id, item.session_id)
+    if held is None:
+        raise _refused(where, f"project {run.project} has no digest of session {item.session_id}, nor a facet of it")
+    what, body = held
+    listed = body.get(item.field) if item.field is not None and isinstance(body, dict) else None
+    if item.field is not None and (not isinstance(listed, list) or item.index >= len(listed)):
+        size = len(listed) if isinstance(listed, list) else 0
+        raise _refused(where, f"the {what}'s {item.field} has {size} entries, so none at index {item.index}")
+    return what
+
+
 async def resolve(
     conn: AsyncConnection, request: Request, run: _ReviewRun, access: ProjectAccess, items: list[EvidenceIn]
 ) -> list[dict]:
     """Each piece of ``items`` as the hub found it, with ``resolved`` saying how; 422 for the first it cannot find."""
-    d, r = tables.session_digests, tables.runs
+    r = tables.runs
     plans = await visible_plans(conn, access, None)
     repos = await _project_repos(conn, run.project_id)
     code = [f"{item.repo}:{item.path}" for item in items if item.kind == "code"]
@@ -394,24 +379,18 @@ async def resolve(
         where = f"evidence {position} ({review.evidence_text(item.stored())})"
         stored = item.stored()
         if item.kind == "session":
-            query = select(d.c.id, d.c.body).where(d.c.project_id == run.project_id, d.c.session_id == item.session_id)
-            row = (await conn.execute(query)).one_or_none()
-            if row is None:
-                raise _refused(where, f"project {run.project} has no digest of session {item.session_id}")
-            if item.field is not None:
-                listed = row.body.get(item.field) if isinstance(row.body, dict) else None
-                if not isinstance(listed, list) or item.index >= len(listed):
-                    size = len(listed) if isinstance(listed, list) else 0
-                    raise _refused(
-                        where, f"the digest's {item.field} has {size} entries, so none at index {item.index}"
-                    )
-            found.append({**stored, "resolved": "digest"})
+            found.append({**stored, "resolved": await _session_evidence(conn, run, item, where)})
+        elif item.kind == "transcript":
+            why = await history_search.line_missing(conn, access, item.session_id, item.file, item.line)
+            if why is not None:
+                raise _refused(where, why)
+            found.append({**stored, "resolved": "transcript"})
         elif item.kind == "run":
-            query = select(r.c.event_seq, r.c.kind, r.c.plan_id).where(
+            query = select(r.c.event_seq, r.c.kind, r.c.plan_id, r.c.dispatched_by).where(
                 r.c.id == item.run_id, r.c.project_id == run.project_id
             )
             row = (await conn.execute(query)).one_or_none()
-            if row is None or (row.kind != "review" and row.plan_id not in plans):
+            if row is None or not _readable_run(row, plans, run.owner.user_id):
                 raise _refused(where, f"project {run.project} has no run {item.run_id}")
             if item.seq > row.event_seq:
                 raise _refused(where, f"run {item.run_id} has {row.event_seq} events, so none with seq {item.seq}")
@@ -421,9 +400,8 @@ async def resolve(
                 known = ", ".join(sorted(repos)) or "none"
                 raise _refused(where, f"project {run.project} has no repo {item.repo} (its repos: {known})")
             target = f"{item.repo}:{item.path}"
-            if graph is not None and target in graph.unmatched:
-                raise _refused(where, f"the knowledge graph of project {run.project} has no file {target}")
-            found.append({**stored, "resolved": "repo" if graph is None else "graph"})
+            held = "repo" if graph is None else "unmatched" if target in graph.unmatched else "graph"
+            found.append({**stored, "resolved": held})  # a file the graph lacks yet is kept, not refused
     return found
 
 
@@ -455,8 +433,8 @@ async def record_finding(request: Request, run_id: RunId, body: FindingIn, user:
     """Record a finding of the review run this worker holds, with evidence the hub finds."""
     f = tables.findings
     async with request.app.state.engine.begin() as conn:
-        run = await _held_review_run(conn, user, run_id)
-        access = await _writer(conn, run)
+        run = await held_review_run(conn, user, run_id)
+        access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(f.c.run_id == run_id))).scalar_one()
         if recorded >= review.MAX_FINDINGS:
@@ -464,6 +442,9 @@ async def record_finding(request: Request, run_id: RunId, body: FindingIn, user:
                 409, f"run {run_id} recorded {review.MAX_FINDINGS} findings already, the most a run may"
             )
         evidence = await resolve(conn, request, run, access, body.evidence)
+        closed = await earlier.closed_like(conn, access, body.lens, body.title, evidence)
+        if closed is not None:
+            raise HTTPException(409, earlier.REPEATED.format(id=closed.id, lens=closed.lens, status=closed.status))
         values = {
             "project_id": run.project_id,
             "run_id": run_id,
@@ -617,8 +598,8 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
     _check_draft(body.plan)
     p = tables.proposals
     async with request.app.state.engine.begin() as conn:
-        run = await _held_review_run(conn, user, run_id)
-        access = await _writer(conn, run)
+        run = await held_review_run(conn, user, run_id)
+        access = await writer_of(conn, run)
         label = access.push_label()
         recorded = (await conn.execute(select(func.count()).where(p.c.run_id == run_id))).scalar_one()
         if recorded >= review.MAX_PROPOSALS:
@@ -634,7 +615,8 @@ async def record_proposal(request: Request, run_id: RunId, body: ProposalIn, use
         paths = list(dict.fromkeys((item.repo, item.path) for item in body.paths))
         graph = await graph_view(request, run.owner, access, [f"{repo}:{path}" for repo, path in paths])
         impacted = sorted(graph.impacted) if graph is not None else None
-        tier = tiers.tier_of(body.kind, paths, await _protected(conn, run.project_id), impacted or [])
+        unknown = await change_tiers.unknown_paths(conn, run.project_id, paths, graph)
+        tier = tiers.tier_of(body.kind, paths, await _protected(conn, run.project_id), impacted or [], unknown=unknown)
         fingerprint = tiers.fingerprint(body.kind, paths, body.title)
         rejected = await _rejected_like(conn, run.project_id, fingerprint)
         dropped = rejected is not None and tiers.drops(count, rejected.evidence_count)
