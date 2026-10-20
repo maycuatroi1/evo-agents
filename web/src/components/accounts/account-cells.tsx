@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarClock, CircleCheck, CirclePause, Hourglass, Snowflake } from "lucide-react";
+import { CalendarClock, CircleCheck, CirclePause, Hourglass, KeyRound, Snowflake } from "lucide-react";
 import { useFormatter, useTranslations } from "next-intl";
 
 import { Badge } from "@/components/ui/badge";
@@ -15,6 +15,7 @@ const STATES: Record<AccountState, { icon: typeof CircleCheck; variant: "success
   cooling: { icon: Snowflake, variant: "warning" },
   paused: { icon: CirclePause, variant: "secondary" },
   expired: { icon: Hourglass, variant: "destructive" },
+  "needs-relogin": { icon: KeyRound, variant: "destructive" },
 };
 
 /** A time in the visitor's short format, the full one as its tooltip. */
@@ -55,6 +56,11 @@ export function StateCell({ account, now }: { account: Account; now: number }) {
       {account.state === "cooling" && account.cooldown_until ? (
         <span className="text-xs text-fg-subtle" title={account.cooldown_reason ?? undefined} data-testid="account-cooling-until">
           {t.rich("until", { time: () => <At value={account.cooldown_until ?? ""} /> })}
+        </span>
+      ) : null}
+      {account.auth === "oauth" ? (
+        <span className="text-xs text-fg-subtle" data-testid="account-oauth">
+          {account.expires_at ? t.rich("oauthEnds", { time: () => <At value={account.expires_at ?? ""} /> }) : "OAuth"}
         </span>
       ) : null}
       {due ? (
