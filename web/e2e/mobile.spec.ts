@@ -2,7 +2,7 @@ import type { Locator, Page } from "@playwright/test";
 
 import { expectNoSeriousViolations } from "./support/a11y";
 import { createAgentByApi } from "./support/agents";
-import { agentAnswers, chatPath, chatWorker, claimChatRun, openDirectByApi, sendByApi } from "./support/chats";
+import { agentAnswers, chatPageOf, chatPath, chatWorker, claimChatRun, openDirectByApi, sendByApi } from "./support/chats";
 import { expect, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken, uniqueName } from "./support/hub";
 import { apiOf, memoryFile, putMemory } from "./support/memories";
@@ -496,11 +496,22 @@ test("the chats list's row of agents scrolls sideways on its own while the page 
   await expect(main(page).getByTestId("chat-head")).toHaveAttribute("data-kind", "direct");
   await expect(main(page).getByTestId("chat-composer-text")).toBeFocused();
   await expect(main(page).getByTestId("chat-back")).toBeVisible();
-  // The way back stays on the row of the face and the name while the head wraps its tags and Details under them.
+  // The way back, the face, the name and Details (its icon, a touch target) share one row; the handle, the project
+  // and the visibility sit under the name, so the head stays a small part of the screen.
   const back = await box(main(page).getByTestId("chat-back"));
   const title = await box(main(page).getByTestId("chat-title"));
+  const details = main(page).getByTestId("chat-details-open");
+  const detailsBox = await box(details);
   expect(Math.abs(back.y + back.height / 2 - (title.y + title.height / 2)), "the way back sits on the name's row").toBeLessThan(8);
   expect(back.x + back.width, "the way back stands before the name").toBeLessThanOrEqual(title.x);
+  expect(Math.abs(detailsBox.y + detailsBox.height / 2 - (title.y + title.height / 2)), "Details sits on the name's row").toBeLessThan(8);
+  expect(detailsBox.x, "Details ends the name's row").toBeGreaterThanOrEqual(title.x + title.width);
+  await expect(details).toHaveAccessibleName("Details");
+  await touchSized(details, "Details in a direct chat's head");
+  const visibility = await box(main(page).getByTestId("chat-visibility").first());
+  expect(visibility.y, "the visibility sits under the name").toBeGreaterThan(title.y + title.height);
+  const head = await box(main(page).getByTestId("chat-head"));
+  expect(head.height, "the head takes less than a sixth of the screen").toBeLessThan(PHONE.height / 6);
   await expectNoSeriousViolations(page, "a direct chat at 375 px");
 });
 
@@ -541,6 +552,18 @@ test("a direct chat at 375 px: the member's bubbles on the right, the agent's un
   await reply.tap();
   await expect(main(page).getByTestId("chat-composer-replying")).toContainText("The clock ran out:");
   await touchSized(main(page).getByTestId("chat-composer-reply-cancel"), "Cancel the reply");
-  expect(await fieldText(main(page).getByTestId("chat-composer-text"))).toBe("16px");
+  const composer = main(page).getByTestId("chat-composer-text");
+  expect(await fieldText(composer)).toBe("16px");
   await expectNoSeriousViolations(page, "a direct chat with answers at 375 px");
+
+  // A phone's keyboard has no Shift with Enter: Enter adds a line there, and Send sends.
+  await expect(composer).toHaveAttribute("aria-keyshortcuts", "Meta+Enter Control+Enter");
+  await composer.fill("Then raise the timeout.");
+  await composer.press("Enter");
+  await composer.pressSequentially("To 2 s.");
+  await expect(composer).toHaveValue("Then raise the timeout.\nTo 2 s.");
+  await expect(composer).toBeFocused();
+  await main(page).getByTestId("chat-composer-send").tap();
+  await expect(composer).toHaveValue("");
+  await expect.poll(async () => (await chatPageOf(me, chat.id, asked.id)).messages.map((item) => item.body)).toContain("Then raise the timeout.\nTo 2 s.");
 });

@@ -17,7 +17,7 @@
     "src/components/runs/run-log.tsx": 582,
     "src/components/runs/trace-model.ts": 548,
     "src/components/secrets/secret-dialog.tsx": 501,
-    "src/components/shell/shortcuts.tsx": 520,
+    "src/components/shell/shortcuts.tsx": 487,
     "src/components/ui/sidebar.tsx": 712,
     "src/components/workers/register-dialog.tsx": 726
   },
