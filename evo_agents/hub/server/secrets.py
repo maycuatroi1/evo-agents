@@ -18,6 +18,10 @@ none. DELETE /v1/secrets/{name} deletes softly: the row stays, for the leases an
 its sealed value and its bindings go, and the leases of it that are not given back yet are marked revoked. The name
 is free again at once.
 
+An env secret for CLAUDE_CODE_OAUTH_TOKEN may carry ``oauth``, the refresh token and other parts of an account's
+sign-in with OAuth (``evo_agents.hub.server.account_oauth``): the hub seals them with the value in the account's row,
+and a write without ``oauth`` drops what was there.
+
 Each write adds one audit row, secret.put or secret.delete, whose target is the secret's id (``secret:<id>``), never
 its name: the audit is for hub admins, and a secret's name is for its owner alone, as GET /v1/secrets and a run's
 credentials are. No audit row, log line or error holds a value. A write made with a web session needs X-Evo-CSRF, as
@@ -53,6 +57,13 @@ from evo_agents.hub.credentials import (
     normalize_origin,
 )
 from evo_agents.hub.server import audit
+from evo_agents.hub.server.account_oauth import (
+    OAUTH_ENV_VAR,
+    OAuthTokens,
+    drop_tokens,
+    seal_tokens,
+    store_tokens,
+)
 from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.auth import NO_STORE
 from evo_agents.hub.server.errors import ErrorBody
@@ -117,6 +128,12 @@ class SecretWrite(BaseModel):
         description="names of the caller's own workers that are not revoked; left out or empty for any of them",
     )
     expires_at: AwareDatetime | None = Field(None, description="after this no run gets it; in the future")
+    oauth: OAuthTokens | None = Field(
+        None,
+        description=f"kind env, env_var {OAUTH_ENV_VAR} only: the account signed in with OAuth. The value is its "
+        "access token; this holds the refresh token and when the access token ends, and the hub keeps all of them "
+        "sealed. expires_at, when given, is that end",
+    )
     value: SecretStr = Field(
         min_length=1,
         max_length=MAX_SECRET_BYTES,
@@ -249,6 +266,18 @@ def _target(body: SecretWrite) -> tuple[str | None, str | None, str | None]:
     return None, _url_prefix(body.url_prefix), body.username or DEFAULT_GIT_USERNAME
 
 
+def _oauth(body: SecretWrite) -> OAuthTokens | None:
+    """The OAuth tokens of ``body``, which only an env secret for CLAUDE_CODE_OAUTH_TOKEN may carry; 422 otherwise."""
+    oauth = body.oauth
+    if oauth is None:
+        return None
+    if body.kind != "env" or body.env_var != OAUTH_ENV_VAR:
+        raise HTTPException(422, f"oauth belongs to a secret of kind env for {OAUTH_ENV_VAR}")
+    if body.expires_at is not None and body.expires_at != oauth.access_expires_at:
+        raise HTTPException(422, "expires_at of an account of OAuth is the end of its access token: leave it out")
+    return oauth
+
+
 def _value(body: SecretWrite) -> str:
     value = body.value.get_secret_value()
     if len(value.encode()) > MAX_SECRET_BYTES:
@@ -350,7 +379,9 @@ async def put_secret(
     sealer = _sealer(request)
     env_var, url_prefix, username = _target(body)
     value = _value(body)
-    if body.expires_at is not None and body.expires_at <= datetime.now(UTC):
+    oauth = _oauth(body)
+    expires_at = oauth.access_expires_at if oauth is not None else body.expires_at
+    if expires_at is not None and expires_at <= datetime.now(UTC):
         raise HTTPException(422, "expires_at is past already: a secret's end is in the future")
     projects, workers = _unique(body.projects), _unique(body.workers)
     sealed = sealer.seal(value, secret_aad(user.user_id, name, body.kind))
@@ -375,7 +406,7 @@ async def put_secret(
             sealed=sealed.ciphertext,
             nonce=sealed.nonce,
             key_id=sealed.key_id,
-            expires_at=body.expires_at,
+            expires_at=expires_at,
         )
         try:
             secret_id, created = (await conn.execute(statement)).one()
@@ -384,6 +415,10 @@ async def put_secret(
                 raise
             raise HTTPException(422, "the secrets table refused this secret's kind, target or username") from None
         await _bind(conn, secret_id, project_ids, worker_ids)
+        if oauth is not None:
+            await store_tokens(conn, secret_id, seal_tokens(sealer, secret_id, value, oauth))
+        else:  # written whole: a set of OAuth tokens the secret had before does not outlive its value
+            await drop_tokens(conn, secret_id)
         target = audit_target(secret_id)
         await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=audit.SECRET_PUT, target=target)
         (secret,) = await _secrets(conn, user.user_id, name)
@@ -408,6 +443,7 @@ async def delete_secret(request: Request, name: SecretName, user: CurrentUser) -
         if secret_id is None:
             raise HTTPException(404, NO_SECRET.format(name=name))
         await conn.execute(delete(b).where(b.c.secret_id == secret_id))
+        await drop_tokens(conn, secret_id)
         ended = await conn.execute(
             update(cl).values(revoked_at=func.now()).where(cl.c.secret_id == secret_id, cl.c.revoked_at.is_(None))
         )

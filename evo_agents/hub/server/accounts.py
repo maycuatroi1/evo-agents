@@ -27,7 +27,7 @@ from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Path, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
-from sqlalchemy import delete, func, select
+from sqlalchemy import case, delete, func, select
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.ext.asyncio import AsyncConnection
 
@@ -76,6 +76,9 @@ class Account(BaseModel):
     env_var: str = Field(description="the variable it sets")
     projects: list[str] = Field(description="the projects whose runs may take it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
+    auth: Literal["token", "oauth"] = Field(
+        description="oauth: it signed in with OAuth and the hub keeps its refresh token sealed; token: a token as given"
+    )
     weight: int = Field(description=f"0 to {MAX_WEIGHT}: its share in a weighted-round-robin pool; 0 leaves it")
     priority: int = Field(description=f"0 to {MAX_PRIORITY}: the lower, the sooner a fill-first pool takes it")
     paused_at: datetime | None = Field(description="when its owner paused it; null while it may be taken")
@@ -134,6 +137,7 @@ def _accounts(owner_id: int, name: str | None = None):
             s.c.env_var,
             bound_names(tables.projects, b.c.project_id).label("projects"),
             bound_names(tables.workers, b.c.worker_id).label("workers"),
+            case((a.c.oauth_sealed.is_not(None), "oauth"), else_="token").label("auth"),
             func.coalesce(a.c.weight, 1).label("weight"),
             func.coalesce(a.c.priority, 0).label("priority"),
             a.c.paused_at,
