@@ -1,5 +1,6 @@
 """The tools of the plugin srs on the hub's /mcp, which @ba's agent reads, proposes and comments with (criterion a7 of
-plan srs-tasks-plugins): ``srs__read``, ``srs__search``, ``srs__diff``, ``srs__propose`` and ``srs__comment``.
+plan srs-tasks-plugins): ``srs__read``, ``srs__search``, ``srs__diff``, ``srs__propose`` and ``srs__comment``; and
+``srs__finding``, which it records and settles conflicts with (criterion a4 of plan srs-conflicts-and-tasks).
 
 The hub lists them in a session whose project enabled the plugin, and checks their arguments against the manifest's
 schemas first. Each acts for a person (``acting``): the agent of a chat run for the person who mentioned the agent,
@@ -17,6 +18,13 @@ does too: what a tool answers reaches the machine the agent runs on.
   (``auto_review``).
 - ``comment`` answers the agent of a run of @ba: a chat run, or the review run of ``auto_review``. The comment is the
   person's, drafted by the run (``srs_comments.run_id``).
+- ``finding`` answers the agent of a run of @ba too, whatever the role of the person it acts for: a reader who wakes
+  @ba where conflicts are settled gets them settled. It records a finding with the sources that show it, resolves or
+  waives an open one, or reopens one settled at most 24 hours ago (``findings``). Every source is looked up before
+  anything is written: its nodes and paths in the project's knowledge graph on the hub as the run reads it, before the
+  document is locked, then its codes and versions; one not found refuses the call. A resolution names the member who
+  settled it, who holds a grant on the project, or the sources that settled it. The finding is the run's
+  (``srs_findings.run_id``).
 
 Nothing here approves or returns a version: the review route refuses the agent of a run. A refusal is the tool's
 error text, and nothing is written.
@@ -34,7 +42,7 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import BA, checks, markdown, reviews, store
+from evo_agents.core_plugins.srs import BA, checks, findings, markdown, reviews, store
 from evo_agents.core_plugins.srs.auto_review import review_entered
 from evo_agents.core_plugins.srs.diff import diff as item_changes
 from evo_agents.core_plugins.srs.diff import text_of
@@ -155,6 +163,8 @@ async def _answer(params: dict, context: CoreContext, work) -> dict:
         for conflict in exc.detail or []:
             if isinstance(conflict, dict) and "latest" in conflict:
                 lines.append(f"- {conflict.get('code') or conflict.get('item')} now reads:\n{conflict['latest']}")
+            elif isinstance(conflict, str):  # each source a finding names that was not found
+                lines.append(f"- {conflict}")
         return _text("\n".join(lines), error=True)
     except IntegrityError:
         return _text(f"error: {RACE}", error=True)
@@ -354,4 +364,69 @@ async def comment(params: dict, context: CoreContext) -> dict:
     return await _answer(params, context, _comment)
 
 
-__all__ = ["Acting", "acting", "comment", "compare_path", "diff", "propose", "read", "search"]
+# Findings
+
+
+async def _settler(conn: AsyncConnection, who: Acting, login: str | None) -> int | None:
+    """The id of the member ``login`` names as having settled a finding, who must hold a grant on the project."""
+    if login is None:
+        return None
+    u = tables.users
+    user_id = (await conn.execute(select(u.c.id).where(u.c.login == login))).scalar_one_or_none()
+    if user_id is None:
+        raise SrsError(422, f"no member {login} on the hub settled the finding")
+    access = await _access(conn, await _principal(conn, user_id, None), who.access.name)
+    if access.role is None:
+        raise SrsError(422, f"{login} holds no grant on project {who.access.name}")
+    return user_id
+
+
+def _finding_text(row: findings.FindingRow, slug: str, done: str) -> str:
+    about = f"item {row.item_code or row.item}" if row.item else "the whole document"
+    lines = [
+        f"Finding {row.id} of {slug} {done}: {row.level}, {row.kind}, on version {row.version}, about {about}.",
+        f"Summary: {row.summary}",
+        "Sources: " + "; ".join(str(findings.Source(**source)) for source in row.sources),
+    ]
+    if row.status != findings.OPEN:
+        by = f" by {row.settled_by}" if row.settled_by else " from the graph" if row.status == findings.RESOLVED else ""
+        lines.append(f"{row.status.capitalize()}{by}: {row.resolution}")
+        if row.resolution_sources:
+            lines.append("Settled by: " + "; ".join(str(findings.Source(**s)) for s in row.resolution_sources))
+    elif row.level == findings.DECIDE:
+        lines.append("While it is open, no version of the document is approved.")
+    if row.chat_link:
+        lines.append(f"Chat: {row.chat_link}")
+    return "\n".join(lines)
+
+
+async def _finding(conn: AsyncConnection, who: Acting, args: dict, graph_refs) -> str:
+    _ba_run(who, "finding", ("chat", "task"))
+    action = args["action"]
+    findings.checked_args(action, args)
+    settling = action == "resolve"
+    sources = findings.sources_of(args.get("sources"), settling=settling)
+    link = findings.chat_link(args.get("chat_link"))
+    problems = await findings.graph_problems(who.access.name, sources, graph_refs)
+    if problems:
+        raise findings.refused(problems)
+    doc = await _document(conn, who, args["document"], lock=True)
+    if action == "record":
+        new = findings.NewFinding(
+            args["kind"], args["level"], args["summary"], sources, args.get("version"), args.get("item")
+        )
+        return _finding_text(await findings.record(conn, who.access, doc, new, who.run_id), doc.slug, "is recorded")
+    if action == "reopen":
+        return _finding_text(await findings.reopen(conn, doc, args["finding"]), doc.slug, "is open again")
+    status = findings.RESOLVED if settling else findings.WAIVED
+    settler = await _settler(conn, who, args.get("settled_by"))
+    how = findings.Settling(status, args["resolution"], settler, sources, link)
+    return _finding_text(await findings.settle(conn, who.access, doc, args["finding"], how), doc.slug, f"is {status}")
+
+
+async def finding(params: dict, context: CoreContext) -> dict:
+    """The tool ``srs__finding``: record a finding with its sources, or resolve, waive or reopen one."""
+    return await _answer(params, context, lambda conn, who, args: _finding(conn, who, args, context.graph_refs))
+
+
+__all__ = ["Acting", "acting", "comment", "compare_path", "diff", "finding", "propose", "read", "search"]

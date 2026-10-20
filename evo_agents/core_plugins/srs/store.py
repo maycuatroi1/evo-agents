@@ -280,6 +280,24 @@ async def text(conn: AsyncConnection, sha256: str | None) -> str:
     return (await conn.execute(select(t.c.body).where(t.c.sha256 == sha256))).scalar_one()
 
 
+async def item_id(conn: AsyncConnection, access: ProjectAccess, doc: DocumentRow, ref: str) -> int:
+    """The id of the item of ``doc`` whose key, code or alias is ``ref``; 422 when it has none."""
+    s = tables.srs
+    i, c = s.items, s.codes
+    by_key = select(i.c.id).where(i.c.document_id == doc.id, i.c.key == ref)
+    found = (await conn.execute(by_key)).scalar_one_or_none()
+    if found is None:
+        by_code = (
+            select(i.c.id)
+            .join_from(c, i, i.c.id == c.c.item_id)
+            .where(c.c.project_id == access.project_id, c.c.code_key == code_key(ref), i.c.document_id == doc.id)
+        )
+        found = (await conn.execute(by_code)).scalar_one_or_none()
+    if found is None:
+        raise SrsError(422, f"document {doc.slug} has no item {ref}")
+    return found
+
+
 def _items_query(version_id: int):
     s = tables.srs
     iv, i, t = s.item_versions, s.items, s.texts
@@ -393,6 +411,7 @@ __all__ = [
     "approved_documents",
     "document",
     "documents",
+    "item_id",
     "missing",
     "project_settings",
     "reader",

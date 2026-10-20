@@ -18,9 +18,9 @@ readers read, writers write, admins drop coded items (by their codes too: ``reti
 unarchive them. The hub's web shows them on the plugin's native pages (``PAGES``): the documents, a document's
 contents with each section read and edited in place, an item's page with the trace the knowledge graph holds, the
 versions, the comparison of two versions, the review and the comments.
-``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive`` is their client. The
-tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046 and 0064), every row of a document carrying its
-label, the project's by default. The version of each document approved last, of the documents not archived, is a
+``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive|findings|waive`` is
+their client. The tables are the hub's (``evo_agents.hub.tables_srs``, migrations 0046, 0064 and 0066), every row of a
+document carrying its label, the project's by default. The version of each document approved last, of the documents not archived, is a
 source of the project's knowledge graph (``kg``): its sections, and its use cases and requirements as nodes with the
 ids a mention of their codes gets.
 
@@ -32,10 +32,16 @@ who therefore never approves it. The type declares ``chat_runs: run_as``: every 
 member the project enabled the type under, and each version that enters review for the first time is reviewed by @ba
 in a task run on that worker (``auto_review``), whose comments are advice and block nothing.
 
+A conflict @ba finds is a finding (``findings``, criteria a4 and a5 of plan srs-conflicts-and-tasks): the agent of a
+run of @ba records it with its sources, which the hub looks up first, and resolves, waives or reopens it with the tool
+srs__finding. Members read them (``evo-agents hub srs findings``), an admin of the project waives an open one
+(``evo-agents hub srs waive``), and a version is not approved while its document has an open finding of level decide or
+@ba's review of its round is still queued or running.
+
 The hub imports this package for the manifest only: ``template`` and ``markdown`` read and write documents,
 ``checks`` finds what is wrong with one, ``store`` and ``writes`` keep them, ``reviews`` decides versions and keeps
-comments, ``diff`` compares two versions, ``models`` and ``server`` are the API, ``kg`` gives the knowledge graph its
-approved versions, ``agent`` and ``auto_review`` are @ba's.
+comments, ``findings`` keeps the conflicts and gates approval, ``diff`` compares two versions, ``models`` and
+``server`` are the API, ``kg`` gives the knowledge graph its approved versions, ``agent`` and ``auto_review`` are @ba's.
 """
 
 SERVER = "evo_agents.core_plugins.srs.server"
@@ -94,9 +100,10 @@ CONFIG = {
 BA = "ba"
 BA_INSTRUCTIONS = (
     "You are @ba, the business analyst agent of this project's SRS documents on the evo-agents hub. You read, search, "
-    "draft and review them with the tools srs__read, srs__search, srs__diff, srs__propose and srs__comment, and make "
-    "tasks of their items with tasks__create when the project has it. A change is a proposal: a version in review that "
-    "members approve. You never approve, return, drop or renumber anything. Follow the instructions of your pack."
+    "draft and review them with the tools srs__read, srs__search, srs__diff, srs__propose, srs__comment and "
+    "srs__finding, and make tasks of their items with tasks__create when the project has it. A change is a proposal: a "
+    "version in review that members approve. A conflict is a finding with its sources. You never approve, return, drop "
+    "or renumber anything. Follow the instructions of your pack."
 )
 _SLUG = {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,99}$", "description": "the document's slug"}
 _VERSION = {"type": "integer", "minimum": 1, "description": "a version's number; the latest when left out"}
@@ -199,6 +206,69 @@ COMMENT_SCHEMA = {
         "parent_id": {"type": "integer", "minimum": 1, "description": "the comment it answers"},
     },
 }
+_SOURCE = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["kind", "ref"],
+    "properties": {
+        "kind": {
+            "enum": ["node", "code", "path", "version"],
+            "description": "node: the id of a node of the project's knowledge graph (kg_search, kg_node); code: a code "
+            "an item of the project holds, such as UC ORD-2; path: repo:path, or a path, a file or document node of "
+            "the graph carries; version: a later version of this document, which only settles a finding",
+        },
+        "ref": {"type": "string", "minLength": 1, "maxLength": 300},
+        "note": {"type": "string", "maxLength": 500, "description": "what the source says"},
+    },
+}
+FINDING_SCHEMA = {
+    "type": "object",
+    "additionalProperties": False,
+    "required": ["action", "document"],
+    "properties": {
+        "action": {
+            "enum": ["record", "resolve", "waive", "reopen"],
+            "description": "record a finding (kind, level, summary, sources; version, item); resolve or waive an open "
+            "one (finding, resolution; settled_by, chat_link, and sources to resolve it); reopen one settled within "
+            "24 hours (finding)",
+        },
+        "document": _SLUG,
+        "finding": {"type": "integer", "minimum": 1, "description": "the finding's id"},
+        "version": {**_VERSION, "description": "the version it was found on; the latest when left out"},
+        "item": {**_REF, "description": "the item it is about: its code, an alias or its key; left out: the document"},
+        "kind": {"enum": ["duplicate", "contradiction", "kg_conflict", "overlap"]},
+        "level": {
+            "enum": ["info", "advisory", "decide"],
+            "description": "decide: members must settle it, and it holds approval while open",
+        },
+        "summary": {"type": "string", "minLength": 1, "maxLength": 2000, "description": "the conflict in a sentence"},
+        "sources": {
+            "type": "array",
+            "minItems": 1,
+            "maxItems": 20,
+            "items": _SOURCE,
+            "description": "what shows the conflict (record), or what settled it (resolve); each is looked up",
+        },
+        "resolution": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 10000,
+            "description": "how it was settled, or why it is waived",
+        },
+        "settled_by": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100,
+            "description": "the login of the member who settled it; left out: settled from the graph by its sources",
+        },
+        "chat_link": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500,
+            "description": "the link of the message that settled it",
+        },
+    },
+}
 TOOLS = (
     (
         "read",
@@ -228,6 +298,14 @@ TOOLS = (
         "Only the agent of a run of @ba may call it; a comment is advice and blocks no approval.",
         COMMENT_SCHEMA,
     ),
+    (
+        "finding",
+        "Record or settle a conflict",
+        "Record a conflict of a document as a finding with the sources that show it (graph nodes, codes, paths), each "
+        "looked up first, or resolve, waive or reopen one. An open finding of level decide holds the approval of the "
+        "document's versions. Only the agent of a run of @ba may call it.",
+        FINDING_SCHEMA,
+    ),
 )
 
 TABLES = (
@@ -240,6 +318,7 @@ TABLES = (
     ("srs_refs", "Links between the items of a version"),
     ("srs_reviews", "Approvals and requests for changes of a version"),
     ("srs_comments", "Comments on a document, a version or an item"),
+    ("srs_findings", "The conflicts found in a document, their sources and how each was settled"),
 )
 
 # The native pages of the hub's web (web/src/app/(app)/p/[project]/x/srs, web/src/components/srs): the documents,

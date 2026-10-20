@@ -3678,7 +3678,8 @@ export interface paths {
         /**
          * Review Version
          * @description Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
-         *     it, and the agent of a run never does.
+         *     it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
+         *     decide, naming each, or while @ba's review of the version's round is queued or running.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
         delete?: never;
@@ -3789,6 +3790,47 @@ export interface paths {
          * @description Close the thread of a comment.
          */
         post: operations["resolve_comment_v1_x_srs__project__documents__slug__comments__comment_id__resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/findings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Findings
+         * @description The conflicts @ba found in a document, oldest first, each with its sources and how it was settled.
+         */
+        get: operations["list_findings_v1_x_srs__project__documents__slug__findings_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/findings/{finding_id}/waive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Waive Finding
+         * @description Waive an open finding as an admin of the project, never the agent of a run: it holds no approval after, and
+         *     ``reason`` is kept as its resolution. 409 when it is not open, or the document is archived.
+         */
+        post: operations["waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -15822,6 +15864,94 @@ export interface components {
             /** Markdown */
             markdown: string;
         };
+        /**
+         * SrsFinding
+         * @description A conflict found in a document, with the sources that show it and, once settled, how.
+         */
+        SrsFinding: {
+            /** Id */
+            id: number;
+            /**
+             * Version
+             * @description the version it was found on
+             */
+            version: number;
+            /**
+             * Item
+             * @description the key of the item it is about; null for the whole document
+             */
+            item: string | null;
+            /** Item Code */
+            item_code: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "duplicate" | "contradiction" | "kg_conflict" | "overlap";
+            /**
+             * Level
+             * @description an open finding of level decide holds approval
+             * @enum {string}
+             */
+            level: "info" | "advisory" | "decide";
+            /**
+             * Sources
+             * @description what shows the conflict, at least one
+             */
+            sources: components["schemas"]["SrsFindingSource"][];
+            /** Summary */
+            summary: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "open" | "resolved" | "waived";
+            /**
+             * Resolution
+             * @description how it was settled, or why it was waived
+             */
+            resolution: string | null;
+            /**
+             * Resolution Sources
+             * @description what settled it, when settled from the graph
+             */
+            resolution_sources: components["schemas"]["SrsFindingSource"][];
+            /**
+             * Settled By
+             * @description the member who settled it; null when settled from the graph
+             */
+            settled_by: string | null;
+            /** Settled At */
+            settled_at: string | null;
+            /**
+             * Chat Link
+             * @description the link of the chat message that settled it
+             */
+            chat_link: string | null;
+            /**
+             * Run Id
+             * @description the run of @ba that recorded it
+             */
+            run_id: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+        };
+        /** SrsFindingSource */
+        SrsFindingSource: {
+            /**
+             * Kind
+             * @description node: an id of the project's knowledge graph; code: a code an item of the project holds; path: repo:path, or a path, a file or document node carries; version: a later version of the document
+             * @enum {string}
+             */
+            kind: "node" | "code" | "path" | "version";
+            /** Ref */
+            ref: string;
+            /** Note */
+            note?: string | null;
+        };
         /** SrsImport */
         SrsImport: {
             /** Markdown */
@@ -16281,6 +16411,14 @@ export interface components {
             items: components["schemas"]["SrsItem"][];
             /** Problems */
             problems: components["schemas"]["SrsProblem"][];
+        };
+        /** SrsWaiveIn */
+        SrsWaiveIn: {
+            /**
+             * Reason
+             * @description why, kept as its resolution
+             */
+            reason: string;
         };
         /** SrsWithdrawIn */
         SrsWithdrawIn: {
@@ -32515,6 +32653,172 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsComment"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_findings_v1_x_srs__project__documents__slug__findings_get: {
+        parameters: {
+            query?: {
+                /** @description only the findings in this status */
+                status?: ("open" | "resolved" | "waived") | null;
+            };
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsFinding"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    waive_finding_v1_x_srs__project__documents__slug__findings__finding_id__waive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                finding_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsWaiveIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsFinding"];
                 };
             };
             /** @description Unauthorized */

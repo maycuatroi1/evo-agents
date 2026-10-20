@@ -11,19 +11,23 @@ without those items and their subtrees. The author of a version in review, or an
 it (POST .../unarchive): an archived one is out of the list of documents unless ``all`` asks for it, still read by its
 slug, and refuses every write with 409 (``store.writable``). Approving a version, archiving a document and unarchiving
 it queue a build of the project's knowledge graph, which reads the approved versions of the documents not archived.
+Readers read the conflicts @ba found in a document (GET .../documents/{slug}/findings, ``status`` to keep one status),
+and an admin waives an open one (POST .../findings/{id}/waive) with a reason. Approving a version answers 409 while the
+document has an open finding of level decide, or @ba's review of the version's round is queued or running
+(``findings.approval_hold``); a request for changes is never held.
 Reads go through the sink X-Evo-Sink names, else the project's hub sink. A refusal is the hub's error body, with the
 problems that refused it (or a conflict's two texts) in ``detail``.
 """
 
 from __future__ import annotations
 
-from typing import Annotated
+from typing import Annotated, Literal
 
 from fastapi import APIRouter, Header, Path, Query, Request
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.core_plugins.srs import checks, edits, imports, markdown, reviews, store
+from evo_agents.core_plugins.srs import checks, edits, findings, imports, markdown, reviews, store
 from evo_agents.core_plugins.srs.auto_review import review_entered
 from evo_agents.core_plugins.srs.diff import diff, lines_between
 from evo_agents.core_plugins.srs.doc import SrsError
@@ -34,6 +38,7 @@ from evo_agents.core_plugins.srs.models import (
     SrsDocument,
     SrsDocumentSummary,
     SrsExport,
+    SrsFinding,
     SrsImport,
     SrsImportResult,
     SrsItemDetail,
@@ -43,11 +48,13 @@ from evo_agents.core_plugins.srs.models import (
     SrsSave,
     SrsVersion,
     SrsVersionDetail,
+    SrsWaiveIn,
     SrsWithdrawIn,
     comment_model,
     detail_model,
     diff_model,
     edit_changes,
+    finding_model,
     item_detail_model,
     preview_model,
     retire_model,
@@ -62,7 +69,7 @@ from evo_agents.hub.server.admin import PROJECT_NAME
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser, Principal
-from evo_agents.hub.tables_srs import MAX_SUMMARY_CHARS, SLUG
+from evo_agents.hub.tables_srs import FINDING_STATUSES, MAX_SUMMARY_CHARS, SLUG
 
 REFUSALS = {code: {"model": ErrorBody} for code in (403, 404, 409, 413, 422)}
 RACE = "another save in the project took a code or a version number at the same moment: nothing was written; try again"
@@ -354,7 +361,8 @@ async def review_version(
     sink: Sink = None,
 ):
     """Approve a version in review or ask for changes. Nobody who wrote a version since the one approved last reviews
-    it, and the agent of a run never does."""
+    it, and the agent of a run never does. An approval answers 409 while the document has an open finding of level
+    decide, naming each, or while @ba's review of the version's round is queued or running."""
 
     async def work(conn):
         access = await project_access(conn, user, project)
@@ -465,6 +473,51 @@ async def resolve_comment(
         access = await project_access(conn, user, project)
         doc = await store.document(conn, access, slug, sink, lock=True)
         return comment_model(await reviews.resolve(conn, access, user, doc, comment_id))
+
+    return await _answer(request, work)
+
+
+# Findings
+
+
+@router.get("/{project}/documents/{slug}/findings", response_model=list[SrsFinding])
+async def list_findings(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    user: CurrentUser,
+    status: Annotated[Literal[FINDING_STATUSES] | None, Query(description="only the findings in this status")] = None,
+    sink: Sink = None,
+):
+    """The conflicts @ba found in a document, oldest first, each with its sources and how it was settled."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        doc = await store.document(conn, access, slug, sink)
+        return [finding_model(row) for row in await findings.findings(conn, doc, status)]
+
+    return await _answer(request, work)
+
+
+@router.post("/{project}/documents/{slug}/findings/{finding_id}/waive", response_model=SrsFinding)
+async def waive_finding(
+    request: Request,
+    project: ProjectName,
+    slug: Slug,
+    finding_id: Annotated[int, Path(ge=1)],
+    body: SrsWaiveIn,
+    user: CurrentUser,
+    sink: Sink = None,
+):
+    """Waive an open finding as an admin of the project, never the agent of a run: it holds no approval after, and
+    ``reason`` is kept as its resolution. 409 when it is not open, or the document is archived."""
+
+    async def work(conn):
+        access = await project_access(conn, user, project)
+        reviews.admin(access, user, "waives a finding")
+        doc = await store.document(conn, access, slug, sink, lock=True)
+        waived = findings.Settling(findings.WAIVED, body.reason, user.user_id)
+        return finding_model(await findings.settle(conn, access, doc, finding_id, waived))
 
     return await _answer(request, work)
 

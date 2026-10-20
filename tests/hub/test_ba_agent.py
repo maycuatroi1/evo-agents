@@ -59,7 +59,7 @@ SAMPLE = Path(__file__).parent / "fixtures" / "srs" / "demo-shop-srs.md"
 SRS = f"/v1/x/srs/{PROJECT}"
 DOC = f"{SRS}/documents/demo-shop"
 TYPE = f"/v1/projects/{PROJECT}/agent-types/srs/ba"
-SRS_TOOLS = ["srs__comment", "srs__diff", "srs__propose", "srs__read", "srs__search"]
+SRS_TOOLS = ["srs__comment", "srs__diff", "srs__finding", "srs__propose", "srs__read", "srs__search"]
 
 
 @pytest.fixture
@@ -243,6 +243,7 @@ def test_ba_agent_type_makes_ba_with_the_pack_srs_ba_and_its_tools_show_only_whe
     for name, arguments in (
         ("srs__propose", {"document": "demo-shop", "base_version": 1, "summary": "x", "changes": [{"key": "k"}]}),
         ("srs__comment", {"document": "demo-shop", "body": "Suggestion: shorter"}),
+        ("srs__finding", {"action": "reopen", "document": "demo-shop", "finding": 1}),
     ):
         text, error = tool(client, members["other"], name, PROJECT, **arguments)
         assert error and f"calls {name}" in text and "only the agent of" in text, text
@@ -378,6 +379,9 @@ def test_ba_agent_proposes_a_version_in_review_written_as_the_writer_who_asked_w
     assert client.post(f"{DOC}/versions/2/withdraw", headers=agent).status_code in (401, 403)
     author = review(client, hub["other"], 2)
     assert author.status_code == 403, author.text
+    held = review(client, hub["chi"], 2)  # @ba's review of the round is still queued
+    assert held.status_code == 409 and f"(run #{review_run}) is queued" in held.json()["message"], held.text
+    moved(client, studio, running(client, studio, "task")["id"], "verifying", "done", summary="Nothing found.")
     approved = review(client, hub["chi"], 2)
     assert approved.status_code == 200 and approved.json()["state"] == "approved", approved.text
     assert "BR ORD2-2" in {entry["code"] for entry in version(client, hub["reader"], 2)["items"]}
@@ -467,6 +471,9 @@ def test_ba_agent_reviews_each_version_once_as_it_enters_review_and_its_comments
     enable(client, hub["owner"], "tasks", ["plans:read"])
     text, error = tool(client, agent, "tasks__create", title="Build Place an order", links=["UC ORD-1"])
     assert error and "the agent of a task run creates no task" in text, text
+    held = review(client, hub["other"], 1)  # approval waits for the review run, never for its comments
+    assert held.status_code == 409 and f"(run #{review_run}) is running" in held.json()["message"], held.text
+    moved(client, studio, review_run, "verifying", "done", summary="One finding.")
     assert review(client, hub["other"], 1).json()["state"] == "approved"
     # a version sent back and submitted again is reviewed once
     cart = item(client, hub["chi"], "BR ORD1-1")
