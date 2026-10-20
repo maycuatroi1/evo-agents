@@ -5,9 +5,12 @@ PUT /v1/secrets/{name} creates the caller's secret of that name or replaces it w
 names the variable of the agent's environment it sets (``env_var``, never one of
 ``evo_agents.hub.credentials.DENIED_ENV`` or its prefixes); kind ``git`` names the https prefix of the origins it
 answers for (``url_prefix``, kept in the form of ``credentials.normalize_origin``) and the user git sends with it
-(``username``, DEFAULT_GIT_USERNAME when left out). ``projects`` binds it to one or more projects the caller holds the
-writer role on; ``workers`` narrows it to some of the caller's own workers that are not revoked, by name, and left
-out means any worker of the caller. ``expires_at`` is the end its owner gives it. The value is 1 to
+(``username``, DEFAULT_GIT_USERNAME when left out); kind ``forge`` names the https prefix of the GitLab projects whose
+merge requests the hub drives with it (``url_prefix``, as for git, and no username: GitLab takes the token in a
+header), and is never leased to a run (``evo_agents.hub.server.forge``). ``projects`` binds it to one or more projects
+the caller holds the writer role on, the admin role for kind forge; ``workers`` narrows it to some of the caller's own
+workers that are not revoked, by name, and left out means any worker of the caller; a forge secret names none, as no
+worker ever gets it. ``expires_at`` is the end its owner gives it, which kind forge needs. The value is 1 to
 MAX_SECRET_BYTES bytes of UTF-8, sealed with ``Sealer`` under the associated data of its owner, name and kind before
 it reaches the database; without EVO_HUB_SECRETS_KEY the route answers 503 and keeps nothing. A member keeps at most
 MAX_SECRETS_PER_OWNER secrets.
@@ -45,6 +48,8 @@ from evo_agents.hub import tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     DEFAULT_GIT_USERNAME,
+    FORGE_KIND,
+    GITHUB_HOST,
     MAX_SECRET_BYTES,
     MAX_SECRETS_PER_OWNER,
     SECRET_KINDS,
@@ -87,7 +92,8 @@ REFUSALS = {403: {"model": ErrorBody}, 404: {"model": ErrorBody}}
 
 class SecretWrite(BaseModel):
     kind: Literal[SECRET_KINDS] = Field(
-        description="env: a variable of the agent's environment; git: what git's credential helper answers"
+        description="env: a variable of the agent's environment; git: what git's credential helper answers; forge: "
+        "a GitLab token the hub alone uses to drive merge requests, never leased to a run"
     )
     env_var: str | None = Field(
         None,
@@ -98,7 +104,7 @@ class SecretWrite(BaseModel):
     url_prefix: str | None = Field(
         None,
         max_length=MAX_URL_PREFIX_CHARS,
-        description="kind git only: the https prefix of the origins it answers for, such as "
+        description="kinds git and forge: the https prefix of the origins it answers for, such as "
         "https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash",
     )
     username: str | None = Field(
@@ -109,14 +115,21 @@ class SecretWrite(BaseModel):
         description=f"kind git only: the user git sends with the value; {DEFAULT_GIT_USERNAME} when left out",
     )
     projects: list[Annotated[str, Field(pattern=PROJECT_NAME)]] = Field(
-        min_length=1, max_length=MAX_BINDINGS, description="the projects whose runs get it; the writer role on each"
+        min_length=1,
+        max_length=MAX_BINDINGS,
+        description="the projects whose runs get it; the writer role on each, the admin role for kind forge",
     )
     workers: list[Annotated[str, Field(pattern=WORKER_NAME)]] = Field(
         default_factory=list,
         max_length=MAX_BINDINGS,
-        description="names of the caller's own workers that are not revoked; left out or empty for any of them",
+        description="names of the caller's own workers that are not revoked; left out or empty for any of them; "
+        "none for kind forge",
     )
-    expires_at: AwareDatetime | None = Field(None, description="after this no run gets it; in the future")
+    expires_at: AwareDatetime | None = Field(
+        None,
+        description="after this no run gets it, and the hub no longer uses one of kind forge; in the future; "
+        "required for kind forge",
+    )
     value: SecretStr = Field(
         min_length=1,
         max_length=MAX_SECRET_BYTES,
@@ -130,7 +143,7 @@ class Secret(BaseModel):
     name: str
     kind: Literal[SECRET_KINDS]
     env_var: str | None = Field(description="kind env: the variable it sets")
-    url_prefix: str | None = Field(description="kind git: the https prefix of the origins it answers for")
+    url_prefix: str | None = Field(description="kinds git and forge: the https prefix of the origins it answers for")
     username: str | None = Field(description="kind git: the user git sends with it")
     projects: list[str] = Field(description="the projects whose runs get it")
     workers: list[str] = Field(description="the workers it is bound to; empty for any worker of its owner")
@@ -241,12 +254,32 @@ def _target(body: SecretWrite) -> tuple[str | None, str | None, str | None]:
             raise HTTPException(422, refusal)
         return body.env_var, None, None
     if body.env_var is not None:
-        raise HTTPException(422, "env_var belongs to a secret of kind env, not git")
+        raise HTTPException(422, f"env_var belongs to a secret of kind env, not {body.kind}")
     if body.url_prefix is None:
         raise HTTPException(
-            422, "a secret of kind git needs url_prefix, the https prefix of the origins it answers for"
+            422, f"a secret of kind {body.kind} needs url_prefix, the https prefix of the origins it answers for"
         )
+    if body.kind == FORGE_KIND:
+        if body.username is not None:
+            raise HTTPException(422, "a secret of kind forge takes no username: GitLab reads the token from a header")
+        prefix = _url_prefix(body.url_prefix)
+        if urlsplit(prefix).hostname == GITHUB_HOST:
+            raise HTTPException(
+                422, "a secret of kind forge is for GitLab: on github.com the hub merges by the Curator's tiers"
+            )
+        return None, prefix, None
     return None, _url_prefix(body.url_prefix), body.username or DEFAULT_GIT_USERNAME
+
+
+def _forge_refusal(body: SecretWrite) -> str | None:
+    """Why ``body`` cannot be a forge secret, or None: it needs an end, and binds to no worker, as none ever gets it."""
+    if body.kind != FORGE_KIND:
+        return None
+    if body.expires_at is None:
+        return "a secret of kind forge needs expires_at: set the end of the GitLab token it holds"
+    if body.workers:
+        return "a secret of kind forge binds to no worker: only the hub uses it, and no run is ever leased it"
+    return None
 
 
 def _value(body: SecretWrite) -> str:
@@ -259,6 +292,8 @@ def _value(body: SecretWrite) -> str:
         raise HTTPException(
             422, "the value of a secret of kind git is one line: git's credential protocol has no other"
         )
+    if body.kind == FORGE_KIND and ("\n" in value or "\r" in value):
+        raise HTTPException(422, "the value of a secret of kind forge is one line: an HTTP header holds it")
     return value
 
 
@@ -271,14 +306,18 @@ def _unique(values: list[str]) -> list[str]:
     return kept
 
 
-async def _writable(conn: AsyncConnection, user: Principal, names: list[str]) -> list[int]:
-    """The ids of the projects ``names``; 404 for one ``user`` cannot see, 403 for one without the writer role."""
+async def _writable(conn: AsyncConnection, user: Principal, names: list[str], kind: str) -> list[int]:
+    """The ids of the projects ``names``; 404 for one ``user`` cannot see, 403 for one without the writer role, or
+    without the admin role for a secret of kind forge, which merges into the project's repos."""
+    needed = "admin" if kind == FORGE_KIND else "writer"
     ids = []
     for name in names:
         access = await project_access(conn, user, name)
-        if not has_role(access.role, "writer"):
+        if not has_role(access.role, needed):
             role = access.role or "no role"
-            raise HTTPException(403, f"a secret for project {name} needs the writer role on it; you hold {role}")
+            raise HTTPException(
+                403, f"a secret of kind {kind} for project {name} needs the {needed} role on it; you hold {role}"
+            )
         ids.append(access.project_id)
     return ids
 
@@ -352,10 +391,13 @@ async def put_secret(
     value = _value(body)
     if body.expires_at is not None and body.expires_at <= datetime.now(UTC):
         raise HTTPException(422, "expires_at is past already: a secret's end is in the future")
+    refusal = _forge_refusal(body)
+    if refusal is not None:
+        raise HTTPException(422, refusal)
     projects, workers = _unique(body.projects), _unique(body.workers)
     sealed = sealer.seal(value, secret_aad(user.user_id, name, body.kind))
     async with request.app.state.engine.begin() as conn:
-        project_ids = await _writable(conn, user, projects)
+        project_ids = await _writable(conn, user, projects, body.kind)
         worker_ids = await _own_workers(conn, user, workers)
         # One write of a member's secrets at a time, so two of them cannot both pass the count.
         users = tables.users

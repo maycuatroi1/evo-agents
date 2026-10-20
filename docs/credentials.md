@@ -95,8 +95,9 @@ The body of a PUT:
 
 - `kind`: `env` with `env_var`, an upper-case variable that is none of `DENIED_ENV` and starts with none of its
   prefixes (`EVO_`, `GIT_`, `LD_`, `DYLD_`, `PYTHON`), or `git` with `url_prefix`, an https URL without a user,
-  password, query or fragment, kept in the form of `normalize_origin`, and `username` (`oauth2` when left out). A field
-  of the other kind is refused.
+  password, query or fragment, kept in the form of `normalize_origin`, and `username` (`oauth2` when left out), or
+  `forge` with `url_prefix` alone (see [Forge secrets](#forge-secrets-the-hubs-own)). A field of another kind is
+  refused.
 - `projects`: one or more projects the caller holds writer on; a project the caller holds less on is 403, one they
   cannot see 404.
 - `workers`: optional names of the caller's own workers that are not revoked; any other name, another member's worker
@@ -127,13 +128,40 @@ evo-agents hub secret list --json
 evo-agents hub secret delete gitlab-docs
 ```
 
-`secret set NAME (--kind env --env-var VAR | --kind git --url-prefix URL [--username U]) --project P [--project P ...]
-[--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the value. It reads the value from stdin when stdin is not
+`secret set NAME (--kind env --env-var VAR | --kind git --url-prefix URL [--username U] | --kind forge --url-prefix
+URL) --project P [--project P ...] [--worker NAME ...] [--expires YYYY-MM-DD]` has no flag for the value. It reads the value from stdin when stdin is not
 a terminal, dropping one final line break, and otherwise asks for it with `getpass`, which does not echo it. The
 arguments are checked first, then that the machine is signed in, and only then is the value read, so a mistake never
 costs a paste. The value is checked for what the hub would refuse (empty, over `MAX_SECRET_BYTES`, a NUL, more than
 one line for kind `git`) without being shown, and no output or error of the command carries it. `--expires` ends the
 secret at 00:00 UTC of that day, as GitLab ends an access token on its expiry date, so the token's own date fits.
+
+## Forge secrets: the hub's own
+
+A secret of kind `forge` is a GitLab project or group access token (scope `api`, role Maintainer) with which the hub
+itself drives the merge requests of a project's repos under its `url_prefix`: it reads a merge request, its diff and
+the pipelines of a commit, rebases it, merges it with the sha it checked, plays a manual job, and opens a revert
+(`evo_agents/hub/server/gitlab.py`, plan gitlab-merge-queue). No run ever gets it.
+
+- Writing one needs the admin role on each of its projects, where `env` and `git` need writer. It needs `expires_at`,
+  takes no `username` (GitLab reads the token from the `PRIVATE-TOKEN` header) and no `workers`, holds one line, and
+  its `url_prefix` is not on github.com, where the hub merges by the Curator's tiers. Migration 0067 widens the checks
+  of `secrets` for it; the table has no new column.
+- It is never leased: the lease query reads kinds `env` and `git` alone (`credentials.LEASED_KINDS`). No route of the
+  worker protocol, `/mcp` or the API reads its value; `GET /v1/secrets` shows its owner its name and target, as for
+  every secret, and a run's leases never name it.
+- Only the hub's job worker opens it, right before it calls GitLab (`evo_agents/hub/server/forge.py`,
+  `forge_token`): of the forge secrets bound to the project, not deleted, not past their end, whose owner still holds
+  the admin role on the project, the one whose `url_prefix` covers the repo's origin the longest, then the one written
+  last. The value stays in the memory of those calls and travels in the `PRIVATE-TOKEN` header alone; no log line,
+  error, event or audit row holds it.
+- A project with no forge secret for a repo's origin gets no token: its merge requests on GitLab stay open for a
+  person, as before.
+
+```sh
+pbpaste | evo-agents hub secret set gitlab-merge --kind forge --url-prefix https://gitlab.example.org/group \
+  --project demo --expires 2027-09-15
+```
 
 ## Which leases a run gets
 

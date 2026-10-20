@@ -7180,7 +7180,8 @@
           "repeatable": false,
           "choices": [
             "env",
-            "git"
+            "git",
+            "forge"
           ]
         },
         {
@@ -63688,7 +63689,8 @@
               "type": "string",
               "enum": [
                 "env",
-                "git"
+                "git",
+                "forge"
               ],
               "title": "Kind"
             },
@@ -63714,7 +63716,7 @@
                 }
               ],
               "title": "Url Prefix",
-              "description": "kind git: the https prefix of the origins it answers for"
+              "description": "kinds git and forge: the https prefix of the origins it answers for"
             },
             "username": {
               "anyOf": [
@@ -63790,10 +63792,11 @@
               "type": "string",
               "enum": [
                 "env",
-                "git"
+                "git",
+                "forge"
               ],
               "title": "Kind",
-              "description": "env: a variable of the agent's environment; git: what git's credential helper answers"
+              "description": "env: a variable of the agent's environment; git: what git's credential helper answers; forge: a GitLab token the hub alone uses to drive merge requests, never leased to a run"
             },
             "env_var": {
               "anyOf": [
@@ -63819,7 +63822,7 @@
                 }
               ],
               "title": "Url Prefix",
-              "description": "kind git only: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash"
+              "description": "kinds git and forge: the https prefix of the origins it answers for, such as https://gitlab.example.org/group; kept as https://host/path, without .git or a trailing slash"
             },
             "username": {
               "anyOf": [
@@ -63845,7 +63848,7 @@
               "maxItems": 100,
               "minItems": 1,
               "title": "Projects",
-              "description": "the projects whose runs get it; the writer role on each"
+              "description": "the projects whose runs get it; the writer role on each, the admin role for kind forge"
             },
             "workers": {
               "items": {
@@ -63855,7 +63858,7 @@
               "type": "array",
               "maxItems": 100,
               "title": "Workers",
-              "description": "names of the caller's own workers that are not revoked; left out or empty for any of them"
+              "description": "names of the caller's own workers that are not revoked; left out or empty for any of them; none for kind forge"
             },
             "expires_at": {
               "anyOf": [
@@ -63868,7 +63871,7 @@
                 }
               ],
               "title": "Expires At",
-              "description": "after this no run gets it; in the future"
+              "description": "after this no run gets it, and the hub no longer uses one of kind forge; in the future; required for kind forge"
             },
             "value": {
               "type": "string",
@@ -63898,7 +63901,8 @@
               "type": "string",
               "enum": [
                 "env",
-                "git"
+                "git",
+                "forge"
               ],
               "title": "Kind"
             },
@@ -63924,7 +63928,7 @@
                 }
               ],
               "title": "Url Prefix",
-              "description": "kind git: the https prefix of the origins it answers for"
+              "description": "kinds git and forge: the https prefix of the origins it answers for"
             },
             "username": {
               "anyOf": [

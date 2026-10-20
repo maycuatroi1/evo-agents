@@ -1313,6 +1313,47 @@ def test_0066_keeps_the_revisions_of_autonomy_policies_and_proposals_of_one_and_
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
 
 
+def test_0067_takes_forge_secrets_with_a_url_prefix_and_an_end_and_going_back_deletes_them(hub_db):
+    move_to(hub_db, "0066")
+    t = hub_tables
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+    sealed = {"sealed": b"s" * 17, "nonce": b"n" * 12, "key_id": "0123abcd"}
+    prefix = "https://gitlab.example.org/northwind"
+    forge = {"owner_id": ids["user"], "name": "gitlab-merge", "kind": "forge", "url_prefix": prefix, **sealed}
+    forge["expires_at"] = func.now() + DAY
+    git = {"owner_id": ids["user"], "name": "gitlab-push", "kind": "git", "url_prefix": prefix, "username": "oauth2"}
+    with live.connect(hub_db) as conn:
+        conn.execute(insert(t.secrets).values({**git, **sealed}))
+        with pytest.raises(errors.CheckViolation):  # 0011 knows env and git alone
+            conn.execute(insert(t.secrets).values(forge))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0067")
+    with live.connect(hub_db) as conn:
+        forge_id = one(conn, insert(t.secrets).values(forge).returning(t.secrets.c.id))
+        conn.execute(insert(t.secret_bindings).values(secret_id=forge_id, project_id=ids["project"]))
+        for bad in (
+            {**forge, "name": "no-end", "expires_at": None},  # a forge secret always ends
+            {**forge, "name": "no-prefix", "url_prefix": None},
+            {**forge, "name": "with-user", "username": "oauth2"},  # GitLab reads the token from a header
+            {**forge, "name": "other", "kind": "ssh"},
+            {**git, **sealed, "name": "git-no-prefix", "url_prefix": None},
+        ):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(t.secrets).values(bad))
+    s, b = t.secrets, t.secret_bindings
+    assert query(hub_db, select(s.c.name, s.c.kind).order_by(s.c.name)) == [
+        ("gitlab-merge", "forge"),
+        ("gitlab-push", "git"),
+    ]
+    # Going back deletes the forge secrets and their bindings, and the checks of 0011 hold again.
+    move_to(hub_db, "0066", down=True)
+    assert query(hub_db, select(s.c.name, s.c.kind)) == [("gitlab-push", "git")]
+    assert query(hub_db, select(func.count()).select_from(b)) == [(0,)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0067") :]
+
+
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
     migrate(hub_db.dsn)
     move_to(hub_db, "base", down=True)

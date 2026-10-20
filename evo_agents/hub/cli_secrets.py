@@ -7,7 +7,9 @@ when stdin is not a terminal, one final line break dropped, else asked for with 
 The value is checked here for what the hub refuses anyway (empty, too long, a NUL, more than one line for kind git),
 and never printed, not even in an error. Every check of the arguments comes before the value is read, so a mistyped
 flag never costs a paste. ``--expires YYYY-MM-DD`` ends the secret at 00:00 UTC of that day, as GitLab ends an access
-token on its expiry date.
+token on its expiry date. Kind ``forge`` is a GitLab token the hub alone uses to drive the merge requests of the
+project's repos under ``--url-prefix``: it needs ``--expires`` and the admin role on each ``--project``, and takes no
+``--username`` and no ``--worker``, as no run ever gets it.
 
 ``list`` prints the caller's own secrets without their values (GET /v1/secrets), and ``delete`` deletes one (DELETE
 /v1/secrets/{name}): its value and bindings go, and the leases of it still out are revoked. ``hub run credentials``,
@@ -55,7 +57,7 @@ from evo_agents.hub.accounts import (
 )
 from evo_agents.hub.cli_client import EXIT_FAILED, _client_command, _print_json, _signed_in, _table, _when
 from evo_agents.hub.contract import json_option, returns_array, returns_object
-from evo_agents.hub.credentials import MAX_SECRET_BYTES, SECRET_KINDS, SECRET_NAME, env_name_refusal
+from evo_agents.hub.credentials import FORGE_KIND, MAX_SECRET_BYTES, SECRET_KINDS, SECRET_NAME, env_name_refusal
 from evo_agents.hub.curator import money
 
 EXIT_USAGE = 2
@@ -118,9 +120,17 @@ def target(args) -> dict:
             raise Refused(f"--env-var {refusal}")
         return {"env_var": args.env_var}
     if args.env_var is not None:
-        raise Refused("--env-var belongs to --kind env, not git")
+        raise Refused(f"--env-var belongs to --kind env, not {args.kind}")
     if args.url_prefix is None:
-        raise Refused("--kind git needs --url-prefix, the https prefix of the origins it answers for")
+        raise Refused(f"--kind {args.kind} needs --url-prefix, the https prefix of the origins it answers for")
+    if args.kind == FORGE_KIND:
+        if args.username is not None:
+            raise Refused("--kind forge takes no --username: GitLab reads the token from a header")
+        if args.worker:
+            raise Refused("--kind forge takes no --worker: only the hub uses it, and no run is ever leased it")
+        if args.expires is None:
+            raise Refused("--kind forge needs --expires, the day the GitLab token it holds ends")
+        return {"url_prefix": args.url_prefix}
     return {"url_prefix": args.url_prefix, **({"username": args.username} if args.username is not None else {})}
 
 
@@ -158,16 +168,22 @@ def check_value(kind: str, value: str) -> None:
         raise Refused("the value holds a NUL character, which a secret's value may not")
     if kind == "git" and ("\n" in value or "\r" in value):
         raise Refused("the value of a secret of kind git is one line: git's credential protocol has no other")
+    if kind == FORGE_KIND and ("\n" in value or "\r" in value):
+        raise Refused("the value of a secret of kind forge is one line: an HTTP header holds it")
 
 
 def _target_text(secret: dict) -> str:
     if secret["kind"] == "env":
         return secret["env_var"] or "-"
+    if secret["kind"] == FORGE_KIND:
+        return secret["url_prefix"] or "-"
     return f"{secret['url_prefix']} as {secret['username']}"
 
 
 def _workers_text(secret: dict) -> str:
-    return ", ".join(secret["workers"]) if secret["workers"] else "any worker of yours"
+    if secret["kind"] == FORGE_KIND:
+        return "used by the hub alone, never leased to a run"
+    return "on " + (", ".join(secret["workers"]) if secret["workers"] else "any worker of yours")
 
 
 @_client_command
@@ -193,7 +209,7 @@ def cmd_set(args) -> int:
     ends = f"; it ends {_when(written['expires_at'])} UTC" if written["expires_at"] else ""
     print(
         f"{verb} secret {written['name']} ({written['kind']}, {_target_text(written)}) for project(s) {projects}, "
-        f"on {_workers_text(written)}{ends}. The hub keeps the value sealed and never shows it again."
+        f"{_workers_text(written)}{ends}. The hub keeps the value sealed and never shows it again."
     )
     return 0
 
@@ -214,7 +230,7 @@ def cmd_list(args) -> int:
             s["kind"],
             _target_text(s),
             ", ".join(s["projects"]),
-            ", ".join(s["workers"]) or "any",
+            "-" if s["kind"] == FORGE_KIND else ", ".join(s["workers"]) or "any",
             _when(s["expires_at"]),
             _when(s["updated_at"]),
         )
@@ -254,13 +270,15 @@ def register_secrets(hsub) -> None:
         "--kind",
         required=True,
         choices=SECRET_KINDS,
-        help="env: a variable of the agent's environment; git: what git's credential helper answers",
+        help="env: a variable of the agent's environment; git: what git's credential helper answers; forge: a GitLab "
+        "token the hub alone uses to merge the project's merge requests, never leased to a run",
     )
     put.add_argument("--env-var", metavar="VAR", help="kind env: the variable it sets, such as CLAUDE_CODE_OAUTH_TOKEN")
     put.add_argument(
         "--url-prefix",
         metavar="URL",
-        help="kind git: the https prefix of the origins it answers for, such as https://gitlab.example.org/group",
+        help="kinds git and forge: the https prefix of the origins it answers for, such as "
+        "https://gitlab.example.org/group",
     )
     put.add_argument("--username", metavar="USER", help="kind git: the user git sends with the value (default oauth2)")
     put.add_argument(
@@ -268,7 +286,7 @@ def register_secrets(hsub) -> None:
         required=True,
         action="append",
         metavar="PROJECT",
-        help="a project whose runs get it, on which you hold writer; repeat it for several",
+        help="a project whose runs get it, on which you hold writer (admin for kind forge); repeat it for several",
     )
     put.add_argument(
         "--worker",
@@ -277,7 +295,9 @@ def register_secrets(hsub) -> None:
         help="only runs on this worker of yours get it; repeat it for several (default: any worker of yours)",
     )
     put.add_argument(
-        "--expires", metavar="YYYY-MM-DD", help="no run gets it from 00:00 UTC of this day on (default: no end)"
+        "--expires",
+        metavar="YYYY-MM-DD",
+        help="no run gets it from 00:00 UTC of this day on (default: no end; kind forge needs one)",
     )
     put.set_defaults(func=cmd_set)
 
