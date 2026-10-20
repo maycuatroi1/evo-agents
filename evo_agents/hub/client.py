@@ -62,6 +62,7 @@ DIR_MODE = 0o700
 FILE_MODE = 0o600
 LOGIN_HINT = "run `evo-agents hub login --url URL`"
 HOME_VARIABLE = "EVO_HUB_HOME"  # the directory of the login, instead of ~/.evo/hub
+TRANSIENT = frozenset({408, 429, 502, 503, 504})  # answers that may not come again
 
 
 class HubError(Exception):
@@ -72,6 +73,16 @@ class HubError(Exception):
         self.status = status
         self.code = code
         self.payload = payload  # the hub's JSON error body, such as the current version a 409 carries
+
+    @property
+    def from_hub(self) -> bool:
+        """The answer is the hub's own error, ``{error, message}`` (``evo_agents.hub.server.errors``), and not a page
+        of a proxy in front of it."""
+        return (
+            isinstance(self.code, str)
+            and isinstance(self.payload, dict)
+            and isinstance(self.payload.get("message"), str)
+        )
 
 
 class NotSignedIn(HubError):
@@ -85,6 +96,13 @@ class Unreachable(HubError):
     def __init__(self, message: str, refused: bool = False):
         super().__init__(message)
         self.refused = refused
+
+
+def transient(exc: HubError) -> bool:
+    """Whether the failure may pass: sending the same request again later may succeed. That is no answer, a 408, 429,
+    502, 503 or 504, or a 404 that is not the hub's own: the proxy in front of a hub answers 502 or 404 for a moment
+    while the hub is redeployed."""
+    return isinstance(exc, Unreachable) or exc.status in TRANSIENT or (exc.status == 404 and not exc.from_hub)
 
 
 @dataclass(frozen=True)
