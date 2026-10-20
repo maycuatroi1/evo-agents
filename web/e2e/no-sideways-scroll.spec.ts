@@ -1,6 +1,7 @@
 import type { Page } from "@playwright/test";
 
-import { createChatByApi, sendByApi, signedInPerson } from "./support/chats";
+import { createAgentByApi } from "./support/agents";
+import { createChatByApi, openDirectByApi, sendByApi, signedInPerson } from "./support/chats";
 import { expect, type Member, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, machineToken } from "./support/hub";
 import { seedInsights } from "./support/insights";
@@ -276,8 +277,12 @@ for (const width of WIDTHS) {
 
 for (const width of WIDTHS) {
   test(`chats never scroll sideways at ${width} px`, async ({ page, member }) => {
-    const me = await member([{ role: "writer", maxLevel: "internal" }]);
+    const me = await member([{ role: "admin", maxLevel: "internal" }]);
     const project = me.projects[0];
+    // Agents enough to fill the row at the head of the list, one with a long unbroken name: the row scrolls on its own.
+    for (const index of [1, 2, 3, 4, 5, 6]) await createAgentByApi(me, project, { handle: `wide-${index}-${project}`.slice(0, 100), name: `${LONG}-${index}` });
+    const direct = await openDirectByApi(me, project);
+    await sendByApi(me, direct.id, `${LONG}${LONG}`);
     const mai = await signedInPerson("wide", [project]);
     const chat = await createChatByApi(me, { title: `${LONG}${LONG}`.slice(0, 120), people: [mai.login], agents: [project] });
     const root = await sendByApi(me, chat.id, `${LONG}${LONG} https://github.com/example-org/${LONG}/pull/7\n\n\`\`\`\n${LONG}${LONG}${LONG}\n\`\`\``);
@@ -285,6 +290,7 @@ for (const width of WIDTHS) {
     await noSidewaysScroll(page, [width], [
       { path: "/chats", ready: shown("chats-rows") },
       { path: `/chats/${chat.id}`, ready: shown("chat-messages") },
+      { path: `/chats/${direct.id}`, ready: shown("chat-messages") },
       // Below 1536 px the thread is a sheet, outside the page's main.
       { path: `/chats/${chat.id}?thread=${root.id}`, ready: (page) => expect(page.getByTestId("chat-thread")).toHaveAttribute("data-state", "ready") },
     ]);

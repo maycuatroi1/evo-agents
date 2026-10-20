@@ -1079,7 +1079,9 @@
           "restricted",
           "last_seq",
           "last_read_seq",
-          "budget_usd"
+          "budget_usd",
+          "kind",
+          "image_url"
         ],
         "schema": "Chat"
       }
@@ -1107,7 +1109,12 @@
           "last_seq",
           "unread",
           "people",
-          "agents"
+          "agents",
+          "kind",
+          "image_url",
+          "direct_agent",
+          "faces",
+          "last_message"
         ],
         "schema": "ChatSummary"
       }
@@ -30753,6 +30760,102 @@
           }
         }
       },
+      "/v1/chats/direct/{handle}": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Open Direct",
+          "description": "The caller's direct chat with agent ``handle``: the one there is (200), or one made now (201).",
+          "operationId": "open_direct_v1_chats_direct__handle__put",
+          "parameters": [
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "an agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "an agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "201": {
+              "description": "the direct chat, made now",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/people/{login}": {
         "put": {
           "tags": [
@@ -31109,6 +31212,306 @@
                 }
               },
               "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "/v1/chats/{chat_id}/image": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Put Image",
+          "description": "Set the group chat's image, a PNG, JPEG or WebP image: its members see it in their list and its header.",
+          "operationId": "put_image_v1_chats__chat_id__image_put",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarUpload"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Delete Image",
+          "description": "Take the group chat's image off: the web draws the faces of its members again.",
+          "operationId": "delete_image_v1_chats__chat_id__image_delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Get Image",
+          "description": "The group chat's image, for its members; 404 when it has none.",
+          "operationId": "get_image_v1_chats__chat_id__image_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the image the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the image the browser holds"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "image/png": {},
+                "image/jpeg": {},
+                "image/webp": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "304": {
+              "description": "the image the browser holds, named by If-None-Match, is the chat's still"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
             },
             "422": {
               "description": "Validation Error",
@@ -38966,6 +39369,27 @@
               "type": "number",
               "title": "Budget Usd",
               "description": "what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "group",
+                "direct"
+              ],
+              "title": "Kind",
+              "description": "group: members are added and removed; direct: one person and one agent, for good"
+            },
+            "image_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Image Url",
+              "description": "the image its members set, on this hub; null for none, and always for a direct chat"
             }
           },
           "type": "object",
@@ -38980,7 +39404,9 @@
             "restricted",
             "last_seq",
             "last_read_seq",
-            "budget_usd"
+            "budget_usd",
+            "kind",
+            "image_url"
           ],
           "title": "Chat"
         },
@@ -39135,6 +39561,18 @@
               "title": "Deleted",
               "description": "an agent deleted since: it takes no new work, and keeps its name",
               "default": false
+            },
+            "avatar_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avatar Url",
+              "description": "a person's GitHub avatar; null for a login that never signed in, an agent or the hub"
             }
           },
           "type": "object",
@@ -39194,7 +39632,8 @@
                 "reaction_added",
                 "reaction_removed",
                 "member_added",
-                "member_removed"
+                "member_removed",
+                "image_changed"
               ],
               "title": "Kind"
             },
@@ -39233,6 +39672,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatImageChange"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "an image_changed event's image"
             }
           },
           "type": "object",
@@ -39284,6 +39734,88 @@
           ],
           "title": "ChatEvents"
         },
+        "ChatImageChange": {
+          "properties": {
+            "image_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Image Url",
+              "description": "the chat's image now; null once it was taken off"
+            },
+            "by": {
+              "type": "string",
+              "title": "By",
+              "description": "the person who set it or took it off"
+            }
+          },
+          "type": "object",
+          "required": [
+            "image_url",
+            "by"
+          ],
+          "title": "ChatImageChange"
+        },
+        "ChatLastMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "thread_root_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Root Id"
+            },
+            "author": {
+              "$ref": "#/components/schemas/ChatAuthor"
+            },
+            "preview": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Preview",
+              "description": "its text as one line without markdown, at most 140 characters, an ellipsis last when cut; null when the reader does not clear its label"
+            },
+            "hidden": {
+              "type": "boolean",
+              "title": "Hidden",
+              "description": "the reader does not clear its label: its text is left out"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "thread_root_id",
+            "author",
+            "preview",
+            "hidden",
+            "created_at"
+          ],
+          "title": "ChatLastMessage",
+          "description": "The latest message of a chat's main line, as its list shows it: the messages that start no thread, and in a\ndirect chat its threads too, whose answers the web shows under the message they answer."
+        },
         "ChatMemberChange": {
           "properties": {
             "member": {
@@ -39325,7 +39857,8 @@
                     "login",
                     "handle",
                     "project",
-                    "thread"
+                    "thread",
+                    "direct"
                   ]
                 },
                 {
@@ -39525,13 +40058,26 @@
               "type": "string",
               "format": "date-time",
               "title": "Added At"
+            },
+            "avatar_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avatar Url",
+              "description": "their GitHub avatar; null for a login that never signed in"
             }
           },
           "type": "object",
           "required": [
             "login",
             "added_by",
-            "added_at"
+            "added_at",
+            "avatar_url"
           ],
           "title": "ChatPerson"
         },
@@ -39998,6 +40544,57 @@
               },
               "type": "array",
               "title": "Agents"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "group",
+                "direct"
+              ],
+              "title": "Kind",
+              "description": "group, or direct: one person and one agent"
+            },
+            "image_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Image Url",
+              "description": "the image its members set; null for none, and always for a direct chat"
+            },
+            "direct_agent": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatAuthor"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a direct chat's agent, whose avatar is its face; null for a group"
+            },
+            "faces": {
+              "items": {
+                "$ref": "#/components/schemas/ChatAuthor"
+              },
+              "type": "array",
+              "title": "Faces",
+              "description": "at most 3 members other than the reader, in the order they were added: what the web draws for a group chat without an image"
+            },
+            "last_message": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatLastMessage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the latest message of its main line; null for none"
             }
           },
           "type": "object",
@@ -40010,7 +40607,12 @@
             "last_seq",
             "unread",
             "people",
-            "agents"
+            "agents",
+            "kind",
+            "image_url",
+            "direct_agent",
+            "faces",
+            "last_message"
           ],
           "title": "ChatSummary"
         },

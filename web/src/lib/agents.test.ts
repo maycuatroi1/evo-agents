@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import { type Agent, agentModels, agentProblems, agentWorkers, allowed, allows, allowsWorker, needsProfileDaemon, profileField, usableAgents } from "./agents";
-import { agentInitial, inkOn, normalizedItem, PALETTE, validItem } from "./agent-rules";
+import { normalizedItem, PALETTE, validItem } from "./agent-rules";
+import { agentInitial, inkOn } from "./avatars";
 
 function agent(overrides: Partial<Agent> = {}): Agent {
   return {

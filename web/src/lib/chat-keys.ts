@@ -1,7 +1,8 @@
 import { queryOptions } from "@tanstack/react-query";
 import type { Route } from "next";
 
-import { call } from "@/lib/api/client";
+import { type ApiClient, call } from "@/lib/api/client";
+import { csrfHeaders } from "@/lib/api/csrf";
 import type { components } from "@/lib/api/schema";
 import type { ApiSource } from "@/lib/queries";
 
@@ -10,7 +11,8 @@ type ChatSummary = components["schemas"]["ChatSummary"];
 
 /**
  * What other pages need of group chats (the sidebar's unread count, the breadcrumb's chat title, a chat run's link
- * back to its chat), apart from `chat-queries.ts` and `chats.ts`, so that those pages do not load the Chats pages' code.
+ * back to its chat, the Agents pages' Chat button), apart from `chat-queries.ts` and `chats.ts`, so that those pages do
+ * not load the Chats pages' code.
  */
 export const chatKeys = {
   all: ["chats"] as const,
@@ -44,4 +46,18 @@ export function chatsHref(): Route {
 /** A chat's page; at one message when given, as a notice links to it (`chats.chat_link`). */
 export function chatHref(id: number, message?: number | null): Route {
   return (message ? `/chats/${id}?message=${message}` : `/chats/${id}`) as Route;
+}
+
+/** The query parameter that opens a chat with its composer focused, then leaves the address. */
+export const COMPOSE_PARAM = "compose";
+
+/** A chat's page with its composer focused: where an agent's avatar or its Chat button leads. */
+export function chatComposeHref(id: number): Route {
+  return `/chats/${id}?${COMPOSE_PARAM}=1` as Route;
+}
+
+/** The visitor's direct chat with agent `handle`: the one there is, or one made now (PUT /v1/chats/direct/{handle}). */
+export async function openDirectChat(api: ApiClient, handle: string): Promise<Chat> {
+  const headers = await csrfHeaders(api);
+  return call(api.PUT("/v1/chats/direct/{handle}", { params: { path: { handle } }, headers }));
 }
