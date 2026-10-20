@@ -569,7 +569,7 @@ def unchanged(project: Project) -> BuildReport | None:
 def _build(project: Project, report: BuildReport, store: Store | None, memo: Memo | None) -> None:
     started = time.monotonic()
     corpus = project.corpus()
-    own_memo = memo is None
+    own_memo, own_store = memo is None, store is None
     if memo is None:
         path = memo_path(project)
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -607,8 +607,13 @@ def _build(project: Project, report: BuildReport, store: Store | None, memo: Mem
         report.nodes, report.edges, report.units = counts["nodes"], counts["edges"], counts["units"]
         report.dangling_edges = coverage["dangling_edges"]
     finally:
+        # Since Python 3.11 a connection left open is freed only by the cycle collector (its statement cache refers back
+        # to it), and Windows cannot replace a file a connection holds: the next rebuild would fail on graph.sqlite-wal.
+        if own_store and store is not None:
+            store.close()
         if own_memo:
             memo.close()
+        corpus.close()
     report.seconds = round(time.monotonic() - started, 3)
 
 
