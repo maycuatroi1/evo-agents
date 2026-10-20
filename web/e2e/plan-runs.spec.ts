@@ -25,6 +25,7 @@ import {
   seedPlanRunPlan,
   seedRunPlan,
   workerHeartbeat,
+  pickTile,
 } from "./support/runs";
 import { toast } from "./support/toast";
 
@@ -103,7 +104,7 @@ test("a writer runs a plan from its page, and the page follows the run until it 
   await dialog.getByTestId("plan-run-model-input").fill(MODELS[0]);
   await expect(dialog.getByTestId("plan-run-model-error")).toContainText("Pick a runtime for this model");
   await expect(dialog.getByTestId("plan-run-submit")).toBeDisabled();
-  await dialog.getByRole("radio", { name: "Claude Code" }).check();
+  await pickTile(dialog, /^Claude Code/);
   await expect(dialog.getByTestId("plan-run-model-error")).toHaveCount(0);
   await expect(dialog.getByTestId("plan-run-model-select").locator("optgroup option")).toHaveCount(MODELS.length);
   await expect(dialog.getByTestId("plan-run-timeout")).toHaveValue("24");

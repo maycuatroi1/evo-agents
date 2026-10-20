@@ -55,12 +55,15 @@ export const CHANGED_LINES = {
   ],
 };
 
+/** Step 14's verify is a manual check in prose; the hub refuses such a verify on a step that is not done, so a reopened step 14 gets a shell one. */
+const REOPENED_VERIFY_OF_STEP_14 = "evo-agents hub decision show 14 --json | jq -e '.state == \"answered\"'";
+
 function reopened(body: Body): Body {
   const steps = (body.steps as Step[]).map((step) => {
     if (step.id < 10) return step;
     const { done_at: _doneAt, evidence: _evidence, ...rest } = step;
     const status = step.id === 10 ? "in_progress" : step.id === 11 || step.id === 12 ? "blocked" : "pending";
-    return { ...rest, status };
+    return { ...rest, ...(step.id === 14 ? { verify: REOPENED_VERIFY_OF_STEP_14 } : {}), status };
   });
   return { ...body, steps };
 }
