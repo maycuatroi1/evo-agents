@@ -122,7 +122,11 @@ def web(client, db, login: str) -> SimpleNamespace:
     """A new web session of ``login``: its id, and the headers of a read and of a write from a page of the hub."""
     token, session_id = live.web_session(db, login)
     cookie = {"Cookie": f"{SESSION_COOKIE}={token}"}
-    write = {**cookie, CSRF_HEADER: csrf_token(client.app.state.config.session_secret, hash_token(token)), "Origin": ORIGIN}
+    write = {
+        **cookie,
+        CSRF_HEADER: csrf_token(client.app.state.config.session_secret, hash_token(token)),
+        "Origin": ORIGIN,
+    }
     return SimpleNamespace(id=session_id, read=cookie, write=write)
 
 
@@ -301,7 +305,10 @@ def test_a_reply_to_a_decisions_message_answers_it_in_words(northwind):
     sent = sent_decision(northwind)
     words = "Postgres, and keep the SQLite file a week."
     assert said(client, text(words, reply_to=sent.message["id"])) == "replied"
-    assert northwind.fake.last()["text"] == f"Your answer to decision #{sent.decision['id']} went to run #{sent.run['id']}."
+    assert (
+        northwind.fake.last()["text"]
+        == f"Your answer to decision #{sent.decision['id']} went to run #{sent.run['id']}."
+    )
     shown = client.get(f"/v1/projects/{PROJECT}/decisions/{sent.decision['id']}", headers=northwind.headers["owner"])
     assert (shown.json()["state"], shown.json()["answer_text"]) == ("answered", words)
     assert said(client, text("to nothing", reply_to="msg-424242")) == "replied"
@@ -335,7 +342,9 @@ def test_a_chat_whose_session_ended_answers_nothing_and_is_turned_off(northwind)
     ((user_id,),) = sql(db, select(u.c.id).where(u.c.login == OWNER))
 
     async def notify(conn):
-        return await notifications.notify(conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Failed")
+        return await notifications.notify(
+            conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Failed"
+        )
 
     on_hub(client, notify)
     assert deliver(client) == {"delivered": 1, "retried": 0, "failed": 1}
@@ -443,7 +452,9 @@ def test_a_project_that_does_not_grant_chats_write_takes_no_message(northwind):
 def test_a_plugin_reads_its_own_config_alone_with_its_secrets_unsealed(northwind):
     client = northwind.client
     config = client.app.state.config
-    written = client.post("/v1/plugins/lumen-relay/config", json={"values": {"api_key": "lumen-key"}}, headers=northwind.headers["admin"])
+    written = client.post(
+        "/v1/plugins/lumen-relay/config", json={"values": {"api_key": "lumen-key"}}, headers=northwind.headers["admin"]
+    )
     assert written.status_code == 200, written.text
 
     async def read(conn):
@@ -504,7 +515,9 @@ def test_a_channel_class_that_does_not_load_fails_its_own_deliveries_alone(north
     sql(db, insert(c).values(user_id=user_id, kind="lumen-broken", config={}))
 
     async def notify(conn):
-        return await notifications.notify(conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Run failed")
+        return await notifications.notify(
+            conn, user_id=user_id, kind="notice", notice_kind="run_failed", title="Run failed"
+        )
 
     on_hub(client, notify)
     assert deliver(client) == {"delivered": 2, "retried": 0, "failed": 1}  # the web and northwind go out

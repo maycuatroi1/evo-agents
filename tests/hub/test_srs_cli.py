@@ -1,7 +1,10 @@
-"""``evo-agents hub srs list|show|import|export|submit|approve`` (``evo_agents.hub.cli_srs``), as members run them
-against a hub that serves the core plugin srs: the commands and their ``--json`` keys are in the contract (seam
-hub-cli-v1), an import prints its preview and the problems that refuse it, an export writes the Markdown imported, and
-approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins).
+"""``evo-agents hub srs list|show|import|export|submit|approve|withdraw|retire|archive|unarchive``
+(``evo_agents.hub.cli_srs``), as members run them against a hub that serves the core plugin srs: the commands and their
+``--json`` keys are in the contract (seam hub-cli-v1), an import prints its preview and the problems that refuse it, an
+export writes the Markdown imported, approving follows the hub's rules (criterion a2 of plan srs-tasks-plugins), a
+version in review is withdrawn by its author or an admin (criterion a2 of plan srs-document-lifecycle), an admin
+retires items by their codes, after a dry run that writes nothing (criterion a3 of that plan), and archives a document
+out of ``list`` (``list --all`` shows it) and unarchives it (criterion a1 of that plan).
 
 The parsing runs without Postgres or the hub-server extra, as the client does; everything that needs the hub skips
 without EVO_HUB_TEST_DSN."""
@@ -26,15 +29,32 @@ needs_pg = pytest.mark.skipif(not pg.DSN, reason=pg.SKIP_REASON)
 
 def test_the_srs_commands_are_in_the_contract():
     printed = commands()
-    names = {f"hub srs {verb}" for verb in ("list", "show", "import", "export", "submit", "approve")}
-    assert names <= set(printed)
+    verbs = ("list", "show", "import", "export", "submit", "approve", "withdraw", "retire", "archive", "unarchive")
+    assert {f"hub srs {verb}" for verb in verbs} <= set(printed)
     listed = printed["hub srs list"]["json"]
     assert (listed["kind"], listed["schema"]) == ("array", "SrsDocumentSummary")
+    assert [o["flags"][0] for o in printed["hub srs list"]["options"]] == ["--project", "--all", "--json"]
+    for verb in ("archive", "unarchive"):
+        command = printed[f"hub srs {verb}"]
+        assert [p["metavar"] for p in command["positionals"]] == ["SLUG"]
+        assert [o["flags"][0] for o in command["options"]] == ["--project", "--json"]
+        assert (command["json"]["kind"], command["json"]["schema"]) == ("object", "SrsDocumentSummary")
     assert printed["hub srs import"]["json"]["schema"] == "SrsImportResult"
     assert printed["hub srs show"]["json"]["with"]["--item"]["schema"] == "SrsItemDetail"
     options = {o["flags"][0]: o for o in printed["hub srs approve"]["options"]}
     assert options["--role"]["choices"] == ["ba", "qa", "dev"] and options["--project"]["required"]
     assert printed["hub srs export"]["json"] is None
+    withdraw = printed["hub srs withdraw"]
+    assert [p["metavar"] for p in withdraw["positionals"]] == ["SLUG", "N"]
+    assert [o["flags"][0] for o in withdraw["options"]] == ["--project", "--comment", "--json"]
+    assert withdraw["json"]["schema"] == "SrsVersion"
+    retire = printed["hub srs retire"]
+    assert [(p["metavar"], p["repeatable"]) for p in retire["positionals"]] == [("SLUG", False), ("CODE", True)]
+    assert [o["flags"][0] for o in retire["options"]] == ["--project", "--summary", "--dry-run", "--json"]
+    assert (retire["json"]["schema"], retire["json"]["keys"]) == (
+        "SrsRetireResult",
+        ["document", "version", "dry_run", "dropped"],
+    )
 
 
 def test_srs_import_takes_no_slug_or_title_with_doc(monkeypatch, capsys, tmp_path):
@@ -126,3 +146,100 @@ def test_srs_import_export_submit_and_approve_from_the_command_line(hub, monkeyp
     assert approved["state"] == "approved"
     final = ok(srs(hub, monkeypatch, capsys, "owner", "list"))
     assert "demo-shop  srs   1       approved  1" in final.out
+
+
+@needs_pg
+def test_srs_withdraw_takes_a_version_out_of_review_for_good_from_the_command_line(hub, monkeypatch, capsys, tmp_path):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    early = srs(hub, monkeypatch, capsys, "alice", "withdraw", "demo-shop", "1")
+    assert early.code == 1 and "only a version in review is withdrawn" in early.err
+    ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1"))
+    other = srs(hub, monkeypatch, capsys, "bao", "withdraw", "demo-shop", "1")
+    assert other.code == 1 and "its author or an admin" in other.err
+    reason = ("--comment", "The gateway is not chosen yet")
+    printed = ok(srs(hub, monkeypatch, capsys, "alice", "withdraw", "demo-shop", "1", *reason))
+    assert printed.out == "demo-shop version 1 is withdrawn (round 1).\n"
+    shown = ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop"))
+    assert "v1 withdrawn by alice" in shown.out
+    again = srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1")
+    assert again.code == 1 and "is withdrawn: only a draft is submitted" in again.err
+
+    fewer = tmp_path / "fewer-retries.md"
+    fewer.write_text(SAMPLE.read_text(encoding="utf-8").replace("retried 3 times", "retried 2 times"), encoding="utf-8")
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(fewer), "--doc", "demo-shop"))
+    ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "2"))
+    by_admin = as_json(srs(hub, monkeypatch, capsys, "owner", "withdraw", "demo-shop", "2", "--json"))
+    assert_json_keys("hub srs withdraw", by_admin)
+    assert (by_admin["number"], by_admin["state"], by_admin["author"]) == (2, "withdrawn", "alice")
+
+
+@needs_pg
+def test_srs_retire_drops_items_by_code_after_a_dry_run_from_the_command_line(hub, monkeypatch, capsys):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    writer = srs(hub, monkeypatch, capsys, "alice", "retire", "demo-shop", "UC ORD-1")
+    assert writer.code == 1 and f"only an admin of project {PROJECT} retires items by their codes" in writer.err
+    preview = ok(srs(hub, monkeypatch, capsys, "owner", "retire", "demo-shop", "UC ORD-1", "--dry-run"))
+    assert preview.out == (
+        "Retiring would drop 3 items of demo-shop; nothing is written (a dry run):\n"
+        "  - UC ORD-1: Place an order (use case)\n"
+        "  - BR ORD1-1: Cart rules (business rule)\n"
+        "  - BR ORD1-2: Stock reservation (business rule)\n"
+    )
+    assert "v2" not in ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop")).out
+
+    done = as_json(srs(hub, monkeypatch, capsys, "owner", "retire", "demo-shop", "UC ORD-1", "BR ORD1-2", "--json"))
+    assert_json_keys("hub srs retire", done)
+    assert (done["document"], done["version"], done["dry_run"]) == ("demo-shop", 2, False)
+    assert [item["code"] for item in done["dropped"]] == ["UC ORD-1", "BR ORD1-1", "BR ORD1-2"]
+    assert set(done["dropped"][0]) == {"key", "kind", "code", "title"}
+    reason = ("--summary", "Returns move to their own document")
+    printed = ok(srs(hub, monkeypatch, capsys, "owner", "retire", "demo-shop", "UC RET-1", *reason))
+    assert printed.out == (
+        "Saved demo-shop version 3, a draft without 2 items:\n"
+        "  - UC RET-1: Return a book (use case)\n"
+        "  - BR RET1-1: Return window (business rule)\n"
+        f"`evo-agents hub srs submit demo-shop 3 --project {PROJECT}` sends it to review.\n"
+    )
+    assert "v3 draft by owner" in ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop")).out
+    unknown = srs(hub, monkeypatch, capsys, "owner", "retire", "demo-shop", "UC RET-1", "UC ORD-2", "--dry-run")
+    assert (
+        unknown.code == 1 and "error: code_unknown UC RET-1: 'UC RET-1' was the code of an item dropped" in unknown.err
+    )
+    assert "UC ORD-2" not in unknown.err
+
+
+@needs_pg
+def test_srs_archive_takes_a_document_out_of_list_and_unarchive_opens_it_again_from_the_command_line(
+    hub, monkeypatch, capsys
+):
+    ok(srs(hub, monkeypatch, capsys, "alice", "import", str(SAMPLE), "--slug", "demo-shop"))
+    writer = srs(hub, monkeypatch, capsys, "alice", "archive", "demo-shop")
+    assert writer.code == 1 and f"only an admin of project {PROJECT} archives a document" in writer.err
+    archived = as_json(srs(hub, monkeypatch, capsys, "owner", "archive", "demo-shop", "--json"))
+    assert_json_keys("hub srs archive", archived)
+    assert archived["slug"] == "demo-shop" and archived["archived_at"] is not None
+    assert as_json(srs(hub, monkeypatch, capsys, "bao", "list", "--json")) == []
+    every = as_json(srs(hub, monkeypatch, capsys, "bao", "list", "--all", "--json"))
+    assert_json_keys("hub srs list", every)
+    assert [(d["slug"], d["archived_at"]) for d in every] == [("demo-shop", archived["archived_at"])]
+    table = ok(srs(hub, monkeypatch, capsys, "bao", "list", "--all")).out.splitlines()
+    assert table[0].split() == ["SLUG", "KIND", "LATEST", "STATE", "APPROVED", "ARCHIVED"]
+    assert table[1].split()[:5] == ["demo-shop", "srs", "1", "draft", "-"] and table[1].split()[5] != "-"
+    assert "v1 draft by alice" in ok(srs(hub, monkeypatch, capsys, "bao", "show", "demo-shop")).out
+    closed = srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1")
+    assert closed.code == 1 and f"`evo-agents hub srs unarchive demo-shop --project {PROJECT}`" in closed.err
+    again = srs(hub, monkeypatch, capsys, "owner", "archive", "demo-shop")
+    assert again.code == 1 and "is archived already" in again.err
+
+    opened = ok(srs(hub, monkeypatch, capsys, "owner", "unarchive", "demo-shop"))
+    assert opened.out == "Unarchived demo-shop: it is in `srs list` again and takes changes.\n"
+    listed = as_json(srs(hub, monkeypatch, capsys, "bao", "list", "--json"))
+    assert [(d["slug"], d["archived_at"]) for d in listed] == [("demo-shop", None)]
+    unarchived = srs(hub, monkeypatch, capsys, "owner", "unarchive", "demo-shop", "--json")
+    assert unarchived.code == 1 and "is not archived" in unarchived.err
+    ok(srs(hub, monkeypatch, capsys, "alice", "submit", "demo-shop", "1"))
+    printed = ok(srs(hub, monkeypatch, capsys, "owner", "archive", "demo-shop"))
+    assert printed.out.startswith("Archived demo-shop: it is out of `srs list`, search and the knowledge graph")
+    reopened = as_json(srs(hub, monkeypatch, capsys, "owner", "unarchive", "demo-shop", "--json"))
+    assert_json_keys("hub srs unarchive", reopened)
+    assert reopened["archived_at"] is None

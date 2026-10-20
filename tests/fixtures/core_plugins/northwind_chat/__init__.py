@@ -25,7 +25,11 @@ MANIFEST = {
     "config": {
         "type": "object",
         "properties": {
-            "api_url": {"type": "string", "title": "Northwind Chat's API", "default": "https://chat.northwind.test/api"},
+            "api_url": {
+                "type": "string",
+                "title": "Northwind Chat's API",
+                "default": "https://chat.northwind.test/api",
+            },
             "token": {"type": "string", "title": "The bot's token", "x-secret": True},
             "webhook_secret": {"type": "string", "title": "The secret of the webhook", "x-secret": True},
             "clearance": {

@@ -8,7 +8,8 @@ run_as; the agent of any other run for the member who dispatched it; anyone else
 when that person sees it through the session's sink and, when the run's worker is another member's, when that member
 does too: what a tool answers reaches the machine the agent runs on.
 
-- ``read``, ``search`` and ``diff`` answer anyone with a grant on the project.
+- ``read``, ``search`` and ``diff`` answer anyone with a grant on the project. An archived document is out of
+  ``read``'s list of documents and of ``search``, and still read by its slug; ``propose`` and ``comment`` refuse it.
 - ``propose`` answers the agent of a chat run of @ba alone (the profile of the project's agent type ``ba``, while it
   is on). Its changes, checked as a save is, become the document's next version, written as the person and drafted by
   the run, and go to review at once; the person, its author, never approves it. Its schema takes no drop, and a code
@@ -341,7 +342,7 @@ async def propose(params: dict, context: CoreContext) -> dict:
 
 async def _comment(conn: AsyncConnection, who: Acting, args: dict) -> str:
     _ba_run(who, "comment", ("chat", "task"))
-    doc = await _document(conn, who, args["document"])
+    doc = await _document(conn, who, args["document"], lock=True)
     asked = reviews.CommentRequest(args["body"], args.get("version"), args.get("item"), args.get("parent_id"))
     row = await reviews.comment(conn, who.access, who.person, doc, asked, run_id=who.run_id)
     where = f"item {row.item_code or row.item}" if row.item else f"version {row.version}" if row.version else "it"

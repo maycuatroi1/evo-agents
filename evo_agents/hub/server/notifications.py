@@ -263,7 +263,9 @@ def _channel_class(kind: str) -> tuple[type[Channel] | None, str]:
     if kind in CHANNELS:
         return CHANNELS[kind], ""
     contributed = core_registry().contributions("channels")
-    found = next(((manifest, item) for manifest, item in contributed if item["name"] == kind and "python" in item), None)
+    found = next(
+        ((manifest, item) for manifest, item in contributed if item["name"] == kind and "python" in item), None
+    )
     if found is None:
         return None, f"the hub has no class for channels of kind {kind}"
     manifest, item = found

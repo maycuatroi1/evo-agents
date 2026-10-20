@@ -5,7 +5,8 @@ A change edits an item (its title, body, the steps of a business rule, its links
 one under a parent and after a sibling. When an item a change touches changed between the version the member opened
 and the latest one, the save is a conflict (409) whose detail holds both texts, and the member merges by hand; edits of
 different items merge. A use case's and a screen's fields are read again from the body; a table row's code, title and
-fields from its line.
+fields from its line. ``retiring`` turns codes into the changes that drop their items, for an admin who retires items
+by their codes rather than by their keys.
 """
 
 from __future__ import annotations
@@ -197,6 +198,17 @@ def _conflicts(latest: Snapshot, base: Snapshot, changes: list[Change], preamble
     return found
 
 
+def retiring(latest: Document, codes: list[str]) -> tuple[list[Change], list[str]]:
+    """The changes that drop the items of ``latest`` holding ``codes`` (each a code or an alias, compared as srs_codes
+    compares them, ``code_key``), each with its subtree, and the codes no item of ``latest`` holds. A code of an item
+    under another one retired, or a second code of the same item, adds no change: its item goes with the first."""
+    at = {code_key(code): index for index, item in enumerate(latest.items) for code in item.codes()}
+    unknown = list(dict.fromkeys(tidy(code) for code in codes if code_key(code) not in at))
+    chosen = {at[code_key(code)] for code in codes if code_key(code) in at}
+    tops = sorted(index for index in chosen if not chosen.intersection(latest.ancestors(index)))
+    return [Change(latest.items[index].key, retire=True) for index in tops], unknown
+
+
 def edited(latest: Snapshot, base: Snapshot, changes: list[Change], preamble: str | None = None) -> Document:
     """The content of the next version: ``changes``, made by a member who opened ``base``, applied to ``latest``.
     SrsError 409 with both texts of each item that changed since ``base``, 422 for a change that cannot apply."""
@@ -217,4 +229,4 @@ def edited(latest: Snapshot, base: Snapshot, changes: list[Change], preamble: st
     return draft.document(latest.doc.preamble if preamble is None else preamble.strip())
 
 
-__all__ = ["Change", "NewItem", "edited", "refresh", "step_label"]
+__all__ = ["Change", "NewItem", "edited", "refresh", "retiring", "step_label"]

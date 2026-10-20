@@ -419,7 +419,7 @@ def test_tier_schema_0057_takes_kind_kg_source_and_going_back_deletes_its_propos
     where = (info.c.table_name == "curator_changes") & (info.c.column_name == "knowledge")
     assert sql(db, select(func.count()).select_from(info).where(where)) == [(0,)]
     assert "kg_source" not in kind_check(db) and "'revert'" in kind_check(db)
-    assert migrate(db.dsn).applied == ("0057", "0058", "0059", "0060", "0061", "0062", "0063")
+    assert migrate(db.dsn).applied == ("0057", "0058", "0059", "0060", "0061", "0062", "0063", "0064")
     assert "kg_source" in kind_check(db)
 
 

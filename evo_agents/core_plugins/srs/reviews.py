@@ -1,11 +1,20 @@
-"""Deciding versions and keeping comments.
+"""Deciding versions and documents, and keeping comments.
 
 - ``submit``: a writer sends a draft to review once it has no error (``checks``); its review round goes up by one.
 - ``review``: a writer approves a version in review or asks for changes. Nobody who wrote a version since the one
   approved last (the version under review included) reviews it, admins included, and the agent of a run never does.
   A request for changes sends the version back to draft. An approval counts for a role the reviewer holds in the
   config's ``roles``; the version is approved once every role the ``approval_policy`` of the document's kind requires
-  approved it in this round, or after one approval when it requires none. Approving it supersedes every older version.
+  approved it in this round, or after one approval when it requires none. Approving it supersedes every older version
+  but a withdrawn one.
+- ``withdraw``: the author of a version in review, or an admin of the project, takes it out of review for good: it is
+  withdrawn, and never submitted, reviewed or approved again; a reason given is a comment on it. The agent of a run
+  never withdraws one.
+- ``archive``: an admin of the project archives a document, or unarchives it. An archived document is out of the list
+  of documents (unless asked for), of @ba's search and of the knowledge graph, still read by its slug, and takes no
+  write (``store.writable``); its codes stay held and its slug taken. The agent of a run never archives one.
+- ``admin``: what only an admin of the project does, never the agent of a run: archiving, unarchiving, and retiring
+  coded items by their codes (``server``, ``retire_items``).
 - ``comments``, ``comment``, ``resolve``: threads on a document, a version or an item; writers write them and close
   them, readers read them.
 """
@@ -28,6 +37,8 @@ from evo_agents.hub.server.projects import ProjectAccess
 from evo_agents.hub.server.security import Principal
 
 APPROVE, REQUEST_CHANGES = "approve", "request_changes"
+WITHDRAWN = "withdrawn"
+LAST_STATES = ("superseded", WITHDRAWN)  # a version in one never changes state again
 
 
 def writer(access: ProjectAccess, what: str) -> None:
@@ -84,7 +95,7 @@ async def _approve(conn: AsyncConnection, doc: DocumentRow, held: VersionRow) ->
     s = tables.srs
     v, d = s.versions, s.documents
     await conn.execute(update(v).where(v.c.id == held.id).values(state="approved", decided_at=func.now()))
-    older = and_(v.c.document_id == doc.id, v.c.number < held.number, v.c.state != "superseded")
+    older = and_(v.c.document_id == doc.id, v.c.number < held.number, v.c.state.not_in(LAST_STATES))
     await conn.execute(update(v).where(older).values(state="superseded"))
     await conn.execute(update(d).where(d.c.id == doc.id).values(approved_version=held.number))
 
@@ -143,6 +154,55 @@ async def review(
         if approved_by(settings.policy.get(doc.kind), [*approvals, mine]):
             await _approve(conn, doc, held)
     return await store.version(conn, doc, number)
+
+
+async def withdraw(
+    conn: AsyncConnection,
+    access: ProjectAccess,
+    user: Principal,
+    doc: DocumentRow,
+    number: int,
+    reason: str | None = None,
+) -> VersionRow:
+    """Withdraw version ``number`` of ``doc``, in review, as ``user``, its author or an admin of the project: it is
+    withdrawn for good, and ``reason``, when given, is a comment on it. Its row after. The caller holds the document's
+    row lock."""
+    if user.scope is not None:
+        raise SrsError(403, "the agent of a run never withdraws a version: its author or an admin of the project does")
+    writer(access, "withdrawing a version")
+    held = await store.version(conn, doc, number, lock=True)
+    if held.author_id != user.user_id and not has_role(access.role, "admin"):
+        raise SrsError(
+            403,
+            f"version {number} of {doc.slug} is {held.author}'s: its author or an admin of {access.name} withdraws it",
+        )
+    if held.state != "in_review":
+        raise SrsError(409, f"version {number} of {doc.slug} is {held.state}: only a version in review is withdrawn")
+    v = tables.srs.versions
+    await conn.execute(update(v).where(v.c.id == held.id).values(state=WITHDRAWN, decided_at=func.now()))
+    if reason:
+        await comment(conn, access, user, doc, CommentRequest(reason, version=number))
+    return await store.version(conn, doc, number)
+
+
+def admin(access: ProjectAccess, user: Principal, what: str) -> None:
+    """Only an admin of the project does ``what`` (such as "archives a document"), and never the agent of a run, whose
+    scope refuses it before anything else is read."""
+    if user.scope is not None:
+        raise SrsError(403, f"the agent of a run never {what}: an admin of the project does")
+    if not has_role(access.role, "admin"):
+        raise SrsError(403, f"only an admin of project {access.name} {what}")
+
+
+async def archive(conn: AsyncConnection, access: ProjectAccess, user: Principal, doc: DocumentRow, archived: bool):
+    """Archive ``doc`` (``archived``) or unarchive it, as ``user``, an admin of the project; 409 when it is so already.
+    The caller holds the document's row lock and reads the document again."""
+    admin(access, user, f"{'archives' if archived else 'unarchives'} a document")
+    if (doc.archived_at is not None) == archived:
+        state = "archived already" if archived else "not archived"
+        raise SrsError(409, f"document {doc.slug} of project {access.name} is {state}")
+    d = tables.srs.documents
+    await conn.execute(update(d).where(d.c.id == doc.id).values(archived_at=func.now() if archived else None))
 
 
 # Comments
@@ -282,11 +342,14 @@ __all__ = [
     "CommentRequest",
     "CommentRow",
     "ReviewRequest",
+    "admin",
     "approved_by",
+    "archive",
     "comment",
     "comments",
     "resolve",
     "review",
     "role_for",
     "submit",
+    "withdraw",
 ]
