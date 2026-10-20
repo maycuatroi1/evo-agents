@@ -2286,11 +2286,14 @@ machine](#a-chat-run-on-the-machine)). The checks:
   its claim), the verify of every step not done for a plan run (from its plan), the plan's verify and the project's
   hidden checks for a judge run (from what it reads first), with the PATH those commands run with. The daemon reads
   the programs of a command line as the shell runs them (`evo_agents.hub.verify_words.programs`): the first word of each
-  simple command, past assignments, keywords such as `if` and `!`, and wrappers that run another program (`env`,
-  `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c` argument; not the shell's builtins, a word the
-  shell expands, a relative path (a file of the worktree, not there yet), or what `python -m` and `uv run` run. After a
-  command that may change PATH (`source`, `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named
-  by its number alone, never its command or its program;
+  simple command, past assignments, keywords such as `if` and `!` and the options of `command`, `exec` and `time`, and
+  wrappers that run another program (`env`, `nice`, `nohup`, `timeout`, `xvfb-run`), and the commands of a `sh -c`
+  argument and of a `$(...)` or `<(...)`; a newline ends a command as `;` does. Not read: the shell's builtins, a word
+  the shell expands, a relative path (a file of the worktree, not there yet), what `python -m` and `uv run` run, a name
+  `command -v` looks up, a comment, or the body of a here-document. After a command that may change PATH (`source`,
+  `.`, `eval`, `export PATH=...`) it reads no further. A hidden check is named by its number alone, never its command or
+  its program. The hub refuses a plan whose new verify is not a shell command line ([hub.md](hub.md), Plans and their
+  copies in git);
 - for a run whose claim names a plugin's environment, the container provider can run its agent here: an engine that
   answers, the image (pulled by its digest when missing), a step run, headless ([Environments of
   plugins](#environments-of-plugins)).
