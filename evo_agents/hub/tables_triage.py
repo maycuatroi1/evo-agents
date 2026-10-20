@@ -1,12 +1,14 @@
 """The tables of the triage of failed runs (0039), which ``evo_agents.hub.tables`` adds to its metadata and exposes as
 its own attributes (``tables.triage_chats``, ``tables.run_triage``): queries name them there.
 
-triage_chats holds the group chat the hub opened for the triage of a plan's failed runs, or of a project's when the run
-has no plan (``plan_id`` NULL): one per plan and one per project without one. run_triage holds the thread of each
-failed run: its chat and the first message of the thread, the cause it failed of and whether the hub guessed it, the
-chat run its mention made, and how far a chain of reruns went. A run has one row at most, which is what makes the
-hub open one thread for a run however often it handles its failure. ``projects.triage_enabled`` is the switch of a
-project: off, a failed run sends its owner the notice ``run_failed`` and opens no thread.
+triage_chats holds the group chats the hub opened for the triage of failed runs: the project's (``plan_id`` NULL), one
+per project, which the failed runs of all its plans and its runs with no plan open their threads in; and one per plan
+for a plan kept apart from it (``evo_agents.hub.server.triage``: a label not at or below the project's default label, or
+a run whose owner the project's chat cannot take), the rows each plan had before staying as they were. run_triage holds
+the thread of each failed run: its chat and the first message of the thread, the cause it failed of and whether the hub
+guessed it, the chat run its mention made, and how far a chain of reruns went. A run has one row at most, which is what
+makes the hub open one thread for a run however often it handles its failure. ``projects.triage_enabled`` is the switch
+of a project: off, a failed run sends its owner the notice ``run_failed`` and opens no thread.
 """
 
 from __future__ import annotations

@@ -707,6 +707,19 @@ read. When someone else wrote in between, the hub answers 409 with the current p
 read it again and retry; pass `--if-revision N` to fail instead. `plan put FILE --if-revision N` replaces a whole
 plan from a file.
 
+A step's `verify` is one shell command line: a worker runs it, and its preflight looks up the programs it calls. The
+hub cannot see a worker's PATH, so it checks the shape (`evo_agents.hub.verify_words.shell_problem`). It answers 422 to
+a write that brings a new or changed verify to a step not done when that line does not parse as shell (a quote left
+open, as an apostrophe in prose leaves one) or runs a word that is not a command name. A command name has ASCII
+letters, digits and `_ . + -` only, starts with a letter, a digit or `_`, and ends with one of them or `+`; the hub
+reads an absolute path by its last part. `Từ`, `Manual:`, `1.` and `-` fail; `g++`, `python3.12` and `/usr/bin/env`
+pass. The message names each step and the word read as a program. Put a manual check in the step's `note`, and give
+the step a verify that checks something machine-readable, such as an answered hub decision (`evo-agents hub decision
+show N --json | jq -e '.state == "answered"'`) or a line in a report file. PUT, PATCH, an author run's plan, a triage
+agent's edit and the Curator's plans all go through this check. The hub does not check a verify the replaced revision
+already held, so a plan stored with prose in a verify still takes writes that leave that verify alone. `evo-agents
+harness validate` warns of each verify of a step not done that the hub would refuse as new.
+
 `plan handoff PLAN` prints what a new session or a subagent needs to take the plan up, built by the hub from the plan
 it holds (`GET .../plans/{plan_id}/handoff`, the same text as the MCP tool `plan_handoff`): the goal, each step done
 with its title, the commit hashes its evidence names, its lines that start with `Decision:` verbatim and the rest of

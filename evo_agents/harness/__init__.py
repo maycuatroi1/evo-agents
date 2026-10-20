@@ -10,6 +10,7 @@ from __future__ import annotations
 import datetime as _dt
 import json
 import re
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import cache
 from importlib import metadata
@@ -206,7 +207,9 @@ class FileReport:
         }
 
 
-def _validate_file(path: Path, kind: str, harness: Harness | None = None) -> FileReport:
+def _validate_file(
+    path: Path, kind: str, harness: Harness | None = None, plan_checks: Callable[[dict], list[Issue]] | None = None
+) -> FileReport:
     try:
         data = load_yaml(path)
     except yaml.YAMLError as exc:
@@ -219,6 +222,8 @@ def _validate_file(path: Path, kind: str, harness: Harness | None = None) -> Fil
     if kind == "plan" and isinstance(data, dict):
         issues += plan_semantics(data, path, harness)
         issues += mirror_issues(data, path, harness)
+        if plan_checks is not None:
+            issues += plan_checks(data)
     if kind == "contracts" and isinstance(data, dict):
         issues += contracts_semantics(data, harness)
     return FileReport(path, kind, issues)
@@ -512,8 +517,9 @@ def mirror_issues(data: dict, path: Path, harness: Harness | None = None) -> lis
     return []
 
 
-def validate_harness(root: Path | str) -> list[FileReport]:
-    """Validate every file a harness owns: manifest, contracts, knowledge, plans."""
+def validate_harness(root: Path | str, plan_checks: Callable[[dict], list[Issue]] | None = None) -> list[FileReport]:
+    """Validate every file a harness owns: manifest, contracts, knowledge, plans. ``plan_checks`` adds the issues of
+    a package above this one to each plan's (``evo-agents harness validate`` warns of a verify that cannot be shell)."""
     root = Path(root).expanduser().resolve()
     if not (root / MANIFEST).is_file():
         found = find_manifest(root)
@@ -531,5 +537,5 @@ def validate_harness(root: Path | str) -> list[FileReport]:
         else:
             reports.append(FileReport(kpath, "knowledge", [Issue("", "knowledge_file points at a missing file")]))
     for plan in sorted((root / "plans").glob("*/*.yaml")):
-        reports.append(_validate_file(plan, "plan", harness))
+        reports.append(_validate_file(plan, "plan", harness, plan_checks))
     return reports
