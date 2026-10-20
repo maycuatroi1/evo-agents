@@ -19,7 +19,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import select
 
 from evo_agents.hub import tables
-from evo_agents.hub.credentials import PROVIDERS, SECRET_KINDS, github_repo
+from evo_agents.hub.credentials import LEASED_KINDS, PROVIDERS, github_repo
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
@@ -37,7 +37,7 @@ class RunLease(BaseModel):
     id: int
     name: str = Field(description="the secret's name, or github-app:<account>")
     provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
-    kind: Literal[SECRET_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answered")
+    kind: Literal[LEASED_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answered")
     target: str = Field(
         description="kind env: the variable it set; kind git: the origins of the run's repos it answered for, "
         "space-separated, in the form of normalize_origin"

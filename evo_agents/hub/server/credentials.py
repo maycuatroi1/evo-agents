@@ -13,6 +13,8 @@ project, on any of their workers or on this one, and that has not expired:
   one bound to any, by the strategy of the owner's policy for the project (``account_choice``);
 - each secret of kind git whose url_prefix covers one of the origins, the longest prefix for each origin, so a
   secret for ``https://gitlab.example.org/group`` answers for ``git@gitlab.example.org:group/repo.git`` too;
+- never a secret of kind forge: the query reads kinds env and git alone (``credentials.LEASED_KINDS``), as the forge
+  secret is the hub's own (``evo_agents.hub.server.forge``);
 - a token of the hub's GitHub App for the origins on github.com that no git secret covers, one per installation
   (``GitHubApp.tokens``), for the repos the run's owner may push to on GitHub alone (``GitHubApp.push_refusal``): a
   lease named ``github-app:<account>`` of kind git for ``https://github.com/<owner>``, with GITHUB_GIT_USERNAME. The
@@ -86,8 +88,8 @@ from evo_agents.hub.access import has_role
 from evo_agents.hub.credentials import (
     GITHUB_HOST,
     GITHUB_TOKEN_REFRESH_SECONDS,
+    LEASED_KINDS,
     PROVIDERS,
-    SECRET_KINDS,
     Lease,
     github_permissions,
     github_repo,
@@ -132,7 +134,7 @@ class CredentialLease(BaseModel):
     """One credential a run holds, as ``evo_agents.hub.credentials.Lease`` reads it."""
 
     id: int = Field(description="the lease; the same id when it is asked for again")
-    kind: Literal[SECRET_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answers")
+    kind: Literal[LEASED_KINDS] = Field(description="env: a variable of the agent; git: what git's helper answers")
     provider: Literal[PROVIDERS] = Field(description="secret: the owner's; github-app: a token the hub's App made")
     name: str = Field(description="the secret's name, or github-app:<account>")
     env_var: str | None = Field(description="kind env: the variable it sets")
@@ -290,8 +292,9 @@ def _owner_role(owner_id: int, project_id: int, *, lock: bool):
 
 
 def _bound_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool):
-    """The owner's secrets bound to the run's project, on any of their workers or on this one, live and not past their
-    end, by name; whether each is bound to this worker. With ``lock`` their rows are shared-locked."""
+    """The owner's secrets of a kind a run is leased (env and git, never forge) bound to the run's project, on any of
+    their workers or on this one, live and not past their end, by name; whether each is bound to this worker. With
+    ``lock`` their rows are shared-locked."""
     s, b = tables.secrets, tables.secret_bindings
     on_worker = exists().where(b.c.secret_id == s.c.id, b.c.project_id == project_id, b.c.worker_id == worker_id)
     bound = exists().where(
@@ -315,6 +318,7 @@ def _bound_secrets(owner_id: int, project_id: int, worker_id: int, *, lock: bool
         )
         .where(
             s.c.owner_id == owner_id,
+            s.c.kind.in_(LEASED_KINDS),
             s.c.deleted_at.is_(None),
             or_(s.c.expires_at.is_(None), s.c.expires_at > func.now()),
             bound,
