@@ -81,6 +81,7 @@ def workers_table(metadata: MetaData) -> Table:
         Column("self_update", JSONB),  # 0048
         _when("self_update_since"),  # 0048
         Column("kg_sync", JSONB),  # 0053
+        Column("shared", Boolean, nullable=False, server_default=false()),  # 0062
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
         ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
         PrimaryKeyConstraint("id", name="workers_pkey"),

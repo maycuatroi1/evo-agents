@@ -114,7 +114,9 @@ def dispatch_options(dispatch) -> None:
         "--mode", choices=MODES, help="default: headless; interactive starts the agent in a terminal on the worker"
     )
     dispatch.add_argument(
-        "--worker", help="pin the runs to this worker of yours, by id or name (default: any of yours that can take one)"
+        "--worker",
+        help="pin the runs to this worker of yours, or one shared with you, by id, name or owner/name (default: any "
+        "of yours or shared with you that can take one)",
     )
     dispatch.add_argument(
         "--approval",
@@ -140,7 +142,9 @@ def list_options(listed) -> None:
     listed.add_argument("--account", metavar="EMAIL", help="only local runs of this Claude account")
     listed.add_argument("--plan", help="only runs of this plan")
     listed.add_argument("--step", help="only runs of this step key")
-    listed.add_argument("--worker", help="only runs this worker of yours claimed, by id or name")
+    listed.add_argument(
+        "--worker", help="only runs this worker of yours, or one shared with you, claimed, by id, name or owner/name"
+    )
     listed.add_argument("--by", metavar="LOGIN", help="only runs this member dispatched")
     listed.add_argument(
         "--search",
@@ -155,7 +159,9 @@ def list_options(listed) -> None:
 def plan_options(plan, with_model) -> None:
     """The options of `hub run plan` after its plan and --project: where, how and how long the plan run runs."""
     plan.add_argument(
-        "--worker", help="pin the run to this worker of yours, by id or name (default: any of yours with every repo)"
+        "--worker",
+        help="pin the run to this worker of yours, or one shared with you, by id, name or owner/name (default: any "
+        "of yours or shared with you with every repo)",
     )
     plan.add_argument("--runtime", type=runtime_name, metavar="RUNTIME", help=RUNTIME_HELP)
     with_model(plan)
@@ -189,7 +195,8 @@ def author_options(authored) -> None:
     authored.add_argument(
         "--worker",
         required=True,
-        help="the worker of yours to run it on, by id or name; it needs the harness checked out",
+        help="the worker of yours, or one shared with you, to run it on, by id, name or owner/name; it needs the "
+        "harness checked out",
     )
     authored.add_argument(
         "--runtime",

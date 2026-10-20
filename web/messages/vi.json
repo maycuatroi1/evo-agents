@@ -1733,6 +1733,7 @@
       "runtimes": "Runtime",
       "projects": "Dự án",
       "owner": "Chủ",
+      "shared": "Chia sẻ",
       "heartbeat": "Heartbeat gần nhất"
     },
     "empty": {
@@ -1813,6 +1814,8 @@
         "dispatch": "Ai dispatch",
         "dispatchValue": "Chỉ {owner}",
         "dispatchWeb": "Chỉ {owner}, từ web",
+        "dispatchShared": "{owner} và writer của các dự án của nó",
+        "dispatchSharedWeb": "{owner} và writer của các dự án của nó, từ web",
         "terminal": "Terminal trên web",
         "terminalOn": "Cho phép",
         "terminalOff": "Không cho phép",
@@ -1871,6 +1874,15 @@
       "anySuccess": "{name} lại nhận run dispatch từ dòng lệnh",
       "anySuccessText": "Worker nhận run dispatch bằng mọi credential của bạn, từ dòng lệnh lẫn từ web.",
       "failed": "Không đổi được ai dispatch cho {name}"
+    },
+    "shared": {
+      "label": "Chia sẻ với writer của các dự án của nó",
+      "hint": "Bật: mọi member giữ quyền writer trên một dự án mà worker phục vụ đều dispatch được cho nó, và worker nhận cả run của họ, mỗi lúc run của một member, bằng account và secret của người đó. Agent của họ chạy bằng user của máy này, đọc được những gì user đó đọc được. Tắt: worker chỉ nhận run của bạn.",
+      "sharedSuccess": "{name} đã được chia sẻ",
+      "sharedSuccessText": "Từ giờ writer của các dự án của nó dispatch được cho nó.",
+      "privateSuccess": "{name} chỉ nhận run của bạn",
+      "privateSuccessText": "Run của member khác mà worker đang giữ vẫn chạy xong; từ giờ worker không nhận thêm run nào của họ.",
+      "failed": "Không đổi được chế độ chia sẻ của {name}"
     },
     "settings": {
       "title": "Cài đặt",
@@ -3077,11 +3089,12 @@
       },
       "worker": "Worker",
       "workerAuto": "Tự ghép worker",
-      "workerAutoHint": "Một worker của bạn đang online, còn slot trống, có runtime và {subject, select, plan {có checkout của mọi repo mà plan chạy} other {có checkout của repo của bước}}.",
+      "workerAutoHint": "Một worker của bạn, hoặc được chia sẻ với bạn, đang online, còn slot trống, có runtime và {subject, select, plan {có checkout của mọi repo mà plan chạy} other {có checkout của repo của bước}}.",
       "workerPin": "Ghim vào một worker",
       "workerPinHint": "{subject, select, plan {Plan run nằm} other {Run nằm}} trong queue tới khi worker này có slot trống.",
       "workerSelect": "Worker được ghim",
       "workerOption": "{name} ({status})",
+      "workerOptionShared": "{name} của {owner}, chia sẻ ({status})",
       "noWorkers": "Bạn chưa đăng ký worker nào cho dự án {project}.",
       "registerWorker": "Đăng ký worker",
       "approval": "Khi các lệnh verify của bước chạy qua",

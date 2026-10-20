@@ -137,7 +137,8 @@ token with `X-Evo-Run: <run id>` instead of the machine token of `~/.evo/hub/tok
 worker machine needs no machine token at all. The hub opens the session only while the worker holds the run (leased,
 running, interactive, verifying or waiting) and the run's owner still holds a grant on its project; any other run,
 another worker's, one that ended or one in review, gets 403, and so does a worker token without `X-Evo-Run`. A
-machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner, scoped to the run:
+machine token with `X-Evo-Run` gets 400. The agent then acts as the run's owner, the member who dispatched it (on a
+shared worker another member than the worker's owner, `docs/workers.md`, Shared workers), scoped to the run:
 
 - the session's project is the run's, and an `X-Evo-Project` naming another one gets 403;
 - every tool reaches the run's project alone: any other project answers as one that does not exist, `hub_projects`
@@ -467,7 +468,8 @@ makes no run and asks no model anything.
 
 **Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`, Chat
 runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile on its
-project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile allows,
+project, dispatched by the person who mentioned it, and pinned to a worker of that person, or one another member
+shares with them in the project (their own first), that the profile allows,
 online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs, the one with
 a checkout of more of the project's repos first; the person must be a writer on the profile's project. No such worker,
 and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
@@ -815,6 +817,9 @@ below); going back to 0058 drops the tables and the columns and deletes the hist
 and `curator_playbook` and `curator_playbook_deltas` (The Curator's memory, below); going back to 0059 drops the four
 tables, and the job indexes the history again. Schema 0061 adds the lenses `runtime` and `harness` to the checks of
 `findings` and `proposals` (The Curator's review, below); going back to 0060 deletes their findings and proposals.
+Schema 0062 adds `workers.shared`, whether its owner shares the worker with the writers of its projects (`docs/workers.md`,
+Shared workers), false for every worker there is and every new one; going back to 0061 drops it, and a shared worker
+takes its owner's runs alone again.
 
 The daemon on the member's machine is the `evo-agents worker` command group, which needs the `worker` extra
 (`uv tool install 'evo-ak[worker]'`). It is not `evo-agents hub worker`, the hub's own job worker (see Worker and

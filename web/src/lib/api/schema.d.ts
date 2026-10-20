@@ -1254,7 +1254,8 @@ export interface paths {
         };
         /**
          * List Workers
-         * @description The caller's workers, newest first; every worker for a hub admin.
+         * @description The caller's workers and the live ones other members share with the caller in a project both write to, newest
+         *     first; every worker for a hub admin.
          */
         get: operations["list_workers_v1_workers_get"];
         put?: never;
@@ -1277,7 +1278,10 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Show Worker */
+        /**
+         * Show Worker
+         * @description One worker of the caller's, or one another member shares with them; any worker for a hub admin.
+         */
         get: operations["show_worker_v1_workers__worker_id__get"];
         put?: never;
         post?: never;
@@ -1286,8 +1290,8 @@ export interface paths {
         head?: never;
         /**
          * Update Worker
-         * @description Change the worker's slots, labels, name, plugins or version lock: its owner only, from a web session or with
-         *     their machine token.
+         * @description Change the worker's slots, labels, name, plugins, version lock or whether it is shared: its owner only, from a
+         *     web session or with their machine token.
          */
         patch: operations["update_worker_v1_workers__worker_id__patch"];
         trace?: never;
@@ -6413,7 +6417,7 @@ export interface components {
             request: string;
             /**
              * Worker Id
-             * @description the worker of yours the run goes to; an author run is pinned
+             * @description the worker of yours, or one shared with you in the project, the run goes to; an author run is pinned
              */
             worker_id: number;
             /**
@@ -8367,7 +8371,7 @@ export interface components {
             mode: "headless" | "interactive";
             /**
              * Worker Id
-             * @description pin the runs to this worker of yours
+             * @description pin the runs to this worker of yours, or one shared with you in the project
              */
             worker_id?: number | null;
             /**
@@ -11743,7 +11747,7 @@ export interface components {
             plan_id: string;
             /**
              * Worker Id
-             * @description pin the run to this worker of yours
+             * @description pin the run to this worker of yours, or one shared with you in the project
              */
             worker_id?: number | null;
             /**
@@ -17825,7 +17829,7 @@ export interface components {
         TriagePlanIn: {
             /**
              * Worker
-             * @description a worker of the owner, by name; a fit candidate
+             * @description a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name one of theirs has too); a fit candidate
              */
             worker?: string | null;
             /**
@@ -17880,7 +17884,7 @@ export interface components {
         TriageRerunIn: {
             /**
              * Worker
-             * @description a worker of the owner, by name; a fit candidate
+             * @description a worker of the owner, or one shared with them, by name (owner/name for a shared one whose name one of theirs has too); a fit candidate
              */
             worker?: string | null;
             /**
@@ -18188,6 +18192,12 @@ export interface components {
              * @description its owner locked its version: its daemon stays on the evo-agents it runs and does not update itself to the tag nightly
              */
             version_locked: boolean;
+            /**
+             * Shared
+             * @description its owner shares it: it also takes the runs of every member who holds writer on a project it serves, one member's runs at a time; listed to those members too, who see it but cannot change it
+             * @default false
+             */
+            shared: boolean;
             /** @description what its daemon last said of updating itself to the tag nightly; null when its last heartbeat said nothing of it, as an older daemon does */
             self_update: components["schemas"]["WorkerSelfUpdate"] | null;
             /** @description what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it */
@@ -18249,6 +18259,16 @@ export interface components {
             worker_id: number;
             /** Worker */
             worker: string;
+            /**
+             * Owner
+             * @description the login of the member who owns the worker
+             */
+            owner: string;
+            /**
+             * Shared
+             * @description a worker another member shares in the project, not one of the run's owner
+             */
+            shared: boolean;
             /** Fit */
             fit: boolean;
             /**
@@ -18451,6 +18471,11 @@ export interface components {
              * @description true: its daemon stays on the evo-agents it runs; false: it updates itself to the tag nightly again, once idle
              */
             version_locked?: boolean | null;
+            /**
+             * Shared
+             * @description true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default
+             */
+            shared?: boolean | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
