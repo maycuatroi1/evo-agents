@@ -1,11 +1,11 @@
 """The runtime and the harness of the night's figures on the hub (``evo_agents.hub.server.runtime_figures``), the
-lenses runtime and harness with their metrics in the ledger, and schema 0058.
+lenses runtime and harness with their metrics in the ledger, and schema 0061.
 
 Step 9 of plan history-driven-curator, criterion a8: curator.collect counts, from the facets of the sessions and the
 runs and from the runs' own usage, the tokens by source, the shares of the prompt cache, the cost of each session, run
 and merged pull request, the peak context, the compactions, the median and the 95th percentile of each hook and tool,
 and the size of the always-loaded files of each repo; the spool the digests say (plan lean-cached-context) is used, not
-measured again; a finding and a proposal of each lens are kept, with metrics in the ledger; schema 0058 goes down and
+measured again; a finding and a proposal of each lens are kept, with metrics in the ledger; schema 0061 goes down and
 up. Criterion a13: no command, flag or key changes. The api runs in this process (TestClient), as in
 ``tests.hub.test_review_runs``, whose fixture ``review`` holds the project, its charter and a digest."""
 
@@ -306,10 +306,10 @@ def test_a_finding_and_a_proposal_of_the_lenses_runtime_and_harness_carry_their_
     }
 
 
-# Schema 0058
+# Schema 0061
 
 
-def test_schema_0058_takes_the_two_lenses_and_going_back_deletes_what_they_wrote(busy):
+def test_schema_0061_takes_the_two_lenses_and_going_back_deletes_what_they_wrote(busy):
     run_id = held_review(busy)
     client, worker = busy.client, busy.worker
     evidence = [{"kind": "run", "run_id": run_id, "seq": 1}]
@@ -318,11 +318,11 @@ def test_schema_0058_takes_the_two_lenses_and_going_back_deletes_what_they_wrote
         assert made.status_code == 201, made.text
     proposed(client, worker, run_id, lens="harness", evidence=evidence)
 
-    move_to(busy.db, "0057", down=True)
+    move_to(busy.db, "0060", down=True)
     assert sql(busy.db, select(tables.findings.c.lens)) == [("cost",)]
     assert sql(busy.db, select(func.count()).select_from(tables.proposals))[0][0] == 0
-    with pytest.raises(IntegrityError, match="findings_lens_check"):  # the check of 0057 refuses the lens
+    with pytest.raises(IntegrityError, match="findings_lens_check"):  # the check of 0060 refuses the lens
         finding(client, worker, run_id, lens="runtime", title="again", evidence=evidence)
-    assert migrate(busy.db.dsn).applied == ("0058",)
+    assert migrate(busy.db.dsn).applied == ("0061",)
     again = finding(client, worker, run_id, lens="runtime", title="again", evidence=evidence)
     assert again.status_code == 201, again.text

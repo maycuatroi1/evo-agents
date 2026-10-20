@@ -1,7 +1,7 @@
 """The deterministic facets of sessions and runs: what each transcript, digest or run log says, counted without a model.
 
-Revision ID: 0051
-Revises: 0050
+Revision ID: 0054
+Revises: 0053
 Create Date: 2026-10-19
 
 ``evo_agents.hub.facet_job`` describes the design and ``evo_agents.hub.facets`` the body; the values below are copies
@@ -19,15 +19,15 @@ the facet made before, counts ``attempts`` and sets ``error`` and ``retry_at``. 
 its transcripts: deleting their content leaves the facet, which the hub keeps without a limit; a run's row goes with
 its run, and every row with its project.
 
-Going back drops the table, which is the schema 0050 runs on.
+Going back drops the table, which is the schema 0053 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0051"
-down_revision = "0050"
+revision = "0054"
+down_revision = "0053"
 branch_labels = None
 depends_on = None
 

@@ -1,7 +1,7 @@
 """The Curator's changes of knowledge.yaml sources: the kind kg_source and what a pull request does to knowledge.yaml.
 
-Revision ID: 0054
-Revises: 0053
+Revision ID: 0057
+Revises: 0056
 Create Date: 2026-10-20
 
 ``evo_agents.hub.tiers``, ``evo_agents.hub.knowledge_diff`` and ``evo_agents.hub.server.change_tiers`` describe the
@@ -18,7 +18,7 @@ the change edits, the edits and what else it changes (``KnowledgeDiff.to_json``)
 read; NULL for any other change. A judge run of the change runs the checks it names.
 
 Going back deletes the proposals of kind kg_source (those dropped as repeats of one first; their changes, ledger lines
-and notifications go with them), drops the column and puts back the check of 0018, which is the schema that schema 0053
+and notifications go with them), drops the column and puts back the check of 0018, which is the schema that schema 0056
 runs on.
 """
 
@@ -26,12 +26,12 @@ import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0054"
-down_revision = "0053"
+revision = "0057"
+down_revision = "0056"
 branch_labels = None
 depends_on = None
 
-CHANGE_KINDS_0053 = (
+CHANGE_KINDS_0056 = (
     "docs",
     "memory",
     "test_add",
@@ -55,7 +55,7 @@ CHANGE_KINDS_0053 = (
     "revert",
 )
 NEW_KINDS = ("kg_source",)
-CHANGE_KINDS = (*CHANGE_KINDS_0053, *NEW_KINDS)  # evo_agents.hub.tiers.CHANGE_KINDS
+CHANGE_KINDS = (*CHANGE_KINDS_0056, *NEW_KINDS)  # evo_agents.hub.tiers.CHANGE_KINDS
 
 col = sa.column
 
@@ -81,4 +81,4 @@ def downgrade() -> None:
     op.drop_constraint("curator_changes_knowledge_check", "curator_changes", type_="check")
     op.drop_column("curator_changes", "knowledge")
     op.drop_constraint("proposals_kind_check", "proposals", type_="check")
-    _proposal_kinds(CHANGE_KINDS_0053)
+    _proposal_kinds(CHANGE_KINDS_0056)

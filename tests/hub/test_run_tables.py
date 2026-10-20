@@ -92,10 +92,10 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "review":  # on no plan, queued by a schedule (0014)
         row |= {"kind": "review", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "dispatched_via": "schedule", "schedule_night": now.date()}
-    elif kind in ("judge", "replay"):  # the Judge (0017) or a replay (0053) of a change of the Curator's plan
+    elif kind in ("judge", "replay"):  # the Judge (0017) or a replay (0056) of a change of the Curator's plan
         row |= {"kind": kind, "step_key": None, "repo": None, "branch": None, "repos": REPOS}
         row |= {"dispatched_via": "schedule", "schedule_night": now.date()}
-    elif kind == "history":  # the night's reading of the history with a model, on no plan and no repo (0056)
+    elif kind == "history":  # the night's reading of the history with a model, on no plan and no repo (0059)
         row |= {"kind": "history", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": None, "dispatched_via": "schedule", "schedule_night": now.date()}
     elif kind == "author":  # a plan written from a member's request, on no plan when it writes a new one (0020)
@@ -320,9 +320,9 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
         add_run(conn, ids, state, kind="review", schedule_id=schedule)
     for state in ("queued", *runs.TERMINAL_STATES):  # and one judge run (0017)
         add_run(conn, ids, state, kind="judge", schedule_id=schedule)
-    for state in ("queued", *runs.TERMINAL_STATES):  # and one replay run (0053)
+    for state in ("queued", *runs.TERMINAL_STATES):  # and one replay run (0056)
         add_run(conn, ids, state, kind="replay", schedule_id=schedule)
-    for state in ("queued", *runs.TERMINAL_STATES):  # and one history run (0056)
+    for state in ("queued", *runs.TERMINAL_STATES):  # and one history run (0059)
         add_run(conn, ids, state, kind="history", schedule_id=schedule)
     for state in runs.RUN_STATES:  # author runs, as many as their owners dispatch (0020)
         add_run(conn, ids, state, kind="author")

@@ -1,4 +1,4 @@
-"""The night's history run on the hub (``evo_agents.hub.server.history``) and schema 0056, on a hub with a blob store:
+"""The night's history run on the hub (``evo_agents.hub.server.history``) and schema 0059, on a hub with a blob store:
 test_runs' members of project evo-agents, owner an admin with a charter whose worker on duty runs every kind of run,
 and the transcripts of the owner's sessions, whose deterministic facets the job hub.analyze_facets made.
 
@@ -443,10 +443,10 @@ def test_a_history_run_that_fails_tells_its_owner_and_keeps_what_it_wrote(lab):
     assert llm_of(lab.db, SECOND)["llm"] is not None
 
 
-# Schema 0056
+# Schema 0059
 
 
-def test_the_rows_of_0056_hold_together_and_it_goes_down_to_0055_and_up_again(lab):
+def test_the_rows_of_0059_hold_together_and_it_goes_down_to_0058_and_up_again(lab):
     clustered(lab)
     reviewed(lab)
     c, f = tables.facet_clusters, tables.session_facets
@@ -472,9 +472,9 @@ def test_the_rows_of_0056_hold_together_and_it_goes_down_to_0055_and_up_again(la
         sql(lab.db, insert(r).values(**{**copy, "schedule_id": None, "schedule_night": None}))
     with pytest.raises(errors.CheckViolation):
         sql(lab.db, insert(r).values(**{**copy, "plan_id": "fleet", "plan_revision": 1}))
-    move_to(lab.db, "0055", down=True)
+    move_to(lab.db, "0058", down=True)
     assert sql(lab.db, select(func.to_regclass("public.facet_clusters"))) == [(None,)]
-    move_to(lab.db, "0056")
+    move_to(lab.db, "0059")
     assert sql(lab.db, select(func.count()).select_from(c)) == [(0,)]
     assert sql(lab.db, select(func.count()).select_from(f).where(f.c.llm.is_not(None))) == [(0,)]
     sql(lab.db, delete(tables.curator_figures))

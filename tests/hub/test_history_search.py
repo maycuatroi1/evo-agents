@@ -1,5 +1,5 @@
 """Reading a project's whole history on the hub (``evo_agents.hub.history_index``, ``evo_agents.hub.server.history_search``,
-``evo_agents.hub.server.history_mcp``) and schema 0057, on a hub with a blob store: test_history_runs' lab, the
+``evo_agents.hub.server.history_mcp``) and schema 0060, on a hub with a blob store: test_history_runs' lab, the
 owner an admin of evo-agents with a charter whose worker on duty runs every kind of run.
 
 Step 5 of plan history-driven-curator, criteria a1 (its part of runs, local sessions and group chats), a4 and a13: the
@@ -319,7 +319,7 @@ def test_the_agent_of_a_review_run_reads_the_history_through_the_hubs_tools(lab)
     headers = {**lab.worker["headers"], **MCP_HEADERS, mcp_tools.RUN_HEADER: str(run_id)}
     listing = lab.client.post("/mcp", json={"jsonrpc": "2.0", "id": 1, "method": "tools/list"}, headers=headers)
     names = [tool["name"] for tool in listing.json()["result"]["tools"]]
-    assert names[-6:] == HISTORY_TOOLS
+    assert names[-8:] == [*HISTORY_TOOLS, "chat_message", "chat_thread"]  # then the tools of group chats
 
     found = agent_call(lab, run_id, "history_search", {"query": "AssertionError"})
     assert "2 of 2 hits of 'AssertionError'" in text_of(found) and f"transcript:{FIRST}:5" in text_of(found)
@@ -440,14 +440,14 @@ def test_the_command_line_reads_the_history_with_the_json_keys_of_the_contract(l
         assert f"> L5 Bash failed: {FAILED_TEST}" in out
 
 
-# Schema 0057
+# Schema 0060
 
 
-def test_schema_0057_goes_down_to_0056_and_up_again(lab):
+def test_schema_0060_goes_down_to_0059_and_up_again(lab):
     two_sessions(lab)
-    move_to(lab.db, "0056", down=True)
+    move_to(lab.db, "0059", down=True)
     names = {row[0] for row in sql(lab.db, select(INFO.c.table_name).where(INFO.c.table_schema == "public"))}
     assert not names & set(pg.SEARCH_TABLES)
-    move_to(lab.db, "0057")
+    move_to(lab.db, "0060")
     assert rows_of(lab.db) == []
     assert indexed(lab.client) == {"rows": 27, "transcripts": 2}, "the index is made again from the parts"

@@ -3,7 +3,7 @@ proposal's path the knowledge graph lacks, holds older than the default branch o
 tier the hub computes again from a pull request's real files reads the graph too; a change of kind kg_source that edits
 only the ref, fetch, refresh, include, exclude or allow of a source in knowledge.yaml stays tier 0, its Judge running
 harness validate and a trial sync of the source, and the hub merges it; any other change of the file is at least tier
-1, read key by key from the pull request at its merge base and its head; schema 0054. The world, GitHub and its helpers
+1, read key by key from the pull request at its merge base and its head; schema 0057. The world, GitHub and its helpers
 are ``tests.hub.test_curator_changes``'s."""
 
 from __future__ import annotations
@@ -402,24 +402,24 @@ def test_tier_the_job_reads_kg_impact_as_the_night_shifts_owner_from_a_cache_of_
     assert impact([]) is None and len(asked) == 2
 
 
-# Schema 0054
+# Schema 0057
 
 
-def test_tier_schema_0054_takes_kind_kg_source_and_going_back_deletes_its_proposals(world):
+def test_tier_schema_0057_takes_kind_kg_source_and_going_back_deletes_its_proposals(world):
     kg_source_change(world, knowledge(ref="origin/main"))
     db = world.db
     c, p = tables.curator_changes, tables.proposals
     with pytest.raises(psycopg.errors.CheckViolation):
         sql(db, update(c).values(knowledge=["a list"]))
     assert "kg_source" in kind_check(db)
-    move_to(db, "0053", down=True)
+    move_to(db, "0056", down=True)
     assert sql(db, select(func.count()).select_from(p).where(p.c.kind == "kg_source")) == [(0,)]
     assert sql(db, select(func.count()).select_from(c)) == [(0,)]  # its change went with it
     info = table("columns", column("table_name"), column("column_name"), schema="information_schema")
     where = (info.c.table_name == "curator_changes") & (info.c.column_name == "knowledge")
     assert sql(db, select(func.count()).select_from(info).where(where)) == [(0,)]
     assert "kg_source" not in kind_check(db) and "'revert'" in kind_check(db)
-    assert migrate(db.dsn).applied == ("0054", "0055", "0056", "0057", "0058")
+    assert migrate(db.dsn).applied == ("0057", "0058", "0059", "0060", "0061")
     assert "kg_source" in kind_check(db)
 
 

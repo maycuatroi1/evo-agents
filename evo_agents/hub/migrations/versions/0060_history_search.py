@@ -1,7 +1,7 @@
 """The words of a project's history for search, and the playbook of the Curator.
 
-Revision ID: 0057
-Revises: 0056
+Revision ID: 0060
+Revises: 0059
 Create Date: 2026-10-20
 
 ``evo_agents.hub.history_index`` describes the index and ``evo_agents.hub.server.history_search`` how it is read;
@@ -22,15 +22,15 @@ evidence, its counters of helpful and harmful, the project's default label, the 
 and when and why it was retired. curator_playbook_deltas holds each delta: the entry, the run, the op, its evidence and
 its note.
 
-Going back drops the four tables, which is the schema that schema 0056 runs on.
+Going back drops the four tables, which is the schema that schema 0059 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0057"
-down_revision = "0056"
+revision = "0060"
+down_revision = "0059"
 branch_labels = None
 depends_on = None
 

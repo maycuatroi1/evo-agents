@@ -1,5 +1,5 @@
 """The job hub.index_history: the words of every transcript and of every run that ended, in history_lines (schema
-0057), so a member and the Curator's Reviewer search a project's whole history with Postgres full-text search, no
+0060), so a member and the Curator's Reviewer search a project's whole history with Postgres full-text search, no
 service besides Postgres (``evo_agents.hub.server.history_search`` reads it).
 
 Each line of a transcript, and each event of a run, is read into its entries as the history run reads them

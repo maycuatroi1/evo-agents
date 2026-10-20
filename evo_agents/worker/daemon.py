@@ -424,7 +424,7 @@ class Daemon:
         }
         report = self.kg.report(sorted(self.kg_duties)) if self.kg is not None else None
         if report and report["projects"]:
-            body["kg_sync"] = report  # what the last looks found (0050)
+            body["kg_sync"] = report  # what the last looks found (0053)
         return body
 
     def _take_worker_state(self, answer: dict) -> None:

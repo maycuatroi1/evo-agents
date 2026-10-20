@@ -7,7 +7,7 @@ source in Postgres, not only in its artifact; the hub measures a charter's graph
 branches on GitHub (the commit read, the commits behind and since when, the files missing, stale and deleted as the
 source reads its tree) and says why for what it cannot read; the night's figures carry kg_health with the builds that
 changed nothing and what the facets say agents got from the graph; a finding and a proposal of lens kg_health are kept,
-with metrics in the ledger, and a ``code:`` evidence the graph lacks is kept unmatched; schema 0052 goes down and up.
+with metrics in the ledger, and a ``code:`` evidence the graph lacks is kept unmatched; schema 0055 goes down and up.
 
 The api runs in this process (TestClient) and the hub's worker too, as in ``tests.hub.test_kg``; GitHub is the fake of
 ``tests.hub.fake_github``, playing the workers' App and the repo maycuatroi1/evo-agents."""
@@ -377,10 +377,10 @@ def test_a_project_without_a_graph_has_no_health_in_its_figures(world):  # noqa:
     assert "kg_health" in figures and figures["kg_health"] is None
 
 
-# Schema 0052
+# Schema 0055
 
 
-def test_schema_0052_takes_the_lens_kg_health_and_going_back_deletes_what_it_wrote(world):  # noqa: F811
+def test_schema_0055_takes_the_lens_kg_health_and_going_back_deletes_what_it_wrote(world):  # noqa: F811
     graph_of(world)
     assert measured(world) == {"measured": 1}
     run_id = review_run(world)
@@ -403,13 +403,13 @@ def test_schema_0052_takes_the_lens_kg_health_and_going_back_deletes_what_it_wro
     )
     assert kept.status_code == 201, kept.text
 
-    move_to(world.db, "0051", down=True)
+    move_to(world.db, "0054", down=True)
     f = tables.findings
     assert sql(world.db, select(f.c.lens)) == [("cost",)]
     assert sql(world.db, select(func.to_regclass("public.kg_health"), func.to_regclass("public.kg_source_files"))) == [
         (None, None)
     ]
-    assert migrate(world.db.dsn).applied == ("0052", "0053", "0054", "0055", "0056", "0057", "0058")
+    assert migrate(world.db.dsn).applied == ("0055", "0056", "0057", "0058", "0059", "0060", "0061")
     b = tables.kg_builds
     assert sql(world.db, select(func.count(), func.count(b.c.coverage)))[0] == (3, 0)  # the column came back empty
     again = finding(

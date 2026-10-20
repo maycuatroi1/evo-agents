@@ -1,5 +1,5 @@
 """The job hub.analyze_facets: the deterministic facet of every session and every run that ended, made once, kept in
-session_facets (schema 0051), and made again when its content or FACET_VERSION changed. ``evo_agents.hub.facets``
+session_facets (schema 0054), and made again when its content or FACET_VERSION changed. ``evo_agents.hub.facets``
 describes a facet; ``evo_agents.hub.server.collect`` counts the night's figures from the facets.
 
 Each pass, every 5 minutes, takes up to PASS_ITEMS things to analyze, the latest first, and stops after PASS_SECONDS,
@@ -62,7 +62,7 @@ PASS_ITEMS = 200
 PASS_SECONDS = 240.0
 RETRY_FIRST = timedelta(minutes=5)
 RETRY_MAX = timedelta(days=1)
-ERROR_CHARS = 2000  # migration 0051's bound of session_facets.error
+ERROR_CHARS = 2000  # migration 0054's bound of session_facets.error
 EVENT_PAGE = 500
 RUN_ENDED = (*runs.TERMINAL_STATES, "ended")
 WRITTEN = (

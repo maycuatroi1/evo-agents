@@ -1,5 +1,5 @@
 """The Curator's replays on the hub (``evo_agents.hub.replay_suite``, ``evo_agents.hub.server.replays``) and schema
-0053, in the world of ``tests.hub.test_curator_changes``: the project evo-agents on the fake GitHub with both Apps,
+0056, in the world of ``tests.hub.test_curator_changes``: the project evo-agents on the fake GitHub with both Apps,
 its owner an admin with a charter whose worker on duty runs every kind of run.
 
 The checks step 10 of the history-driven-curator plan names on the hub: a9 (the suite made from the plans' steps done
@@ -457,7 +457,7 @@ def test_replay_the_judge_reads_no_replay(world):
     assert "replay" not in judge["prompt"].lower() and "arm a" not in judge["prompt"]
 
 
-def test_replay_schema_0053_goes_down_to_0052_and_up_again(world):
+def test_replay_schema_0056_goes_down_to_0055_and_up_again(world):
     replay_world(world)
     spec = replay_run(world)
     db = world.db
@@ -470,7 +470,7 @@ def test_replay_schema_0053_goes_down_to_0052_and_up_again(world):
     with pytest.raises(psycopg.errors.CheckViolation):
         sql(db, update(r).values(schedule_id=None).where(r.c.kind == "replay"))
     assert sql(db, select(func.count()).select_from(r).where(r.c.id == spec["id"])) == [(1,)]
-    move_to(db, "0052", down=True)
+    move_to(db, "0055", down=True)
     assert sql(db, select(func.count()).select_from(r).where(r.c.kind == "replay")) == [(0,)]
-    move_to(db, "0053")
+    move_to(db, "0056")
     assert sql(db, select(func.count()).select_from(tables.replay_tasks)) == [(0,)]

@@ -1,7 +1,7 @@
 """The Curator's lenses on the runtime and on the harness.
 
-Revision ID: 0058
-Revises: 0057
+Revision ID: 0061
+Revises: 0060
 Create Date: 2026-10-20
 
 ``evo_agents.hub.review.LENSES`` gains ``runtime`` (the tokens, the prompt cache, the context, the compactions and the
@@ -12,19 +12,19 @@ take both. The values below are copies of ``review.LENSES`` as of this revision,
 them takes a new revision. Every statement is an Alembic operation on SQLAlchemy Core expressions.
 
 Going back deletes the findings and the proposals of the two lenses (and those dropped as repeats of one) and puts the
-checks of 0057 back: schema 0057 knows neither lens. The playbook's entries keep their lens, which its check of 0057
+checks of 0060 back: schema 0060 knows neither lens. The playbook's entries keep their lens, which its check of 0060
 takes.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0058"
-down_revision = "0057"
+revision = "0061"
+down_revision = "0060"
 branch_labels = None
 depends_on = None
 
-LENSES_0057 = (
+LENSES_0060 = (
     "tool_errors",
     "environment",
     "corrections",
@@ -39,7 +39,7 @@ LENSES_0057 = (
     "kg_health",
 )
 NEW_LENSES = ("runtime", "harness")
-LENSES = (*LENSES_0057, *NEW_LENSES)  # evo_agents.hub.review.LENSES, in another order
+LENSES = (*LENSES_0060, *NEW_LENSES)  # evo_agents.hub.review.LENSES, in another order
 
 col = sa.column
 
@@ -61,4 +61,4 @@ def downgrade() -> None:
     op.execute(proposals.delete().where(proposals.c.duplicate_of.in_(new)))  # dropped as repeats of one
     op.execute(proposals.delete().where(proposals.c.lens.in_(NEW_LENSES)))
     op.execute(findings.delete().where(findings.c.lens.in_(NEW_LENSES)))
-    _lenses(LENSES_0057)
+    _lenses(LENSES_0060)

@@ -20,7 +20,7 @@ at the pull request's merge base and at its head and compared key by key (``know
 read is kept as None, which the tier rules take as at least tier 1. ``retier`` gives the change's proposal its tier
 again from the paths its diff touches with those facts: it only ever raises it, with the reasons, and a path the
 charter protects still makes it tier 3. The pull request's knowledge.yaml facts stay on the change
-(curator_changes.knowledge, schema 0054): a judge run of the change reads them (``judge_knowledge``), runs the checks
+(curator_changes.knowledge, schema 0057): a judge run of the change reads them (``judge_knowledge``), runs the checks
 they name besides the plan's verify (``knowledge_diff.judge_checks``), and its verdict, whose paths give the tier again,
 is judged against them; on GitLab, where the hub reads no pull request, a knowledge.yaml of a change of kind
 ``kg_source`` counts as not read.

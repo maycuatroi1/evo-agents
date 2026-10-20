@@ -1,7 +1,7 @@
 """The Curator's replays: each project's suite of replay tasks made from its own history, and runs of kind replay.
 
-Revision ID: 0053
-Revises: 0052
+Revision ID: 0056
+Revises: 0055
 Create Date: 2026-10-19
 
 ``evo_agents.hub.replay`` holds the model and ``evo_agents.hub.server.replays`` the routes and the night shift's part;
@@ -24,20 +24,20 @@ runs.kind takes ``replay``: a run of the Curator only the night shift queues (``
 plan of the change it replays, one active at a time per project (``runs_active_replay_key``).
 
 Going back deletes the replay runs and drops the two tables, the index and the checks, which is the schema that schema
-0052 runs on.
+0055 runs on.
 """
 
 import sqlalchemy as sa
 from alembic import op
 from sqlalchemy.dialects import postgresql
 
-revision = "0053"
-down_revision = "0052"
+revision = "0056"
+down_revision = "0055"
 branch_labels = None
 depends_on = None
 
-KINDS_0052 = ("step", "plan", "review", "judge", "author", "chat", "local", "task")
-KINDS = (*KINDS_0052, "replay")  # evo_agents.hub.runs.SHOWN_KINDS
+KINDS_0055 = ("step", "plan", "review", "judge", "author", "chat", "local", "task")
+KINDS = (*KINDS_0055, "replay")  # evo_agents.hub.runs.SHOWN_KINDS
 ACTIVE = ("queued", "leased", "running", "interactive", "verifying", "waiting", "review", "parked")
 SPLITS = ("select", "holdout")  # evo_agents.hub.replay.SPLITS
 SOURCES = ("evidence", "run")  # evo_agents.hub.replay.SOURCES
@@ -187,4 +187,4 @@ def downgrade() -> None:
         op.execute(runs.delete().where(runs.c.kind == "replay", runs.c.attempt == attempt))
     op.drop_index("runs_active_replay_key", table_name="runs")
     op.drop_constraint("runs_replay_schedule_check", "runs", type_="check")
-    _kinds(KINDS_0052)
+    _kinds(KINDS_0055)

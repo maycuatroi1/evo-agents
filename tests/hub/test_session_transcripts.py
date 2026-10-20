@@ -7,7 +7,7 @@ stored once, a client that went down loses nothing, and ``hub sessions backfill`
 and sends nothing the second time. Criterion a2: the hub keeps a transcript EVO_HUB_TRANSCRIPT_DAYS (365) days after
 its latest part, an admin of the project deletes one session's or all of them, and the project's usage reads through
 the API and the command line. Around them: the write rule, the read rule with the label and the sink, the owner of a
-transcript, the blobs in the store, the job, and schema 0049."""
+transcript, the blobs in the store, the job, and schema 0052."""
 
 import gzip
 import json
@@ -371,7 +371,7 @@ def test_the_transcript_pruning_runs_daily_once_and_its_days_are_configured():
             load_config({**base, "EVO_HUB_TRANSCRIPT_DAYS": bad})
 
 
-def test_the_tables_of_0049_check_their_rows(hub):
+def test_the_tables_of_0052_check_their_rows(hub):
     assert statuses(send(hub, "owner", parts_of(hub, transcript(hub.tmp_path)))) == ["stored"]
     t, p = tables.session_transcripts, tables.transcript_parts
     bad_rows = (
@@ -393,15 +393,15 @@ def test_the_tables_of_0049_check_their_rows(hub):
             sql(hub.db, update(table).values(**values))
 
 
-def test_migration_0049_goes_down_to_0048_and_up_again(hub):
+def test_migration_0052_goes_down_to_0051_and_up_again(hub):
     assert statuses(send(hub, "owner", parts_of(hub, transcript(hub.tmp_path)))) == ["stored"]
-    move_to(hub.db, "0048", down=True)
+    move_to(hub.db, "0051", down=True)
     present = select(func.to_regclass("public.session_transcripts"), func.to_regclass("public.transcript_parts"))
     assert sql(hub.db, present) == [(None, None)]
     assert sql(hub.db, select(func.count()).select_from(tables.blobs).where(tables.blobs.c.kind == local.KIND)) == [
         (1,)
     ]
-    move_to(hub.db, "0049")
+    move_to(hub.db, "0052")
     assert index(hub.db) == {}
 
 

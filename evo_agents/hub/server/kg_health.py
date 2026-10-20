@@ -5,7 +5,7 @@ what each build covers and the files of its git sources, and ``evo_agents.hub.kg
 ``measure`` runs in each pass of the job ``curator.collect`` (``evo_agents.hub.server.collect``): every project with a
 night shift (a schedule of kind night_shift, its curator feature on) and a knowledge config on the hub whose last
 measure is HEALTH_EVERY old, or RETRY_AFTER old when that one failed, is measured once, and the measure is kept in
-kg_health (schema 0052) with the build it read. A measure holds, for each git source of the project's knowledge
+kg_health (schema 0055) with the build it read. A measure holds, for each git source of the project's knowledge
 config:
 
 - ``commit``, the commit the source read in the latest successful build (kg_source_files; the commit the build's
@@ -465,7 +465,7 @@ class KgBuildCoverage(BaseModel):
     id: int
     finished_at: datetime
     changed: bool = Field(description="false when an earlier build had the same content")
-    coverage: dict | None = Field(description="what the build covers (kg_builds.coverage); null before schema 0052")
+    coverage: dict | None = Field(description="what the build covers (kg_builds.coverage); null before schema 0055")
 
 
 class KgHealthView(BaseModel):

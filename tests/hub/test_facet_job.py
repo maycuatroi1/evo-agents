@@ -1,5 +1,5 @@
 """The job hub.analyze_facets (``evo_agents.hub.facet_job``), the night's figures it feeds
-(``evo_agents.hub.server.collect``, ``evo_agents.hub.server.facet_figures``) and schema 0051.
+(``evo_agents.hub.server.collect``, ``evo_agents.hub.server.facet_figures``) and schema 0054.
 
 Step 3 of plan history-driven-curator, criterion a3 (its deterministic part): each new transcript and each run that
 ended is analyzed once, and again when its content or the facet's version changes; the facet lives in Postgres and
@@ -381,10 +381,10 @@ def test_session_evidence_resolves_in_the_facet_and_a_local_run_of_the_owner_is_
     assert unknown.status_code == 422 and "nor a facet of it" in unknown.text
 
 
-# Schema 0051
+# Schema 0054
 
 
-def test_the_rows_of_0051_hold_together_and_it_goes_down_to_0050_and_up_again(hub):
+def test_the_rows_of_0054_hold_together_and_it_goes_down_to_0053_and_up_again(hub):
     push(hub, SESSION, digest_body())
     assert analyzed(hub.client, later(hub.db)) == {"digest": 1}
     f = tables.session_facets
@@ -403,8 +403,8 @@ def test_the_rows_of_0051_hold_together_and_it_goes_down_to_0050_and_up_again(hu
     project_id = sql(hub.db, select(f.c.project_id))[0][0]
     with pytest.raises(errors.UniqueViolation):  # one facet a session
         sql(hub.db, f.insert().values(project_id=project_id, kind="session", session_id=SESSION))
-    move_to(hub.db, "0050", down=True)
+    move_to(hub.db, "0053", down=True)
     assert sql(hub.db, select(func.to_regclass("public.session_facets"))) == [(None,)]
-    move_to(hub.db, "0051")
+    move_to(hub.db, "0054")
     assert sql(hub.db, select(func.count()).select_from(f)) == [(0,)]
     assert analyzed(hub.client, later(hub.db)) == {"digest": 1}, "the job makes them again"

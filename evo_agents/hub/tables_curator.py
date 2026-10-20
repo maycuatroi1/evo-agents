@@ -2,12 +2,12 @@
 attributes (``tables.curator_changes``, ``tables.curator_repo_checks``, ``tables.curator_ledger``,
 ``tables.replay_tasks``, ``tables.curator_replays``): queries name them there.
 
-curator_changes (0017, 0019, 0054) holds what each accepted proposal became, curator_repo_checks (0017) the last
+curator_changes (0017, 0019, 0057) holds what each accepted proposal became, curator_repo_checks (0017) the last
 check of each repo's ruleset, and curator_ledger (0018) what happened to each proposal, never changed or deleted
-(``evo_agents.hub.server.changes``, ``evo_agents.hub.server.ledger``). replay_tasks (0053) holds each project's suite
-of replay tasks, made from its own history and only ever added to, and curator_replays (0053) each replay of one task
+(``evo_agents.hub.server.changes``, ``evo_agents.hub.server.ledger``). replay_tasks (0056) holds each project's suite
+of replay tasks, made from its own history and only ever added to, and curator_replays (0056) each replay of one task
 for one change, with what its two arms found (``evo_agents.hub.replay``, ``evo_agents.hub.server.replays``).
-curator_playbook (0057) holds the entries of each project's playbook of the Curator, and curator_playbook_deltas (0057)
+curator_playbook (0060) holds the entries of each project's playbook of the Curator, and curator_playbook_deltas (0060)
 every delta that added one, counted it helpful or harmful, or retired it, never changed or deleted
 (``evo_agents.hub.playbook``, ``evo_agents.hub.server.playbook``).
 """
@@ -77,7 +77,7 @@ def _changes(metadata: MetaData) -> Table:
         _stamp("created_at"),
         _stamp("updated_at"),
         Column("judge_key", Text),  # SHA-256 of the key the claim of its judge run handed the daemon (0019)
-        Column("knowledge", JSONB(none_as_null=True)),  # its pull request on knowledge.yaml, kind kg_source (0054)
+        Column("knowledge", JSONB(none_as_null=True)),  # its pull request on knowledge.yaml, kind kg_source (0057)
         ForeignKeyConstraint(
             ["builder_run_id"], ["runs.id"], ondelete="RESTRICT", name="curator_changes_builder_run_id_fkey"
         ),
@@ -171,7 +171,7 @@ def _ledger(metadata: MetaData) -> Table:
 
 
 def _replay_tasks(metadata: MetaData) -> Table:
-    """A project's suite of replay tasks, one per step of a plan done, only ever added to (0053). base_sha is set once,
+    """A project's suite of replay tasks, one per step of a plan done, only ever added to (0056). base_sha is set once,
     by the first replay that read it; unusable once a replay found the task's commits nowhere on origin."""
     return Table(
         "replay_tasks",
@@ -199,7 +199,7 @@ def _replay_tasks(metadata: MetaData) -> Table:
 
 
 def _replays(metadata: MetaData) -> Table:
-    """Each replay of one task for one change: its run, its own key, and what each arm found (0053)."""
+    """Each replay of one task for one change: its run, its own key, and what each arm found (0056)."""
     return Table(
         "curator_replays",
         metadata,
@@ -233,7 +233,7 @@ def _replays(metadata: MetaData) -> Table:
 
 def tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -> tuple[Table, Table, Table, Table, Table]:
     """curator_changes, curator_repo_checks, curator_ledger, replay_tasks and curator_replays, added to ``metadata``;
-    and the index that keeps one replay run of a project active at a time (0053), as runs_active_judge_key does for
+    and the index that keeps one replay run of a project active at a time (0056), as runs_active_judge_key does for
     judge runs: ``active`` are the states it counts (``tables.RUN_ACTIVE``)."""
     Index(
         "runs_active_replay_key",
@@ -246,7 +246,7 @@ def tables(metadata: MetaData, runs: Table, active: tuple[str, ...]) -> tuple[Ta
 
 
 def playbook_tables(metadata: MetaData) -> tuple[Table, Table]:
-    """curator_playbook and curator_playbook_deltas (0057), added to ``metadata``."""
+    """curator_playbook and curator_playbook_deltas (0060), added to ``metadata``."""
     entries = Table(
         "curator_playbook",
         metadata,
