@@ -1,6 +1,7 @@
-"""A core plugin built on the API imports nothing of evo_agents but the API module, and no SQLAlchemy (criterion a3 of
-the plan external-core-plugins): ``python -m pytest tests/plugins/test_core_plugin_imports.py`` reads every ``.py``
-of each package of PACKAGES with ``ast``, without importing it.
+"""A core plugin built on the API imports nothing of evo_agents but the API module, and no SQLAlchemy (criteria a3 and a8
+of the plan external-core-plugins): ``python -m pytest tests/plugins/test_core_plugin_imports.py`` reads every ``.py``
+of each package of PACKAGES with ``ast``, without importing it: the sample plugins, and telegram and chats of
+evo_agents/core_plugins, whose modules import each other with relative imports.
 
 - ``import`` and ``from ... import`` of ``evo_agents`` or below name ``evo_agents.hub.server.core_plugin_api`` alone
   (``from evo_agents.hub.server import core_plugin_api`` included), and what they take from it is a name of its
@@ -22,7 +23,13 @@ ROOT = Path(__file__).resolve().parent.parent.parent
 API = "evo_agents.hub.server.core_plugin_api"
 API_INIT = ROOT / "evo_agents" / "hub" / "server" / "core_plugin_api" / "__init__.py"
 FIXTURES = ROOT / "tests" / "fixtures" / "core_plugins"
-PACKAGES = (FIXTURES / "northwind_chat", FIXTURES / "lumen_relay")  # the packages built on the API alone
+CORE_PLUGINS = ROOT / "evo_agents" / "core_plugins"
+PACKAGES = (  # the packages built on the API alone: the samples, and the core plugins that leave evo-agents next
+    FIXTURES / "northwind_chat",
+    FIXTURES / "lumen_relay",
+    CORE_PLUGINS / "telegram",
+    CORE_PLUGINS / "chats",
+)
 DYNAMIC = {("importlib", "import_module"), (None, "import_module"), (None, "__import__")}
 
 

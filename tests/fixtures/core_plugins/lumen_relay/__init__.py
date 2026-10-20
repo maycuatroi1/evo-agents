@@ -32,7 +32,7 @@ STRAY = {
 
 
 def manifest() -> dict:
-    hub.require(1, 0)
+    hub.require(1, 1)
     return MANIFEST
 
 

@@ -192,7 +192,7 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
                 );
               })}
             </ul>
-            {direct ? null : <AddPersonForm chat={chat} me={me} pending={pendingOf("addPerson")} onAdd={(login) => write.mutate({ kind: "addPerson", login })} />}
+            {direct ? null : <AddPersonForm chat={chat} pending={pendingOf("addPerson")} onAdd={(login) => write.mutate({ kind: "addPerson", login })} />}
           </Section>
           <Section title={t("budget")} count="" testId="chat-members-budget">
             <BudgetForm key={chat.budget_usd} chat={chat} creator={creator} pending={pendingOf("budget")} onSave={(usd) => write.mutate({ kind: "budget", usd })} />

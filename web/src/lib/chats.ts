@@ -25,6 +25,8 @@ export type ChatEvents = Schemas["ChatEvents"];
 /** How far an agent's run that took a message is (`chat_progress` of the API): its step, worker and repo. */
 export type ChatProgress = Schemas["ChatProgress"];
 export type ChatCreate = Schemas["ChatCreate"];
+/** A person the visitor may add to a chat (`chat_people` of the API), with why they could not be in it with its agents. */
+export type ChatCandidate = Schemas["ChatCandidate"];
 /** A change of a group chat's image (an image_changed event): its URL now, null once taken off, and who changed it. */
 export type ChatImageChange = Schemas["ChatImageChange"];
 /** The latest message of a chat's main line, as its row in the list shows it. */
@@ -273,14 +275,6 @@ export function listTime(when: Date, now: Date, timeZone: string): ListTime {
   const days = Math.round((today.utc - day.utc) / 86_400_000);
   if (days > 0 && days < 7) return "weekday";
   return day.year === today.year ? "date" : "year";
-}
-
-/** The logins of the people of the visitor's chats, other than `me` and those in `except`: whom to suggest adding. */
-export function knownPeople(chats: readonly Pick<ChatSummary, "people">[], me: string | null, except: readonly string[] = []): string[] {
-  const skip = new Set([...(me ? [me] : []), ...except].map((login) => login.toLowerCase()));
-  const found = new Map<string, string>();
-  for (const chat of chats) for (const login of chat.people) if (!skip.has(login.toLowerCase())) found.set(login.toLowerCase(), login);
-  return [...found.values()].sort((a, b) => a.localeCompare(b));
 }
 
 /** Why a title is not one the hub takes; null when it is. */

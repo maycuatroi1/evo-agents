@@ -102,7 +102,7 @@ async def answer_decision(
     user = principal_of(member)
     with refusing():
         project = await member_channels.answerable_project(
-            conn, member.user_id, "decision", decision_id, cleared.level, cleared.location
+            conn, member.user_id, "decision", decision_id, cleared.level, cleared.location, cleared.below
         )
         body = decisions.AnswerIn(option=option, text=text)
         answered = await decisions.answer_decision(conn, user, project, decision_id, body, via=said)
@@ -132,7 +132,7 @@ async def answer_proposal(
     user = principal_of(member)
     with refusing():
         project = await member_channels.answerable_project(
-            conn, member.user_id, "proposal", proposal_id, cleared.level, cleared.location
+            conn, member.user_id, "proposal", proposal_id, cleared.level, cleared.location, cleared.below
         )
         await _feature_on(conn, user, "curator", project)
         body = ProposalAnswerIn(action=action, defer_days=defer_days, note=note)
@@ -201,7 +201,12 @@ async def read_message(
         await _chat_grants(conn, member.plugin, chat, READS)
         for project in chat.projects:
             if telegram.restricted_for(
-                project.clearance, project.levels, project.locations, cleared.level, cleared.location
+                project.clearance,
+                project.levels,
+                project.locations,
+                cleared.level,
+                cleared.location,
+                below=cleared.below,
             ):
                 raise Refused(403, KEPT_OFF.format(chat=chat.chat_id, project=project.name))
         row = await visible_message(conn, chat, message_id)
