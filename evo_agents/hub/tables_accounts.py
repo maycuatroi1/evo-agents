@@ -3,7 +3,8 @@ attributes (``tables.accounts``, ``tables.account_policies``, ``tables.run_accou
 
 accounts holds what a member set on one of their env secrets as an account, and where it stands: its weight and
 priority, when its owner paused it, until when it cools down and why, when a run last took it, its place in the
-rotation (``evo_agents.hub.accounts.pick``), and the last usage a run reported for it (0028). A secret without a row
+rotation (``evo_agents.hub.accounts.pick``), and the last usage a run reported for it (0028), and for an account that signed in with OAuth the sealed set of its
+tokens (0064: oauth_sealed, oauth_nonce, oauth_key_id, all null for any other account). A secret without a row
 has the defaults. account_policies holds a member's policy for a project; none means DEFAULT_POLICY. run_accounts
 holds the account each run took for each variable and how, so the run keeps it on every ask for its leases.
 """
@@ -19,6 +20,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Index,
     Integer,
+    LargeBinary,
     MetaData,
     PrimaryKeyConstraint,
     SmallInteger,
@@ -54,6 +56,9 @@ def account_tables(metadata: MetaData) -> tuple[Table, Table, Table]:
         _stamp("updated_at"),
         Column("last_usage", JSONB),  # 0028: the last usage a run reported (rate_limits), never a value
         _when("last_usage_at"),
+        Column("oauth_sealed", LargeBinary),  # 0064: the sealed set of an OAuth account's tokens
+        Column("oauth_nonce", LargeBinary),
+        Column("oauth_key_id", Text),
         ForeignKeyConstraint(["secret_id"], ["secrets.id"], ondelete="CASCADE", name="accounts_secret_id_fkey"),
         PrimaryKeyConstraint("secret_id", name="accounts_pkey"),
     )

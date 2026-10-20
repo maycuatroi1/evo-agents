@@ -30,6 +30,13 @@ is refused, pointing at ANTHROPIC_API_KEY. Renewing an account sends its project
 gives others; PUT keeps the id of the secret, so its weight, priority, pause, cooldown and runs stay. Every check that
 needs no token (the name, the day, the projects' writer role, the workers) comes before ``claude setup-token`` runs,
 so a token it makes is not lost to a refusal. Standard library only, like the rest of the client.
+
+``account oauth-login NAME`` does the same for an account of Claude's OAuth sign-in (``evo_agents.hub.claude_oauth``):
+the member approves on claude.ai, the command trades the code for an access token, a refresh token and the end of the
+access token, in memory alone, and writes them with PUT /v1/secrets/{name}: the access token as the value, the rest as
+``oauth``, which the hub seals with it. ``account list`` and ``show`` tell such an account by ``auth``: oauth, where an
+account of a pasted or ``claude setup-token`` token is token. Running it again for a NAME that exists replaces the
+tokens alone, as ``login`` does, with the same secret id.
 """
 
 from __future__ import annotations
@@ -39,10 +46,11 @@ import getpass
 import re
 import shutil
 import sys
+import webbrowser
 from datetime import UTC, datetime, timedelta
 from urllib.parse import quote
 
-from evo_agents.hub import setup_token
+from evo_agents.hub import claude_oauth, setup_token
 from evo_agents.hub.access import has_role
 from evo_agents.hub.accounts import (
     MAX_COOLDOWN_SECONDS,
@@ -301,6 +309,7 @@ def register_secrets(hsub) -> None:
 ACCOUNT_KEYS = (
     "name",
     "env_var",
+    "auth",
     "projects",
     "workers",
     "weight",
@@ -382,6 +391,7 @@ def cmd_account_list(args) -> int:
         (
             a["name"],
             a["env_var"],
+            a["auth"],
             a["state"],
             a["weight"],
             a["priority"],
@@ -395,7 +405,18 @@ def cmd_account_list(args) -> int:
         )
         for a in found
     ]
-    header = ("NAME", "VARIABLE", "STATE", "WEIGHT", "PRIORITY", "COOLS UNTIL", "USAGE", "RUNS 24H/7D", "COST 7D")
+    header = (
+        "NAME",
+        "VARIABLE",
+        "AUTH",
+        "STATE",
+        "WEIGHT",
+        "PRIORITY",
+        "COOLS UNTIL",
+        "USAGE",
+        "RUNS 24H/7D",
+        "COST 7D",
+    )
     _table((*header, "HELD BY", "PROJECTS", "WORKERS"), rows)
     now = datetime.now(UTC)
     reminders = []
@@ -410,7 +431,8 @@ def cmd_account_list(args) -> int:
 
 def _renew_command(account: dict) -> str:
     if account["env_var"] == setup_token.ENV_VAR:
-        return f"`evo-agents hub account login {account['name']}`"
+        command = "oauth-login" if account.get("auth") == "oauth" else "login"
+        return f"`evo-agents hub account {command} {account['name']}`"
     return f"`evo-agents hub secret set {account['name']} --kind env --env-var {account['env_var']} ...`"
 
 
@@ -420,6 +442,8 @@ def _expiry(account: dict, now: datetime) -> tuple[str, bool]:
     if not account["expires_at"]:
         return "never", False
     when = f"{_when(account['expires_at'])} UTC"
+    if account.get("auth") == "oauth":  # the end of its access token, which its refresh token replaces
+        return f"access token until {when}", False
     left = datetime.fromisoformat(account["expires_at"]) - now
     if left > timedelta(days=RENEW_WITHIN_DAYS):
         return when, False
@@ -475,6 +499,8 @@ def _print_account(a: dict) -> None:
     usage = _usage_text(a["last_usage"])
     reported = f", reported {_when(a['last_usage_at'])} UTC" if a["last_usage_at"] else ""
     print(f"Account {a['name']} ({a['env_var']}): {_state_text(a)}.")
+    if a.get("auth") == "oauth":
+        print("  Signed in with OAuth: the hub keeps its tokens sealed; renew with `account oauth-login`.")
     print(f"  Projects: {', '.join(a['projects']) or '-'}; workers: {', '.join(a['workers']) or 'any of yours'}.")
     print(f"  Expires: {_expiry(a, datetime.now(UTC))[0]}.")
     print(f"  Weight {a['weight']}, priority {a['priority']}; last taken {_when(a['last_leased_at'])} UTC.")
@@ -685,6 +711,108 @@ def cmd_account_login(args) -> int:
     return 0
 
 
+OAUTH_PASTE = (
+    "no code: pipe the code claude.ai shows after you approve, such as `pbpaste | evo-agents hub account oauth-login "
+    "NAME`, or run the command in a terminal"
+)
+
+
+def _oauth_code(name: str, pkce: claude_oauth.Pkce, args) -> str:
+    """The authorization code: from the browser's answer on localhost when a terminal and a browser are here, else
+    pasted (a code, ``code#state``, or the address the browser went to)."""
+    url = claude_oauth.authorize_url(pkce)
+    if not args.paste and sys.stdin is not None and sys.stdin.isatty():
+        _say(f"Sign in to Claude in the browser, then come back here. If it does not open, go to:\n\n{url}\n")
+        if not args.no_browser:
+            try:
+                webbrowser.open(url)
+            except webbrowser.Error:
+                pass
+        try:
+            return claude_oauth.wait_for_callback(pkce.state)
+        except claude_oauth.ListenError as exc:
+            _say(f"{exc}: paste the code claude.ai shows, or the address the browser went to.")
+    else:
+        _say(f"Open this address, approve, and give the code claude.ai shows:\n\n{url}\n")
+    pasted = read_value(name, prompt=f"Code for account {name} (not shown): ", missing=OAUTH_PASTE)
+    return claude_oauth.parse_code(pasted, pkce.state)
+
+
+@_client_command
+def cmd_account_oauth_login(args) -> int:
+    try:
+        check_name(args.name)
+    except Refused as exc:
+        return _usage_error(str(exc))
+    hub, _ = _signed_in()
+    existing = next((s for s in hub.call("GET", "/v1/secrets") if s["name"] == args.name), None)
+    try:
+        body = login_body(args, existing, "")
+        body.pop("expires_at")  # the end of the access token, which the tokens carry
+        check_bindings(hub, body)
+        projects = ", ".join(body["projects"])
+        workers = ", ".join(body["workers"]) or "any worker of yours"
+        verb = "Adding" if existing is None else "Replacing the tokens of"
+        _say(f"{verb} account {args.name} ({body['env_var']}, OAuth) for project(s) {projects}, on {workers}.")
+        pkce = claude_oauth.new_pkce()
+        code = _oauth_code(args.name, pkce, args)
+        tokens = claude_oauth.exchange(code, pkce)
+    except (Refused, claude_oauth.OAuthError) as exc:
+        return _usage_error(str(exc))
+    oauth = {
+        "refresh_token": tokens.refresh_token,
+        "access_expires_at": tokens.expires_at.isoformat(),
+        "account_uuid": tokens.account_uuid,
+        "organization_uuid": tokens.organization_uuid,
+        "email": tokens.email,
+    }
+    written = hub.call("PUT", _secret_path(args.name), {**body, "value": tokens.access_token, "oauth": oauth})
+    account = hub.call("GET", _account_path(args.name))
+    if args.json:
+        _print_json(account)
+        return 0
+    if written["created"]:
+        print(f"Created account {args.name} (OAuth). The hub keeps its tokens sealed and never shows them again.")
+    else:
+        print(
+            f"Replaced the tokens of account {args.name}; its weight, priority, pause, cooldown and runs stay. The hub "
+            "keeps the tokens sealed and never shows them again."
+        )
+    _print_account(account)
+    return 0
+
+
+def _register_oauth_login(asub) -> None:
+    login = asub.add_parser(
+        "oauth-login",
+        help="add a Claude account, or renew its tokens, by Claude's OAuth sign-in in your browser: the tokens go to "
+        "the hub sealed, never on the screen",
+    )
+    login.add_argument("name", metavar="NAME", help="1 to 64 of a-z, 0-9, '.', '_' and '-'; an account's to renew it")
+    login.add_argument(
+        "--project",
+        action="append",
+        metavar="PROJECT",
+        help="a project whose runs take it, on which you hold writer; repeat it for several (a new account needs one; "
+        "renewing keeps the account's projects)",
+    )
+    login.add_argument(
+        "--worker",
+        action="append",
+        metavar="NAME",
+        help="only runs on this worker of yours take it; repeat it for several (default: any worker of yours; "
+        "renewing keeps the account's workers)",
+    )
+    login.add_argument("--no-browser", action="store_true", help="print the address to open instead of opening it")
+    login.add_argument(
+        "--paste",
+        action="store_true",
+        help="do not listen for the browser: ask for the code claude.ai shows without echo, or read it from stdin",
+    )
+    json_option(login, returns_object(*ACCOUNT_KEYS, schema="Account"))
+    login.set_defaults(func=cmd_account_oauth_login)
+
+
 def _register_login(asub) -> None:
     login = asub.add_parser(
         "login",
@@ -762,6 +890,7 @@ def register_accounts(hsub) -> None:
     _named(asub, "pause", "keep new runs off an account; a run that holds it keeps it", cmd_account_pause)
     _named(asub, "resume", "let new runs take a paused account again", cmd_account_resume)
     _register_login(asub)
+    _register_oauth_login(asub)
 
     policy = asub.add_parser(
         "policy", help="show your policy for a project; with a flag, set it over the policy as it is now"
