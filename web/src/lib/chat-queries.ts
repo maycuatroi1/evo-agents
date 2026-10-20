@@ -1,9 +1,9 @@
-import { queryOptions } from "@tanstack/react-query";
+import { keepPreviousData, queryOptions } from "@tanstack/react-query";
 
 import { type ApiClient, call } from "@/lib/api/client";
 import { csrfHeaders } from "@/lib/api/csrf";
 import { chatKeys } from "@/lib/chat-keys";
-import type { Chat, ChatCreate, ChatEvents, ChatPage, GroupMessage } from "@/lib/chats";
+import type { Chat, ChatCandidate, ChatCreate, ChatEvents, ChatPage, GroupMessage } from "@/lib/chats";
 import type { ApiSource } from "@/lib/queries";
 
 export { chatComposeHref, chatKeys, chatQuery, chatsQuery, COMPOSE_PARAM, LIST_IDLE_MS, LIST_LIVE_MS, openDirectChat } from "@/lib/chat-keys";
@@ -28,6 +28,21 @@ export const chatPageQuery = (api: ApiSource, id: number) =>
     staleTime: Infinity,
     refetchOnWindowFocus: false,
   });
+
+/**
+ * The people the visitor may add to a chat (those they share a project or a chat with), by login, each with why they
+ * could not be in it with the agents `agents` (handles). The list a change of the agents asks for again keeps showing
+ * the last one until it comes.
+ */
+export const chatPeopleQuery = (api: ApiSource, agents: readonly string[]) => {
+  const handles = [...new Set(agents)].sort();
+  return queryOptions({
+    queryKey: chatKeys.people(handles),
+    queryFn: ({ signal }): Promise<ChatCandidate[]> => call(api().GET("/v1/chats/people", { params: { query: { agents: handles } }, signal })),
+    placeholderData: keepPreviousData,
+    staleTime: 30_000,
+  });
+};
 
 /** The messages before `before` (a seq), oldest first. */
 export function olderMessages(api: ApiClient, id: number, before: number, signal?: AbortSignal): Promise<ChatPage> {

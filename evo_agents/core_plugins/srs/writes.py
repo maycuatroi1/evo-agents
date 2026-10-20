@@ -7,6 +7,7 @@ none, the checks only the tables tell, and writing the version with its items, c
   gave, dropped screens included.
 - ``store_problems`` finds what refuses the save: a code another item of the project holds or held, a code an item
   had changed, a coded item dropped by a member who is not an admin of the project.
+- ``unheld_problems`` says why no item of the latest version holds a code an admin asked to retire.
 - ``write_version`` writes the next version of a document, under its row lock, as one straight line: the version
   built on the latest one. A dropped item keeps its codes, so no item gets them again.
 """
@@ -174,6 +175,24 @@ async def store_problems(conn: AsyncConnection, writer: Writer, doc: Document, b
     return found
 
 
+def _unheld(code: str, held: HeldCode | None, writer: Writer, where: str) -> str:
+    if held is not None and held.document_id != writer.document_id:
+        return f"{code!r} is the code of an item of another document of the project, not of {where}"
+    if held is not None and held.retired_in is not None:
+        return f"{code!r} was the code of an item dropped in version {held.retired_in}: it is retired already"
+    return f"no item of {where} holds the code {code!r}"
+
+
+async def unheld_problems(conn: AsyncConnection, writer: Writer, where: str, codes: list[str]) -> list[Problem]:
+    """One error per code of ``codes``, none of which an item of the latest version (``where``, such as "version 3
+    of orders") holds, saying why: a code of another document, one dropped before, or one nobody holds."""
+    held = await held_codes(conn, writer.project_id, sorted({code_key(code) for code in codes}))
+    return [
+        Problem(ERROR, "code_unknown", _unheld(code, held.get(code_key(code)), writer, where), code=code)
+        for code in codes
+    ]
+
+
 # Writing
 
 
@@ -322,5 +341,6 @@ __all__ = [
     "new_key",
     "sha256",
     "store_problems",
+    "unheld_problems",
     "write_version",
 ]

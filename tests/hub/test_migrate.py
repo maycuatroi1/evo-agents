@@ -95,7 +95,7 @@ TABLES |= pg.KG_HEALTH_TABLES  # migration 0055
 TABLES |= pg.REPLAY_TABLES  # migration 0056
 TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
-TABLES |= pg.NIGHTLY_TABLES  # migration 0064
+TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -1188,8 +1188,32 @@ def test_0063_makes_telegrams_codes_link_codes_of_kind_telegram_and_going_back_k
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0063") :]
 
 
-def test_0064_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_back_drops_them(hub_db):
+def test_0064_lets_a_version_in_review_be_withdrawn_and_going_back_makes_it_a_draft_again(hub_db):
     move_to(hub_db, "0063")
+    s = hub_tables.srs
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        document = {"project_id": ids["project"], "slug": "demo-shop", "title": "Demo shop", "created_by": ids["user"]}
+        doc = one(conn, insert(s.documents).values(**document, label={"level": "internal"}).returning(s.documents.c.id))
+        version = {"document_id": doc, "author_id": ids["user"], "content_sha256": "a" * 64, "submitted_at": func.now()}
+        conn.execute(insert(s.versions).values(number=1, state="in_review", round=1, **version))
+        with pytest.raises(errors.CheckViolation):  # 0046 knows no withdrawn version
+            conn.execute(update(s.versions).values(state="withdrawn", decided_at=func.now()))
+    before = query(hub_db, SNAPSHOT)
+    move_to(hub_db, "0064")
+    with live.connect(hub_db) as conn:
+        with pytest.raises(errors.CheckViolation):  # a withdrawn version carries the moment it was withdrawn
+            conn.execute(update(s.versions).values(state="withdrawn"))
+        conn.execute(update(s.versions).values(state="withdrawn", decided_at=func.now()))
+    assert query(hub_db, select(s.versions.c.state)) == [("withdrawn",)]
+    move_to(hub_db, "0063", down=True)
+    assert query(hub_db, select(s.versions.c.state, s.versions.c.decided_at)) == [("draft", None)]
+    assert query(hub_db, SNAPSHOT) == before
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
+
+
+def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0064")
     workers, nightly = hub_tables.workers, hub_tables.hub_nightly
     with live.connect(hub_db) as conn:
         ids = seed(conn)
@@ -1197,7 +1221,7 @@ def test_0064_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_
             conn, _token(ids, kind="worker", token_hash="4" * 64, host="mac").returning(hub_tables.tokens.c.id)
         )
         worker = one(conn, _worker_row(ids, token_id, "mac", 1))
-    move_to(hub_db, "0064")
+    move_to(hub_db, "0065")
     added = {"update_requested_at", "update_ended_at", "update_outcome", "update_reason"}
     assert added <= columns(hub_db, "workers")
     assert columns(hub_db, "hub_nightly") == {"id", "commit_sha", "read_at"}
@@ -1226,10 +1250,10 @@ def test_0064_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_
             conn.execute(insert(nightly).values(commit_sha="c" * 64, read_at=func.now()))
     assert query(hub_db, select(workers.c.update_outcome, workers.c.update_reason)) == [("failed", "pip exited 1")]
     assert query(hub_db, select(nightly.c.id, nightly.c.commit_sha)) == [(1, "b" * 40)]
-    move_to(hub_db, "0063", down=True)
+    move_to(hub_db, "0064", down=True)
     assert not added & columns(hub_db, "workers")
     assert not columns(hub_db, "hub_nightly")
-    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

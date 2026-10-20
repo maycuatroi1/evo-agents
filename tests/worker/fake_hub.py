@@ -93,7 +93,7 @@ class FakeHub:
         # daemon saying kg_sync carries (kg_sync); empty: the key left out
         self.kg_duties: list[dict] = []
         # the hub's read of nightly ({commit, read_at}) and the owner's open Update now ({requested_at}) each heartbeat
-        # answer carries; None: the key left out, as a hub before 0064, or one that has not read nightly yet
+        # answer carries; None: the key left out, as a hub before 0065, or one that has not read nightly yet
         self.nightly: dict | None = None
         self.update_now: dict | None = None
         self.outdated = False  # True: every worker call gets 426, as a hub that no longer speaks the daemon's protocol

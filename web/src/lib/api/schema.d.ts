@@ -3459,7 +3459,8 @@ export interface paths {
         };
         /**
          * List Documents
-         * @description The BA documents of the project the caller sees, by slug, each with its latest version.
+         * @description The BA documents of the project the caller sees, by slug, each with its latest version; the archived ones only
+         *     with ``all``.
          */
         get: operations["list_documents_v1_x_srs__project__documents_get"];
         put?: never;
@@ -3616,6 +3617,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/x/srs/{project}/documents/{slug}/retire": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retire Items
+         * @description Drop the items of the latest version that hold ``codes`` (codes or aliases), each with its subtree, as the
+         *     document's next version, a draft built on the latest through the same save as any other, so its checks hold and a
+         *     code dropped is never given again; as an admin of the project, never the agent of a run. 422 listing each code no
+         *     item of the latest version holds, one dropped before included; ``dry_run`` answers what would be dropped and writes
+         *     nothing.
+         */
+        post: operations["retire_items_v1_x_srs__project__documents__slug__retire_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/x/srs/{project}/documents/{slug}/versions/{number}/submit": {
         parameters: {
             query?: never;
@@ -3652,6 +3677,70 @@ export interface paths {
          *     it, and the agent of a run never does.
          */
         post: operations["review_version_v1_x_srs__project__documents__slug__versions__number__reviews_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/versions/{number}/withdraw": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Withdraw Version
+         * @description Take a version out of review for good, as its author or an admin of the project; ``comment`` is kept as a
+         *     comment on it. A withdrawn version is never submitted, reviewed or approved again, and approving a later one leaves
+         *     it withdrawn. The agent of a run never withdraws one.
+         */
+        post: operations["withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Archive Document
+         * @description Archive a document, as an admin of the project: it leaves the list of documents (``all`` lists it), @ba's
+         *     search and the knowledge graph, is still read by its slug, and takes no write until it is unarchived; its codes
+         *     stay held and its slug taken. 409 when it is archived already.
+         */
+        post: operations["archive_document_v1_x_srs__project__documents__slug__archive_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/x/srs/{project}/documents/{slug}/unarchive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Unarchive Document
+         * @description Open an archived document again, as an admin of the project. 409 when it is not archived.
+         */
+        post: operations["unarchive_document_v1_x_srs__project__documents__slug__unarchive_post"];
         delete?: never;
         options?: never;
         head?: never;
@@ -4443,6 +4532,26 @@ export interface paths {
          * @description The worker pushed the task run's branch of a repo: its draft pull request, kept on the run.
          */
         post: operations["pushed_v1_worker_runs__run_id__task_pulls_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/chats/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Candidates
+         * @description The people the caller may add to a chat, by login, each with why they could not be in it with ``agents``.
+         */
+        get: operations["list_candidates_v1_chats_people_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -7322,6 +7431,21 @@ export interface components {
              */
             avatar_url?: string | null;
         };
+        /** ChatCandidate */
+        ChatCandidate: {
+            /** Login */
+            login: string;
+            /**
+             * Avatar Url
+             * @description their GitHub avatar; null for a login that never signed in
+             */
+            avatar_url: string | null;
+            /**
+             * Why
+             * @description why they could not be in a chat with the agents given, as the hub's refusal says it; null when they could
+             */
+            why: string | null;
+        };
         /** ChatCreate */
         ChatCreate: {
             /** Title */
@@ -9247,7 +9371,7 @@ export interface components {
              * @description for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise
              */
             kg_sync?: components["schemas"]["KgDuty"][];
-            /** @description the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0064 */
+            /** @description the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0065 */
             nightly?: components["schemas"]["NightlyRead"] | null;
             /** @description the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now */
             update_now?: components["schemas"]["UpdateNowRequest"] | null;
@@ -15633,7 +15757,7 @@ export interface components {
             /** Latest Version */
             latest_version: number | null;
             /** Latest State */
-            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            latest_state: ("draft" | "in_review" | "approved" | "superseded" | "withdrawn") | null;
             /**
              * Label
              * @description the label every row of the document carries
@@ -15678,7 +15802,7 @@ export interface components {
             /** Latest Version */
             latest_version: number | null;
             /** Latest State */
-            latest_state: ("draft" | "in_review" | "approved" | "superseded") | null;
+            latest_state: ("draft" | "in_review" | "approved" | "superseded" | "withdrawn") | null;
             /**
              * Label
              * @description the label every row of the document carries
@@ -15962,6 +16086,56 @@ export interface components {
              */
             to: string;
         };
+        /** SrsRetireIn */
+        SrsRetireIn: {
+            /**
+             * Codes
+             * @description the codes or aliases of the items to retire
+             */
+            codes: string[];
+            /**
+             * Summary
+             * @description the new version's; from the codes if left out
+             * @default
+             */
+            summary: string;
+            /**
+             * Dry Run
+             * @default false
+             */
+            dry_run: boolean;
+        };
+        /** SrsRetireResult */
+        SrsRetireResult: {
+            /** Document */
+            document: string;
+            /**
+             * Version
+             * @description the version saved, a draft; null for a dry run
+             */
+            version: number | null;
+            /** Dry Run */
+            dry_run: boolean;
+            /**
+             * Dropped
+             * @description every item the version drops: each one retired and the items under it, in document order
+             */
+            dropped: components["schemas"]["SrsRetiredItem"][];
+        };
+        /** SrsRetiredItem */
+        SrsRetiredItem: {
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "section" | "use_case" | "business_rule" | "screen" | "nfr" | "cbr" | "glossary" | "approval_page" | "revision_history";
+            /** Code */
+            code: string | null;
+            /** Title */
+            title: string;
+        };
         /** SrsReview */
         SrsReview: {
             /** Reviewer */
@@ -16037,7 +16211,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "draft" | "in_review" | "approved" | "superseded";
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
             /**
              * Round
              * @description how many times it was submitted
@@ -16080,7 +16254,7 @@ export interface components {
              * State
              * @enum {string}
              */
-            state: "draft" | "in_review" | "approved" | "superseded";
+            state: "draft" | "in_review" | "approved" | "superseded" | "withdrawn";
             /**
              * Round
              * @description how many times it was submitted
@@ -16114,6 +16288,14 @@ export interface components {
             items: components["schemas"]["SrsItem"][];
             /** Problems */
             problems: components["schemas"]["SrsProblem"][];
+        };
+        /** SrsWithdrawIn */
+        SrsWithdrawIn: {
+            /**
+             * Comment
+             * @description why, kept as a comment on the version
+             */
+            comment?: string | null;
         };
         /**
          * StateCounts
@@ -30888,7 +31070,10 @@ export interface operations {
     };
     list_documents_v1_x_srs__project__documents_get: {
         parameters: {
-            query?: never;
+            query?: {
+                /** @description the archived documents too */
+                all?: boolean;
+            };
             header?: {
                 "X-Evo-Sink"?: string | null;
             };
@@ -31620,6 +31805,89 @@ export interface operations {
             };
         };
     };
+    retire_items_v1_x_srs__project__documents__slug__retire_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SrsRetireIn"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsRetireResult"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
     submit_version_v1_x_srs__project__documents__slug__versions__number__submit_post: {
         parameters: {
             query?: never;
@@ -31726,6 +31994,248 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    withdraw_version_v1_x_srs__project__documents__slug__versions__number__withdraw_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+                number: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["SrsWithdrawIn"] | null;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsVersion"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    archive_document_v1_x_srs__project__documents__slug__archive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsDocumentSummary"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    unarchive_document_v1_x_srs__project__documents__slug__unarchive_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-Evo-Sink"?: string | null;
+            };
+            path: {
+                project: string;
+                slug: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SrsDocumentSummary"];
                 };
             };
             /** @description Unauthorized */
@@ -35185,6 +35695,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_candidates_v1_chats_people_get: {
+        parameters: {
+            query?: {
+                /** @description a handle of the chat's agents, @ left out; repeat it */
+                agents?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatCandidate"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };

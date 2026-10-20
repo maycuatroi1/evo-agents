@@ -8,10 +8,10 @@ dispatch_from, version_locked) and when it was drained or revoked (``evo_agents.
 default); agent_commit, the commit of evo-agents its last heartbeat said it runs; self_update, what that heartbeat said
 of updating itself to the tag nightly; self_update_since, when the hub first got the state self_update holds, in an
 unbroken line of heartbeats that said it. kg_sync (0053) is what its last heartbeat said of keeping fresh the graphs of
-the projects whose night shift it is on duty for (``evo_agents.worker.kg_sync``). The columns of 0064 keep its owner's
+the projects whose night shift it is on duty for (``evo_agents.worker.kg_sync``). The columns of 0065 keep its owner's
 Update now: update_requested_at, when the last one was asked for; update_ended_at, when it ended (NULL while it is
 open, or when none was asked for), update_outcome how (``runs.UPDATE_NOW_OUTCOMES``) and update_reason why, when the
-daemon said. hub_nightly (0064) is one row, the commit the tag nightly pointed to when the hub last read it and when
+daemon said. hub_nightly (0065) is one row, the commit the tag nightly pointed to when the hub last read it and when
 that was (``evo_agents.hub.nightly``), absent until the hub first read it. worker_projects lists the projects a worker
 takes runs of; worker_pairings holds the pairing codes a member creates for a machine to join with.
 """
@@ -86,10 +86,10 @@ def workers_table(metadata: MetaData) -> Table:
         _when("self_update_since"),  # 0048
         Column("kg_sync", JSONB),  # 0053
         Column("shared", Boolean, nullable=False, server_default=false()),  # 0062
-        _when("update_requested_at"),  # 0064
-        _when("update_ended_at"),  # 0064
-        Column("update_outcome", Text),  # 0064
-        Column("update_reason", Text),  # 0064
+        _when("update_requested_at"),  # 0065
+        _when("update_ended_at"),  # 0065
+        Column("update_outcome", Text),  # 0065
+        Column("update_reason", Text),  # 0065
         ForeignKeyConstraint(["owner_id"], ["users.id"], ondelete="RESTRICT", name="workers_owner_id_fkey"),
         ForeignKeyConstraint(["token_id"], ["tokens.id"], ondelete="RESTRICT", name="workers_token_id_fkey"),
         PrimaryKeyConstraint("id", name="workers_pkey"),

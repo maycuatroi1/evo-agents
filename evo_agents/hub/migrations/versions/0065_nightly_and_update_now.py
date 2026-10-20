@@ -1,7 +1,7 @@
 """The commit of the tag nightly the hub last read, and an owner's Update now of a worker.
 
-Revision ID: 0064
-Revises: 0063
+Revision ID: 0065
+Revises: 0064
 Create Date: 2026-10-20
 
 hub_nightly holds at most one row (id 1): the commit the tag nightly of evo-agents pointed to when the hub's job
@@ -15,15 +15,15 @@ daemon said. An outcome goes with an end and an end with a request. The bounds b
 ``evo_agents.hub.server.runs.models.OBJECT_NAME`` and ``evo_agents.hub.runs.UPDATE_NOW_OUTCOMES`` as of this revision,
 never imports, so a later change to them takes a new revision.
 
-Going back drops the table and the four columns, which is the schema 0063 runs on: its hub reads no nightly and takes
+Going back drops the table and the four columns, which is the schema 0064 runs on: its hub reads no nightly and takes
 no Update now.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0064"
-down_revision = "0063"
+revision = "0065"
+down_revision = "0064"
 branch_labels = None
 depends_on = None
 

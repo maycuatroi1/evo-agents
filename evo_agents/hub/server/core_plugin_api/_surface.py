@@ -77,7 +77,11 @@ def describe(value) -> dict:
     """What one name of the surface is, as JSON."""
     if typing.get_origin(value) is Annotated:
         annotated, *metadata = typing.get_args(value)
-        return {"kind": "alias", "annotated": _annotation(annotated), "metadata": [_metadata(item) for item in metadata]}
+        return {
+            "kind": "alias",
+            "annotated": _annotation(annotated),
+            "metadata": [_metadata(item) for item in metadata],
+        }
     if isinstance(value, type) and issubclass(value, BaseException):
         found = {"kind": "error", "bases": [base.__name__ for base in value.__bases__]}
         if "__init__" in vars(value):

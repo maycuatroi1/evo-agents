@@ -10,8 +10,8 @@ member's web session, neither revoked nor expired (``live_session``). Linking ta
 member's channel of that kind; ``unique_on`` names the config keys that identify a chat, so a chat speaks for one
 member and another member's link to it goes. Unlinking deletes the channel, whose deliveries go with it.
 
-These rules came from the Telegram channel (``evo_agents.core_plugins.telegram.server``), which keeps its own copy of
-them until it reaches the hub through the API.
+These rules came from the Telegram channel (``evo_agents.core_plugins.telegram``), which reaches them through the API
+like any other core plugin.
 """
 
 from __future__ import annotations
@@ -43,6 +43,7 @@ FROM_SESSION = (
     "a channel is linked from a web session only, so a token that leaked cannot link one of its own: sign in on the "
     "web and link it there"
 )
+NO_USER = "the hub has no user {login}"
 ANSWERABLE = ("decision", "proposal")
 
 
@@ -117,6 +118,25 @@ async def member_by_config(
         query = query.where(live_session(c))
     row = (await conn.execute(query.order_by(c.c.id).limit(1))).one_or_none()
     return None if row is None else _found(row)
+
+
+async def linked(conn: AsyncConnection, user_id: int, kind: str):
+    """Member ``user_id``'s channel of ``kind`` as it stands (config, enabled, created_at, and session_live: the web
+    session that linked it lives), or None."""
+    c = tables.notification_channels
+    live = live_session(c).label("session_live")
+    query = select(c.c.config, c.c.enabled, c.c.created_at, live).where(c.c.user_id == user_id, c.c.kind == kind)
+    return (await conn.execute(query)).one_or_none()
+
+
+async def user_named(conn: AsyncConnection, login: str):
+    """The user (id, login) of ``login`` in any case; 404 when the hub has none."""
+    u = tables.users
+    query = select(u.c.id, u.c.login).where(func.lower(u.c.login) == func.lower(login))
+    found = (await conn.execute(query)).one_or_none()
+    if found is None:
+        raise HTTPException(404, NO_USER.format(login=login))
+    return found
 
 
 async def member_channel(conn: AsyncConnection, kind: str, user_id: int, *, live: bool = True) -> Found | None:
@@ -208,7 +228,9 @@ async def new_link_code(conn: AsyncConnection, *, user_id: int, token_id: int, k
     day_ago = func.now() - timedelta(days=1)
     mine = and_(codes.c.user_id == user_id, codes.c.kind == kind)
     await conn.execute(
-        delete(codes).where(mine | (codes.c.expires_at < day_ago), codes.c.used_at.is_(None) | (codes.c.used_at < day_ago))
+        delete(codes).where(
+            mine | (codes.c.expires_at < day_ago), codes.c.used_at.is_(None) | (codes.c.used_at < day_ago)
+        )
     )
     code = telegram.new_code()
     made = (
@@ -261,10 +283,12 @@ def project_rules():
     return select(p.c.name, p.c.levels, p.c.locations, ps.c.clearance).select_from(p.outerjoin(ps, hub_sink))
 
 
-def kept_from(row, level: str, location: str | None) -> bool:
-    """Whether the project of ``row`` (of ``project_rules``) is kept from a channel cleared for level and location;
-    no project is."""
-    return row is None or telegram.restricted_for(row.clearance, row.levels, row.locations, level, location)
+def kept_from(row, level: str, location: str | None, below: bool = False) -> bool:
+    """Whether the project of ``row`` (of ``project_rules``) is kept from a channel cleared for level and location,
+    or for what sits below them (``telegram.restricted_for``); no project is."""
+    if row is None:
+        return True
+    return telegram.restricted_for(row.clearance, row.levels, row.locations, level, location, below=below)
 
 
 async def rules_of(conn: AsyncConnection, project: str):
@@ -273,7 +297,13 @@ async def rules_of(conn: AsyncConnection, project: str):
 
 
 async def answerable_project(
-    conn: AsyncConnection, user_id: int, kind: str, item_id: int, level: str, location: str | None
+    conn: AsyncConnection,
+    user_id: int,
+    kind: str,
+    item_id: int,
+    level: str,
+    location: str | None,
+    below: bool = False,
 ) -> str:
     """The name of the project of decision or proposal ``item_id``, once member ``user_id`` may answer it from a
     channel cleared for ``level`` and ``location``: 404 NOT_YOURS without a grant on it, the same as for nothing by
@@ -293,19 +323,21 @@ async def answerable_project(
     row = (await conn.execute(query)).one_or_none()
     if row is None:
         raise HTTPException(404, NOT_YOURS)
-    if kept_from(row, level, location):
+    if kept_from(row, level, location, below):
         raise HTTPException(403, RESTRICTED_ANSWER)
     return row.name
 
 
-async def prepare(conn: AsyncConnection, notification: Outgoing, level: str, location: str | None) -> Outgoing:
+async def prepare(
+    conn: AsyncConnection, notification: Outgoing, level: str, location: str | None, below: bool = False
+) -> Outgoing:
     """``notification`` with what a channel cleared for ``level`` and ``location`` may send of it in ``extra``: only
     ``{"restricted": true}`` when its project is kept from the channel (or it is a decision or proposal of no project),
     else its decision (question, category, plan_id, step_key, options, state, run_kind, run_title) and its proposal
     (title, tier, kind, lens, evidence_count, state), as Telegram's channel reads them."""
     restricted = notification.kind in ANSWERABLE
     if notification.project is not None:
-        restricted = kept_from(await rules_of(conn, notification.project), level, location)
+        restricted = kept_from(await rules_of(conn, notification.project), level, location, below)
     if restricted:
         return dataclasses.replace(notification, extra={"restricted": True})
     extra: dict = {"restricted": False}
@@ -353,6 +385,7 @@ __all__ = [
     "FROM_SESSION",
     "MAX_CONFIG_BYTES",
     "NOT_YOURS",
+    "NO_USER",
     "RESERVED_KEYS",
     "RESTRICTED_ANSWER",
     "Found",
@@ -361,6 +394,7 @@ __all__ = [
     "json_object",
     "kept_from",
     "link",
+    "linked",
     "live_session",
     "member_by_config",
     "member_channel",
@@ -372,4 +406,5 @@ __all__ = [
     "session_live",
     "set_state",
     "unlink",
+    "user_named",
 ]
