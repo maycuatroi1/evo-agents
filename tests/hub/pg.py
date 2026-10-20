@@ -123,7 +123,7 @@ HISTORY_TABLES = frozenset({"history_runs", "facet_clusters"})
 SEARCH_TABLES = frozenset({"history_lines", "history_indexed", "curator_playbook", "curator_playbook_deltas"})
 # migration 0065: the commit of the tag nightly the hub last read
 NIGHTLY_TABLES = frozenset({"hub_nightly"})
-# migration 0066: the release schedules of projects, their cycles, the runs of each cycle and every check
+# migration 0067: the release schedules of projects, their cycles, the runs of each cycle and every check
 RELEASE_TABLES = frozenset({"release_schedules", "release_cycles", "release_runs", "release_checks"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients

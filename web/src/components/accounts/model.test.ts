@@ -16,6 +16,7 @@ import type { Account, AccountPolicy } from "./queries";
 const ACCOUNT: Account = {
   name: "claude-a",
   env_var: "CLAUDE_CODE_OAUTH_TOKEN",
+  auth: "token",
   projects: ["demo", "docs"],
   workers: [],
   weight: 2,
@@ -88,5 +89,9 @@ describe("the renewal reminder", () => {
     expect(renewalDue(at(NOW + 30 * DAY), NOW)).toEqual({ at: new Date(NOW + 30 * DAY).toISOString(), days: 30 });
     expect(renewalDue(at(NOW + 2 * 60 * 60 * 1000), NOW)?.days).toBe(1);
     expect(renewalDue(at(NOW - DAY), NOW)).toBeNull();
+  });
+
+  it("is never due for an OAuth account: the end is its access token's, which the hub renews", () => {
+    expect(renewalDue({ auth: "oauth", expires_at: new Date(NOW + 2 * 60 * 60 * 1000).toISOString() }, NOW)).toBeNull();
   });
 });

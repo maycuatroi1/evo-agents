@@ -568,7 +568,7 @@ def test_release_status_set_pause_resume_and_run_from_the_command_line(served, m
     assert set(STATUS_KEYS) == set(status) and set(CHECK_KEYS) == set(checked)
 
 
-# Schema 0066
+# Schema 0067
 
 
 def refused(db, error, statement) -> None:
@@ -576,7 +576,7 @@ def refused(db, error, statement) -> None:
         sql(db, statement)
 
 
-def test_the_rows_of_0066_hold_together_and_it_goes_down_to_0065_and_up_again(world):
+def test_the_rows_of_0067_hold_together_and_it_goes_down_to_0066_and_up_again(world):
     set_schedule(world, repo=REPO)
     assert fire(world, SIX) == {"opened": 1}
     db = world.db
@@ -622,12 +622,12 @@ def test_the_rows_of_0066_hold_together_and_it_goes_down_to_0065_and_up_again(wo
     refused(db, errors.UniqueViolation, insert(r).values(**copy))  # one active release run in a project
     refused(db, errors.CheckViolation, insert(r).values(**{**copy, "state": "cancelled", "dispatched_via": "machine"}))
     sql(db, insert(r).values(**{**copy, "state": "cancelled", "finished_at": func.now()}))  # an ended one may be
-    move_to(db, "0065", down=True)
+    move_to(db, "0066", down=True)
     gone = select(*(func.to_regclass(f"public.{name}") for name in pg.RELEASE_TABLES))
     assert sql(db, gone) == [(None,) * len(pg.RELEASE_TABLES)]
     assert sql(db, select(func.count()).select_from(r).where(r.c.kind == "release")) == [(0,)]
     refused(db, errors.CheckViolation, insert(r).values(**{**copy, "state": "cancelled", "finished_at": func.now()}))
-    move_to(db, "0066")
+    move_to(db, "0067")
     assert sql(db, select(func.count()).select_from(s)) == [(0,)]
     set_schedule(world, repo=REPO)
     assert fire(world, NEXT) == {"opened": 1}

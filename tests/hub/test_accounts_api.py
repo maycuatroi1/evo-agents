@@ -11,7 +11,7 @@ row or run event holds a value or names an account but by its id."""
 
 import json
 from collections import Counter
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -23,6 +23,7 @@ if not pg.DSN:
 from sqlalchemy import func, insert, select, update
 
 from evo_agents.hub import tables
+from evo_agents.hub.server.account_choice import RELOGIN_REASON
 from tests.hub import test_credentials_api as credentials_api
 from tests.hub.live import sql
 from tests.hub.test_credentials_api import (
@@ -333,3 +334,42 @@ def test_a_policy_is_the_members_own_for_a_project(client, hub, hub_db):
         (f"{PROJECT} strategy=fill-first cooldown=600 failover=no max_failovers=3", "owner", PROJECT)
     ]
     assert [row[:3] for row in audit_rows(hub_db, "account.policy-delete")] == [(PROJECT, "owner", PROJECT)]
+
+
+def test_an_oauth_account_shows_its_kind_its_access_tokens_end_and_whether_it_needs_a_new_sign_in(client, hub, hub_db):
+    refresh = sample("sk-ant-ort01-")
+    access = sample("sk-ant-oat01-")
+    ends = datetime.now(UTC) + timedelta(hours=8)
+    body = {
+        "kind": "env",
+        "env_var": VAR,
+        "value": access,
+        "projects": [PROJECT],
+        "oauth": {"refresh_token": refresh, "access_expires_at": ends.isoformat(), "account_uuid": "acc-1"},
+    }
+    assert client.put("/v1/secrets/oauth-a", json=body, headers=hub["owner"]).status_code == 200
+    env_secret(client, hub["owner"], "claude-plain", VAR, sample("plain-"))
+    found = {a["name"]: a for a in accounts(client, hub["owner"])}
+    assert (found["oauth-a"]["auth"], found["oauth-a"]["state"]) == ("oauth", "ready")
+    assert datetime.fromisoformat(found["oauth-a"]["expires_at"]) == ends
+    assert (found["claude-plain"]["auth"], found["claude-plain"]["state"]) == ("token", "ready")
+
+    # an access token that has ended is renewed when a run leases it: the account is not expired
+    s = tables.secrets
+    sql(hub_db, update(s).values(expires_at=func.now() - timedelta(minutes=1)).where(s.c.name == "oauth-a"))
+    assert accounts(client, hub["owner"])[0]["state"] == "ready"
+
+    # the cooldown a refused refresh token sets, and the one of a usage limit
+    a = tables.accounts
+    secret_id = int(secret_ids(hub_db, "oauth-a"))
+    sql(
+        hub_db,
+        update(a)
+        .values(cooldown_until=func.now() + timedelta(days=3650), cooldown_reason=RELOGIN_REASON)
+        .where(a.c.secret_id == secret_id),
+    )
+    shown = client.get("/v1/accounts/oauth-a", headers=hub["owner"]).json()
+    assert shown["state"] == "needs-relogin" and shown["cooldown_reason"] == RELOGIN_REASON
+    sql(hub_db, update(a).values(cooldown_reason="usage limit").where(a.c.secret_id == secret_id))
+    assert client.get("/v1/accounts/oauth-a", headers=hub["owner"]).json()["state"] == "cooling"
+    assert refresh not in json.dumps(accounts(client, hub["owner"])) and access not in json.dumps(shown)

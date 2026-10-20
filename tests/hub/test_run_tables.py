@@ -113,7 +113,7 @@ def add_run(conn, ids, state: str = "queued", step: str = "3", kind: str = "step
     elif kind == "task":  # the work a plugin hands an agent type of its own, on no plan, its text the request (0042)
         row |= {"kind": "task", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": "task/1", "repos": REPOS, "request": "Fix the wait.", "pulls": []}
-    elif kind == "release":  # a cut or a fix of a release cycle, on no plan, dispatched by its schedule (0066)
+    elif kind == "release":  # a cut or a fix of a release cycle, on no plan, dispatched by its schedule (0067)
         row |= {"kind": "release", "plan_id": None, "plan_revision": None, "step_key": None, "repo": None}
         row |= {"branch": None, "repos": REPOS, "dispatched_via": "release"}
     elif kind != "step":
@@ -338,7 +338,7 @@ def test_the_tables_take_every_state_kind_runtime_mode_and_approval_of_the_runs_
     agent_type = add_agent_type(conn, ids)
     for state in runs.RUN_STATES:  # task runs, the work a plugin hands an agent type of its own (0042)
         add_run(conn, ids, state, kind="task", agent_type_id=agent_type)
-    for state in ("queued", *runs.TERMINAL_STATES):  # a project has one release run active at a time (0066)
+    for state in ("queued", *runs.TERMINAL_STATES):  # a project has one release run active at a time (0067)
         add_run(conn, ids, state, kind="release")
     assert query_kinds(conn) == set(runs.SHOWN_KINDS)
     for runtime in ("any", *runs.RUNTIMES, "sandbox/fake"):  # a plugin's runtime, <plugin>/<name> (0039)
