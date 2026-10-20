@@ -28,21 +28,23 @@ process. The lifespan of a mounted app does not run, so the hub's lifespan enter
 Every refusal is the API's JSON error with the request id. Only then does the SDK see the request, with the caller in
 ``request.state``.
 
-The 30 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
+The 32 tools are ``evo_agents.hub.mcp_tools.TOOLS``; the tools of the plugins a session's project enabled follow them,
 named ``<plugin>__<tool>`` (``evo_agents.hub.server.plugin_tools``). The kg_* tools are those of ``kg serve``, names,
 schemas, arguments and results, answered by ``evo_agents.hub.server.kg.tool_result`` as the REST route answers them;
-kg_more continues any cut result of the same user and session project, with or without a graph. The others call the
+kg_more continues any cut result of the same user and session project whose audience the caller still holds
+(``kg_audience``), with or without a graph. chat_message and chat_thread read the messages of group chats whole, as
+``chat_read`` rules who may, from the chats and grants as they are at each call. The others call the
 hub's routes for memories, plans and their handoffs, skills, projects, the tool figures of runs, and what the Curator's
 review run reads (the night's figures, session digests, the events of a run, decisions, replays, and the project's
-whole history, ``history_mcp``) in this process, so they read and write under the same rules: the read rule of ``evo_agents.hub.access`` through the session's sink, the
-write rule, revisions, conflicts and audit rows. Their arguments are checked against their schema first, and their text
-goes through the envelope of ``kg serve``: over CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a
-tool's answer is its text alone (``evo_agents.kg.serve.for_model``), which is what the model reads; its
-structuredContent comes only when the call's ``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend
-hub`` does. A refusal of the hub becomes a tool error carrying its message, an unexpected failure one carrying the
-request id only; so does a tool of a feature a hub admin turned off for the project (``hub_settings.require_tool``:
-kg_*, the Curator's). The log has one line per tool call with its name, project, outcome and
-duration, never its arguments or its result.
+whole history, ``history_mcp``) in this process, so they read and write under the same rules: the read rule of
+``evo_agents.hub.access`` through the session's sink, the write rule, revisions, conflicts and audit rows. Their
+arguments are checked against their schema first, and their text goes through the envelope of ``kg serve``: over
+CAP_CHARS it is cut and kg_more gives the rest. As from ``kg serve``, a tool's answer is its text alone
+(``evo_agents.kg.serve.for_model``), which is what the model reads; its structuredContent comes only when the call's
+``_meta`` asks for it (``DATA_META``), as ``kg query --json --backend hub`` does. A refusal of the hub becomes a tool
+error carrying its message, an unexpected failure one carrying the request id only; so does a tool of a feature a hub
+admin turned off (``hub_settings.require_tool``: kg_*, the Curator's, chat_*). The log has one line per tool call with
+its name, project, outcome and duration, never its arguments or its result.
 """
 
 from __future__ import annotations
@@ -77,6 +79,7 @@ from evo_agents.hub.client import HubError
 from evo_agents.hub.config import HubConfig
 from evo_agents.hub.handoff import DEFAULT_BUDGET_TOKENS
 from evo_agents.hub.mcp_tools import (
+    CHAT_TOOL_NAMES,
     INSTRUCTIONS,
     KG_TOOL_NAMES,
     LOCAL_RUN_HEADER,
@@ -95,11 +98,13 @@ from evo_agents.hub.plan_cli import ATTEMPTS, _check_retry
 from evo_agents.hub.plans import PlanProblem, step_index
 from evo_agents.hub.runs import HELD_STATES
 from evo_agents.hub.server import (
+    chat_read,
     decisions,
     digests,
     history_mcp,
     hub_settings,
     kg,
+    kg_audience,
     local_runs,
     memories,
     plans,
@@ -503,12 +508,14 @@ class HubMcp(MCPServer):
             if name in KG_TOOL_NAMES:
                 return await self._kg(caller, name, arguments)
             tool = self._hub_tools.get(name)
-            if tool is None:
+            if tool is None and name not in CHAT_TOOL_NAMES:
                 return _error(f"unknown tool {name!r}")
             problems = errors(validate(arguments, SCHEMAS[name]))
             if problems:
                 shown = "; ".join(f"{i.path or 'arguments'}: {i.message}" for i in problems[:SHOWN_PROBLEMS])
                 return _error(f"bad arguments for {name}: {shown}")
+            if tool is None:  # chat_message, chat_thread: the reader's chats and labels, kg_more within its audience
+                return await chat_read.answer(self.hub.state, caller.user, caller.sink, caller.owner, name, arguments)
             text, data = await tool(caller, arguments)
             return self.hub.state.kg_handles.call(_Answered(caller.sink, name, text, data), caller.owner, name, {})
         except Refusal as exc:
@@ -523,8 +530,11 @@ class HubMcp(MCPServer):
             return _error(f"the hub failed to answer; quote request id {request_id} when reporting it")
 
     async def _kg(self, caller: Caller, name: str, arguments: dict) -> dict:
-        if name == "kg_more":  # the handles live in this process: no graph is read
-            return self.hub.state.kg_handles.call(Session(None, caller.sink), caller.owner, name, arguments)
+        if name == "kg_more":  # the handles live in this process: no graph is read, only the caller's audience
+            session = Session(None, caller.sink)
+            async with self.hub.state.engine.begin() as conn:
+                session.audience = await kg_audience.reader_audience(conn, caller.user)
+            return self.hub.state.kg_handles.call(session, caller.owner, name, arguments)
         if caller.project is None:
             return _error(NO_PROJECT)
         return await kg.tool_result(self.hub.state, caller.user, caller.project, name, arguments, caller.sink)
@@ -610,6 +620,7 @@ class HubMcp(MCPServer):
                 body=body,
                 label=arguments.get("label"),
                 if_revision=arguments.get("if_revision"),
+                audience=arguments.get("audience"),
             )
         except ValidationError as exc:
             raise Refusal(f"the memory cannot be written: {_problems(exc)}; nothing was written") from None

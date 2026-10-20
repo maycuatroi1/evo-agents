@@ -40,7 +40,7 @@ class Feature:
 
 
 FEATURES = (
-    Feature("chats", (INSTANCE,), (re.compile(r"/v1/chats(?:/.*)?"),)),
+    Feature("chats", (INSTANCE,), (re.compile(r"/v1/chats(?:/.*)?"),), frozenset({"chat_message", "chat_thread"})),
     Feature(
         "curator",
         LAYERS,

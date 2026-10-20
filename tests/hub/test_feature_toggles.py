@@ -47,6 +47,7 @@ def test_the_features_core_declares_and_the_routes_and_tools_each_owns():
         assert (None if found is None else (found[0].id, found[1])) == owner, path
     assert features.tool_owner("kg_search").id == "kg" and features.tool_owner("kg_more").id == "kg"
     assert features.tool_owner("curator_figures").id == "curator"
+    assert features.tool_owner("chat_message").id == features.tool_owner("chat_thread").id == "chats"
     assert features.tool_owner("memory_get") is None
 
 

@@ -14,8 +14,11 @@ writes, queues a build or goes through /mcp.
 Every route needs a grant on the project, as the kg_* tools do (404 for a project the caller cannot see, 403 for a
 hub admin without a grant), and reads with the grant's max level alone (``ProjectRules.grant_label``, the label of
 the hub's one grant-only read rule, ``visible_by_grant`` in ``evo_agents.hub.access``): the web shows the member's
-own data in their browser, so no sink's clearance applies. Visibility itself is the tools' one filter
-(``evo_agents.hub.kg_web``). A node that is missing and a node above the member's level both answer 404.
+own data in their browser, so no sink's clearance applies. The grant holds the member's audience as the database gives
+it at this read (``evo_agents.hub.server.kg_audience``), so the chats they are in now. Visibility itself is the tools'
+one filter (``evo_agents.hub.kg_web``). A node that is missing, a node above the member's level and a node of a chat
+they are not in all answer 404; the counts by kind are of visible nodes, and the nodes and edges of ``graph`` leave out
+those of an audience the member does not hold.
 """
 
 from __future__ import annotations
@@ -33,6 +36,7 @@ from evo_agents.hub.kg_web import MAX_HOPS, MAX_NODES, SEARCH_LIMIT, GraphProble
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.kg import built_graphs, rebuild_outdated
+from evo_agents.hub.server.kg_audience import reader_audience
 from evo_agents.hub.server.projects import ProjectAccess, project_access
 from evo_agents.hub.server.security import CurrentUser
 
@@ -184,9 +188,10 @@ async def _read(request: Request, user, project: str, reader):
         access = await project_access(conn, user, project)
         _reader(access)
         graphs = await built_graphs(conn, access.project_id, GRAPHS_TRIED)
+        audience = await reader_audience(conn, user) if graphs else frozenset()
     if not graphs:
         return None, None
-    ceiling = access.rules.grant_label(access.max_level)
+    ceiling = access.rules.grant_label(access.max_level, audience)
     try:
         data, graph = await asyncio.to_thread(
             read, state.kg_graphs, state.blobs, project, access.rules.policy, ceiling, graphs, reader

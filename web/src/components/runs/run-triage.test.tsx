@@ -98,6 +98,13 @@ describe("RunTriage", () => {
     expect(api.asked).toBe(0);
   });
 
+  it("names a push the origin declined by its own line, not as another cause", () => {
+    show(false, { ...run, failure_cause: "push_declined" } as Run);
+    expect(screen.getByTestId("run-triage-cause")).toHaveTextContent("push_declined");
+    expect(screen.getByText("Push bị từ chối")).toBeInTheDocument();
+    expect(screen.queryByText("Nguyên nhân khác")).toBeNull();
+  });
+
   it("renders nothing for a run that did not fail or has no triage", () => {
     const { container } = show(true, { ...run, state: "done" } as Run);
     expect(container.querySelector("[data-testid=run-triage]")).toBeNull();

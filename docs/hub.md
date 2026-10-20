@@ -82,7 +82,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | admin | `/v1/admin/overview`, `/v1/admin/users`, `/v1/admin/stats`, `/v1/admin/projects/{project}/grants/{login}`, `/v1/admin/audit`, `/v1/admin/tokens`, `/v1/admin/kg/prune`, `/v1/admin/kg/scrub`, `/v1/admin/kg/scrub/purge` |
 | projects | `GET /v1/projects`, `GET` and `PUT /v1/projects/{project}` |
 | plans | `/v1/projects/{project}/plans`, `.../plans/{plan_id}` (`GET`, `PUT`, `PATCH`), `.../revisions`, `.../diff`, `.../handoff`, `.../complete` |
-| memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions` |
+| memories | `/v1/memories` (`GET`, `PUT`), `/v1/memories/search`, `/v1/memories/{id}`, `.../revisions`, `PUT .../audience` |
 | skills | `GET /v1/skills`, `/v1/skills/global/{name}` and `/v1/skills/projects/{project}/{name}`, each with `/versions` and `/bundle` |
 | blobs | `POST /v1/blobs/uploads`, `POST /v1/blobs/commit` |
 | plugins | `GET /v1/plugins`, `GET /v1/plugins/{name}`, `POST /v1/plugins/{name}/{versions,install,upgrade,remove}`, `GET` and `POST /v1/plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, for hub admins only; `GET /v1/projects/{project}/plugins`, `.../plugins/{name}`, `POST .../plugins/{name}/{enable,disable}`, `GET` and `POST .../plugins/{name}/config`, `.../config/versions`, `.../config/rollback`, `.../config/effective`, `GET /v1/projects/{project}/runs/{id}/plugins`; `GET /v1/plugin-publishers` for hub admins; `GET /v1/plugin-ui/<plugin>/<project>/<ticket>/<file>`, public, the files of a plugin's page under its ticket (section Plugins) |
@@ -96,7 +96,7 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 | curator | `GET /v1/projects/{project}/curator`, `.../curator/charter` (`GET`, `PUT`), `.../charter/revisions`, `POST .../curator/{pause,resume}`, `GET .../curator/nights`, `.../curator/figures`, `.../curator/findings`, `.../findings/{id}`, `.../curator/proposals`, `.../proposals/{id}`, `.../proposals/{id}/ledger`, `POST .../proposals/{id}/answer`, `POST .../proposals/{id}/plan`, `GET .../curator/changes`, `.../changes/{id}/replay`, `GET .../curator/replay/tasks`, `GET .../curator/history`, `.../curator/history/clusters`, `.../curator/history/sessions`, `.../curator/history/search`, `GET .../curator/earlier`, `.../curator/playbook`, `GET .../curator/protection`, `POST .../curator/protection/{repo}/check`, `GET .../curator/kg-health` (`docs/curator.md`) |
 | decisions | `GET /v1/projects/{project}/decisions`, `.../decisions/{id}`, `POST .../decisions/{id}/answer` |
 | notifications | `GET /v1/me/notifications`, `GET /v1/me/notifications/count`, `POST /v1/me/notifications/read` |
-| chats | `GET` and `POST /v1/chats`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
+| chats | `GET` and `POST /v1/chats`, `PUT /v1/chats/direct/{handle}`, `GET /v1/chats/{id}`, `PUT` and `DELETE .../people/{login}` and `.../agents/{handle}`, `PUT`, `DELETE` and `GET .../image`, `GET` and `POST .../messages`, `POST` and `DELETE .../messages/{message}/reactions`, `POST .../read`, `GET .../events`, `GET .../stream` (`docs/hub.md`, "Group chats") |
 | telegram | `GET` and `DELETE /v1/me/telegram`, `POST /v1/me/telegram/link` (a web session only), `POST /v1/telegram/webhook` (Telegram's, with its secret header), `GET /v1/admin/telegram`, `POST /v1/admin/telegram/webhook`, `DELETE /v1/admin/users/{login}/telegram` (the core plugin telegram, `docs/notifications.md`) |
 | plugins' routes | `/v1/x/{plugin}/{project}/...`: the routes a plugin contributes, in a project that enabled it, else 404 (`docs/plugins.md`, section Extension points) |
 | builder | `GET /v1/x/builder/{project}/proposals`, `.../proposals/{id}`, `POST .../proposals/{id}/answer` and `.../rollback`: the proposals of @builder, which an admin decides (`docs/plugins.md`, section Builder) |
@@ -111,15 +111,16 @@ Origin and a CSRF value, and the worker's its `evw_` token (`docs/workers.md`).
 answer. It takes a machine token, or the worker token of the agent of a run (below), never a web session, and the
 `Host` header must be the host of `EVO_HUB_PUBLIC_URL` or a loopback name. Runtimes reach it through
 `evo-agents hub mcp`, a stdio proxy that adds the token, the session's project (`X-Evo-Project`) and its sink
-(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 30 tools are the seven `kg_*` tools of `evo-agents kg serve`
+(`X-Evo-Sink`, `claude-code@anthropic` by default). Its 32 tools are the seven `kg_*` tools of `evo-agents kg serve`
 plus `memory_search`, `memory_get`, `memory_write`, `plan_list`, `plan_show`, `plan_handoff`, `plan_step`,
 `ask_member` (a question of a local session, `docs/notifications.md`), `skill_list`, `hub_projects`, `run_tool_stats`,
-and what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`,
-`decision_list`, `curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), and the
-project's whole history (The project's history, below): `history_sessions`, `history_search`, `transcript_lines`,
-`history_clusters`, `curator_findings` and `curator_playbook`; they follow the same rules as the REST routes. `tools/list` shows the agent of a
-run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run and a history run none,
-any other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
+what the Curator's review run reads: `curator_figures`, `digest_list`, `digest_show`, `run_events`, `decision_list`,
+`curator_replay` (the replays of the Curator's changes, `docs/curator.md`, Replays), and the project's whole history
+(The project's history, below): `history_sessions`, `history_search`, `transcript_lines`, `history_clusters`,
+`curator_findings` and `curator_playbook`, and `chat_message` and `chat_thread`, which read messages of a group chat
+whole (Group chats, In the knowledge graph); they follow the same rules as the REST routes. `tools/list` shows the
+agent of a run only the tools it may call: a judge run the `kg_*` tools and `hub_projects`, a replay run and a history
+run none, any other run all but `ask_member`, which only a local session can call. In a Claude Code session that has the evo-kg
 plugin as well (its `enabledPlugins` and the installed plugins of Claude Code's configuration say so), the proxy drops
 the `kg_*` tools from the list and the graph's paragraph from the instructions, those of `initialize` and those of
 `server/discover`, where a client of MCP 2026-07-28 such as Claude Code 2.1.296 reads them, so the session sees each
@@ -272,9 +273,23 @@ Both rules fail closed: a level the ladder lacks counts as the highest, and a la
 object. Something you may not see answers exactly like something that does not exist. A hub admin without a grant
 on a project manages it (registration, grants) but reads and pushes nothing in it.
 
+**Audience.** A label of the knowledge graph or of a memory may also name an audience, principals a reader must all be
+(`docs/kg.md`, Audience): `chat:<id>`, a member of that chat, and `grant:<project>:<level>`, someone whose grant on
+that project reaches that level. The hub computes a reader's audience from its database at each read
+(`evo_agents/hub/server/kg_audience.py`). A person holds `chat:<id>` for each chat they are a member of, not taken
+out, whose label as it is now they clear, and `grant:<p>:<l>` for each project they hold a grant on and each level of
+its ladder up to the grant's max level. A sink does not narrow it, since the clearance of every sink holds the highest
+audience. The agent of a run holds its owner's audience, and the agent of a chat run what both people its prompt is
+cleared for hold (`chat_runs.run_clearers`): the person who started it and the member whose worker runs it. Every read
+of a graph asks for it: the `kg_*` tools of REST and of `/mcp`, `kg_more` and the web's graph routes; the review of a
+proposal reads with none, since every member of the project sees what it keeps. So a member of the project who is not
+in a chat sees nothing of it, someone who joins later sees the messages whose labels they clear, and someone who leaves
+loses them at their next read, with no build.
+
 Memories add one rule on top: `project` and `reference` memories go to every member the read rule lets through, while
 `user` and `feedback` memories go only to the person who wrote them. Memories outside any project are personal and
-only their owner sees them.
+only their owner sees them. A memory whose label names an audience goes only to a reader whose audience holds it
+(Memories, skills and knowledge graphs, Audience of memories).
 
 ## Agent profiles
 
@@ -450,21 +465,94 @@ mentioned gets the notice `chat_mention`, and one added the notice `chat_added`,
 a restricted chat the notice names the chat and links to it, without sender or text. A message that mentions no agent
 makes no run and asks no model anything.
 
-**Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`,
-Chat runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile
-on its project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile
-allows, online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs,
-the one with a checkout of more of the project's repos first; the person must be a writer on the profile's project. No
-such worker, and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that
-declares `chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project
-enabled the type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention keeps the run it made
-(`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the agent in its thread goes
-to the run of the session that is queued or held, in its inbox, and once that run ended done it wakes the session as a
-new run that goes on in it (`resume_of_run_id`), on the same worker and branch. Another person's mention starts a
-session of their own, on their own worker. In a chat of one person, a message in a thread without a mention goes to the
-one agent whose session that person has there (`via` thread); with two people or more, they mention it. The run's
-reactions follow it as above, a run that failed says why in the thread, and the agent's reply at the end of each turn
-is its message in the thread, with the run that wrote it.
+**Agents at work.** An agent mentioned gets the work: a chat run (`evo_agents/hub/chat_runs.py`; `docs/workers.md`, Chat
+runs), at most three agents a message, the fourth and on refused in the thread. The run is of the agent's profile on its
+project, dispatched by the person who mentioned it, and pinned to a worker of that person that the profile allows,
+online, with a free slot (its held runs and the runs queued for it count) and a daemon that runs chat runs, the one with
+a checkout of more of the project's repos first; the person must be a writer on the profile's project. No such worker,
+and the hub answers in the thread why, worker by worker, with no run. The profile of an agent type that declares
+`chat_runs: run_as`, such as @ba of the core plugin srs, goes instead to a worker of the member the project enabled the
+type under, whoever mentioned it, and the session stays the mentioner's (`docs/plugins.md`, Agent types). The mention
+keeps the run it made (`run_id`) or why it made none. Each (thread, agent, person) is one session: a message to the
+agent in its thread goes to the run of the session that is queued or held, in its inbox, and once that run ended done it
+wakes the session as a new run that goes on in it (`resume_of_run_id`), on the same worker and branch. A run that failed
+only because origin declined its push (`push_declined`: a hook, a protected branch, a ruleset) is gone on from the same
+way, so the next run pushes the commits it left on the session's branch; after any other failure the next message opens
+a new session. Another person's mention starts a session of their own, on their own worker. In a chat of one person, a
+message in a thread without a mention goes to the one agent whose session that person has there (`via` thread); with two
+people or more, they mention it. The run's reactions follow it as above, a run that failed says why in the thread, and
+the agent's reply at the end of each turn is its message in the thread, with the run that wrote it.
+
+**A run starts fast.** The worker prepares the repos of a run several at a time, at most 8, and a run that goes on in
+its session asks no origin before its agent starts: the fetch of the worktrees it adopted is its check
+(`docs/workers.md`, A chat run on the machine). On a worker whose daemon lists the feature `lazy_chat_repos`, the first
+run of a session holds the project's harness alone, and its prompt lists every repo of the project, those the thread
+names first. The agent opens a repo it needs with `evo-agents worker repo open REPO`, which prints the path of its
+worktree on the session's branch: the daemon asks the hub to add the repo to the run (`POST
+/v1/worker/runs/{id}/chat/repos`, audited as `run.open_repo`), takes the run's leases again for it, fetches it and
+makes the worktree; the runs after it in the session start with every repo opened (`docs/workers.md`, Repos a chat run
+opens). An older daemon still gets every repo its worker has a checkout of, with the prompt it had before.
+
+**Turns.** Each run of a session is a turn, titled by the message that woke it, `@handle in <chat>: <text>`; the
+session's title is its first run's, which its pull requests take. A run carries `session_run_id`, `session_turn`,
+`session_turns` and `session_title`, and `GET /v1/projects/{p}/runs` takes `group=session` (each session once, as its
+latest run) and `session_run_id` (the turns of one), so the web's Runs page shows a session as one row that opens into
+its turns (`docs/workers.md`, Reading runs).
+
+**Progress.** Under a message that an agent's run took, the thread says how far that run is, by rule, with no model
+asked and no chat message, notice or Telegram message written (`evo_agents/hub/server/chat_progress.py`). Each
+message carries `progress`, one entry per run on its way that took it (`message_id`, `run_id`, `handle`, `step`,
+`worker`, `repo`, `since`). The step is `waiting` for the worker while the run is queued, then the step of its setup
+the worker's latest note names: `claimed`, `checking` access to the repos, `opening` a repo (with `repo`), `starting`
+the agent; then `working`, or `opening` again for a repo the agent asked for. A message that waits in the inbox of a run
+whose agent started is at `inbox` until the worker hands it to the agent. The entry shows under the message that
+started the run until a run of its session writes in the thread after it, and under an inbox message until the
+session writes after the agent took it; a run that ended shows none, and its reactions and its message say the rest.
+The sender's `POST .../messages` already answers it ("waiting for worker X"). Only a reader who may read the run sees
+it (a grant on its project, and its default label through the project's hub sink, as a run is read); anyone else
+reads the chat as before. `GET .../events` and `GET .../stream` take `progress=true`: the events answer then carries
+`progress`, the whole chat's, and the stream sends an event named `progress` (`{"progress": [...]}`, with no id, so
+`Last-Event-ID` and the chat's numbering do not change) once it opens and each time it changes. The hub wakes the
+chat's streams with `pg_notify` alone, never an event, when a chat run moves, when its worker sends a note that names a
+step, and when the worker takes its inbox. A stream without the parameter is as before.
+
+**Direct chats.** A person opens a direct chat with one agent with `PUT /v1/chats/direct/{handle}`
+(`evo_agents/hub/server/chat_direct.py`): the one they have (200) or one made now (201), with them and the agent in it,
+titled with the agent's name. A person has one direct chat with each agent: the key `chats_direct_key` of (person,
+agent) holds it, so two requests at once make one chat and the second answers the first's. Making one takes the checks
+of adding the agent to a chat (404 for an agent the person cannot see, 403 without the writer role on its project, 409
+for a deleted agent, a person and an agent of the same name, or a label the person does not clear); a direct chat
+there is opens without them, so one whose agent was deleted since still reads. A chat's `kind` (`group` or `direct`, in
+Chat and ChatSummary) is kept with it, never read from its members: a chat made with New chat with one person and one
+agent is a group. The members of a direct chat never change: adding or removing a person or an agent, and its person
+leaving, are refused (409); a group chat is for more. Each message of the person that mentions no agent of the chat
+goes to its agent as if it mentioned it (`via` direct): a message outside a thread is a new task, in a new session at
+hop 1 for the person, within the chat's budget, and a reply in the thread of the agent's answer goes on in that session
+(`via` thread), as in any chat of one person; an `@` of the agent makes the same one run. A mention of another agent
+reaches no one and the hub says to start a group chat. The prompt of its run shows, instead of the chat before the
+thread, the latest turns: at most 30 messages of the earlier threads, the person's messages and the agent's answers,
+within the snapshot's 12 KiB, the oldest left out first. Opening one is audited as `chat.create` in the agent's project.
+
+**Images and faces.** Any member of a group chat sets its image or takes it off (`PUT .../image` with `data`, a PNG,
+JPEG or WebP image of at most 512 KiB as base64, checked by its first bytes as an agent's avatar is: 413 over the size,
+422 for another format; `DELETE .../image`), audited as `chat.image` and sent to the chat's stream as `image_changed`,
+so the other members see it without reloading. A direct chat takes none (409): its face is its agent's avatar. The
+hub stores the image in the blob store and the chat's row refers to it (`evo_agents/hub/server/chat_images.py`): the
+collection of unreferenced blobs leaves it, and an image replaced or taken off is recorded for deletion once no chat
+shows it, in a transaction that holds the blob lock exclusively, as the retention of graphs does. `GET .../image`
+serves it to the chat's members alone (anyone else gets the 404 of the chat), with its SHA-256 as ETag (304 for an
+`If-None-Match` that matches) and `Cache-Control: private, max-age=86400`; `image_url` in Chat and ChatSummary carries
+a part of that SHA-256, so a browser keeps the image until it changes, and is null without one. A person shows with
+the avatar of their GitHub account, `https://avatars.githubusercontent.com/u/<github_id>?s=96&v=4` (`avatar_url` in a
+chat's people, a message's author, a reaction's or a member change's author), null for a login that never signed in;
+the hub reads the account's id when the answer is made, never keeps the image, and the web loads it from that origin
+alone. Besides its old fields, each chat of `GET /v1/chats` carries what the list draws (`chat_summaries.py`): `kind`,
+`image_url`, `direct_agent` (a direct chat's agent, deleted or not, with its colour and avatar), `faces` (at most three
+members other than the reader, in the order they were added, which the web composes for a group chat without an
+image) and `last_message`: the latest message of the chat's main line (of a group chat the latest that starts no
+thread, of a direct chat the latest of all, since its answers show under the message they answer), with its author
+and its text as one line without markdown, at most 140 characters; a reader who does not clear that message's label
+gets its author and time, `hidden` true and no text. The list takes at most six queries, however many chats it holds.
 
 **Budget.** The chat runs of a chat may cost `budget_usd` (5 USD unless its creator changed it, at most 1000) in a
 rolling 24 hours, as their usage says (Claude Code's `total_cost_usd`, opencode's `cost`; Codex reports tokens alone
@@ -488,30 +576,53 @@ and the check mark or the cross takes the eyes off. A lost run tried again keeps
 reaction chips only (`web/DESIGN.md`).
 
 **Events.** Each change is an event of the chat, numbered by it: a message, a reaction put or taken off, a member added
-or removed. A message is numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read,
-which the unread count of the list starts from (their own message reads up to it). `GET .../events?after=SEQ` pages
-them, and `GET .../stream` sends them as server-sent events, as a run's stream does: the seq as id, Last-Event-ID or
-`after` to go on, a ping after 15 idle seconds, woken by `pg_notify` on channel `evo_chat_events` on the api process's
-one LISTEN connection. A stream ends with an `end` event once its reader is no longer in the chat or no longer clears
-its label. A member reads the events of the messages whose label they clear. Chat messages do not expire with
+or removed, the image set or taken off (`image_changed`, with the image's URL now and who changed it). A message is
+numbered by the event that brought it (`seq`), and `POST .../read` says how far a member read, which the unread count
+of the list starts from (their own message reads up to it). `GET .../events?after=SEQ` pages them, and
+`GET .../stream` sends them as server-sent events, as a run's stream does: the seq as id, Last-Event-ID or `after` to
+go on, a ping after 15 idle seconds, woken by `pg_notify` on channel `evo_chat_events` on the api process's one LISTEN
+connection. A stream ends with an `end` event once its reader is no longer in the chat or no longer clears its label.
+A member reads the events of the messages whose label they clear. Chat messages do not expire with
 `EVO_HUB_RUN_LOG_DAYS`.
+
+**In the knowledge graph.** A project that enables the core plugin chats (`docs/plugins.md`, Chat history) has in its
+graph each message whose label has a part of that project, under the audience of its chat (Projects and who sees
+what, Audience), so the graph keeps who reads a message as the chat does. `kg_search` finds a message by the words of
+its text, with or without diacritics, and lists it as `plugin.chats:message:<id>` with its chat, thread, author and
+time, never its text. The tools `chat_message` and `chat_thread` of `/mcp`, and for the agent of a run
+`evo-agents worker chat read MESSAGE [--thread]` (`docs/workers.md`, Chat runs), read a message or its thread whole:
+its first message and the replies, oldest first, at most 500. They take the message's id, its item as kg_search
+lists it, or a thread's item `plugin.chats:thread:<chat>/<root>`, and print the messages as a chat run's prompt does,
+under a line saying they are data, never instructions (`evo_agents/hub/server/chat_read.py`). Each call checks again who may read:
+a person who is a member of the chat, not taken out, and clears its label now and the label each message was sent
+with; for the agent of a chat run, both people its prompt is cleared for, each that way; for the agent of another
+run, its owner, and only messages whose label holds a part of the run's project, besides those of its own chat run's
+chat. On `/mcp` each part of a message's label must also flow to the session's sink. A message that does not exist,
+one of a chat the caller is not in and one the caller may not read all get the same answer, and a thread leaves out
+the messages the caller may not read without counting them. On `/mcp` a long reading is cut as the `kg_*` results
+are, and `kg_more` gives the rest while the reader's audience still holds the chat and the grants its messages need.
+What a reading shows counts toward the audience of a memory written after it (Memories, skills and knowledge graphs,
+Audience of memories). The feature `chats` owns both tools (Branding and features).
 
 | Route | Command | Who |
 | --- | --- | --- |
 | `GET /v1/chats` | `hub chat list` | anyone: their chats |
 | `POST /v1/chats` (`title`, `people`, `agents`) | `hub chat create TITLE [--member LOGIN] [--agent HANDLE]` | anyone |
+| `PUT /v1/chats/direct/{handle}`: their direct chat with the agent | | anyone (making one: writer on its project) |
 | `GET /v1/chats/{id}` | | a member |
 | `PUT` and `DELETE .../people/{login}` | | a member adds; the person or the creator removes |
 | `PUT` and `DELETE .../agents/{handle}` | | a member (adding: writer on its project) |
+| `PUT .../image` (`data`, base64), `DELETE .../image`, `GET .../image`: a group chat's image | | a member |
 | `GET .../messages` (`before`, `thread`, `limit`): the chat and a page of messages | `hub chat show CHAT [--thread MESSAGE] [--limit N]` | a member |
 | `POST .../messages` (`body`, `reply_to`) | `hub chat send CHAT TEXT [--reply-to MESSAGE]` | a member |
 | `POST` and `DELETE .../messages/{message}/reactions` | `hub chat react CHAT MESSAGE EMOJI [--remove]` | a member |
-| `POST .../read`, `GET .../events`, `GET .../stream` | | a member |
+| `POST .../read`, `GET .../events`, `GET .../stream` (`progress=true`: the progress under the messages too) | | a member |
 | `PATCH /v1/chats/{id}` (`budget_usd`) | | its creator |
 
-Creating a chat, adding and removing a member, sending a message and changing the budget are audited (`chat.create`,
-`chat.add`, `chat.remove`, `chat.message`, `chat.budget`; an agent's in its project; an agent's message and chat as the
-run's dispatcher, naming the run), naming `chat:<id>` and the person, agent or message, never a title or a text. For
+Creating a chat, adding and removing a member, sending a message, changing the budget and the image are audited
+(`chat.create`, `chat.add`, `chat.remove`, `chat.message`, `chat.budget`, `chat.image`; an agent's in its project; an
+agent's message and chat as the run's dispatcher, naming the run), naming `chat:<id>` and the person, agent, message
+or image (`image:<the first 16 of its SHA-256>`, or `image:none`), never a title, a text or an image's bytes. For
 example:
 
 ```sh
@@ -530,7 +641,14 @@ notices and drops the six tables: every chat is lost. Schema 0032 adds the chat 
 that may go on from an earlier run of its session (`resume_of_run_id`), with `runs.chat_id`, `runs.chat_message_id`
 (the message that started it) and `runs.hop` (1 to 3), set for a chat run and null for any other, and
 `chats.budget_usd` (more than 0, at most 1000, 5 unless changed). Going back to 0031 deletes the chat runs and drops the
-columns.
+columns. Schema 0050 adds `chats.kind` (`group` for every chat there is and by default, or `direct`), and for a direct
+chat its person and agent (`chats.direct_user_id`, `chats.direct_profile_id`, both set for a direct chat and neither
+for a group), one direct chat per pair (`chats_direct_key`), and the `via` direct of a mention. Going back to 0049 makes
+every direct chat a group chat of the same person and agent, and a mention `via` direct reads as `via` thread. Schema
+0051 adds a group chat's image, `chats.image_sha256` and `chats.image_size` (both set or neither, never on a direct
+chat), which the collection of blobs counts as a reference through the partial index `chats_image_sha256_idx`, and the
+event `image_changed`. Going back to 0050 deletes those events and drops the columns: the chats lose their images,
+whose objects stay in the bucket with nothing referring to them.
 
 ### What a triage agent may do on its own
 
@@ -674,7 +792,11 @@ what its daemon reports of its install: `workers.version_locked`, the lock its o
 evo-agents the worker's last heartbeat said its install was built from, `workers.self_update`, what that heartbeat said
 of updating itself to the tag nightly, and `workers.self_update_since`, when the hub first got that state in an
 unbroken line of heartbeats (`docs/workers.md`, Updating itself to nightly). Going back to 0047 drops the four columns:
-no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating. Schema 0049
+no worker is locked there, and a heartbeat neither takes nor keeps a commit or a state of updating. Schema 0049 adds
+`runs.seen_audience`, the principals of what the hub returned to the agent of the run with an audience (Memories,
+skills and knowledge graphs, Audience of memories): empty for every run there is and every new one, it only grows,
+sorted and without repeats. Going back to 0048 drops the column, and a memory written meanwhile keeps the audience its
+label took. Schema 0049
 (session transcripts) is described under Memories, skills and knowledge graphs below. Schema 0050 adds
 `workers.kg_sync`, what the worker's last heartbeat said of keeping fresh the graphs of the projects whose night shift
 it is on duty for, an object (`docs/workers.md`, Keeping the graph fresh); going back to 0049 drops it, and a
@@ -1373,6 +1495,24 @@ next to it as `<name>.conflict-<host>.md`. Deletions cross only with `--prune`. 
 phrase"` searches what you see. The plugin pulls at SessionStart and pushes at Stop; in the session of a run's
 agent on a worker (`EVO_RUN_ID` set) Stop pushes nothing, since nobody reviews that unattended session.
 
+**Audience of memories.** A memory derived from chat messages carries the audience of those chats
+(`evo_agents/hub/server/memory_audience.py`): its label holds the principals under the key `audience`, sorted, as a
+kg/1 label does. Every read of memories gives one that names an audience only to a reader whose audience holds it,
+computed at that read as for the graph (Projects and who sees what, Audience), and one whose audience cannot be read to
+no one. A write keeps or raises the audience, never lowers it: the stored audience is the memory's own, plus what the
+writer says it read (`audience` of `PUT /v1/memories` and of the tool `memory_write`), plus, for the agent of a run,
+what the hub showed it. The hub notes that in `runs.seen_audience`: the labels of `kg_*` results, the messages
+`chat_message`, `chat_thread` and `evo-agents worker chat read` read, and the memories `memory_search` and
+`memory_get` returned. A chat run counts its own chat, and a run that goes on in another run's session counts what
+that run was shown. A Claude Code session on a machine sends the audience of its session label (`~/.evo/kg/sessions/`,
+which the `kg_*` results and the chat readings of `evo-agents hub mcp` join): the proxy adds it to each
+`memory_write`, and the Stop hook, like `evo-agents hub memory push` run inside the session (`CLAUDE_CODE_SESSION_ID`),
+to each file it pushes. When that record exists but cannot be read, nothing leaves: the proxy answers `memory_write`
+with an error and the push sends nothing. Only an admin of the memory's project who reads it lowers its audience, by
+hand and to a part of it: `PUT /v1/memories/{id}/audience` with `audience` and `if_revision` writes a new revision and
+the audit row `memory.audience`. Raising it there is a 422, a stale revision a 409, and a personal memory, which has no
+admin, a 403. No command of the CLI lowers it.
+
 **Session digests.** Stop also pushes the digest of the session once its transcript holds 6 messages, and again after
 each turn that changed it, to the project the session's directory belongs to, decided as for memories; a directory of
 no project, and the session of a run's agent, whose trace is on the hub already, push none. A digest
@@ -1602,7 +1742,11 @@ many commits that was behind the remote's default branch on the machine that syn
 `kg_status`, `kg_node`'s links and the project's knowledge graph page (`GET /v1/kg/{project}/graph`, `sources`, for the
 sources the member can see) show it. `evo-agents hub kg build --project demo --wait` queues a
 build and waits for it, and `evo-agents hub kg builds --project demo` lists them. Once a build succeeded, `evo-agents kg
-serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule.
+serve --backend auto` and the hub's `/mcp` answer the `kg_*` tools from it, filtered by the read rule and the reader's
+audience (Projects and who sees what, Audience). A reader who does not hold every audience of a build gets the counts
+of `kg_status` and of the graph pages within their own audience, and for a project whose graph holds chats every
+answer that names a build gives its nodes and edges as null (`GET /v1/kg/{project}/builds`, `.../builds/{id}`), since
+those totals count messages most members may not read.
 
 **The worker on duty keeps the graph fresh.** The worker a project's charter names for its night shift syncs the
 project's git sources whose `ref` is `origin/<branch>`, fetching first, and pushes their runs with its own token, so the
@@ -1910,7 +2054,7 @@ setting one needs the S3 variables. Unsetting a field brings back the web's own 
 
 | Feature | Set for | Off means |
 | --- | --- | --- |
-| `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 |
+| `chats` | the hub | no Chats in the menu; `/v1/chats` and the paths below it answer 404 and the `/mcp` tools `chat_message` and `chat_thread` return that error |
 | `curator` | the hub or a project | no Curator in the project's menu; `/v1/projects/{project}/curator...` answers 404 and the `/mcp` tool `curator_figures` returns that error; the night shift, its figures and the morning brief skip the project |
 | `kg` | the hub or a project | no knowledge graph in the project's menu; `/v1/kg/{project}...` and the worker's `/v1/worker/kg/{project}...` answer 404, the `kg_*` tools of `/mcp` return that error, and the heartbeat names the project to no worker for its graph |
 | `monitor` | the hub | no Monitor page; it owns no route, it reads the overview Home reads |

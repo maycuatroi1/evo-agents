@@ -20,6 +20,8 @@
   Code evidence must be a line of a file in the run's worktree of its repo, and goes with the commit the worktree is at.
   They refuse to run outside a review run of this worker.
 - ``chat post|react|create|mention``: the commands of a run's agent in group chats (``chat_cli``).
+- ``repo open REPO``: the command of a chat run's agent that has the daemon open a repo of the project in the run, and
+  prints its worktree's path (``chat_cli``).
 - ``triage rerun|plan``: what the agent of a triage thread does for a failed run (``triage_cli``).
 - ``playbook add|helpful|harmful|retire``: a review run's agent's deltas of the Curator's playbook (``playbook_cli``).
 - ``put FILE [--if-revision N]``: the command of an author run's agent, which puts the plan it wrote on the hub, in the
@@ -1222,5 +1224,6 @@ def register(sub) -> None:
     )
     json_option(put, WRITTEN, help="the hub's answer as JSON")  # seam hub-cli-v1
     put.set_defaults(func=cmd_put)
-    for extra in (chat_cli.register_chat, triage_cli.register_triage, playbook_cli.register_playbook):
-        extra(wsub)  # a run's agent in group chats, a triage thread's for a failed run, a review run's on the playbook
+    chat = (chat_cli.register_chat, chat_cli.register_repo)  # a run's agent in group chats, `repo open` of a chat run's
+    for extra in (*chat, triage_cli.register_triage, playbook_cli.register_playbook):
+        extra(wsub)  # and a triage thread's for a failed run, a review run's on the playbook

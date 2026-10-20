@@ -27,7 +27,7 @@ from fastapi import HTTPException
 from sqlalchemy import and_, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import access, tables, telegram
+from evo_agents.hub import access, chats, tables, telegram
 from evo_agents.hub.db import one_of
 from evo_agents.hub.server.security import Principal
 
@@ -108,6 +108,7 @@ class ChatAccess:
     user_id: int
     login: str
     projects: tuple[LabelProject, ...]
+    kind: str = chats.GROUP  # chats.CHAT_KINDS: a direct chat's members never change
 
     @property
     def label(self) -> list[dict]:
@@ -174,6 +175,26 @@ async def agent_projects(conn: AsyncConnection, chat_id: int) -> tuple[LabelProj
     return tuple(sorted(await projects_by_id(conn, ids), key=lambda p: p.name))
 
 
+async def cleared_chats(conn: AsyncConnection, user_id: int) -> list[int]:
+    """The chats person ``user_id`` is in and clears the label of now, as ``chat_access`` lets them read, by id."""
+    m, ap = tables.chat_members, tables.agent_profiles
+    query = select(m.c.chat_id).where(m.c.user_id == user_id, m.c.removed_at.is_(None))
+    chat_ids = sorted((await conn.execute(query)).scalars().all())
+    if not chat_ids:
+        return []
+    query = select(m.c.chat_id, ap.c.project_id).join_from(m, ap, ap.c.id == m.c.profile_id)
+    query = query.where(one_of(m.c.chat_id, chat_ids), m.c.removed_at.is_(None))
+    agents = (await conn.execute(query)).all()
+    projects = {p.id: p for p in await projects_by_id(conn, [row.project_id for row in agents])}
+    grants = await grants_of(conn, [user_id], list(projects))
+    by_chat: dict[int, list[LabelProject]] = {chat_id: [] for chat_id in chat_ids}
+    for row in agents:
+        if row.project_id in projects:
+            by_chat[row.chat_id].append(projects[row.project_id])
+    reader = LabelReader(user_id, {p.name: p for p in projects.values()}, grants)
+    return [chat_id for chat_id, found in by_chat.items() if reader.why_not(chat_label(found)) is None]
+
+
 async def grants_of(conn: AsyncConnection, user_ids: Iterable[int], project_ids: Iterable[int]) -> Grants:
     users, projects = sorted(set(user_ids)), sorted(set(project_ids))
     if not users or not projects:
@@ -225,6 +246,7 @@ def _membership(chat_id: int, user_id: int):
             c.c.event_seq,
             m.c.id.label("member_id"),
             m.c.last_read_seq,
+            c.c.kind,
         )
         .select_from(c.join(m, member).join(u, u.c.id == c.c.created_by))
         .where(c.c.id == chat_id)
@@ -253,6 +275,7 @@ async def chat_access(conn: AsyncConnection, user: Principal, chat_id: int, *, l
         user_id=user.user_id,
         login=user.login,
         projects=projects,
+        kind=row.kind,
     )
     grants = await grants_of(conn, [user.user_id], [p.id for p in projects])
     why = LabelReader(user.user_id, {p.name: p for p in projects}, grants).why_not(found.label)

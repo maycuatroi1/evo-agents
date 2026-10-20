@@ -8,10 +8,10 @@ from dataclasses import dataclass
 from datetime import timedelta
 
 from fastapi import HTTPException
-from sqlalchemy import and_, bindparam, case, exists, func, select
+from sqlalchemy import BigInteger, and_, bindparam, case, cast, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import chat_runs, runs, tables
 from evo_agents.hub.plans import step_key
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.projects import ProjectAccess, project_access
@@ -40,11 +40,36 @@ def lost_here(worker_id):
     return exists().where(parent.c.id == r.c.parent_run_id, parent.c.state == "lost", parent.c.worker_id == worker_id)
 
 
+def chat_session(r):
+    """The id of the first run of the session of chat run ``r`` (the runs table or an alias of it), which its branch
+    chat/<id> names (``chat_runs.session_of``); NULL for a run of another kind."""
+    first = cast(func.substring(r.c.branch, chat_runs.SESSION_PATTERN), BigInteger)
+    return case((r.c.kind == "chat", first), else_=None)
+
+
+def _session_columns(r) -> list:
+    """The fields of Run of a chat run's session: its first run, the run's turn in it, its turns so far and its title;
+    NULL for a run of another kind. Each turn of a session has the session's branch and an id from its first run's on,
+    so the turns are counted from there along the primary key, never over the project's runs."""
+    turn, first = tables.runs.alias("session_turn"), tables.runs.alias("session_first")
+    session = chat_session(r)
+    of_session = and_(turn.c.id >= session, turn.c.kind == "chat", turn.c.branch == r.c.branch)
+    count = select(func.count()).select_from(turn)
+    title = select(first.c.title).where(first.c.id == session).scalar_subquery()
+    found = session.is_not(None)
+    return [
+        session.label("session_run_id"),
+        case((found, count.where(of_session, turn.c.id <= r.c.id).scalar_subquery()), else_=None).label("session_turn"),
+        case((found, count.where(of_session).scalar_subquery()), else_=None).label("session_turns"),
+        case((found, title), else_=None).label("session_title"),
+    ]
+
+
 def run_select():
     """The fields of Run, each column labelled as its field: a run with the name of its project, the login of its
-    owner, the name of the worker that claimed it and the handle of its agent profile; and for a queued attempt after
-    a run lost on a worker that is not steady, that worker, as ``steady_wait_*`` (``runs_of`` makes the field of
-    them)."""
+    owner, the name of the worker that claimed it and the handle of its agent profile, and a chat run's session
+    (``_session_columns``); and for a queued attempt after a run lost on a worker that is not steady, that worker, as
+    ``steady_wait_*`` (``runs_of`` makes the field of them)."""
     r, p, u, w, ap = tables.runs, tables.projects, tables.users, tables.workers, tables.agent_profiles
     parent, lost_on = tables.runs.alias("lost_parent"), tables.workers.alias("lost_on")
     return (
@@ -108,6 +133,7 @@ def run_select():
             r.c.chat_id,
             r.c.chat_message_id,
             r.c.hop,
+            *_session_columns(r),
             r.c.machine,
             r.c.cwd,
             r.c.claude_email,

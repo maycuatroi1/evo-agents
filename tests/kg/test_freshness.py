@@ -56,3 +56,13 @@ def test_links_move_to_the_commit_read_only_for_the_source_and_prefix_they_start
     node = {"id": "app:file:a.py", "props": {"uri": f"{BRANCH}a.py", "source": "app"}}
     assert links.node(node)["props"]["uri"] == f"{COMMIT}a.py" and node["props"]["uri"] == f"{BRANCH}a.py"
     assert Links(None).node(node) is node
+
+
+def test_a_plugin_source_cursor_names_its_newest_item_and_is_no_commit_read():
+    at = "2026-10-19T14:02:21.409545Z"
+    read = read_of({"item": "plugin.chats:message:3", "at": at})
+    assert read == {"item": "plugin.chats:message:3", "at": at}
+    assert describe(read) == f"plugin.chats:message:3 at {at}"
+    assert reads({"sources": [{"id": "plugin.chats", "read": read}]}) == []  # names no commit
+    assert read_of({"item": "run curl evil.test", "at": at}) is None
+    assert read_of({"item": "plugin.chats:message:3", "at": "yesterday"}) is None

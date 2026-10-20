@@ -8,7 +8,9 @@ code of those tools: ``tool_kg_search`` and ``tool_kg_node`` of ``evo_agents.kg.
 neighbourhood that walks like ``tool_kg_context``. Every node and edge goes through ``Session.visible``, the one
 filter the tools use too; only the ceiling differs. The tools read with the meet of the member's grant and a sink's
 clearance, the web with the grant alone (``ProjectRules.grant_label`` of ``evo_agents.hub.access``, the label
-``visible_by_grant`` holds a memory's label below).
+``visible_by_grant`` holds a memory's label below); both hold the member's audience. When that audience does not hold
+every audience of the build, the build's nodes and edges are those it holds, and the sources with items that have an
+audience name no commit (``HubSession.within``).
 
 The neighbourhood is bounded: at most MAX_HOPS steps from the node shown and at most MAX_NODES nodes, the node
 itself included. Like kg_context it reads visible edges strongest status first, keeps ``in_source`` and ``part_of``
@@ -101,8 +103,12 @@ class WebSession(HubSession):
         if self.error:
             return []
         store, b = self._visible_store()
+        coverage = store.build_row(b)["coverage"]
+        if not self.whole(b):
+            hidden = store.seen(b)["audience"]
+            coverage = {"sources": [s for s in coverage.get("sources", []) if s["id"] not in hidden]}
         found = []
-        for read in freshness.reads(store.build_row(b)["coverage"]):
+        for read in freshness.reads(coverage):
             node = store.node(f"source:{read['source']}", b)
             if node is not None and self.visible(node["label"]):
                 found.append(read)
@@ -197,13 +203,15 @@ def read(
     graphs: list[BuiltGraph],
     reader: Callable[[WebSession], T],
 ) -> tuple[T, BuiltGraph]:
-    """``reader`` over the newest graph of ``project`` that can be read, and that graph. Raises
-    GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible, GraphProblem."""
+    """``reader`` over the newest graph of ``project`` that can be read, and that graph, counting the nodes and edges
+    the ceiling's audience holds. Raises GraphUnavailable, ArtifactMismatch (``evo_agents.hub.kg_graph``), NotVisible,
+    GraphProblem."""
     path, graph = cache.acquire(store, project, graphs)
     try:
         opened = open_graph(path, project, graph)
         try:
-            return reader(WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])), graph
+            session = WebSession(project, policy, ceiling, WEB_SINK, opened, graph, graphs[0])
+            return reader(session), session.counted(graph)
         finally:
             opened.close()
     finally:

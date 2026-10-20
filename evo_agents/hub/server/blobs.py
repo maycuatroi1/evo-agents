@@ -25,16 +25,20 @@ plugin-bundle (GLOBAL_KINDS); logs and the audit trail name that holder GLOBAL.
 ``issue_uploads`` and ``commit_uploads`` are the two halves on their own, for routes that take uploads as part of
 something larger, such as the worker's log and diff of a run (``run_events``). No route here reads a blob: a route
 that has checked that the caller may see what refers to a blob hands out ``BlobStore.presign_get``, or reads it with
-``BlobStore.fetch``.
+``BlobStore.fetch``. ``put_bytes`` and ``fetch_bytes`` store and read the small images the hub takes in JSON (an
+agent's avatar, the branding's logo, a chat's image) without an upload.
 """
 
 from __future__ import annotations
 
 import asyncio
+import io
 import logging
+import tempfile
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from pathlib import Path
 from typing import Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
@@ -54,6 +58,7 @@ from evo_agents.hub.blobs import (
     BlobStore,
     BlobStoreUnavailable,
     Upload,
+    blob_key,
     new_upload_id,
 )
 from evo_agents.hub.server import audit
@@ -125,6 +130,25 @@ def blob_store(request: Request) -> BlobStore:
         missing = ", ".join(request.app.state.config.blob_store_missing())
         raise HTTPException(503, f"the blob store is not configured on this hub: set {missing}")
     return store
+
+
+def put_bytes(store: BlobStore, sha256: str, data: bytes, *, replace: bool = False) -> None:
+    """Store ``data``, whose SHA-256 the caller computed, as blob ``sha256`` unless it is there already; with
+    ``replace``, whether it is there or not. Blocking: run it in a thread."""
+    with tempfile.TemporaryDirectory() as directory:
+        path = Path(directory) / "blob"
+        path.write_bytes(data)
+        store.put_file(sha256, path, replace=replace)
+
+
+def fetch_bytes(store: BlobStore, sha256: str, limit: int) -> bytes | None:
+    """The bytes of blob ``sha256`` when it is there, at most ``limit`` of them and with that very SHA-256; None
+    otherwise. Blocking: run it in a thread."""
+    sink = io.BytesIO()
+    found = store.fetch(blob_key(sha256), sink, limit)
+    if found is None or found[0] != sha256:
+        return None
+    return sink.getvalue()
 
 
 def _writer(access: ProjectAccess, doing: str) -> None:

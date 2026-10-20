@@ -7,10 +7,10 @@ import type { LiveSignal } from "@/components/live/live-model";
 import { browserApi } from "@/lib/api/browser";
 import { isApiError } from "@/lib/api/errors";
 import { chatEventsAfter, chatKeys, chatStreamPath, markChatRead, olderMessages, threadMessages } from "@/lib/chat-queries";
-import type { ChatEvent, ChatPage, ChatSummary, GroupMessage } from "@/lib/chats";
+import type { ChatEvent, ChatPage, ChatProgress, ChatSummary, GroupMessage } from "@/lib/chats";
 import { LOGIN_PATH } from "@/lib/config";
 
-import { applyEvents, type Feed, feedOf, readInto, withMessage, withReactions } from "./feed-model";
+import { applyEvents, type Feed, feedOf, readInto, withMessage, withProgress, withReactions } from "./feed-model";
 
 /**
  * A chat's messages in the browser, live (docs/hub.md, Group chats).
@@ -18,9 +18,11 @@ import { applyEvents, type Feed, feedOf, readInto, withMessage, withReactions } 
  * The page follows `GET /v1/chats/{id}/stream` with an EventSource from the chat's last event when the page was read:
  * each event's id is its seq, so a dropped connection comes back by itself with `Last-Event-ID`, and an event at or
  * before the last one applied is a repeat. The stream says `end` once the visitor may no longer read the chat (taken
- * out of it, or a grant that no longer clears its label); the page stops then and says why. When the stream fails for
- * good (the browser gives up, or it errs three times without opening), the page reads `events?after=` every 2 seconds
- * instead and tries the stream again every 30.
+ * out of it, or a grant that no longer clears its label); the page stops then and says why. It also sends `progress`,
+ * the progress of the agents' runs under the messages they took, at once and each time it changed, which applies after
+ * the events that came with it. When the stream fails for good (the browser gives up, or it errs three times without
+ * opening), the page reads `events?after=` (with that progress) every 2 seconds instead and tries the stream again
+ * every 30.
  *
  * While the page is in view, what it shows is read: the page tells the hub the seq of the last event it applied, so
  * the list's unread count (and the sidebar's) drops to what came since.
@@ -65,6 +67,7 @@ export function useChatFeed({
   page,
   me,
   onMembers,
+  onImage,
   openSource = defaultSource,
 }: {
   chatId: number;
@@ -72,6 +75,8 @@ export function useChatFeed({
   me: string | null;
   /** A member was added or removed: the chat's people and agents are read again. */
   onMembers: () => void;
+  /** A member changed the chat's image (`image_url`, null once taken off): the page shows it without a read. */
+  onImage?: (imageUrl: string | null) => void;
   openSource?: (url: string) => EventSource;
 }): ChatFeed {
   const queryClient = useQueryClient();
@@ -84,18 +89,20 @@ export function useChatFeed({
   // The feed itself: every change goes through it, then to the state that renders it, so changes that arrive before a
   // render build on one another.
   const feedRef = useRef(feed);
-  const live = useRef({ me, onMembers, openSource });
+  const live = useRef({ me, onMembers, onImage, openSource });
   useEffect(() => {
-    live.current = { me, onMembers, openSource };
+    live.current = { me, onMembers, onImage, openSource };
   });
 
-  const apply = useCallback((events: readonly ChatEvent[]) => {
-    if (!events.length) return;
+  const apply = useCallback((events: readonly ChatEvent[], progress: readonly ChatProgress[] | null = null) => {
+    if (!events.length && !progress) return;
     const result = applyEvents(feedRef.current, events, live.current.me);
-    feedRef.current = result.feed;
-    setFeed(result.feed);
+    const next = progress ? withProgress(result.feed, progress) : result.feed;
+    feedRef.current = next;
+    setFeed(next);
     setUpdatedAt(Date.now());
     if (result.members) live.current.onMembers();
+    if (result.image) live.current.onImage?.(result.image.image_url);
   }, []);
 
   useEffect(() => {
@@ -107,13 +114,16 @@ export function useChatFeed({
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     let flushTimer: ReturnType<typeof setTimeout> | null = null;
     let pending: ChatEvent[] = [];
+    let pendingProgress: ChatProgress[] | null = null; // the latest the stream sent, applied after the events before it
     let abort: AbortController | null = null;
 
     const flush = () => {
       flushTimer = null;
       const batch = pending;
+      const progress = pendingProgress;
       pending = [];
-      if (!disposed) apply(batch);
+      pendingProgress = null;
+      if (!disposed) apply(batch, progress);
     };
     const closeStream = () => {
       if (!source) return;
@@ -151,7 +161,7 @@ export function useChatFeed({
         const answer = await chatEventsAfter(browserApi(), chatId, feedRef.current.lastSeq, controller.signal);
         if (disposed || controller.signal.aborted) return;
         setPollFailing(false);
-        apply(answer.events);
+        apply(answer.events, answer.progress ?? null);
         setUpdatedAt(Date.now());
         // More to read goes on at once, unless none of it was for this reader (labels it does not clear): then wait.
         if (polling) pollTimer = setTimeout(() => void poll(), answer.more && answer.events.length ? 0 : POLL_MS);
@@ -196,6 +206,13 @@ export function useChatFeed({
         pending.push(event);
         flushTimer ??= setTimeout(flush, FLUSH_MS);
       };
+      opened.addEventListener("progress", (message) => {
+        if (disposed || source !== opened) return;
+        const body = parse<{ progress?: ChatProgress[] }>((message as MessageEvent<string>).data);
+        if (!Array.isArray(body?.progress)) return;
+        pendingProgress = body.progress;
+        flushTimer ??= setTimeout(flush, FLUSH_MS);
+      });
       opened.addEventListener("end", (message) => {
         if (disposed || source !== opened) return;
         const body = parse<{ reason?: string }>((message as MessageEvent<string>).data);

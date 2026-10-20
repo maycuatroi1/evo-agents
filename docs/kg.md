@@ -1,10 +1,10 @@
 # The knowledge graph
 
 How the graph of a project answers an agent: what `kg_impact` follows and covers per language, how the text of every
-tool is written, how `kg_search` finds nodes, what the note after a grep adds, how plans of the hub, commits and pull
-requests enter the graph, which commit each git source read and when a sync or a build does anything, how long this
-machine keeps old data, and how `kg eval` measures retrieval. The README shows how to build a graph and call the
-tools.
+tool is written, who sees an element through the audience of its label, how `kg_search` finds nodes, what the note
+after a grep adds, how plans of the hub, commits and pull requests enter the graph, which commit each git source read
+and when a sync or a build does anything, how long this machine keeps old data, and how `kg eval` measures retrieval.
+The README shows how to build a graph and call the tools.
 
 ## What kg_impact follows
 
@@ -165,7 +165,8 @@ The text is what an agent's model reads, so it is kept short and readable:
   stored ids (`evo-agents:file:evo_agents/kg/store.py`, `symbol:evo-agents:evo_agents/kg/store.py::Store.search`)
   stay in the structured result, and every tool takes both forms. Other ids (`plan:x/step:2`, `repo:x`) are as stored.
 - A line names the node's kind, its name when the id does not end with it, its status, the line of a symbol, the
-  status and number of a plan step. The URI is left to `kg_node`, whose props and evidence carry it. For a file of a
+  status and number of a plan step, the chat and thread of a chat message, never its text. The URI is left to
+  `kg_node`, whose props and evidence carry it. For a file of a
   git source on a forge, `kg_node` gives the link at the commit the source read (`.../blob/<sha>/path`), so a span's
   lines match the file it opens; the corpus keeps the link by branch, which does not change an item's hash on every
   commit (`evo_agents/kg/freshness.py`).
@@ -174,7 +175,8 @@ The text is what an agent's model reads, so it is kept short and readable:
   the clone's `origin/<default_branch>` without fetching; the hub, which has no checkout, shows the count of the
   machine that synced the source.
 - The label most nodes of a result share is printed once, under the first line (`label of every node: public,U`);
-  a node with another label names it on its line.
+  a node with another label names it on its line, and a label with an audience ends with it
+  (`internal,U audience chat:5 grant:demo:internal`).
 - `kg_context` keeps its whole text, header, nodes and edges, within `budget_tokens`, counted as UTF-8 bytes / 3,
   and says how many nodes and edges it reached that did not fit (`left_out` in the structured result).
 - Each tool takes, besides its own argument names, those agents often use for them (`evo_agents/kg/refs.py`,
@@ -182,6 +184,45 @@ The text is what an agent's model reads, so it is kept short and readable:
   kg_context's `budget_tokens`, `source` and `target` for kg_path's `from` and `to`. Any other unknown name is an
   error that lists the tool's arguments. kg_impact reads a path that names no file as an id, and an id that names no
   node and looks like a path as a path.
+
+## Audience
+
+A label (`evo_agents/kg/policy.py`) has, besides a level, a location, an integrity and the projects it names, an
+audience: a set of principals that a reader must all be to see the element. A principal is a string with a prefix, of
+one of two forms:
+
+- `chat:<id>`: a member of group chat `<id>` on the hub;
+- `grant:<project>:<level>`: someone whose grant on `<project>` reaches `<level>` at least, on that project's own
+  ladder.
+
+A reader holds an audience too, and sees an element only when the element's audience is a subset of the reader's, as
+for projects. Join takes the union, meet the intersection, and the order is the subset. An element with no audience
+passes this dimension for every reader: its kg/1 hash and the answers of the tools stay what they were before labels
+had an audience, so a connector that sets none has nothing to change. In kg/1 the audience is the optional key
+`audience` of an item's label, a sorted list of principals without repeats. A list that is not sorted, repeats a
+principal or holds a string of neither form cannot be read, and counts as the highest audience, which no reader holds:
+the item is kept and nobody sees it (fail closed). The schema marks the key as a warning, so a sync keeps such an item
+instead of refusing its run.
+
+A node or an edge that several items derive shows to a reader who sees one of its derivations whole
+(`policy.any_of`): it takes the least audience among the derivations at the lowest level and location, else the union
+of theirs. A node that both chat 5 and chat 6 derive shows to a member of either chat, never to someone in neither.
+
+The store keeps the audience of each unit, node and edge (`label_aud`) and reads as the session's audience
+(`Store.reader`, none unless set), so a hidden element fills no limit, page or count, and `Session.visible` checks it
+again. The shortcut that compares no labels when the build's highest label flows to the sink (`Store.top_label`) also
+needs every audience of the build within the reader's (`Store.top_audience`). A `kg_more` handle keeps the audience its
+result revealed and refuses once the reader no longer holds it. A result that reveals an element with an audience
+names it in its label, in the structured result and in the READ_META of its text block, and the session label of
+`~/.evo/kg/sessions/` joins it (`evo_agents/kg/sessions.py`), so a memory the session writes next carries it
+(`docs/hub.md`, Memories, skills and knowledge graphs).
+
+`evo-agents kg serve` on a machine holds no audience: an element with one never shows there, through any sink, and chat
+history never enters a local graph. A local session finds chat messages through the hub instead, with
+`evo-agents kg query kg_search TEXT --backend hub --arg 'kinds=["ChatMessage"]'` or the `kg_*` tools of
+`evo-agents hub mcp`. On the hub a reader's audience is computed from its database at every read (`docs/hub.md`,
+Projects and who sees what), and the core plugin chats labels each message with `chat:<id>` plus
+`grant:<project>:<level>` for each other project its label names (`docs/plugins.md`, Chat history).
 
 ## Search
 
@@ -195,8 +236,9 @@ The text is what an agent's model reads, so it is kept short and readable:
   ask (`where`, `does`, `the`, `của`, ...) are dropped from a query that has others, so a question whose words no
   single node holds still gets ranked results.
 - Each way ranks by BM25 over the node's name (weight 6), path (2) and body (1), times a light prior by kind: a plan,
-  a step, a commit, a pull request or a directory counts half, a section or a requirement 0.7, so at the same text
-  score code and documents come first. The best 300 by BM25 alone are scored again with the prior.
+  a step, a commit, a pull request, a directory, a chat or a chat message counts half, a section or a requirement 0.7,
+  a chat thread 0.3 (every thread is named after its chat), so at the same text score code and documents come first.
+  The best 300 by BM25 alone are scored again with the prior.
 - `kinds` is part of the query, so a search for sections gets as many sections as it asks for.
 - `kg_search` follows each plan step, section or document in its results with up to three files, symbols or documents
   it mentions (`  mentions [id]` lines, `mentioned_by` in the structured result), through edges and nodes the sink
@@ -204,7 +246,8 @@ The text is what an agent's model reads, so it is kept short and readable:
 
 What the index holds for a node: its name, with the parts of a camelCase word added (`HubSession` also holds `hub` and
 `session`; snake_case and paths come apart in the tokenizer); its path, a section's being its document's; and a body:
-the text of a section or of an item that is neither code nor a plan, the description of a plan (goal, context), a
+the text of a section or of an item that is neither code nor a plan (a chat message's among them, which no tool
+returns), the description of a plan (goal, context), a
 step (what, why, note) or a seam (notes), not their verify commands nor their evidence, the docstring of a Python
 symbol or module, the comment right above a definition in another language or at the top of its file, and a
 requirement's code. `đ` is indexed and searched as `d`. URIs and repo names are not indexed. A body longer than
@@ -214,8 +257,10 @@ The index holds the latest build only. A build deletes and inserts only the rows
 `node_fts_rows` keeps each node's row id and digest, and an index without it is written again whole. The build's
 content hash covers the store's schema and what the index holds, so two builds with the same hash answer searches
 alike. Store schema 3 added the index's
-`kind` and `path` columns, `nodes_name` and `node_alias`: an older store is rebuilt from the corpus log by the next
-`kg build` or `kg sync --build`, and readers refuse it until then.
+`kind` and `path` columns, `nodes_name` and `node_alias`; schema 4 added `label_aud`, the audience of a unit, node or
+edge (`evo_agents/kg/policy.py`), and `node_fts_aud`, which holds the index rows of nodes with an audience apart, so
+they never weigh in the ranking a reader without that audience gets. An older store is rebuilt from the corpus log by
+the next `kg build` or `kg sync --build`, and readers refuse it until then.
 
 ## After grep
 
@@ -278,7 +323,11 @@ added, edited or deleted that the graph still holds (a merge against its first p
 add, at most 100 paths, `files` counting them all). Its message is not read. The first run, and any run after the
 connector or the source's config changed, reads the whole history and lists it complete, so a commit the ref no
 longer reaches goes, under the deletion guard; the runs after it read only the commits since the commit of the
-source's cursor. A mention links to the commit read when exactly one has that SHA: `repo@sha` among the commits of
+source's cursor. When the ref no longer reaches that commit (a force-push, a history rewritten with filter-repo, a
+reset to an older commit), the run reads the whole history again and warns `history of <ref> rewritten`, so the
+commits only on the old history go. The guard treats those removals as any others: a rewrite of a few commits goes
+at once, one of more than `max_removal_ratio` of them is held until `kg sync --accept-removals`, since a mistaken
+force-push looks the same to the connector as a planned rewrite. A mention links to the commit read when exactly one has that SHA: `repo@sha` among the commits of
 that repo, a bare SHA (7 to 40 hex digits, with a letter and a digit) in a step's evidence among the commits of the
 step's `repo` first, then of every repo; a SHA no source read keeps a `Commit` node of its own, `commit:<sha>` or
 `commit:<repo>@<sha>`, as before.

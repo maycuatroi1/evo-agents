@@ -30,7 +30,8 @@ pull finds a file changed both here and on the hub, the hub's version stays unde
 written next to it as ``<name>.conflict-<host>.md``, and the conflict is reported. Deletions cross only with
 ``--prune``: ``push --prune`` turns the files deleted here into tombstones on the hub, and ``pull --prune`` deletes
 the files the hub holds a tombstone for when they did not change here since the last sync. Without it a deletion is
-reported and nothing else happens; a pull brings back a file deleted only here.
+reported and nothing else happens; a pull brings back a file deleted only here. A push for a Claude Code session sends
+each file with the audience of the session's label (``evo_agents.kg.sessions``), which the hub adds to the memory's.
 
 A directory never moves a memory out of a project into the personal scope, and a personal memory is never pulled into
 a directory that belongs to a project here: either would move data across the line the hub's rules draw. Every file
@@ -48,7 +49,7 @@ import re
 import stat
 import time
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 from urllib.parse import quote, urlencode
@@ -69,6 +70,7 @@ INDEX = "MEMORY.md"
 AGENT_SINK = "claude-code@anthropic"  # what reads the files a pull writes: Claude Code sessions
 MAX_BODY = 256 * 1024  # bytes of UTF-8 in one memory file
 MAX_NAME = 255  # bytes in a file name, as file systems allow
+MAX_AUDIENCE = 256  # principals one write of a memory names (chat:<id>, grant:<project>:<level>)
 STATE_FILE = "memory-state.json"
 LOCK_FILE = "memory.lock"
 LOCK_TIMEOUT = 60.0  # seconds to wait for another sync on this machine
@@ -582,7 +584,7 @@ class Report:
         }
 
 
-def _well_formed(memory) -> bool:
+def well_formed(memory) -> bool:
     return (
         isinstance(memory, dict)
         and type(memory.get("id")) is int
@@ -614,8 +616,10 @@ class MemorySync:
         registry: Path | None = None,
         host: str | None = None,
         lock_timeout: float = LOCK_TIMEOUT,
+        audience: Iterable[str] = (),
     ):
         self.hub = hub
+        self.audience = sorted(audience)  # what the session pushing read: every file it sends carries it
         self.login = login
         self.sink = sink
         self.dry_run = dry_run
@@ -858,6 +862,7 @@ class MemorySync:
             "type": kind,
             "body": text,
             "if_revision": entry["revision"] if same else None,
+            **({"audience": self.audience} if self.audience else {}),
         }
         try:
             written = self.hub.call("PUT", "/v1/memories?" + urlencode({"sink": self.sink}), body)
@@ -869,7 +874,7 @@ class MemorySync:
             else:
                 raise  # signed out, the hub or the network failing: stop here
             return
-        if not _well_formed(written):
+        if not well_formed(written):
             raise HubError(f"the hub at {self.hub.url} answered a push with something that is not a memory")
         self.state.set(key, written)
         self.report.counts[
@@ -903,7 +908,7 @@ class MemorySync:
         except HubError as exc:
             if exc.status == 409:  # changed on the hub since: its version comes back here rather than going
                 current = (exc.payload or {}).get("current")
-                if _well_formed(current) and not current["deleted"]:
+                if well_formed(current) and not current["deleted"]:
                     self._write(path, current["body"].encode("utf-8"), None)
                     self.state.set(key, current)
                     self.report.counts["conflicts"] += 1
@@ -915,7 +920,7 @@ class MemorySync:
                 self.report.errors.append(f"{path}: not deleted on the hub: {exc}")
                 return
             raise
-        if _well_formed(deleted):
+        if well_formed(deleted):
             self.state.set(key, deleted)
         self.report.counts["deleted"] += 1
 
@@ -931,7 +936,7 @@ class MemorySync:
                 query["cursor"] = cursor
             page = self.hub.call("GET", "/v1/memories?" + urlencode(query))
             items = page.get("items") if isinstance(page, dict) else None
-            if not isinstance(items, list) or not all(_well_formed(item) for item in items):
+            if not isinstance(items, list) or not all(well_formed(item) for item in items):
                 raise HubError(f"the hub at {self.hub.url} answered a listing this client cannot read")
             for memory in items:  # a memory changed during the listing comes again, later: keep the newest
                 held = found.get(memory["id"])
@@ -1096,7 +1101,7 @@ class MemorySync:
     def _resolve(self, key: str, path: Path, local: bytes, current, message: str = "") -> None:
         """A conflict: the hub's version (``current``) stays under the file's name, this machine's goes next to it
         as a conflict copy. Without a version of the hub to keep, the file is left as it is and reported."""
-        if not _well_formed(current):
+        if not well_formed(current):
             self.report.errors.append(f"{path}: not pushed: {message or 'the hub refused it'}")
             return
         copy = conflict_path(path, self.host)
@@ -1117,13 +1122,3 @@ class MemorySync:
                 "deleted_on_hub": current["deleted"],
             }
         )
-
-
-def search(hub: Hub, query: str, *, project: str | None = None, limit: int = 10, sink: str = AGENT_SINK) -> list:
-    """The memories one sees whose name or text matches ``query``, best first."""
-    params = {"q": query, "limit": limit, "sink": sink, **({"project": project} if project else {})}
-    found = hub.call("GET", "/v1/memories/search?" + urlencode(params))
-    items = found.get("items") if isinstance(found, dict) else None
-    if not isinstance(items, list) or not all(_well_formed(item) for item in items):
-        raise HubError(f"the hub at {hub.url} answered a search this client cannot read")
-    return items

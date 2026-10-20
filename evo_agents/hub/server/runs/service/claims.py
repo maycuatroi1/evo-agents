@@ -520,9 +520,9 @@ async def _declared_or_failed(conn: AsyncConnection, run_id: int, runtime: str, 
 OWN_PROMPTS = ("review", "chat", "task", "judge", "replay", "history")  # the kinds whose prompt their module builds
 
 
-async def _own_prompt(conn: AsyncConnection, view: Run) -> str:
-    """The prompt of run ``view`` of one of OWN_PROMPTS, as the module of its kind builds it; each module queues runs
-    through this package, so it is imported here."""
+async def _own_prompt(conn: AsyncConnection, view: Run, features: tuple[str, ...] = ()) -> str:
+    """The prompt of run ``view`` of one of OWN_PROMPTS, as the module of its kind builds it for a worker whose daemon
+    says it does ``features``; each module queues runs through this package, so it is imported here."""
     if view.kind == "review":
         from evo_agents.hub.server.collect import review_prompt
 
@@ -530,7 +530,8 @@ async def _own_prompt(conn: AsyncConnection, view: Run) -> str:
     if view.kind == "chat":
         from evo_agents.hub.server.chat_runs import chat_prompt
 
-        return await chat_prompt(conn, view.id, view.branch, [repo.model_dump() for repo in view.repos or []])
+        repos = [repo.model_dump() for repo in view.repos or []]
+        return await chat_prompt(conn, view.id, view.branch, repos, features)
     if view.kind == "task":
         from evo_agents.hub.server.task_dispatch import task_prompt
 
@@ -550,7 +551,8 @@ async def _own_prompt(conn: AsyncConnection, view: Run) -> str:
 
 async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...] = ()) -> RunSpec:
     """The claim of run ``run_id`` by a worker whose daemon says it does ``features`` (``runs.WORKER_FEATURES``): an
-    author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``."""
+    author run's prompt lets its agent ask decisions only on a daemon that does ``runs.AUTHOR_DECISIONS``, and a chat
+    run's tells its agent to open the repos it needs only on one that does ``runs.LAZY_CHAT_REPOS``."""
     view = await run_view(conn, run_id)
     r, revisions = tables.runs, tables.plan_revisions
     project_id = (await conn.execute(select(r.c.project_id).where(r.c.id == run_id))).scalar_one()
@@ -563,7 +565,7 @@ async def _run_spec(conn: AsyncConnection, run_id: int, features: tuple[str, ...
     plan = body if body is not None else {"id": view.plan_id, "steps": []}
     copy, verify = None, None
     if view.kind in OWN_PROMPTS:
-        prompt = await _own_prompt(conn, view)
+        prompt = await _own_prompt(conn, view, features)
         title = view.title
     elif view.kind == "author":
         skill = await author_skill(conn)

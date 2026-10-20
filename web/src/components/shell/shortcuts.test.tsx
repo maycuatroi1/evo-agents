@@ -77,6 +77,10 @@ function Page({ ownDispatch }: { ownDispatch?: () => void }) {
 function setup({ grants = WRITER, ownDispatch, timers = false }: { grants?: Grant[]; ownDispatch?: () => void; timers?: boolean } = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
   client.setQueryData(queryKeys.whoami, { login: "octo", admin: false, token: {}, grants });
+  client.setQueryData(
+    queryKeys.projects,
+    grants.map((grant) => ({ name: grant.project, role: grant.role, max_level: grant.max_level, repos: [] })),
+  );
   renderVi(
     <QueryClientProvider client={client}>
       <ShortcutsProvider>
@@ -119,16 +123,22 @@ describe("go to sequences", () => {
     expect(nav.push).toHaveBeenLastCalledWith("/p/demo/runs");
   });
 
-  it("outside a project, G P goes to the visitor's only project, or says to open one", async () => {
+  it("outside a project, G P goes to the project the sidebar shows, or says to open one", async () => {
     nav.project = undefined;
     nav.pathname = "/";
-    let user = setup({ grants: [{ project: "solo", role: "reader", max_level: "public" }] });
+    let user = setup();
     await user.keyboard("gp");
-    expect(nav.push).toHaveBeenLastCalledWith("/p/solo/plans");
+    expect(nav.push).toHaveBeenLastCalledWith("/p/demo/plans");
+    cleanup();
+
+    window.localStorage.setItem("hub.shell.project", "docs");
+    user = setup();
+    await user.keyboard("gr");
+    expect(nav.push).toHaveBeenLastCalledWith("/p/docs/runs");
     cleanup();
 
     nav.push.mockReset();
-    user = setup();
+    user = setup({ grants: [] });
     await user.keyboard("gr");
     expect(nav.push).not.toHaveBeenCalled();
     expect(await screen.findByTestId("toast-title")).toHaveTextContent("Mở một dự án trước");

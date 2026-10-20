@@ -7,6 +7,16 @@ message is sent, the hub reads its mentions once (``mention_names``) and keeps t
 not inside a code span or a fenced code block, ignoring case. A name resolves among the chat's members only: a
 person's login, an agent's handle, or a project's name, which is the handle of that project's default agent.
 
+A chat is of one of CHAT_KINDS, which the hub keeps with it: a group chat (GROUP), which any member adds people and
+agents to, or a direct chat (DIRECT) of one person and one agent, which that person opens with the agent's handle and
+whose members never change. In a direct chat each message of the person that mentions no agent is work for its agent
+(``via`` DIRECT), as if it mentioned it.
+
+A group chat may have an image, which its members set (``image_url``); a direct chat has none, since its face is its
+agent's avatar. A person shows with the avatar of their GitHub account (``github_avatar``), the one image the web
+loads from outside the hub. The list of chats shows each chat's last message as one short line of plain text
+(``preview``).
+
 A reaction is one emoji of one person or agent on one message (``emoji_problem`` says what is one); a message carries
 at most MAX_EMOJI_KINDS different ones. An agent's reactions are set by rule, never by a model: STATUS_REACTIONS names
 the one a run of the agent puts on the message that started it as the run moves (eyes when a worker claims it, a check
@@ -34,9 +44,19 @@ EYES, CHECK, CROSS = "\U0001f440", "✅", "❌"
 # off when it puts CHECK or CROSS. A run that is lost and tried again keeps its EYES.
 STATUS_REACTIONS = {"leased": EYES, "done": CHECK, "failed": CROSS, "cancelled": CROSS}
 
-VIA = ("login", "handle", "project", "thread")  # how a mention reached its member; thread: no @, a chat of one person
-EVENT_KINDS = ("message", "reaction_added", "reaction_removed", "member_added", "member_removed")
+GROUP, DIRECT = "group", "direct"
+CHAT_KINDS = (GROUP, DIRECT)
+# How a mention reached its member; thread: no @, a chat of one person; direct: no @ of the agent, a direct chat
+VIA = ("login", "handle", "project", "thread", DIRECT)
+IMAGE_CHANGED = "image_changed"  # a member set the chat's image or took it off
+EVENT_KINDS = ("message", "reaction_added", "reaction_removed", "member_added", "member_removed", IMAGE_CHANGED)
 NOTICE_MENTION, NOTICE_ADDED = "chat_mention", "chat_added"  # the kinds of notice a chat sends (``runs.NOTICE_KINDS``)
+
+GITHUB_AVATARS = "https://avatars.githubusercontent.com"  # the web's CSP img-src names this origin and no other
+AVATAR_PIXELS = 96  # the size a GitHub avatar is asked at: twice the largest the web draws
+FACES = 3  # members other than the reader a chat of the list shows, which the web draws when it has no image
+PREVIEW_CHARS = 140  # of the last message the list shows, an ellipsis included when it is cut
+PREVIEW_SOURCE = 2000  # characters of a message's text read to make its preview
 
 _FENCE = re.compile(r"^[ \t]*(`{3,}|~{3,})[^\n]*\n.*?(?:^[ \t]*\1[ \t]*$|\Z)", re.M | re.S)
 _SPAN = re.compile(r"(?<!`)(`+)(?!`).+?(?<!`)\1(?!`)", re.S)
@@ -99,3 +119,72 @@ def status_reaction(state: str) -> tuple[str, tuple[str, ...]] | None:
 def chat_link(chat_id: int, message_id: int | None = None) -> str:
     """The web page of a chat, as a notice links to it, at one message when given."""
     return f"/chats/{chat_id}" if message_id is None else f"/chats/{chat_id}?message={message_id}"
+
+
+# Faces and previews
+
+
+def image_url(chat_id: int, sha256: str | None) -> str | None:
+    """Where a member reads the image of chat ``chat_id`` whose SHA-256 is ``sha256``, a part of it in the URL so that a
+    browser keeps it until it changes; None for a chat without one."""
+    return None if sha256 is None else f"/v1/chats/{chat_id}/image?v={sha256[:16]}"
+
+
+def github_avatar(github_id: int | None) -> str | None:
+    """The avatar of GitHub account ``github_id``; None for a login that never signed in, whose account is unknown."""
+    return None if github_id is None else f"{GITHUB_AVATARS}/u/{github_id}?s={AVATAR_PIXELS}&v=4"
+
+
+_FENCE_LINE = re.compile(r"^[ \t]*(?:`{3,}|~{3,})[^\n]*$", re.M)
+_IMAGE = re.compile(r"!\[([^\]\n]*)\]\([^)\n]*\)")
+_LINK = re.compile(r"\[([^\]\n]+)\](?:\([^)\n]*\)|\[[^\]\n]*\])")
+_AUTOLINK = re.compile(r"<((?:https?|mailto):[^>\s]+)>")
+_TAG = re.compile(r"</?[A-Za-z][^>\n]*>")
+_LINE_MARK = re.compile(r"^[ \t]*(?:#{1,6}[ \t]+|>[ \t]?|[-*+][ \t]+(?:\[[ xX]\][ \t]+)?|\d{1,9}[.)][ \t]+)", re.M)
+_RULE = re.compile(r"^[ \t]*(?:[-*_][ \t]*){3,}$", re.M)
+_STRONG = re.compile(r"(\*\*|__|~~)(?=\S)(.+?)(?<=\S)\1")
+_EMPHASIS = re.compile(r"(?<![\w*])([*_])(?=\S)(.+?)(?<=\S)\1(?![\w*])")
+_CODE = re.compile(r"(`+)(.+?)\1")
+
+
+def preview(text: str, limit: int = PREVIEW_CHARS) -> str:
+    """``text`` as the list of chats shows it: one line of plain words, its markdown left out (the marks of headings,
+    quotes, lists, rules, emphasis and code, a link's or an image's address, HTML tags), at most ``limit`` characters,
+    the last an ellipsis when it was cut. A mention stays as written."""
+    plain = _FENCE_LINE.sub(" ", text)
+    plain = _RULE.sub(" ", plain)
+    plain = _LINE_MARK.sub("", plain)
+    plain = _IMAGE.sub(r"\1", plain)
+    plain = _LINK.sub(r"\1", plain)
+    plain = _AUTOLINK.sub(r"\1", plain)
+    plain = _TAG.sub("", plain)
+    plain = _CODE.sub(r"\2", plain)
+    plain = _STRONG.sub(r"\2", plain)
+    plain = _EMPHASIS.sub(r"\2", plain)
+    line = " ".join(plain.split())
+    if len(line) <= limit:
+        return line
+    return line[: limit - 1].rstrip() + "…"
+
+
+# What names a message to read it whole (the tools chat_message and chat_thread, `evo-agents worker chat read`): its
+# id, or its item in the knowledge graph (``evo_agents.core_plugins.chats.kg``), or a thread's item for its thread.
+MAX_ID = 2**63 - 1  # a message's id, within bigint
+_ID = "[1-9][0-9]{0,18}"
+READ_REF = rf"^(?:(?:plugin\.chats:message:)?{_ID}|plugin\.chats:thread:{_ID}/{_ID})$"
+_READ = re.compile(rf"(?:plugin\.chats:message:)?({_ID})|plugin\.chats:thread:({_ID})/({_ID})")
+
+
+def read_ref(value) -> tuple[int, int | None, bool] | None:
+    """(the message ``value`` names, the chat a thread's item names or None, whether it names a thread) for an id, as
+    an int or its digits, or an item of READ_REF; None for anything else, or an id past MAX_ID."""
+    if isinstance(value, bool) or not isinstance(value, (int, str)):
+        return None
+    found = _READ.fullmatch(str(value).strip())
+    if found is None:
+        return None
+    if found.group(1):
+        named = int(found.group(1)), None, False
+    else:
+        named = int(found.group(3)), int(found.group(2)), True
+    return named if max(named[0], named[1] or 0) <= MAX_ID else None

@@ -2095,13 +2095,19 @@
         "limits": "Limits",
         "version": "Version",
         "updated": "Changed",
-        "deleted": "Deleted"
+        "deleted": "Deleted",
+        "actions": "Actions"
       },
       "version": "v{version}",
       "everyPermission": "Every permission",
       "limitsLabel": "Limits:",
       "onlyDefault": "Only the project's default agent so far. New agent gives one a name, instructions and narrower permissions.",
       "more": "+{count}"
+    },
+    "chat": {
+      "button": "Chat",
+      "label": "Chat with {name}",
+      "failed": "Couldn't open the chat with @{handle}"
     },
     "axes": {
       "credential": {
@@ -2410,9 +2416,24 @@
       "caption": "Your chats",
       "rowLabelUnread": "{title}, {count, plural, one {# unread message} other {# unread messages}}",
       "emptyTitle": "No chats yet",
-      "emptyBody": "A chat brings people and the agents of your projects together. Mention an agent with @ to hand it work: it answers in a thread under your message, and its code changes come as a draft pull request.",
+      "emptyBody": "A chat brings people and the agents of your projects together. Pick an agent above to chat with it one to one, or start a group chat with New chat, where an @ mention hands an agent work.",
       "noneOpenTitle": "Open a chat",
-      "noneOpenBody": "Pick a chat from the list, or start one with New chat."
+      "noneOpenBody": "Pick a chat from the list or an agent above it, or start a group chat with New chat.",
+      "you": "You",
+      "hub": "Hub",
+      "lastMessage": "{author}: {text}",
+      "hiddenMessage": "a message your grants don't clear",
+      "noMessages": "No messages yet"
+    },
+    "strip": {
+      "label": "Chat with an agent",
+      "open": "Chat with {name}, @{handle} of {project}",
+      "tooltip": "@{handle}, {project}",
+      "loading": "Loading the agents you can chat with",
+      "empty": "The agents of the projects you write to show here, to chat with one to one.",
+      "failed": "Couldn't read the agents of {projects}.",
+      "retry": "Try again",
+      "openFailed": "Couldn't open the chat with @{handle}"
     },
     "view": {
       "reactFailed": "Couldn't change the reaction",
@@ -2425,12 +2446,38 @@
       "threadSheet": "Thread",
       "threadSheetBody": "A thread of {title}",
       "notFoundTitle": "No such chat",
-      "notFoundBody": "A chat's address is /chats followed by its number. Open it from the list of your chats."
+      "notFoundBody": "A chat's address is /chats followed by its number. Open it from the list of your chats.",
+      "directHint": "Every message goes to {name}, no @ needed: it answers under your message.",
+      "directPlaceholder": "Message {name}",
+      "directReplyHint": "Your reply goes on in the same session, so {name} picks up where it left off."
     },
     "header": {
       "back": "Back to chats",
       "andMore": "{names} and {count} more",
-      "members": "{count, plural, one {# member} other {# members}}"
+      "members": "{count, plural, one {# member} other {# members}}",
+      "onlyYou": "Only you so far",
+      "direct": "Direct",
+      "deleted": "Deleted",
+      "details": "Details",
+      "agentPage": "Open the page of {name}",
+      "project": "Project"
+    },
+    "image": {
+      "menu": "Chat image: upload one",
+      "menuWithImage": "Chat image: change or remove it",
+      "hint": "PNG, JPEG or WebP, at most {max} KiB. Without one, the chat shows its members.",
+      "upload": "Upload image",
+      "change": "Change image",
+      "remove": "Remove image",
+      "changed": "Chat image changed",
+      "removed": "Chat image removed",
+      "type": "Pick a PNG, JPEG or WebP image.",
+      "size": "The image is over {max} KiB.",
+      "removeTitle": "Remove the image of {title}?",
+      "removeText": "The chat shows its members' faces again, for everyone in it.",
+      "removeConfirm": "Remove image",
+      "removing": "Removing…",
+      "cancel": "Cancel"
     },
     "messages": {
       "log": "Messages of {title}",
@@ -2439,7 +2486,8 @@
       "olderFailed": "Couldn't load earlier messages. Try again.",
       "emptyTitle": "No messages yet",
       "emptyBody": "Say what you need. Mention an agent with @ to hand it work; it answers in a thread under your message.",
-      "latest": "Jump to the latest"
+      "latest": "Jump to the latest",
+      "directEmptyBody": "Say what you need: every message goes to {name}, and its answer shows right under yours."
     },
     "message": {
       "hub": "Hub",
@@ -2455,7 +2503,22 @@
       "handedLabel": "@{handle}: run #{id}, where it took the work",
       "refused": "@{handle} took no work:",
       "pull": "PR #{number} in {repo}",
-      "newTab": "(opens in a new tab)"
+      "newTab": "(opens in a new tab)",
+      "progress": {
+        "waiting": "<agent>@{handle}</agent> got it, waiting for worker {worker}",
+        "waitingAny": "<agent>@{handle}</agent> got it, waiting for a worker",
+        "inbox": "<agent>@{handle}</agent> got it, in the inbox of the running turn",
+        "claimed": "<agent>@{handle}</agent>: worker {worker} claimed the run",
+        "checking": "<agent>@{handle}</agent> is checking access to the repos",
+        "opening": "<agent>@{handle}</agent> is opening {repo}",
+        "starting": "<agent>@{handle}</agent> is starting up",
+        "working": "<agent>@{handle}</agent> is working on it"
+      },
+      "replyDirect": "Reply",
+      "youName": "You",
+      "quoteLabel": "Show the message this answers, by {name}: {text}",
+      "quoteEarlier": "In reply to an earlier message",
+      "quoteEarlierLabel": "Open the thread of the earlier message this answers"
     },
     "reactions": {
       "you": "you",
@@ -2500,7 +2563,9 @@
           "project": "Projects",
           "person": "People"
         }
-      }
+      },
+      "replying": "Replying to {name}",
+      "cancelReply": "Cancel the reply"
     },
     "thread": {
       "title": "Thread",
@@ -2516,7 +2581,8 @@
       "composerLabel": "Reply in the thread",
       "placeholder": "Reply in the thread",
       "soloHint": "You are the only person in this chat: a reply without @ goes to the agent already working in this thread.",
-      "hint": "Mention an agent with @ to hand it this reply."
+      "hint": "Mention an agent with @ to hand it this reply.",
+      "directHint": "Your reply goes on in the same session with {name}."
     },
     "members": {
       "title": "Members",
@@ -2568,7 +2634,10 @@
       "saving": "Saving",
       "save": "Save",
       "badBudget": "A number above 0, at most {max}.",
-      "budgetHint": "The runs of its agents may cost up to {amount} in any 24 hours, as their usage says; past it the hub hands them no work."
+      "budgetHint": "The runs of its agents may cost up to {amount} in any 24 hours, as their usage says; past it the hub hands them no work.",
+      "detailsTitle": "Details",
+      "directDescription": "Your direct chat with {name}.",
+      "directNote": "A direct chat is you and one agent, for good. To bring in other people or agents, start a group chat with New chat."
     },
     "create": {
       "title": "New chat",
@@ -3714,6 +3783,10 @@
             "label": "Push conflict",
             "hint": "The branch moved on the origin and the push was refused."
           },
+          "push_declined": {
+            "label": "Push declined",
+            "hint": "The origin declined the push by a rule of its own, such as a hook or a protected branch. The commits are still on the run's branch in its worktree."
+          },
           "verify_failed": {
             "label": "Verify failed",
             "hint": "The step's verify command did not pass."
@@ -3991,6 +4064,22 @@
       "kind": "Chat run",
       "line": "A turn of @{agent} in a group chat",
       "lineProject": "{project}: a turn of @{agent} in a group chat"
+    },
+    "session": {
+      "turns": "{count, plural, one {# turn} other {# turns}}",
+      "line": "Session of {person} with @{agent} in a group chat",
+      "mobileLine": "{count, plural, one {# turn} other {# turns}}, session of {person} with @{agent}",
+      "turnsLabel": "Turns of the session {title}",
+      "turn": "Turn {turn}",
+      "turnOf": "Turn {turn} of {turns}",
+      "turnLink": "Turn {turn}: {title}",
+      "navLabel": "Turns of this session",
+      "navError": "The other turns could not be read.",
+      "loading": "Reading the turns",
+      "error": "The turns of this session could not be read.",
+      "retry": "Try again",
+      "more": "The latest {shown} of {total} turns",
+      "untitled": "Untitled turn"
     },
     "taskRun": {
       "kind": "Task run",

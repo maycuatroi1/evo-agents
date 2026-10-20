@@ -12,9 +12,14 @@ awaited when it returns an awaitable, within SOURCE_TIMEOUT, with ``params`` ``{
   last changed), and ``label``: the label of the row it came from, as the hub stores labels. ``props.graph`` declares
   nodes and edges (``evo_agents.kg.pipeline.stages.declared``). The hub gives each item its ``rev`` (its hash) and its
   kg/1 label: a level or location the knowledge config does not name reads as its highest, as the hub reads stored
-  labels, and an item without a readable label, or whose label names another project, is left out.
+  labels, and an item without a readable label, or whose label names another project in ``projects``, is left out.
+  A label may name an ``audience`` (``evo_agents.kg.policy``), which the kg/1 label carries as given: only a reader
+  who is every principal of it sees the item, and one the build cannot read hides the item from every reader.
 - ``identifiers``: code patterns, ``{"kind", "pattern"}`` as knowledge.yaml declares them. The build puts them before
   the project's own, so a mention of such a code in any source links to the node the plugin declares for it.
+- ``cursor`` (optional): what the source read up to, ``{"item", "at"}``: the id of an item of the source and when
+  that item last changed, such as the newest message of the chats. The build keeps it as the source's cursor in the
+  corpus, so the coverage of its graph, and kg_status, name it (``evo_agents.kg.freshness``).
 
 The build adds each source to the knowledge config it writes into its cache (``knowledge_with``: connector
 ``plugin``, the lowest label, so each item's own label decides) with its identifiers, and makes the source's items in
@@ -26,6 +31,10 @@ message names no content): the project keeps its latest graph. Source ids starti
 the knowledge config declares gives way to the plugin's.
 
 Projects that enable no such plugin build exactly as before: their config and corpus are left as they are.
+
+A project's graph holds its group chats while it enables a core plugin whose source it grants ``chats:read`` (the
+core plugin chats; ``reads_chats``): a message then queues a build (``evo_agents.hub.server.chat_store``), and the
+totals of its builds, which count items most members may not read, are not shown (``evo_agents.hub.server.kg``).
 """
 
 from __future__ import annotations
@@ -36,13 +45,14 @@ import logging
 import re
 from dataclasses import dataclass
 
-from sqlalchemy.ext.asyncio import AsyncEngine
+from sqlalchemy.ext.asyncio import AsyncConnection, AsyncEngine
 
-from evo_agents.hub.plugin_calls import CoreContext, enabled_plugins, load
+from evo_agents.hub.plugin_calls import CoreContext, effective_grant, enabled_plugins, load
+from evo_agents.hub.plugin_events import PERMISSION
 from evo_agents.kg.policy import DEFAULT_LEVELS, DEFAULT_LOCATIONS
 from evo_agents.kg.project import Project
-from evo_agents.kg.protocol import finalize_item, validate_message
-from evo_agents.kg.replace import FIRST_TIME, drop_sources, replace_source
+from evo_agents.kg.protocol import TIME_PATTERN, finalize_item, validate_message
+from evo_agents.kg.replace import FIRST_TIME, drop_sources, keep_cursor, replace_source
 
 log = logging.getLogger(__name__)
 
@@ -54,6 +64,8 @@ ITEM_KEYS = frozenset({"id", "kind", "rev_time", "uri", "parent", "title", "body
 IDENTIFIER_KIND = re.compile(r"^[A-Z][A-Za-z0-9]*$")
 MAX_IDENTIFIERS = 50  # patterns one source adds
 MAX_PATTERN_CHARS = 500
+CURSOR_KEYS = frozenset({"item", "at"})
+READS_CHATS = PERMISSION["chat.message"]  # chats:read: a plugin granted it reads the project's group chats
 
 
 class SourceFailure(Exception):
@@ -62,14 +74,15 @@ class SourceFailure(Exception):
 
 @dataclass(frozen=True)
 class PluginSource:
-    """What a plugin's source gave a build: its id, the plugin, its items with their kg/1 labels, its identifiers, and
-    how many items were left out for want of a label of the project alone."""
+    """What a plugin's source gave a build: its id, the plugin, its items with their kg/1 labels, its identifiers, how
+    many items were left out for want of a label of the project alone, and its cursor."""
 
     id: str
     plugin: str
     items: tuple[dict, ...]
     identifiers: tuple[dict, ...]
     left_out: int = 0
+    cursor: dict | None = None
 
 
 def source_id(plugin: str) -> str:
@@ -84,8 +97,9 @@ def _ladder(knowledge: dict) -> tuple[list[str], list[str]]:
 
 def kg_label(label, project: str, levels: list[str], locations: list[str]) -> dict | None:
     """The kg/1 label of a row labelled ``label`` (by names, as the hub stores labels): a level or location the ladder
-    lacks reads as its highest, no location as unrestricted, integrity U unless T. None when it cannot be read, or
-    names a project besides ``project``: such a row stays out of the graph."""
+    lacks reads as its highest, no location as unrestricted, integrity U unless T, and its ``audience`` as given, which
+    the build reads as the highest audience, seen by no reader, when it is not a sorted list of principals. None when
+    it cannot be read, or names a project besides ``project``: such a row stays out of the graph."""
     if not isinstance(label, dict):
         return None
     projects = label.get("projects", [project])
@@ -95,6 +109,8 @@ def kg_label(label, project: str, levels: list[str], locations: list[str]) -> di
     found = {"level": level, "integrity": "T" if label.get("integrity") == "T" else "U"}
     if label.get("location") is not None:
         found["location"] = label["location"] if label["location"] in locations else locations[-1]
+    if label.get("audience") not in (None, []):
+        found["audience"] = label["audience"]
     return found
 
 
@@ -141,6 +157,18 @@ def _identifiers(source: str, raw) -> tuple[dict, ...]:
     return tuple(found)
 
 
+def _cursor(source: str, raw) -> dict | None:
+    """The cursor of a source's answer, checked: the id of an item of the source and a time."""
+    if raw is None:
+        return None
+    item = raw.get("item") if isinstance(raw, dict) else None
+    if not isinstance(item, str) or set(raw) != CURSOR_KEYS or not item.startswith(f"{source}:"):
+        raise SourceFailure(f"source {source} answered a cursor that is not {{item, at}} of an item of its own")
+    if not isinstance(raw["at"], str) or not re.match(TIME_PATTERN, raw["at"]):
+        raise SourceFailure(f"source {source} answered a cursor without a time")
+    return {"item": raw["item"], "at": raw["at"]}
+
+
 def checked(source: str, plugin: str, answer, knowledge: dict, project: str) -> PluginSource:
     """The answer of plugin ``plugin``'s source, as a build uses it; SourceFailure when version 1 does not allow it."""
     if not isinstance(answer, dict) or not isinstance(answer.get("items"), list):
@@ -157,7 +185,7 @@ def checked(source: str, plugin: str, answer, knowledge: dict, project: str) -> 
             ids.add(item["id"])
             items.append(item)
     identifiers = _identifiers(source, answer.get("identifiers"))
-    return PluginSource(source, plugin, tuple(items), identifiers, left_out)
+    return PluginSource(source, plugin, tuple(items), identifiers, left_out, _cursor(source, answer.get("cursor")))
 
 
 async def _read(engine: AsyncEngine, config, row, item: dict, project_id: int, project: str, knowledge: dict):
@@ -187,6 +215,16 @@ async def read_sources(engine: AsyncEngine, config, project_id: int, project: st
         if row.tier == "core" and contributed and contributed[0].get("python"):
             found.append(await _read(engine, config, row, contributed[0], project_id, project, knowledge))
     return found
+
+
+async def reads_chats(conn: AsyncConnection, project_id: int) -> bool:
+    """Whether the graph of project ``project_id`` holds its group chats: the project enables a core plugin with a
+    source that it grants ``chats:read``."""
+    for row in await enabled_plugins(conn, project_id):
+        contributed = (row.manifest.get("contributes") or {}).get(POINT)
+        if row.tier == "core" and contributed and READS_CHATS in effective_grant(row):
+            return True
+    return False
 
 
 def knowledge_with(knowledge: dict, sources: list[PluginSource]) -> dict:
@@ -220,12 +258,13 @@ def _by_id(source: PluginSource) -> str:
 
 
 def keep_sources(project: Project, sources: list[PluginSource]) -> None:
-    """Make each source's items in ``project``'s corpus those it gave, and remove the items of a plugin source no
-    longer given (``evo_agents.kg.replace``). Blocking."""
+    """Make each source's items and cursor in ``project``'s corpus those it gave, and remove the items of a plugin
+    source no longer given (``evo_agents.kg.replace``). Blocking."""
     corpus = project.corpus()
     try:
         for source in sources:
             replace_source(corpus, source.id, list(source.items), connector=CONNECTOR, project=project.name)
+            keep_cursor(corpus, source.id, source.cursor)
         keep = {source.id for source in sources}
         drop_sources(corpus, SOURCE_PREFIX, keep, connector=CONNECTOR, project=project.name)
     finally:
@@ -243,5 +282,6 @@ __all__ = [
     "kg_label",
     "knowledge_with",
     "read_sources",
+    "reads_chats",
     "source_id",
 ]

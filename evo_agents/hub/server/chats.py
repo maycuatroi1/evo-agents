@@ -1,6 +1,7 @@
 """Group chats (``evo_agents.hub.chats``): GET and POST /v1/chats, GET /v1/chats/{id}, GET and POST
 .../messages, POST and DELETE .../messages/{message}/reactions and POST .../read. ``chat_members`` adds and removes
-people and agents, ``chat_events`` streams what happens, and ``docs/hub.md`` (Group chats) is the design.
+people and agents, ``chat_images`` sets a group chat's image, ``chat_events`` streams what happens, ``chat_summaries``
+puts the list together, and ``docs/hub.md`` (Group chats) is the design.
 
 A signed-in person creates a chat with a title and the people and agents it starts with, under the checks of
 ``chat_members``; they are its creator and first member. Only members read a chat and write to it (``chat_access``),
@@ -16,7 +17,11 @@ the mention keeps why, and the hub answers in the message's thread, naming it. A
 chat run for the sender (``chat_runs.hand_mentions``, at most ``chat_runs.MAX_RUNS_PER_MESSAGE`` agents a message),
 and the mention keeps the run it made or woke, or why it made none, which the hub's answer names too. In a chat of one
 person, a message in a thread without a mention goes to the one agent whose session the sender has in that thread
-(the mention ``via`` thread). A message that mentions no agent makes no run and asks no model anything.
+(the mention ``via`` thread). In a direct chat (``chat_direct``) a message whose mentions do not reach its agent goes to
+it all the same: in the thread of the sender's session with it as above, else ``via`` direct, which for a message
+outside a thread starts a new session. Elsewhere a message that mentions no agent makes no run and asks no model
+anything. A message these routes answer carries how far each run it handed work to is while that run is on its way
+(``chat_progress``): waiting for its worker, a step of its setup, working, as the reader may read the run.
 
 PATCH /v1/chats/{id} changes the chat's budget: what its agents' runs may cost in 24 hours (``chat_runs``); only its
 creator does (403), audited as chat.budget.
@@ -47,6 +52,7 @@ from evo_agents.hub.server.chat_access import (
     projects_by_id,
     uncleared,
 )
+from evo_agents.hub.server.chat_direct import direct_mention
 from evo_agents.hub.server.chat_members import (
     LOGIN_PATTERN,
     REFUSALS,
@@ -60,6 +66,7 @@ from evo_agents.hub.server.chat_members import (
     refuse_uncleared,
 )
 from evo_agents.hub.server.chat_notices import notice_mention
+from evo_agents.hub.server.chat_progress import by_message, chat_progress
 from evo_agents.hub.server.chat_runs import Hand, hand_mentions, hub_reply, thread_session
 from evo_agents.hub.server.chat_store import (
     add_member,
@@ -71,18 +78,17 @@ from evo_agents.hub.server.chat_store import (
     put_reaction,
     take_reaction,
 )
+from evo_agents.hub.server.chat_summaries import chat_summaries
 from evo_agents.hub.server.chat_views import (
     Chat,
     ChatPage,
     ChatSummary,
     GroupMessage,
     chat_view,
-    member_names,
     message_rows,
     message_select,
     messages_view,
     person_author,
-    summaries_query,
 )
 from evo_agents.hub.server.errors import ErrorBody
 from evo_agents.hub.server.runs.models import LINE, MAX_ID
@@ -96,6 +102,10 @@ MessageId = Annotated[int, Path(ge=1, le=MAX_ID)]
 Login = Annotated[str, Field(pattern=LOGIN_PATTERN)]
 Handle = Annotated[str, Field(pattern=profiles.HANDLE_PATTERN)]
 NOT_THERE = "chat {chat} has no message {id} that you can read"
+NOT_IN_CHAT = "@{name} is not in this chat: add it to the chat, then mention it again"
+NOT_IN_DIRECT = (
+    "@{name} is not in this direct chat, whose one agent never changes: start a group chat to talk with both"
+)
 
 router = APIRouter(prefix="/v1/chats", tags=["chats"], responses={401: {"model": ErrorBody}})
 
@@ -161,9 +171,7 @@ class ChatUpdate(BaseModel):
 async def list_chats(request: Request, user: CurrentUser) -> list[ChatSummary]:
     """The chats the caller is in, the latest active first, with the unread messages of others."""
     async with request.app.state.engine.begin() as conn:
-        rows = (await conn.execute(summaries_query(user.user_id))).all()
-        names = await member_names(conn, [row.id for row in rows])
-    return [ChatSummary(**row._mapping, people=names[row.id][0], agents=names[row.id][1]) for row in rows]
+        return await chat_summaries(conn, user.user_id)
 
 
 async def _starting(conn: AsyncConnection, user: Principal, body: ChatCreate):
@@ -235,7 +243,8 @@ async def list_messages(
         rows = (await conn.execute(_page(chat_id, before, thread, limit))).all()
         page = list(reversed(rows[:limit]))
         reader = await label_reader(conn, user.user_id, [row.label for row in page])
-        messages = await messages_view(conn, page, reader)
+        progress = by_message(await chat_progress(conn, user, chat_id)) if page else None
+        messages = await messages_view(conn, page, reader, progress)
         view = await chat_view(conn, chat)
     return ChatPage(chat=view, messages=messages, more=len(rows) > limit)
 
@@ -291,7 +300,7 @@ async def resolve_mentions(conn: AsyncConnection, chat: ChatAccess, user: Princi
     for name in names:
         found = members.get(name)
         if found is None and name in outsiders:
-            refusal = f"@{name} is not in this chat: add it to the chat, then mention it again"
+            refusal = (NOT_IN_DIRECT if chat.kind == chats.DIRECT else NOT_IN_CHAT).format(name=name)
             kept.append({"name": name, "via": None, "user_id": None, "profile_id": outsiders[name], "refusal": refusal})
             refusals.append(refusal)
         elif found is not None and "user_id" in found:
@@ -323,6 +332,16 @@ async def _thread_agent(conn: AsyncConnection, chat: ChatAccess, user: Principal
     return [{"name": handle, "via": "thread", "user_id": None, "profile_id": profile_id, "refusal": None}]
 
 
+async def _direct_agent(
+    conn: AsyncConnection, chat: ChatAccess, user: Principal, root: int | None, kept: list[dict]
+) -> list[dict]:
+    """In direct chat ``chat``, the mention of its agent for a message whose mentions ``kept`` do not reach it: ``via``
+    thread when the sender has a session with it in the thread of ``root``, else ``via`` direct; none when they do."""
+    found = await direct_mention(conn, chat, kept)
+    threaded = await _thread_agent(conn, chat, user, root) if found else []
+    return threaded if threaded and threaded[0]["profile_id"] == found[0]["profile_id"] else found
+
+
 async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, body: ChatMessageIn) -> int:
     """Store the message with its mentions, the work they hand the agents, the hub's answer to what they refuse and
     the notices; its id."""
@@ -333,7 +352,9 @@ async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, bod
     names = chats.mention_names(body.body)
     kept, people, _ = await resolve_mentions(conn, chat, user, names)
     message_id, seq = await insert_message(conn, chat, body.body, thread_root_id=root, author_user_id=user.user_id)
-    if not any(mention["profile_id"] is not None for mention in kept):
+    if chat.kind == chats.DIRECT:
+        kept += await _direct_agent(conn, chat, user, root, kept)
+    elif not any(mention["profile_id"] is not None for mention in kept):
         kept += await _thread_agent(conn, chat, user, root)
     via = dispatch_credential(user.kind)
     hand = Hand(chat, message_id, root or message_id, None, user.user_id, user.login, via, 1, user.login, body.body)
@@ -354,8 +375,10 @@ async def _deliver(conn: AsyncConnection, chat: ChatAccess, user: Principal, bod
     return message_id
 
 
-async def _message_view(conn: AsyncConnection, chat: ChatAccess, row) -> GroupMessage:
-    (view,) = await messages_view(conn, [row], await label_reader(conn, chat.user_id, [row.label]))
+async def _message_view(conn: AsyncConnection, chat: ChatAccess, row, user: Principal) -> GroupMessage:
+    """Message ``row`` as ``user`` reads it, with the progress of the runs it handed work to (``chat_progress``)."""
+    progress = by_message(await chat_progress(conn, user, chat.chat_id))
+    (view,) = await messages_view(conn, [row], await label_reader(conn, chat.user_id, [row.label]), progress)
     return view
 
 
@@ -365,7 +388,7 @@ async def send_message(request: Request, chat_id: ChatId, body: ChatMessageIn, u
     async with request.app.state.engine.begin() as conn:
         chat = await chat_access(conn, user, chat_id)
         message_id = await _deliver(conn, chat, user, body)
-        view = await _message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0])
+        view = await _message_view(conn, chat, (await message_rows(conn, chat_id, [message_id]))[0], user)
     log.info("chat message sent", extra={"chat_id": chat_id, "message_id": message_id, "mentions": len(view.mentions)})
     return view
 
@@ -404,7 +427,7 @@ async def react(
                 f"message {message_id} carries {len(kinds)} different emoji, the most one holds: add to one of them",
             )
         await put_reaction(conn, chat_id, message_id, body.emoji, person_author(user.login), user_id=user.user_id)
-        return await _message_view(conn, chat, row)
+        return await _message_view(conn, chat, row, user)
 
 
 @router.delete("/{chat_id}/messages/{message_id}/reactions", response_model=GroupMessage, responses=REFUSALS)
@@ -420,7 +443,7 @@ async def unreact(
         chat = await chat_access(conn, user, chat_id)
         row = await _visible_message(conn, chat, message_id)
         await take_reaction(conn, chat_id, message_id, emoji, person_author(user.login), user_id=user.user_id)
-        return await _message_view(conn, chat, row)
+        return await _message_view(conn, chat, row, user)
 
 
 # Reading

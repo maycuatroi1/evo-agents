@@ -251,6 +251,12 @@ RUN_16 = (
         (RUN_16, "push_conflict"),
         ("Updates were rejected because a pushed branch tip is behind its remote counterpart.", "push_conflict"),
         ("! [rejected] feat/x -> feat/x (fetch first)", "push_conflict"),
+        ("! [remote rejected] main -> main (protected branch hook declined)", "push_declined"),
+        (
+            "git push of alpha to chat/7 failed: git push failed (1): remote: no write access to alpha error: failed "
+            "to push some refs to '/srv/alpha.git' (origin declined it: pre-receive hook declined)",
+            "push_declined",
+        ),
         ("git fetch failed (128): git@github.com: Permission denied (publickey).", "credentials"),
         ("no credential reads evo-agents: could not read Password for 'https://github.com'", "credentials"),
         ("project evo-lms lists no origin for evo-agents", "origin"),

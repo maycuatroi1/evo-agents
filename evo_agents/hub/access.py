@@ -14,6 +14,10 @@ from the first rule: L must be below the label of M, with L.projects a subset of
 the hub's one grant-only rule: the memory pages apply ``visible_by_grant``, and the knowledge graph pages read the
 graph with ``grant_label`` as the ceiling, the same label ``ceiling`` meets with a sink's clearance.
 
+A knowledge graph's label also has an audience (``evo_agents.kg.policy``). The reader's, which the hub computes from
+the database at each read (``evo_agents.hub.server.kg_audience``), goes into the grant's label; a sink's clearance
+holds the highest audience, so the meet keeps the reader's, and a push may carry items with an audience.
+
 All of them fail closed. When reading, a level or location the ladder lacks counts as the highest, a label that cannot
 be read hides its object, and a max level or sink the project lacks lets nothing through. When pushing, a name the
 ladder lacks is refused. The lattice itself (meet, below) is ``Label``'s; this module maps names onto it.
@@ -26,7 +30,7 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 
-from evo_agents.kg.policy import Clearance, Label, Policy
+from evo_agents.kg.policy import TOP_AUDIENCE, Clearance, Label, Policy
 
 ROLES = ("reader", "writer", "admin")  # each role may do what the ones before it may
 HUB_KIND = "hub"
@@ -132,25 +136,26 @@ class ProjectRules:
             raise Refused(422, "label projects must be a list of project names")
         return Label(level, location, integrity, frozenset(projects))
 
-    def _as_label(self, clearance: Clearance) -> Label:
-        return Label(clearance.level, clearance.location, UNTRUSTED, frozenset({self.name}))
+    def clearance_label(self, clearance: Clearance) -> Label:
+        """The label a sink's clearance is: its level and location, this project, and the highest audience."""
+        return Label(clearance.level, clearance.location, UNTRUSTED, frozenset({self.name}), TOP_AUDIENCE)
 
-    def grant_label(self, max_level: str | None) -> Label | None:
-        """The label of a grant reaching ``max_level``: that level, every location, either integrity, this project.
-        None without a grant or for a level the ladder lacks."""
+    def grant_label(self, max_level: str | None, audience: frozenset[str] = frozenset()) -> Label | None:
+        """The label of a grant reaching ``max_level``, held by a reader of ``audience``: that level, every location,
+        either integrity, this project. None without a grant or for a level the ladder lacks."""
         level = _rank(self.levels, max_level)
         if level is None:
             return None
-        return Label(level, len(self.locations) - 1, UNTRUSTED, frozenset({self.name}))
+        return Label(level, len(self.locations) - 1, UNTRUSTED, frozenset({self.name}), frozenset(audience))
 
-    def ceiling(self, max_level: str | None, sink: str) -> Label | None:
+    def ceiling(self, max_level: str | None, sink: str, audience: frozenset[str] = frozenset()) -> Label | None:
         """meet(label of ``max_level``, clearance of ``sink``): the highest label a member whose grant reaches
-        ``max_level`` may read through ``sink``. None when nothing passes: no grant, or a max level or sink the
-        project does not declare."""
-        grant = self.grant_label(max_level)
+        ``max_level`` and whose audience is ``audience`` may read through ``sink``. None when nothing passes: no grant,
+        or a max level or sink the project does not declare."""
+        grant = self.grant_label(max_level, audience)
         if grant is None or sink not in self.policy.sinks or sink in self._closed:
             return None
-        return grant.meet(self._as_label(self.policy.clearance(sink)))
+        return grant.meet(self.clearance_label(self.policy.clearance(sink)))
 
     def visible(self, label, max_level: str | None, sink: str) -> bool:
         """The read rule: may a member whose grant reaches ``max_level`` see, through ``sink``, an object
@@ -196,7 +201,7 @@ class ProjectRules:
                 "fix it in knowledge.yaml and run `evo-agents hub project register` again",
             )
         found = self.given(self.default_label if label is None else label)
-        clearance = self._as_label(self.hub_sink)
+        clearance = self.clearance_label(self.hub_sink)
         if not found.below(clearance):
             named = self.describe(found)
             cleared = self.describe(clearance)

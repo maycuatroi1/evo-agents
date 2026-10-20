@@ -32,7 +32,7 @@ import { LOCALE_COOKIE, LOGIN_PATH } from "@/lib/config";
 import { projectsQuery, whoamiQuery } from "@/lib/queries";
 import { initials } from "@/lib/utils";
 
-import { SWITCH_CLASS, useCurrentProject } from "./project-switcher";
+import { SWITCH_CLASS, useSelectedProject } from "./project-switcher";
 import { roleLabelKey } from "./role-badge";
 import { ShortcutKeys, useOpenShortcuts } from "./shortcuts";
 
@@ -54,7 +54,7 @@ export function UserMenu() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
   const { isMobile } = useSidebar();
-  const project = useCurrentProject();
+  const project = useSelectedProject();
   const { data: me } = useQuery(whoamiQuery(browserApi));
   const { data: projects } = useQuery(projectsQuery(browserApi));
   const [pending, setPending] = useState(false);

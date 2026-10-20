@@ -189,6 +189,7 @@ RUN_FAILURE_CAUSES: tuple[tuple[str, re.Pattern], ...] = (
             re.I,
         ),
     ),
+    ("push_declined", re.compile(r"\[remote rejected\]|declined it: |hook declined", re.I)),
     ("branch_mismatch", re.compile(r"\bis on \S+, not \S+: the (?:agent switched|daemon pushes)", re.I)),
     ("checkout", re.compile(r"checkout|worktree|git fetch|no remote|branch", re.I)),
     ("runtime", re.compile(r"no adapter|cannot run|runtime|ended before its turn completed", re.I)),

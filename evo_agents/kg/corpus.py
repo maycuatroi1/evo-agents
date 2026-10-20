@@ -377,6 +377,13 @@ class Corpus:
             (source, json.dumps(cursor, ensure_ascii=False), run_id),
         )
 
+    def set_cursor(self, source: str, cursor, run_id: str) -> None:
+        """Make ``cursor`` the cursor of ``source``, whatever run kept the one before: for a source read in the
+        builder's own process (``evo_agents.kg.replace.keep_cursor``). In the caller's transaction."""
+        self.db.execute(
+            "INSERT OR REPLACE INTO cursors VALUES (?, ?, ?)", (source, json.dumps(cursor, ensure_ascii=False), run_id)
+        )
+
     def runs(self, source: str | None = None, limit: int = 20, status: str | None = None) -> list[dict]:
         """Recorded runs, newest first, optionally of one source and with one status (ok or failed)."""
         query = "SELECT run_id, source, connector, version, status, started_at, finished_at, detail FROM runs"

@@ -31,8 +31,11 @@ of the 2026-07-28 revision takes the instructions from server/discover, one of a
 session without it gets them from the hub.
 Either way, the labels of every kg_* result the hub answers join the session label, as the evo-kg PostToolUse hook
 joins those of evo-kg's (``evo_agents.kg.sessions``): a read of the graph counts whichever server answered it, and
-hiding the tools from a listing never leaves a call to them unlabelled. That label is the one of the Claude Code
-session the proxy started in (CLAUDE_CODE_SESSION_ID), the only file the proxy writes.
+hiding the tools from a listing never leaves a call to them unlabelled. The messages chat_message and chat_thread read
+join it the same way. That label is the one of the Claude Code session the proxy started in (CLAUDE_CODE_SESSION_ID),
+the only file the proxy writes. A memory_write goes to the hub with the label's audience added to the one it names
+(``with_session_audience``), so a memory derived from a chat the session read carries the chat's audience; when the
+label cannot be read, the proxy answers the call with an error and the hub gets nothing.
 
 Messages are answered concurrently, WORKERS at a time, the handshake first. Besides the session label, the proxy writes
 nothing on this machine, and never prints the token or what a message holds: stderr gets one line when the hub stops
@@ -57,6 +60,7 @@ from concurrent.futures import ThreadPoolExecutor
 from evo_agents import __version__
 from evo_agents.hub.client import CONNECTIONS, Credentials, HubError, Unreachable, check_url, load_credentials
 from evo_agents.hub.mcp_tools import (
+    CHAT_TOOL_NAMES,
     HANDSHAKE_VERSIONS,
     INSTRUCTIONS,
     KG_TOOL_NAMES,
@@ -257,11 +261,16 @@ def session_credentials() -> Credentials:
     return run_credentials() or load_credentials()
 
 
+READ_TOOLS = KG_TOOL_NAMES | CHAT_TOOL_NAMES  # the tools whose results join the session label
+MEMORY_WRITE = "memory_write"
+
+
 def note_read(message: dict, result: dict) -> None:
-    """Join the labels of a kg_* result into the label of this process's Claude Code session, as the evo-kg hook does
-    for evo-kg's results: nothing for another tool, an error, a result that names no label, or without a session."""
+    """Join the labels of a kg_* result, or of a chat reading, into the label of this process's Claude Code session,
+    as the evo-kg hook does for evo-kg's results: nothing for another tool, an error, a result that names no label, or
+    without a session."""
     params = message.get("params")
-    if not isinstance(params, dict) or params.get("name") not in KG_TOOL_NAMES or result.get("isError"):
+    if not isinstance(params, dict) or params.get("name") not in READ_TOOLS or result.get("isError"):
         return
     from evo_agents.kg.sessions import current_session_id, record_read, structured_result
 
@@ -269,6 +278,24 @@ def note_read(message: dict, result: dict) -> None:
     data = structured_result(result) if session is not None else None
     if data is not None:
         record_read(session, data)
+
+
+def with_session_audience(message):
+    """``message`` as it goes to the hub: a memory_write also names the audience of this process's Claude Code
+    session (``kg.sessions.session_audience``); any other message as it is. Raises ValueError when the session's label
+    cannot be read."""
+    params = message.get("params") if isinstance(message, dict) else None
+    if not isinstance(params, dict) or message.get("method") != "tools/call" or params.get("name") != MEMORY_WRITE:
+        return message
+    from evo_agents.kg.sessions import current_session_id, session_audience
+
+    audience = session_audience(current_session_id())
+    arguments = params.get("arguments") if isinstance(params.get("arguments"), dict) else {}
+    named = arguments.get("audience", [])
+    if not audience or not isinstance(named, list) or not all(isinstance(p, str) for p in named):
+        return message  # nothing to add, or an audience the hub refuses as it is
+    joined = sorted({*audience, *named})
+    return {**message, "params": {**params, "arguments": {**arguments, "audience": joined}}}
 
 
 def hub_project(project: str | None) -> str | None:
@@ -355,6 +382,10 @@ class Proxy:
 
     def answer(self, message):
         """The line to write for ``message``: the hub's answer, or the proxy's when the hub gives none."""
+        try:
+            message = with_session_audience(message)
+        except ValueError as exc:  # the memory would leave without the audience of what the session read
+            return self._standing_in(message, f"{exc}; nothing was written")
         try:
             credentials = self.credentials()
             client = McpClient(

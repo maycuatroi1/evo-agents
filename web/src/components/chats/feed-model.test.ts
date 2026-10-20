@@ -1,8 +1,20 @@
 import { describe, expect, it } from "vitest";
 
-import type { Chat, ChatAuthor, ChatEvent, ChatPage, GroupMessage } from "@/lib/chats";
+import type { Chat, ChatAuthor, ChatEvent, ChatPage, ChatProgress, GroupMessage } from "@/lib/chats";
 
-import { applyEvents, feedOf, mainMessages, reacted, readInto, replyCount, threadMessages, threadTail, withMessage, withReactions } from "./feed-model";
+import {
+  applyEvents,
+  feedOf,
+  mainMessages,
+  reacted,
+  readInto,
+  replyCount,
+  threadMessages,
+  threadTail,
+  withMessage,
+  withProgress,
+  withReactions,
+} from "./feed-model";
 
 const OCTO: ChatAuthor = { kind: "person", login: "octo", name: "octo", deleted: false };
 const MAI: ChatAuthor = { kind: "person", login: "mai", name: "mai", deleted: false };
@@ -94,6 +106,27 @@ describe("a chat's feed", () => {
     expect(feed.entries.get(1)?.message.reactions).toEqual([{ emoji: "\u{1F389}", count: 2, mine: true, people: ["octo", "mai"], agents: [] }]);
   });
 
+  it("says the chat's image a batch of events leaves, the latest one, and none for a batch without an image event", () => {
+    const start = feedOf(page([message(1, 1)], 1));
+    const changed = applyEvents(
+      start,
+      [
+        event(2, { kind: "image_changed", image: { image_url: "/v1/chats/1/image?v=aaaa", by: "mai" } }),
+        event(3, { kind: "image_changed", image: { image_url: null, by: "octo" } }),
+        event(4, { kind: "image_changed", image: { image_url: "/v1/chats/1/image?v=bbbb", by: "mai" } }),
+      ],
+      "octo",
+    );
+    expect(changed.image).toEqual({ image_url: "/v1/chats/1/image?v=bbbb", by: "mai" });
+    expect([changed.members, changed.feed.lastSeq]).toEqual([false, 4]);
+    expect(changed.feed.entries).toBe(start.entries);
+    const removed = applyEvents(changed.feed, [event(5, { kind: "image_changed", image: { image_url: null, by: "octo" } })], "octo");
+    expect(removed.image).toEqual({ image_url: null, by: "octo" });
+    // A repeat of an event already applied changes nothing, the image included.
+    expect(applyEvents(removed.feed, [event(4, { kind: "image_changed", image: { image_url: "/v1/chats/1/image?v=bbbb", by: "mai" } })], "octo").image).toBeNull();
+    expect(applyEvents(start, [event(2, { message: message(2, 2) })], "octo").image).toBeNull();
+  });
+
   it("keeps a reaction's others when the visitor takes theirs off, and its count from the event", () => {
     const reactions = [{ emoji: "\u{1F44D}", count: 2, mine: true, people: ["octo", "mai"], agents: [] }];
     expect(reacted(reactions, { emoji: "\u{1F44D}", by: OCTO, count: 1 }, false, "octo")).toEqual([
@@ -110,5 +143,26 @@ describe("a chat's feed", () => {
     const answered = withReactions(sent, message(1, 1, { body: "ignored", reactions: [{ emoji: "\u{1F44D}", count: 1, mine: true, people: ["octo"], agents: [] }] }));
     expect(answered.entries.get(1)?.message.reactions).toHaveLength(1);
     expect(answered.entries.get(1)?.message.body).toBe("message 1");
+  });
+
+  it("takes the progress the stream sent for every message of the chat, and replaces only the messages it changed", () => {
+    const step = (message_id: number, run_id: number, value: ChatProgress["step"]): ChatProgress => ({
+      message_id,
+      run_id,
+      handle: "reviewer",
+      step: value,
+      worker: "studio",
+      repo: null,
+      since: "2026-10-14T08:00:00Z",
+    });
+    const start = feedOf(page([message(1, 1, { progress: [step(1, 7, "waiting")] }), message(2, 2), message(3, 3)], 3));
+    const claimed = withProgress(start, [step(1, 7, "claimed"), step(2, 8, "inbox")]);
+    expect(claimed.entries.get(1)?.message.progress?.map((item) => item.step)).toEqual(["claimed"]);
+    expect(claimed.entries.get(2)?.message.progress?.map((item) => item.step)).toEqual(["inbox"]);
+    expect(claimed.entries.get(3)).toBe(start.entries.get(3)); // no progress before or after: the same entry
+    expect(withProgress(claimed, [step(1, 7, "claimed"), step(2, 8, "inbox")])).toBe(claimed); // nothing changed
+    const answered = withProgress(claimed, [step(9, 9, "working")]); // a message the page does not hold
+    expect([1, 2, 3].map((id) => answered.entries.get(id)?.message.progress ?? [])).toEqual([[], [], []]);
+    expect(answered.entries.has(9)).toBe(false);
   });
 });

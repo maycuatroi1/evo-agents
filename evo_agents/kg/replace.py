@@ -15,7 +15,9 @@ the source gives. Every item's text goes into the corpus's blobs, written or not
 item it holds without fetching them.
 
 ``drop_sources`` removes, the same way, every item of the sources whose id starts with a prefix and that are not kept:
-the sources of a plugin a project no longer enables.
+the sources of a plugin a project no longer enables. ``keep_cursor`` makes a source's cursor what it read up to now,
+written only when it changed, so the coverage of a build names it (``evo_agents.kg.freshness``) and a build of
+unchanged data still builds nothing.
 """
 
 from __future__ import annotations
@@ -91,4 +93,13 @@ def drop_sources(corpus: Corpus, prefix: str, keep: set[str], *, connector: str,
     return dropped
 
 
-__all__ = ["FIRST_TIME", "Replaced", "drop_sources", "replace_source"]
+def keep_cursor(corpus: Corpus, source: str, cursor) -> bool:
+    """Make ``cursor`` (None: none) the cursor of source ``source`` in ``corpus``; whether it changed."""
+    if corpus.cursor(source) == cursor:
+        return False
+    with corpus.db:
+        corpus.set_cursor(source, cursor, uuid7())
+    return True
+
+
+__all__ = ["FIRST_TIME", "Replaced", "drop_sources", "keep_cursor", "replace_source"]
