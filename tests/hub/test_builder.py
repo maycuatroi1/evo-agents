@@ -338,6 +338,92 @@ def test_builder_plugin_config_proposal_fails_when_the_layer_moved_and_never_set
     assert "only an applied one rolls back" in message(rollback(client, hub["owner"], first), 409)
 
 
+# Proposals of a change of the autonomy policy
+
+
+def policy(client, headers) -> dict:
+    response = client.get(f"/v1/projects/{PROJECT}/policy", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()
+
+
+def test_builder_proposal_of_the_autonomy_policy_writes_its_next_revision_and_rolls_back(client, hub, hub_db):
+    run = started(client, hub, "@builder let the hub merge the docs")
+    docs = "lumen-kb-docs"  # on GitLab; evo-agents and lumen-identity are on github.com
+    for arguments, said in (
+        ({"set": {"merge.max_diff_lines": 500}}, "merge.max_diff_lines: the policy has no such key; nothing changed"),
+        ({"set": {"repos.evo-agents.mode": "auto"}}, "repos.evo-agents.mode: evo-agents is on github.com, where "),
+        ({"set": {"merge.hold_until": "soon"}}, 'merge.hold_until: one of merged, uat_check, prod_check, not "soon"'),
+        ({"unset": ["judge.worker"]}, "judge.worker: the layer does not set it, so there is nothing to unset"),
+        ({"set": {"repos.ghost.mode": "auto"}}, "repos.ghost: the project has no repo ghost"),
+        ({"target": {"agent": "reviewer"}, "set": {"merge.hold_until": "merged"}}, "the target of a policy proposal"),
+    ):
+        text = proposed(client, run["agent"], kind="policy", summary="Merge the docs", **arguments)
+        assert text.startswith(f"error: {said}"), text
+    sets = {f"repos.{docs}.mode": "auto", f"repos.{docs}.target_branch": "dev", "merge.hold_until": "uat_check"}
+    first = made_proposal(client, run["agent"], kind="policy", summary="Let the hub merge the docs repo", set=sets)
+    pending = shown(client, hub["reader"], first)
+    assert (pending["state"], pending["kind"], pending["base_version"], pending["approver"], pending["target"]) == (
+        "pending",
+        "policy",
+        0,
+        "project_admin",
+        {},
+    )
+    assert policy(client, hub["reader"])["revision"] == 0, "nothing is applied yet"
+    assert notices(hub_db) == [(OWNER, first, "policy")]
+    # a writer does not decide it; the project's admin approves it as the policy's first revision
+    assert "needs the admin role on project" in message(answer(client, hub["other"], first, "approve"), 403)
+    approved = answer(client, hub["owner"], first, "approve")
+    assert (approved.json()["state"], approved.json()["applied_version"]) == ("applied", 1), approved.text
+    now = policy(client, hub["reader"])
+    made = {"repos": {docs: {"mode": "auto", "target_branch": "dev"}}, "merge": {"hold_until": "uat_check"}}
+    assert (now["revision"], now["policy"], now["created_by"]) == (1, made, OWNER)
+    assert now["note"] == f"proposal {first} of @builder: Let the hub merge the docs repo"
+    # the policy moves past a pending proposal: approved, it fails and changes nothing
+    second = made_proposal(
+        client,
+        run["agent"],
+        kind="policy",
+        summary="Hold each merge for its PROD check",
+        set={"merge.hold_until": "prod_check"},
+        unset=[f"repos.{docs}.target_branch"],
+    )
+    assert shown(client, hub["owner"], second)["base_version"] == 1
+    by_hand = {**made, "audit": {"sample_rate": 0.2}}
+    written = client.put(f"/v1/projects/{PROJECT}/policy", json={"policy": by_hand}, headers=hub["owner"])
+    assert written.status_code == 200, written.text
+    failed = answer(client, hub["owner"], second, "approve").json()
+    assert (failed["state"], failed["error"]) == (
+        "failed",
+        f"the autonomy policy of project {PROJECT} is at version 2 now, not 1: it changed since the proposal, so "
+        "propose the change again; nothing changed",
+    )
+    assert "it changed since the proposal was applied" in message(rollback(client, hub["owner"], first), 409)
+    # one applied and rolled back: the next revision copies the one before it
+    third = made_proposal(
+        client, run["agent"], kind="policy", summary="Trip sooner", set={"breaker.judge_misses_7d": 1}
+    )
+    assert answer(client, hub["owner"], third, "approve").json()["applied_version"] == 3
+    back = rollback(client, hub["owner"], third)
+    assert (back.json()["state"], back.json()["rollback_version"]) == ("rolled_back", 4), back.text
+    after = policy(client, hub["reader"])
+    assert (after["revision"], after["policy"]) == (4, by_hand)
+    assert after["note"] == f"rollback of proposal {third} of @builder: a copy of revision 2"
+    keys = f"repos.{docs}.mode,repos.{docs}.target_branch,merge.hold_until"
+    assert audit_rows(hub_db, "policy") == [
+        ("policy.set", f"{PROJECT}/policy revision=1 keys={keys} proposal={first}", OWNER, PROJECT),
+        ("policy.set", f"{PROJECT}/policy revision=2 keys=audit.sample_rate", OWNER, PROJECT),
+        ("policy.set", f"{PROJECT}/policy revision=3 keys=breaker.judge_misses_7d proposal={third}", OWNER, PROJECT),
+        (
+            "policy.set",
+            f"{PROJECT}/policy revision=4 keys=breaker.judge_misses_7d proposal={third} copy-of=2",
+            OWNER,
+            PROJECT,
+        ),
+    ]
+
+
 # Proposals of a hub admin, answered in the thread
 
 
@@ -479,7 +565,13 @@ def test_builder_proposals_table_refuses_a_row_whose_state_and_columns_disagree(
             sql(hub_db, insert(proposals).values({**row, **changes}))
             pytest.fail(f"the table took a row with {why}")
     rolled_back = {"state": "rolled_back", **decided, "applied_version": 2, "rollback_version": 3}
-    for changes in ({}, {"state": "failed", **decided, "error": "it moved"}, rolled_back):
+    policy_change = {"kind": "policy", "target": {}, "base_version": 0}
+    for changes in ({}, {"state": "failed", **decided, "error": "it moved"}, rolled_back, policy_change):
         sql(hub_db, insert(proposals).values({**row, **changes}))
-    states = select(proposals.c.state).where(proposals.c.project_id == project_id).order_by(proposals.c.id)
-    assert [state for (state,) in sql(hub_db, states)] == ["pending", "failed", "rolled_back"]
+    states = select(proposals.c.kind, proposals.c.state).where(proposals.c.project_id == project_id)
+    assert sql(hub_db, states.order_by(proposals.c.id)) == [
+        ("agent", "pending"),
+        ("agent", "failed"),
+        ("agent", "rolled_back"),
+        ("policy", "pending"),
+    ]

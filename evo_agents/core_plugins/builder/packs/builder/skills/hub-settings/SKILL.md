@@ -1,6 +1,6 @@
 ---
 name: hub-settings
-description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config or an agent profile of the project with the tool builder__propose, which an admin approves before the hub applies it.
+description: Propose a change of the hub's branding, a layer of features, a layer of a plugin's config, an agent profile or the autonomy policy of the project with the tool builder__propose, which an admin approves before the hub applies it.
 ---
 
 # Proposing a change of a setting
@@ -9,7 +9,7 @@ The tool `builder__propose` takes one change:
 
 ```json
 {
-  "kind": "branding | features | plugin_config | agent",
+  "kind": "branding | features | plugin_config | agent | policy",
   "summary": "what it changes and why, 1 to 500 characters",
   "target": {},
   "set": {"field": "new value"},
@@ -29,6 +29,7 @@ the thread with its number and tells the admins who may approve it. It applies n
 | `features` | `{"layer": "hub"}` or `{"layer": "project"}` | feature id to `true` or `false` | a hub admin |
 | `plugin_config` | `{"plugin": "<id>"}`, or with `"agent": "<handle>"` for that agent's layer | the plugin's config fields | an admin of the project |
 | `agent` | `{"agent": "<handle>"}` | `name`, `description`, `instructions`, `packs` | an admin of the project |
+| `policy` | `{}` | a key of the autonomy policy by its dotted path | an admin of the project |
 
 - **branding.** `colors` is `{"light": {...}, "dark": {...}}`, each mapping the tokens `brand`, `brand-hover`,
   `brand-soft` and `on-brand` to `#rrggbb`. The hub refuses colours whose contrast falls under WCAG 2.2 AA. The logo and
@@ -40,6 +41,14 @@ the thread with its number and tells the admins who may approve it. It applies n
   `evo-agents hub plugin config`.
 - **agent.** The profile must be one of this project's, and not its default agent. `packs` is the whole list, in
   order, each `{"plugin": "<id>", "name": "<pack>"}` with an optional `"version"`. An agent proposal unsets nothing.
+- **policy.** The project's autonomy policy: what the hub may merge and release on its own. Name each key by its
+  dotted path: `repos.<repo>.mode` (`off` or `auto`; `auto` only for a repo on GitLab), `repos.<repo>.target_branch`,
+  `repos.<repo>.prod_release` (`immediate`, `after_uat` or `manual`), `repos.<repo>.after_uat_hours`,
+  `repos.<repo>.jobs.uat_check`, `.prod_deploy`, `.prod_check` and `.rollback` (CI job names), `merge.opt_in_label`,
+  `merge.risk_paths` (a list of globs), `merge.hold_until` (`merged`, `uat_check` or `prod_check`),
+  `merge.pipeline_minutes`, `judge.worker`, `judge.model`, the `breaker.*` thresholds and `audit.sample_rate`. A key
+  you unset goes back to its default. `evo-agents hub policy show --project <project>` prints every key with its
+  value now. The repo must be one of the project's.
 
 ## What happens next
 

@@ -366,6 +366,7 @@ hub's /mcp with a kind, a target, the fields it sets and those it unsets, and a 
 | `features` | `{"layer": "hub"}` or `{"layer": "project"}` | the next version of that layer of features | a hub admin |
 | `plugin_config` | `{"plugin": ...}`, with `"agent"` for an agent's layer | the next version of that layer of the plugin's config | an admin of the project |
 | `agent` | `{"agent": handle}` | the next version of the profile (name, description, instructions, packs) | an admin of the project |
+| `policy` | none | the next revision of the project's autonomy policy, each key by its dotted path (`repos.<repo>.mode`) | an admin of the project |
 
 The hub answers the tool only for the agent of a @builder chat run that an admin of the project dispatched.
 It then checks the change as the route that writes the setting would. @builder never sets a secret of a plugin's

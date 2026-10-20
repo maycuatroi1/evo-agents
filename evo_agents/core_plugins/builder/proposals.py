@@ -12,6 +12,9 @@ A proposal is a change of one setting the hub versions, as the hub's own routes 
   An admin of the project decides it.
 - ``agent``: the name, description, instructions and agent packs of an agent profile of the project
   (``target.agent``), not the default one. An admin of the project decides it.
+- ``policy``: the project's autonomy policy (``evo_agents.hub.autonomy``), its keys named by their dotted path
+  (``merge.hold_until``, ``repos.<repo>.mode``); its version is the policy's revision. An admin of the project
+  decides it, and the hub writes the next revision as the policy's route does (``autonomy_policies.write``).
 
 Proposing checks the change against the setting as it is now, as its route would, and keeps the setting's version
 (``base_version``): nothing is written to the setting. Approving applies the change as the setting's next version
@@ -36,10 +39,10 @@ from sqlalchemy import ARRAY, Text, any_, func, insert, literal, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.core_plugins.builder import MAX_FIELDS, MAX_SUMMARY_CHARS
-from evo_agents.hub import branding, chats, features, tables
+from evo_agents.hub import autonomy, branding, chats, features, tables
 from evo_agents.hub.access import has_role
 from evo_agents.hub.plugin_calls import enabled_in
-from evo_agents.hub.server import audit, hub_settings, plugin_configs
+from evo_agents.hub.server import audit, autonomy_policies, hub_settings, plugin_configs
 from evo_agents.hub.server.agent_packs import AgentPackPin, pinned
 from evo_agents.hub.server.agent_profiles import AgentEdit, new_version, profile_changes
 from evo_agents.hub.server.plugin_grants import installed_row
@@ -51,7 +54,7 @@ from evo_agents.plugins import config as plugin_config
 
 log = logging.getLogger(__name__)
 
-BRANDING, FEATURES, PLUGIN_CONFIG, AGENT = PROPOSAL_KINDS
+BRANDING, FEATURES, PLUGIN_CONFIG, AGENT, POLICY = PROPOSAL_KINDS
 PENDING, APPLIED, REJECTED, FAILED, ROLLED_BACK = PROPOSAL_STATES
 HUB_WIDE = (BRANDING, FEATURES)  # a hub admin decides them; an admin of the project the others
 APPROVE, REJECT, ROLLBACK = "approve", "reject", "rollback"
@@ -63,6 +66,7 @@ TARGET_KEYS = {  # kind -> (the keys its target needs, those it may have)
     FEATURES: (("layer",), ()),
     PLUGIN_CONFIG: (("plugin",), ("agent",)),
     AGENT: (("agent",), ()),
+    POLICY: ((), ()),
 }
 MAX_ERROR_CHARS = 2000
 MAX_SHOWN_BYTES = 3000  # of the values a proposal sets, in its message in the thread
@@ -106,6 +110,7 @@ class Target:
     config: plugin_configs.Place | None = None
     schema: dict | None = None
     profile: Profile | None = None
+    policy: dict | None = None  # the body of the policy's revision now, for a policy
 
 
 class BuilderProposal(BaseModel):
@@ -114,8 +119,12 @@ class BuilderProposal(BaseModel):
     id: int
     project: str
     kind: Literal[PROPOSAL_KINDS]
-    target: dict[str, str] = Field(description="layer (features), plugin and agent (plugin_config), agent (agent)")
-    change: dict[str, Any] = Field(description="set: field -> value; unset: the fields it clears")
+    target: dict[str, str] = Field(
+        description="layer (features), plugin and agent (plugin_config), agent (agent); nothing for policy"
+    )
+    change: dict[str, Any] = Field(
+        description="set: field -> value; unset: the fields it clears; a key of the policy by its dotted path"
+    )
     summary: str
     base_version: int = Field(description="the setting's version it was proposed on, which approving needs still")
     state: Literal[PROPOSAL_STATES]
@@ -308,12 +317,21 @@ async def _agent_target(conn: AsyncConnection, access: ProjectAccess, change: Ch
     )
 
 
+async def _policy_target(conn: AsyncConnection, access: ProjectAccess) -> Target:
+    row = await autonomy_policies.newest(conn, access.project_id)
+    body = {} if row is None else dict(row.body)
+    title = f"the autonomy policy of project {access.name}"
+    return Target(title, 0 if row is None else row.revision, autonomy.flat(body), policy=body)
+
+
 async def locate(conn: AsyncConnection, access: ProjectAccess, change: Change, *, lock: bool = False) -> Target:
     """Where ``change`` applies, as it is now; ProposalError when the project has no such place."""
     if change.kind in HUB_WIDE:
         return await _settings_target(conn, access, change)
     if change.kind == PLUGIN_CONFIG:
         return await _config_target(conn, access, change)
+    if change.kind == POLICY:
+        return await _policy_target(conn, access)
     return await _agent_target(conn, access, change, lock=lock)
 
 
@@ -387,6 +405,18 @@ async def _agent_changes(
     return changes
 
 
+async def _policy_body(conn: AsyncConnection, access: ProjectAccess, change: Change, target: Target) -> dict:
+    """The policy ``change`` makes of the revision ``target`` holds, checked as a write of the policy is."""
+    body, problems = autonomy.with_changes(target.policy, change.sets, change.unset)
+    if not problems:
+        problems = _layer_problems(change, target)
+    if not problems:
+        problems = autonomy.problems(body, await autonomy_policies.project_repos(conn, access.project_id))
+    if problems:
+        raise ProposalError(422, f"{'; '.join(problems)}; {NOTHING}")
+    return body
+
+
 CHECKS: dict[str, Callable[[Change, Target], list[str]]] = {
     BRANDING: _branding_problems,
     FEATURES: _features_problems,
@@ -398,6 +428,9 @@ async def check(conn: AsyncConnection, access: ProjectAccess, change: Change, ta
     """ProposalError (422) naming what is wrong with ``change`` as the next version of ``target``."""
     if change.kind == AGENT:
         await _agent_changes(conn, access, change, target, hub_version)
+        return
+    if change.kind == POLICY:
+        await _policy_body(conn, access, change, target)
         return
     problems = CHECKS[change.kind](change, target) or _layer_problems(change, target)
     if problems:
@@ -438,6 +471,16 @@ async def _write_profile(conn: AsyncConnection, user: Principal, access: Project
     return version
 
 
+async def _write_policy(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, body: dict, base: int, note: str, via: str
+) -> int:
+    """Write ``body`` as the policy's next revision while it is at revision ``base``; that revision."""
+    revision, written = await autonomy_policies.write(conn, user, access, body, note=note, if_revision=base, via=via)
+    if not written:
+        raise ProposalError(409, f"the autonomy policy of project {access.name} is this already; {NOTHING}")
+    return revision
+
+
 def _still_at(target: Target, version: int, doing: str) -> None:
     if target.version != version:
         raise ProposalError(
@@ -446,9 +489,16 @@ def _still_at(target: Target, version: int, doing: str) -> None:
 
 
 async def apply(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, change: Change, base: int, hub_version: str
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    change: Change,
+    base: int,
+    hub_version: str,
+    proposal_id: int = 0,
 ) -> int:
-    """Write ``change`` as the next version of its setting, which must still be at version ``base``; that version."""
+    """Write ``change`` (of proposal ``proposal_id``) as the next version of its setting, which must still be at
+    version ``base``; that version."""
     if change.kind == PLUGIN_CONFIG:
         await installed_row(conn, access, change.target["plugin"], lock=True)  # one write of its config at a time
     target = await locate(conn, access, change, lock=True)
@@ -456,6 +506,10 @@ async def apply(
     if change.kind == AGENT:
         changes = await _agent_changes(conn, access, change, target, hub_version)
         return await _write_profile(conn, user, access, target.profile, changes)
+    if change.kind == POLICY:
+        body = await _policy_body(conn, access, change, target)
+        note = f"proposal {proposal_id} of @builder: {change.summary}"
+        return await _write_policy(conn, user, access, body, base, note, f" proposal={proposal_id}")
     await check(conn, access, change, target, hub_version)
     if change.kind == PLUGIN_CONFIG:
         return await _apply_config(conn, user, change, target, base)
@@ -499,17 +553,37 @@ async def _roll_back_profile(
     return await _write_profile(conn, user, access, profile, changes)
 
 
-async def roll_back(
-    conn: AsyncConnection, user: Principal, access: ProjectAccess, change: Change, applied: int, hub_version: str
+async def _roll_back_policy(
+    conn: AsyncConnection, user: Principal, access: ProjectAccess, applied: int, proposal_id: int
 ) -> int:
-    """Make the next version of the setting ``change`` made version ``applied`` of a copy of the one before, while it
-    is still at ``applied``; that version."""
+    """The policy's next revision, a copy of revision ``applied - 1``; revision 0 is no policy."""
+    before = applied - 1
+    body = await autonomy_policies.body_at(conn, access.project_id, before)
+    if body is None:
+        raise ProposalError(409, f"the autonomy policy of project {access.name} has no revision {before}; {NOTHING}")
+    note = f"rollback of proposal {proposal_id} of @builder: a copy of revision {before}"
+    return await _write_policy(conn, user, access, body, applied, note, f" proposal={proposal_id} copy-of={before}")
+
+
+async def roll_back(
+    conn: AsyncConnection,
+    user: Principal,
+    access: ProjectAccess,
+    change: Change,
+    applied: int,
+    hub_version: str,
+    proposal_id: int = 0,
+) -> int:
+    """Make the next version of the setting ``change`` (of proposal ``proposal_id``) made version ``applied`` of a
+    copy of the one before, while it is still at ``applied``; that version."""
     if change.kind == PLUGIN_CONFIG:
         await installed_row(conn, access, change.target["plugin"], lock=True)
     target = await locate(conn, access, change, lock=True)
     _still_at(target, applied, "it changed since the proposal was applied, so roll it back by hand")
     if change.kind == AGENT:
         return await _roll_back_profile(conn, user, access, change, target, hub_version)
+    if change.kind == POLICY:
+        return await _roll_back_policy(conn, user, access, applied, proposal_id)
     return await _roll_back_layer(conn, user, target, applied)
 
 
@@ -559,7 +633,7 @@ async def decide(
     if answer == APPROVE:
         try:
             async with conn.begin_nested():
-                version = await apply(conn, user, access, change_of_row(row), row.base_version, hub_version)
+                version = await apply(conn, user, access, change_of_row(row), row.base_version, hub_version, row.id)
             values |= {"state": APPLIED, "applied_version": version}
         except (HTTPException, ProposalError) as exc:
             values |= {"state": FAILED, "error": _said(exc)}
@@ -584,7 +658,7 @@ async def rollback(
         )
     try:
         async with conn.begin_nested():
-            version = await roll_back(conn, user, access, change_of_row(row), row.applied_version, hub_version)
+            version = await roll_back(conn, user, access, change_of_row(row), row.applied_version, hub_version, row.id)
     except HTTPException as exc:
         raise ProposalError(exc.status_code, _said(exc)) from None
     b = tables.builder_proposals
