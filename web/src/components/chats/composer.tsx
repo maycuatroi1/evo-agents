@@ -9,6 +9,7 @@ import { InlineError, type WriteFailure } from "@/components/feedback/notice";
 import { shortcutText } from "@/components/shell/shortcuts";
 import { Button } from "@/components/ui/button";
 import { Kbd } from "@/components/ui/kbd";
+import { TOUCH_QUERY, useMediaQuery } from "@/hooks/use-media-query";
 import { browserApi } from "@/lib/api/browser";
 import { sendChatMessage } from "@/lib/chat-queries";
 import {
@@ -25,7 +26,7 @@ import {
   suggestTargets,
   utf8Bytes,
 } from "@/lib/chats";
-import { isSendShortcut, useModifierKey } from "@/lib/keyboard";
+import { isChatSend, isSendShortcut, useModifierKey } from "@/lib/keyboard";
 import { cn } from "@/lib/utils";
 
 import { useChatFailure } from "./hooks";
@@ -57,8 +58,10 @@ export type Replying = { name: string; text: string; onCancel: () => void };
 /**
  * The kit's Composer for a chat (web/DESIGN.md, Chats): one bordered box with the focus ring on the box, the text
  * area without an edge of its own, and a bar under it that says what the message will do (the agents it hands work
- * to, by the hub's rule: the first three agents it mentions) beside Send and its key (Cmd or Ctrl with Enter). Typing
- * `@` opens the suggestions of whom it can name (`MentionMenu`). A blank message or one over 16 KiB of UTF-8 is
+ * to, by the hub's rule: the first three agents it mentions) beside Send and its key. Enter sends and Shift with Enter
+ * adds a line, as in messenger apps, Cmd or Ctrl with Enter sends too, and Enter that ends an input method's word sends
+ * nothing (`isChatSend`); on a touch screen Enter adds a line and Send sends. Typing `@` opens the suggestions of whom
+ * it can name (`MentionMenu`), and Enter then puts the name in. A blank message or one over 16 KiB of UTF-8 is
  * refused here with the reason; a refusal of the hub shows here too, with its words. Answering one message (`replying`,
  * a direct chat's Reply), the box says which above the text, with Cancel the reply (Escape too).
  */
@@ -68,6 +71,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
   const ids = useId();
   const failure = useChatFailure();
   const modifier = useModifierKey();
+  const touch = useMediaQuery(TOUCH_QUERY);
   const area = useRef<HTMLTextAreaElement>(null);
   const caretAfter = useRef<number | null>(null);
   const [text, setText] = useState("");
@@ -134,6 +138,10 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
       return submit();
     }
     if (!open) {
+      if (isChatSend(event.nativeEvent, touch)) {
+        event.preventDefault();
+        return submit();
+      }
       if (event.key === "Escape" && replying) {
         event.preventDefault();
         event.stopPropagation();
@@ -158,7 +166,8 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
   const bytes = utf8Bytes(text);
   const handed = handedAgents(text, chat);
   const over = handed.slice(MAX_RUNS_PER_MESSAGE);
-  const describedBy = [replying ? `${ids}-replying` : null, `${ids}-hint`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ");
+  const describedBy = [replying ? `${ids}-replying` : null, `${ids}-hint`, touch ? null : `${ids}-keys`, problem ? `${ids}-problem` : null].filter(Boolean).join(" ");
+  const keyShortcuts = touch ? "Meta+Enter Control+Enter" : "Enter Meta+Enter Control+Enter";
 
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-2" aria-busy={send.isPending || undefined} data-testid={testId}>
@@ -214,7 +223,7 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
           aria-activedescendant={open ? optionId(menuId, current) : undefined}
           aria-invalid={problem ? true : undefined}
           aria-describedby={describedBy}
-          aria-keyshortcuts="Meta+Enter Control+Enter"
+          aria-keyshortcuts={keyShortcuts}
           className="block max-h-48 min-h-[60px] w-full resize-y border-0 bg-transparent p-3 text-sm leading-5 text-foreground outline-none placeholder:text-fg-subtle focus-visible:outline-none max-md:text-base"
           data-testid={`${testId}-text`}
         />
@@ -234,6 +243,11 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
               <span>{hint}</span>
             )}
           </p>
+          {touch ? null : (
+            <span id={`${ids}-keys`} className="sr-only">
+              {t("keys")}
+            </span>
+          )}
           {/* Announces how many names the suggestions offer as they change. */}
           <span aria-live="polite" className="sr-only">
             {open ? t("mention.count", { count: options.length }) : ""}
@@ -243,12 +257,12 @@ export function ChatComposer({ chat, me, replyTo, onSent, label, placeholder, hi
               {t("bytes", { count: format.number(bytes), max: format.number(MAX_MESSAGE_BYTES) })}
             </span>
           ) : null}
-          <Button type="submit" size="sm" className="ml-auto shrink-0" busy={send.isPending} aria-keyshortcuts="Meta+Enter Control+Enter" data-testid={`${testId}-send`}>
+          <Button type="submit" size="sm" className="ml-auto shrink-0" busy={send.isPending} aria-keyshortcuts={keyShortcuts} data-testid={`${testId}-send`}>
             <ArrowUp aria-hidden="true" />
             {send.isPending ? t("sending") : t("send")}
-            {modifier && !send.isPending ? (
+            {modifier && !touch && !send.isPending ? (
               <Kbd className="ml-0.5 border-current bg-transparent text-current opacity-70" aria-hidden="true">
-                {shortcutText("send", modifier)}
+                {shortcutText("chatSend", modifier)}
               </Kbd>
             ) : null}
           </Button>

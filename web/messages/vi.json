@@ -160,15 +160,19 @@
       "goWorkers": "Worker",
       "dispatch": "Dispatch một bước",
       "send": "Gửi câu trả lời hoặc tin nhắn",
+      "chatSend": "Gửi tin trong chat",
+      "chatLine": "Xuống dòng trong tin chat",
       "goCurator": "Curator"
     },
     "where": {
       "project": "Của dự án đang mở",
-      "writer": "Trên các trang của dự án, với vai trò Ghi"
+      "writer": "Trên các trang của dự án, với vai trò Ghi",
+      "chat": "Trong ô soạn tin của chat"
     },
     "keys": {
       "command": "Command",
       "control": "Control",
+      "shift": "Shift",
       "enter": "Enter",
       "escape": "Escape",
       "slash": "Dấu gạch chéo",
@@ -2552,6 +2556,7 @@
       "bytes": "{count} trên {max} byte",
       "sending": "Đang gửi",
       "send": "Gửi",
+      "keys": "Enter để gửi, Shift Enter để xuống dòng.",
       "blank": "Hãy viết gì đó trước.",
       "long": "Một tin dài tối đa {max} byte UTF-8.",
       "mention": {
