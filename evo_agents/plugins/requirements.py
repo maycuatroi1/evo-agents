@@ -16,6 +16,9 @@ builds it, --only-binary and --no-index notwithstanding. The host also runs pip 
 (``environment.build_env``). The wheels sit in ``wheels/`` next to the file (``WHEELS``), and pip runs with
 ``--no-index --find-links <wheels> --only-binary=:all: --require-hashes``, so it installs exactly those files or fails.
 
+The image of the hub reads its core plugins' requirements by the same rules (``evo_agents.plugins.core_install``),
+with a refusal that says where those come from (``form``).
+
 Standard library only.
 """
 
@@ -52,6 +55,11 @@ ARCHIVE_SUFFIXES = (
 )
 HASH = re.compile(r"--hash=sha256:(?P<digest>[0-9a-fA-F]{64})")
 SHOWN = 80  # characters of a refused line in the error
+# What a refusal says is accepted, and from where
+HOST_FORM = (
+    f"the plugin host installs only lines `name==version --hash=sha256:<64 hex>`, from the wheels in {WHEELS}/ next "
+    "to the file"
+)
 
 
 class RequirementsError(ValueError):
@@ -88,7 +96,7 @@ def _logical_lines(text: str) -> list[tuple[int, str]]:
     return out
 
 
-def _requirement(number: int, line: str) -> Requirement:
+def _requirement(number: int, line: str, form: str) -> Requirement:
     tokens = line.split()
     head = REQUIREMENT.fullmatch(tokens[0])
     if head is not None and (len(head["version"]) > MAX_VERSION or tokens[0].lower().endswith(ARCHIVE_SUFFIXES)):
@@ -96,19 +104,16 @@ def _requirement(number: int, line: str) -> Requirement:
     hashes = [HASH.fullmatch(token) for token in tokens[1:]]
     if head is None or not hashes or not all(hashes):
         shown = line if len(line) <= SHOWN else line[:SHOWN] + "..."
-        raise RequirementsError(
-            f"line {number}: the plugin host installs only lines `name==version --hash=sha256:<64 hex>`, from the "
-            f"wheels in {WHEELS}/ next to the file; not {shown!r}"
-        )
+        raise RequirementsError(f"line {number}: {form}; not {shown!r}")
     return Requirement(head["name"], head["version"], tuple(match["digest"].lower() for match in hashes))
 
 
-def parse_requirements(text: str) -> list[Requirement]:
-    """The requirements of ``text``; RequirementsError at the first line of any other form."""
+def parse_requirements(text: str, *, form: str = HOST_FORM) -> list[Requirement]:
+    """The requirements of ``text``; RequirementsError at the first line of any other form, saying ``form``."""
     lines = _logical_lines(text)
     if len(lines) > MAX_REQUIREMENTS:
         raise RequirementsError(f"{len(lines)} requirements, over the {MAX_REQUIREMENTS} the plugin host installs")
-    return [_requirement(number, line) for number, line in lines]
+    return [_requirement(number, line, form) for number, line in lines]
 
 
 def normalized(requirements: list[Requirement]) -> str:
@@ -118,6 +123,9 @@ def normalized(requirements: list[Requirement]) -> str:
 
 __all__ = [
     "ARCHIVE_SUFFIXES",
+    "HOST_FORM",
+    "MAX_REQUIREMENTS",
+    "SHOWN",
     "VERSION",
     "WHEELS",
     "Requirement",

@@ -13,8 +13,9 @@ ends; the hub revokes what it can. A machine set up this way keeps only its work
 
 `evo_agents/hub/credentials.py` holds the model both ends share; `evo_agents/hub/server/sealing.py` seals values,
 `evo_agents/hub/server/secrets.py` holds the owner's routes, `evo_agents/hub/server/github_app.py` the GitHub App
-client, `evo_agents/hub/server/credentials.py` the worker's lease route, and `evo_agents/worker/credentials.py` the
-daemon's side.
+client, `evo_agents/hub/server/credentials.py` the worker's lease route, `evo_agents/worker/credentials.py` the
+daemon's side, and `evo_agents/worker/credential_commands.py` the commands a run calls on the daemon's socket (git's
+helper, `evo-agents worker env`).
 
 ## Threat model
 

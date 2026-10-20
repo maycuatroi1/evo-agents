@@ -161,6 +161,32 @@ jobs:
                 tests/plugins/test_plugin_isolation_service.py tests/plugins/test_plugin_protocol.py
               python -m evo_agents plugin test tests/fixtures/plugins/sample'
 
+  # The hub's image with a core plugin of a hub's own (docs/hub-deployment.md, section Core plugins in the image): the
+  # build argument EVO_HUB_EXTRA_CORE_PLUGINS names a wheel that a local index serves only with a fake credential,
+  # which the build secret core_plugin_index carries. The hub of the image loads the plugin (core_install check, and
+  # `evo-agents hub plugin list` against the image's api), and the credential is in neither `docker history`, the
+  # build's log nor any layer of the image; a plugin that requires another core plugin API fails the build at check.
+  # tests/plugins/test_core_install_image.py runs it all in Docker.
+  core-plugins-image:
+    name: core-plugins-image
+    needs: changes
+    if: needs.changes.outputs.python == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: astral-sh/setup-uv@v10.2.0 # setup-uv tags releases only, no major tag
+        with:
+          enable-cache: true
+          cache-dependency-glob: pyproject.toml
+      - run: uv pip install --system -e '.[test]'
+      - name: A core plugin from an index with a credential, built into the hub's image
+        env:
+          EVO_TEST_HUB_IMAGE: "1"
+        run: pytest -q -rs -p no:cacheprovider tests/plugins/test_core_install_image.py
+
   # The full run only. Service containers run on Linux only: macOS and Windows install the core package without the
   # hub-server and worker extras, and with EVO_HUB_TEST_DSN unset the hub tests skip, and so do the worker tests that
   # need a hub or the worker's SDKs.
@@ -341,7 +367,7 @@ jobs:
   ci-ok:
     name: ci-ok
     if: always()
-    needs: [changes, test, plugin-host-root, test-macos, test-windows, web-check, web-e2e]
+    needs: [changes, test, plugin-host-root, core-plugins-image, test-macos, test-windows, web-check, web-e2e]
     runs-on: ubuntu-latest
     steps:
       - env:

@@ -30,7 +30,7 @@ shows under the message the run took (``evo_agents.hub.server.chat_progress``).
 
 A daemon of ``runs.LAZY_CHAT_REPOS`` gets the first run of a session with the project's harness alone (or no repo),
 and its agent opens each other repo it needs with ``evo-agents worker repo open REPO`` (``chat_runs.OPEN_COMMAND``),
-which asks the daemon on the run's socket (``credentials.ask_open``). The daemon does the rest, never the agent
+which asks the daemon on the run's socket (``credential_commands.ask_open``). The daemon does the rest, never the agent
 (``ChatRun.open_for_agent``): it asks the hub to add the repo to the run (POST /v1/worker/runs/{id}/chat/repos), takes
 the run's leases again so they cover it (``RunCredentials.add``), fetches its checkout with them and makes its
 worktree on the run's branch in the run's directory, as the first turn makes the others (``BranchWork.make_worktree``),

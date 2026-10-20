@@ -1,0 +1,4 @@
+# The core plugins evo-agents ships with the hub, which deploy/hub/Dockerfile installs from PyPI into every image of
+# the hub (api, worker, plugins). One line per wheel, `name==version --hash=sha256:<64 hex>`, nothing else: the rules
+# of evo_agents.plugins.core_install. `pip hash <wheel>` gives the hash. A hub's own plugins go in the build argument
+# EVO_HUB_EXTRA_CORE_PLUGINS instead (docs/hub-deployment.md, section Core plugins in the image).
