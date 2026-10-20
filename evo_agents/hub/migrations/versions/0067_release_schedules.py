@@ -19,7 +19,13 @@ stopped per schedule), the mode of its first run, the owner it runs as, the loca
 the commit of the target ref it started from, the packaging paths that changed, its cap, why it stopped or closed, and
 when it ended (exactly when it is published or closed).
 
-release_runs holds the runs of each cycle with their mode (cut or fix) and, for a fix, the tag it fixes forward.
+release_cycles also keeps the range its check read (span: the commits from the newest tag to the target, the pull
+requests they name and the migrations the target adds, a JSON object, ``evo_agents.hub.release_runs.span_of``).
+
+release_runs holds the runs of each cycle with their mode (cut or fix) and, for a fix, the tag it fixes forward; what
+the run pushed (the version, its branch release/<version>, the commit and the agent's Decision line); and how the hub
+landed it: its pull request, the merge commit, the tag it made and when, or why it refused (land_state tagged,
+refused or failed, land_reason, land_tries).
 release_checks holds every check: scheduled or manual (by an admin, requested_by), its local day, its outcome and
 reason, what it read and the cycle and run it opened; the scheduled check of a day is kept once, a failed one aside.
 
@@ -66,6 +72,10 @@ MAX_TAG_CHARS = 200
 CONTROL = r"[\x01-\x1f\x7f]"
 NOT_A_TEXT = '$[*] ? (@.type() != "string")'  # an item of a JSON array that is not a text
 RUN_CHECKS = ("runs_kind_check", "runs_kind_plan_check", "runs_dispatched_via_check")
+VERSION = r"^(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})\.(0|[1-9][0-9]{0,8})$"  # evo_agents.hub.releases.VERSION
+BRANCH_PREFIX = "release/"  # evo_agents.hub.release_runs.BRANCH_PREFIX
+LAND_STATES = ("tagged", "refused", "failed")  # evo_agents.hub.release_runs.LAND_STATES
+MAX_URL_CHARS = 500  # evo_agents.hub.release_runs.MAX_URL_CHARS
 
 col = sa.column
 
@@ -192,6 +202,7 @@ def _create_cycles() -> None:
         sa.Column("changed_paths", postgresql.JSONB(), server_default="[]", nullable=False),
         sa.Column("budget_usd", sa.Double(), nullable=False),
         sa.Column("stop_reason", sa.Text(), nullable=True),
+        sa.Column("span", postgresql.JSONB(), nullable=True),
         _stamp("opened_at"),
         _stamp("updated_at"),
         _when("ended_at"),
@@ -214,6 +225,7 @@ def _create_cycles() -> None:
                 _paths("changed_paths", least=0, nullable=False),
                 col("budget_usd") > 0,
                 _text("stop_reason", MAX_REASON_CHARS),
+                sa.or_(col("span").is_(None), sa.func.jsonb_typeof(col("span")) == "object"),
                 col("state").in_(ENDED) == col("ended_at").is_not(None),
             ),
             name="release_cycles_check",
@@ -229,6 +241,31 @@ def _create_cycles() -> None:
     op.create_index("release_cycles_schedule_idx", "release_cycles", ["schedule_id", "id"])
 
 
+def _run_rule():
+    """What a row of release_runs holds: its mode and red tag; a version X.Y.Z with its branch release/<version> and
+    the commit pushed, all three or none; the pull request, merge commit and tag the hub made; and how it landed."""
+    version, tagged = col("version"), col("tagged")
+    return sa.and_(
+        col("mode").in_(RUN_MODES),
+        _text("tag", MAX_TAG_CHARS),
+        sa.or_(version.is_(None), version.regexp_match(VERSION)),
+        version.is_(None) == col("branch").is_(None),
+        version.is_(None) == col("head_commit").is_(None),
+        sa.or_(col("branch").is_(None), col("branch") == sa.literal(BRANCH_PREFIX) + version),
+        _commit("head_commit"),
+        _text("decision", MAX_REASON_CHARS),
+        sa.or_(col("pull_number").is_(None), col("pull_number") > 0),
+        _text("pull_url", MAX_URL_CHARS),
+        _commit("merge_commit"),
+        _text("tagged", MAX_TAG_CHARS),
+        tagged.is_(None) == col("tagged_at").is_(None),
+        sa.or_(col("land_state").is_(None), col("land_state").in_(LAND_STATES)),
+        sa.func.coalesce(col("land_state") == "tagged", False) == tagged.is_not(None),
+        _text("land_reason", MAX_REASON_CHARS),
+        col("land_tries") >= 0,
+    )
+
+
 def _create_runs() -> None:
     op.create_table(
         "release_runs",
@@ -237,12 +274,24 @@ def _create_runs() -> None:
         sa.Column("mode", sa.Text(), nullable=False),
         sa.Column("tag", sa.Text(), nullable=True),
         _stamp("created_at"),
+        sa.Column("version", sa.Text(), nullable=True),
+        sa.Column("branch", sa.Text(), nullable=True),
+        sa.Column("head_commit", sa.Text(), nullable=True),
+        sa.Column("decision", sa.Text(), nullable=True),
+        sa.Column("pull_number", sa.BigInteger(), nullable=True),
+        sa.Column("pull_url", sa.Text(), nullable=True),
+        sa.Column("merge_commit", sa.Text(), nullable=True),
+        sa.Column("tagged", sa.Text(), nullable=True),
+        _when("tagged_at"),
+        sa.Column("land_state", sa.Text(), nullable=True),
+        sa.Column("land_reason", sa.Text(), nullable=True),
+        sa.Column("land_tries", sa.Integer(), server_default="0", nullable=False),
         sa.ForeignKeyConstraint(
             ["cycle_id"], ["release_cycles.id"], ondelete="CASCADE", name="release_runs_cycle_id_fkey"
         ),
         sa.ForeignKeyConstraint(["run_id"], ["runs.id"], ondelete="CASCADE", name="release_runs_run_id_fkey"),
         sa.PrimaryKeyConstraint("run_id", name="release_runs_pkey"),
-        sa.CheckConstraint(sa.and_(col("mode").in_(RUN_MODES), _text("tag", MAX_TAG_CHARS)), name="release_runs_check"),
+        sa.CheckConstraint(_run_rule(), name="release_runs_check"),
     )
     op.create_index("release_runs_cycle_idx", "release_runs", ["cycle_id", "run_id"])
 

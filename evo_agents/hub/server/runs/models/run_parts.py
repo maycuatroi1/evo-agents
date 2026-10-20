@@ -1,6 +1,7 @@
 """The parts of a run its claim hands the worker: its caps, its repos, the plan's copy, its skills, its agent profile
-and packs, and a plugin's runtime and environment. Leaf shapes of the models layer of ``evo_agents.hub.server.runs``,
-which import nothing of the package; ``models`` imports them back, so callers import them from there as before."""
+and packs, a release run's cycle, and a plugin's runtime and environment. Leaf shapes of the models layer of
+``evo_agents.hub.server.runs``, which import nothing of the package; ``models`` imports them back, so callers import
+them from there as before."""
 
 from __future__ import annotations
 
@@ -96,6 +97,21 @@ class PluginRuntime(BaseModel):
     secrets: list[str] = Field(
         description="the variables the agent needs, from the run's leases or the worker's environment"
     )
+
+
+class ReleaseSpec(BaseModel):
+    """What the worker of a release run is told (``evo_agents.hub.server.release_claims``): its cycle and mode, the
+    repo and the commit its worktree starts at, and the release tags' prefix; it pushes release/<version> alone."""
+
+    cycle_id: int
+    mode: Literal["cut", "fix"] = Field(
+        description="cut: a new version of the target; fix: the next patch of a red tag"
+    )
+    repo: str = Field(description="the repo of the release schedule")
+    start_commit: str = Field(description="the commit the worktree starts at: a cut's target, a fix's red tag's")
+    base_tag: str | None = Field(description="the newest release tag when the cycle opened")
+    tag_prefix: str = Field(description="what a release tag starts with before its version: v of v*")
+    red_tag: str | None = Field(None, description="the tag a fix run fixes forward; null for a cut")
 
 
 class RunMount(BaseModel):

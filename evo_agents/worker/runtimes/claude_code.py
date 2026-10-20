@@ -77,8 +77,9 @@ here.
   process against it, while its ``total_cost_usd`` goes on from the total the session's transcript saved), and
   ``max_turns`` its ``max_turns``. A ``result`` of ``error_max_budget_usd`` or ``error_max_turns`` ends the run with
   an outcome that names the cap, ``cost`` or ``turns``.
-- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``) and a chat run (``chat``,
-  ``evo_agents.hub.chat_runs``) have the tools that ask the person at the terminal a question turned off
+- An author run (``context.run["kind"]`` ``author``, ``evo_agents.hub.author``), a chat run (``chat``,
+  ``evo_agents.hub.chat_runs``), a task run and a release run have the tools that ask the person at the terminal a
+  question turned off
   (``disallowed_tools``, the CLI's ``--disallowedTools``: ``AskUserQuestion``): nobody at the worker's machine answers
   it, and the agent asks in its last message instead. A chat run's prompt is delivered verbatim
   (``verbatim_prompts``): an ``@name`` or ``@path`` the chat's people wrote never makes Claude Code read a file.
@@ -696,7 +697,7 @@ class ClaudeCodeAdapter(QueueAdapter):
         limits = profiles.claude_settings(profile)
         disallowed = limits.pop("disallowed_tools", [])
         kind = self.context.run.get("kind")
-        if kind in ("author", "chat", "task"):  # nobody at this machine answers a question tool
+        if kind in ("author", "chat", "task", "release"):  # nobody at this machine answers a question tool
             disallowed = [*author.QUESTION_TOOLS, *disallowed]
         if disallowed:
             settings["disallowed_tools"] = disallowed

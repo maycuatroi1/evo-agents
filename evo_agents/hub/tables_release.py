@@ -4,7 +4,8 @@ attributes (``tables.release_schedules``, ``tables.release_cycles``, ``tables.re
 
 release_schedules (0067) holds the release schedule of each project, at most one; release_cycles (0067) each cycle a
 check opened, at most one unfinished per schedule (``release_cycles_unfinished_key``); release_runs (0067) the runs of
-each cycle with their mode; release_checks (0067) every check, the scheduled one of a local day once
+each cycle with their mode, what each pushed and how the hub landed it (``evo_agents.hub.release_runs``);
+release_checks (0067) every check, the scheduled one of a local day once
 (``release_checks_day_key``, a check that failed aside). runs gains ``runs_active_release_key``: a project has one
 release run active at a time. ``evo_agents.hub.releases`` describes the model.
 """
@@ -20,6 +21,7 @@ from sqlalchemy import (
     ForeignKeyConstraint,
     Identity,
     Index,
+    Integer,
     MetaData,
     PrimaryKeyConstraint,
     Table,
@@ -99,6 +101,7 @@ def _cycles(metadata: MetaData) -> Table:
         Column("changed_paths", JSONB, nullable=False, server_default="[]"),
         _money("budget_usd"),
         Column("stop_reason", Text),
+        Column("span", JSONB),  # the range its check read: commits, pull requests, new migrations
         _stamp("opened_at"),
         _stamp("updated_at"),
         _when("ended_at"),
@@ -130,6 +133,18 @@ def _runs(metadata: MetaData) -> Table:
         Column("mode", Text, nullable=False),
         Column("tag", Text),  # the red tag a fix run fixes forward
         _stamp("created_at"),
+        Column("version", Text),  # what the run pushed: the version, release/<version>, the commit, the Decision line
+        Column("branch", Text),
+        Column("head_commit", Text),
+        Column("decision", Text),
+        Column("pull_number", BigInteger),  # how the hub landed it: its pull request, merge commit and tag
+        Column("pull_url", Text),
+        Column("merge_commit", Text),
+        Column("tagged", Text),
+        _when("tagged_at"),
+        Column("land_state", Text),  # tagged, refused or failed; null while it waits to land
+        Column("land_reason", Text),
+        Column("land_tries", Integer, nullable=False, server_default="0"),
         ForeignKeyConstraint(
             ["cycle_id"], ["release_cycles.id"], ondelete="CASCADE", name="release_runs_cycle_id_fkey"
         ),

@@ -317,8 +317,16 @@ def test_the_check_at_six_opens_one_cycle_and_queues_its_cut_run_as_the_owner(wo
         ["evo_agents/"],
     )
     assert (last["base_tag"], last["base_commit"], last["target_commit"]) == ("v0.24.0", BASE, HEAD)
+    landed = ("version", "branch", "decision", "pull_url", "merge_commit", "tagged", "tagged_at", "land_state")
     assert found["cycle"]["id"] == cycle[0] and found["cycle"]["runs"] == [
-        {"run_id": run["id"], "mode": "cut", "tag": None, "state": "queued", "cost_usd": 0.0}
+        {
+            "run_id": run["id"],
+            "mode": "cut",
+            "tag": None,
+            "state": "queued",
+            "cost_usd": 0.0,
+            **dict.fromkeys((*landed, "land_reason")),  # nothing pushed or landed yet
+        }
     ]
     assert (found["cycle"]["cost_usd"], found["cycle"]["budget_usd"]) == (0.0, 200.0)
     a = tables.audit

@@ -155,6 +155,7 @@ def test_a_review_run_records_a_finding_and_a_proposal_and_pushes_nothing(machin
             "task",
             "replay",
             "history",
+            "release",
         ]
 
         commands = [entry for entry in machine.commands() if entry["run"] == run_id]

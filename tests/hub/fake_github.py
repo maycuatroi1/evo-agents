@@ -183,9 +183,11 @@ class FakeGitHub:
     repos: dict = field(default_factory=dict)  # (owner, name), lower case -> FakeRepo
     pulls: dict = field(default_factory=dict)  # (owner, name, number), lower case names -> FakePull
     pull_refusals: list = field(default_factory=list)  # (status, body) answering the next POSTs of a pull request
+    merge_refusals: list = field(default_factory=list)  # (status, body) answering the next merges of a pull request
     check_runs: dict = field(default_factory=dict)  # sha -> [check run]
     statuses: dict = field(default_factory=dict)  # sha -> combined status
     merges: list = field(default_factory=list)  # (owner, name, number, sha, app) of each merge
+    made_refs: list = field(default_factory=list)  # (owner, name, ref, sha, app) of each ref made through the API
     installations: dict = field(default_factory=dict)  # installation id -> AppInstallation
     app_tokens: dict = field(default_factory=dict)  # installation token -> AppToken
     app_jwts: list[str] = field(default_factory=list)  # every App JWT a request carried, taken or not
@@ -730,8 +732,12 @@ class FakeGitHub:
             status = "identical" if low == high else ("ahead" if high > low else "behind")
             size, page = int(query.get("per_page", "250")), int(query.get("page", "1"))
             listed = repo.history[low + 1 : high + 1][(page - 1) * size : page * size]
-            commits = [{"sha": sha, "commit": {"committer": {"date": when}}} for sha, when in listed]
+            commits = [
+                {"sha": sha, "commit": {"message": repo.messages.get(sha, ""), "committer": {"date": when}}}
+                for sha, when in listed
+            ]
             found = {"status": status, "ahead_by": ahead, "behind_by": behind, "commits": commits}
+            found["total_commits"] = ahead
             return 200, {**found, "merge_base_commit": {"sha": shas[min(low, high)]}}
         if method == "GET" and rest[:1] == ["contents"] and len(rest) >= 2:
             _, _, refused = need("contents", "read")
@@ -856,6 +862,10 @@ class FakeGitHub:
                 if refused:
                     return refused
                 asked = json.loads(body or "{}")
+                with self._lock:
+                    queued = self.merge_refusals.pop(0) if self.merge_refusals else None
+                if queued is not None:
+                    return queued
                 if pull.state != "open":
                     return 405, {"message": "Pull Request is not mergeable"}
                 if asked.get("sha") != pull.head_sha:
@@ -885,6 +895,18 @@ class FakeGitHub:
             if refused:
                 return refused
             return 200, self.statuses.get(rest[1], {"state": "pending", "total_count": 0, "statuses": []})
+        if method == "POST" and rest == ["git", "refs"]:
+            _, app, refused = need("contents", "write")
+            if refused:
+                return refused
+            asked = json.loads(body or "{}")
+            ref, sha = asked.get("ref"), asked.get("sha")
+            with self._lock:
+                if ref in repo.refs:
+                    return 422, {"message": "Reference already exists"}
+                repo.refs[ref] = (sha, None)
+                self.made_refs.append((repo.owner, repo.name, ref, sha, app))
+            return 201, {"ref": ref, "object": {"sha": sha, "type": "commit"}}
         if method == "POST" and rest == ["check-runs"]:
             _, app, refused = need("checks", "write")
             if refused:

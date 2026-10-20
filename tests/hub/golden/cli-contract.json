@@ -25301,6 +25301,101 @@
           }
         }
       },
+      "/v1/worker/runs/{run_id}/release/branch": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Pushed",
+          "description": "The worker pushed release/<version> of the release run's repo: kept on the run, for the hub to land once the\nrun is done.",
+          "operationId": "pushed_v1_worker_runs__run_id__release_branch_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ReleasePushed"
+                }
+              }
+            }
+          },
+          "responses": {
+            "201": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ReleaseBranch"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
       "/v1/projects/{project}/curator/changes": {
         "get": {
           "tags": [
@@ -59530,6 +59625,44 @@
           ],
           "title": "Relation"
         },
+        "ReleaseBranch": {
+          "properties": {
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "cycle_id": {
+              "type": "integer",
+              "title": "Cycle Id"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch"
+            },
+            "head": {
+              "type": "string",
+              "title": "Head"
+            },
+            "version": {
+              "type": "string",
+              "title": "Version"
+            }
+          },
+          "type": "object",
+          "required": [
+            "run_id",
+            "cycle_id",
+            "repo",
+            "branch",
+            "head",
+            "version"
+          ],
+          "title": "ReleaseBranch"
+        },
         "ReleaseCheck": {
           "properties": {
             "id": {
@@ -59861,6 +59994,118 @@
             "cost_usd": {
               "type": "number",
               "title": "Cost Usd"
+            },
+            "version": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Version",
+              "description": "the version the run pushed; null before it pushed"
+            },
+            "branch": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Branch",
+              "description": "release/<version>, the branch it pushed"
+            },
+            "decision": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision",
+              "description": "the agent's Decision line on the version"
+            },
+            "pull_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Pull Url",
+              "description": "the pull request the hub opened of the branch"
+            },
+            "merge_commit": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Merge Commit",
+              "description": "the commit the hub merged it as"
+            },
+            "tagged": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tagged",
+              "description": "the tag the hub made on the merge commit"
+            },
+            "tagged_at": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "format": "date-time"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Tagged At"
+            },
+            "land_state": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "enum": [
+                    "tagged",
+                    "refused",
+                    "failed"
+                  ]
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Land State",
+              "description": "tagged; refused, with the reason; failed, GitHub failing; null while it waits to land"
+            },
+            "land_reason": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Land Reason"
             }
           },
           "type": "object",
@@ -59872,6 +60117,57 @@
             "cost_usd"
           ],
           "title": "ReleaseCycleRun"
+        },
+        "ReleasePushed": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "Branch",
+              "description": "release/<version>"
+            },
+            "head": {
+              "type": "string",
+              "pattern": "^([0-9a-f]{40}|[0-9a-f]{64})$",
+              "title": "Head",
+              "description": "the commit the branch has now"
+            },
+            "version": {
+              "type": "string",
+              "pattern": "^(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})\\.(0|[1-9][0-9]{0,8})$",
+              "title": "Version",
+              "description": "the version the agent picked, X.Y.Z"
+            },
+            "decision": {
+              "anyOf": [
+                {
+                  "type": "string",
+                  "maxLength": 2000
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Decision",
+              "description": "the agent's Decision line"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "head",
+            "version"
+          ],
+          "title": "ReleasePushed"
         },
         "ReleaseSchedule": {
           "properties": {
@@ -60108,6 +60404,73 @@
           "type": "object",
           "title": "ReleaseScheduleWrite",
           "description": "What PUT .../releases/schedule sets; a key left out keeps what the schedule holds, or its default."
+        },
+        "ReleaseSpec": {
+          "properties": {
+            "cycle_id": {
+              "type": "integer",
+              "title": "Cycle Id"
+            },
+            "mode": {
+              "type": "string",
+              "enum": [
+                "cut",
+                "fix"
+              ],
+              "title": "Mode",
+              "description": "cut: a new version of the target; fix: the next patch of a red tag"
+            },
+            "repo": {
+              "type": "string",
+              "title": "Repo",
+              "description": "the repo of the release schedule"
+            },
+            "start_commit": {
+              "type": "string",
+              "title": "Start Commit",
+              "description": "the commit the worktree starts at: a cut's target, a fix's red tag's"
+            },
+            "base_tag": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Base Tag",
+              "description": "the newest release tag when the cycle opened"
+            },
+            "tag_prefix": {
+              "type": "string",
+              "title": "Tag Prefix",
+              "description": "what a release tag starts with before its version: v of v*"
+            },
+            "red_tag": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Red Tag",
+              "description": "the tag a fix run fixes forward; null for a cut"
+            }
+          },
+          "type": "object",
+          "required": [
+            "cycle_id",
+            "mode",
+            "repo",
+            "start_commit",
+            "base_tag",
+            "tag_prefix"
+          ],
+          "title": "ReleaseSpec",
+          "description": "What the worker of a release run is told (``evo_agents.hub.server.release_claims``): its cycle and mode, the\nrepo and the commit its worktree starts at, and the release tags' prefix; it pushes release/<version> alone."
         },
         "ReleaseStatus": {
           "properties": {
@@ -63602,6 +63965,17 @@
               "type": "array",
               "title": "Packs",
               "description": "the agent packs the run's profile attaches, in its order, each at the version it pins, which the worker builds into the run's directory for its runtime; empty for a profile that attaches none"
+            },
+            "release": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ReleaseSpec"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a release run's cycle, mode and start commit; null for any other run"
             }
           },
           "type": "object",
