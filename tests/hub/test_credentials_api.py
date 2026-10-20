@@ -381,7 +381,13 @@ def test_an_ssh_origin_on_gitlab_is_covered_by_an_https_url_prefix_the_longest_f
     git_secret(client, hub["owner"], "gitlab-host", "https://gitlab.lumenops.example", sample("glpat-"))
     git_secret(client, hub["owner"], "gitlab-group", "https://gitlab.lumenops.example/fir-gb-lumen", group)
     git_secret(client, hub["owner"], "gitlab-near", "https://gitlab.lumenops.example/fir-gb", sample("glpat-"))
-    git_secret(client, hub["owner"], "gitlab-agents", "https://gitlab.lumenops.example/fir-gb-lumen/lumen-cloud-agents", sample())
+    git_secret(
+        client,
+        hub["owner"],
+        "gitlab-agents",
+        "https://gitlab.lumenops.example/fir-gb-lumen/lumen-cloud-agents",
+        sample(),
+    )
     worker = worker_of(client, hub["owner"], "mac-mini")
     run_id = step_run(client, hub["owner"], "lumen-kb-docs", worker)
 

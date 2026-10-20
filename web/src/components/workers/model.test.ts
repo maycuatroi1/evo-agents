@@ -31,6 +31,8 @@ function worker(overrides: Partial<Worker> = {}): Worker {
     agent_commit: null,
     version_locked: false,
     self_update: null,
+    update_now: null,
+    nightly: null,
     projects: ["evo-agents"],
     runtimes: {},
     checkouts: {},

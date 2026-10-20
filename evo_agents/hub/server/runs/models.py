@@ -578,6 +578,19 @@ class CheckoutReport(BaseModel):
     branch: str | None = Field(None, min_length=1, max_length=255, pattern=LINE, description="checked out there")
 
 
+class UpdateNowReport(BaseModel):
+    """Where the daemon stands with its owner's Update now (update_now of the heartbeat answer)."""
+
+    requested_at: datetime = Field(description="the request it is about: requested_at of the answer's update_now")
+    ended: str | None = Field(
+        None,
+        pattern=RUN_KIND,
+        description="null while the daemon carries it out; failed, the install failed (self_update.error says how); "
+        "impossible, the daemon cannot update itself (self_update.reason says why). The hub ends the request with "
+        "either, and with a value it does not know ends nothing",
+    )
+
+
 class SelfUpdateReport(BaseModel):
     """What the daemon last found of updating itself to the tag nightly of evo-agents."""
 
@@ -602,6 +615,11 @@ class SelfUpdateReport(BaseModel):
         description="the last attempt that failed: reading the tag, installing, or the new install not starting",
     )
     error_at: datetime | None = Field(None, description="when that attempt failed")
+    update_now: UpdateNowReport | None = Field(
+        None,
+        description="for a daemon that says update_now in its features, where it stands with the owner's Update now "
+        "the answer carried; null when it carries none",
+    )
 
 
 class HeartbeatRequest(BaseModel):
@@ -713,6 +731,23 @@ class WorkerSettings(BaseModel):
     )
 
 
+class NightlyRead(BaseModel):
+    """Where the tag nightly of evo-agents pointed when the hub last read it (evo_agents.hub.nightly)."""
+
+    commit: str = Field(pattern=OBJECT_NAME)
+    read_at: datetime = Field(description="when the hub read it; the hub reads it once a minute")
+
+
+class UpdateNowRequest(BaseModel):
+    """An Update now of the worker's owner, open until the daemon runs nightly's commit or the request ends."""
+
+    requested_at: datetime = Field(description="when it was asked for; it names the request in self_update.update_now")
+
+
+def _absent(value) -> bool:
+    return value is None
+
+
 class HeartbeatAnswer(BaseModel):
     drain: bool = Field(description="claim no new run; finish the ones held")
     runs: list[RunControl]
@@ -724,6 +759,18 @@ class HeartbeatAnswer(BaseModel):
         default_factory=list,
         description="for a daemon that says plugin_runtimes: the runtimes of the plugins of settings.plugins that a "
         "project the worker serves enabled, which it reports in runtimes once it found their programs; empty otherwise",
+    )
+    nightly: NightlyRead | None = Field(
+        None,
+        exclude_if=_absent,
+        description="the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it "
+        "instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0052",
+    )
+    update_now: UpdateNowRequest | None = Field(
+        None,
+        exclude_if=_absent,
+        description="the owner asked the daemon to update itself now: claim no new run, let the held ones end, update "
+        "to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now",
     )
 
 

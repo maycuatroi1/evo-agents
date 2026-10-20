@@ -109,6 +109,8 @@ SRS_TABLES = frozenset(
 TASKS_TABLES = frozenset(
     {"tasks_sprints", "tasks_items", "tasks_people", "tasks_links", "tasks_events", "tasks_comments"}
 )
+# migration 0052: the commit of the tag nightly the hub last read
+NIGHTLY_TABLES = frozenset({"hub_nightly"})
 HUB_ENV = ("EVO_HUB_",)  # variables a test environment must not inherit from the shell running pytest
 AWAY = "_away"  # suffix of the copy a database waits in while set_reachable keeps it from its clients
 END_EVERY = 0.05  # seconds between two rounds of ending the connections to a database being copied

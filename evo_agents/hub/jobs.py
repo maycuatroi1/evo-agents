@@ -45,6 +45,7 @@ CURATOR_OUTCOMES = "curator.outcomes"  # every 10 minutes: the figures of merged
 PLUGIN_JOBS = "hub.plugin_jobs"  # every minute: the plugins' jobs whose cron takes this minute, each queued once
 PLUGIN_JOB = "hub.plugin_job"  # one run of one plugin's job (evo_agents.hub.plugin_jobs)
 DELIVER_PLUGIN_EVENTS = "hub.deliver_plugin_events"  # every minute: events and notifications due for plugins, retried
+READ_NIGHTLY = "hub.read_nightly"  # every minute: where the tag nightly points, for every heartbeat answer
 
 
 def kg_lock(project: str) -> str:

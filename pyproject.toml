@@ -32,7 +32,8 @@ hub-server = [
     "alembic>=1.16",
     # Queries are SQLAlchemy Core on the pool above; the asyncio extra brings greenlet, which 2.1 no longer installs.
     "sqlalchemy[asyncio]>=2.1.3,<2.2",
-    "pydantic>=2.7",
+    # 2.12: Field(exclude_if=...) leaves an absent key of the heartbeat answer out (nightly, update_now).
+    "pydantic>=2.12",
     "sentry-sdk>=2.20",
     "httpx>=0.27",
     "boto3==1.42.91",

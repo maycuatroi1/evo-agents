@@ -89,6 +89,7 @@ TABLES |= pg.BUILDER_TABLES  # migration 0043
 TABLES |= pg.TRIAGE_TABLES  # migration 0044
 TABLES |= pg.SRS_TABLES  # migration 0046
 TABLES |= pg.TASKS_TABLES  # migration 0047
+TABLES |= pg.NIGHTLY_TABLES  # migration 0052
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -163,8 +164,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_eighty_eight_tables(hub_db):
-    assert len(TABLES) == 88  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_eighty_nine_tables(hub_db):
+    assert len(TABLES) == 89  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1106,6 +1107,50 @@ def test_0049_gives_every_run_an_empty_seen_audience_and_going_back_drops_it(hub
     move_to(hub_db, "0048", down=True)
     assert "seen_audience" not in columns(hub_db, "runs")
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0049") :]
+
+
+def test_0052_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0051")
+    workers, nightly = hub_tables.workers, hub_tables.hub_nightly
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="4" * 64, host="mac").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "mac", 1))
+    move_to(hub_db, "0052")
+    added = {"update_requested_at", "update_ended_at", "update_outcome", "update_reason"}
+    assert added <= columns(hub_db, "workers")
+    assert columns(hub_db, "hub_nightly") == {"id", "commit_sha", "read_at"}
+    shown = select(*(workers.c[name] for name in sorted(added))).where(workers.c.id == worker)
+    assert query(hub_db, shown) == [(None, None, None, None)]
+    asked, ended = {"update_requested_at": func.now()}, {"update_ended_at": func.now()}
+    bad_requests = (
+        ended | {"update_outcome": "current"},  # an end without a request
+        asked | ended,  # an end without an outcome
+        asked | {"update_outcome": "current"},  # an outcome without an end
+        asked | ended | {"update_outcome": "stuck"},
+        asked | {"update_reason": "why"},  # a reason without an outcome
+    )
+    with live.connect(hub_db) as conn:
+        for bad in bad_requests:
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(workers).values(**bad).where(workers.c.id == worker))
+        conn.execute(update(workers).values(**asked).where(workers.c.id == worker))
+        done = ended | {"update_outcome": "failed", "update_reason": "pip exited 1"}
+        conn.execute(update(workers).values(**done).where(workers.c.id == worker))
+        for bad in ({"id": 2, "commit_sha": "a" * 40}, {"commit_sha": "ca3e9af"}, {"commit_sha": "A" * 40}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(nightly).values(read_at=func.now(), **bad))
+        conn.execute(insert(nightly).values(commit_sha="b" * 40, read_at=func.now()))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(nightly).values(commit_sha="c" * 64, read_at=func.now()))
+    assert query(hub_db, select(workers.c.update_outcome, workers.c.update_reason)) == [("failed", "pip exited 1")]
+    assert query(hub_db, select(nightly.c.id, nightly.c.commit_sha)) == [(1, "b" * 40)]
+    move_to(hub_db, "0051", down=True)
+    assert not added & columns(hub_db, "workers")
+    assert not columns(hub_db, "hub_nightly")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0052") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
