@@ -1,4 +1,5 @@
 import datetime as dt
+import gc
 import sqlite3
 from pathlib import Path
 
@@ -351,6 +352,29 @@ def make_schema_2(path) -> None:
     db.execute("UPDATE meta SET value = '2' WHERE key = 'schema_version'")
     db.commit()
     db.close()
+
+
+def test_a_build_leaves_no_connection_to_its_store_open(tmp_path, kg_env):
+    # Since Python 3.11 a connection left open waits for the cycle collector, and Windows cannot replace a file a
+    # connection holds: a rebuild then failed on graph.sqlite-wal (WinError 32).
+    project = make_project(tmp_path, kg_env)
+    store = (project.root / "graph.sqlite").resolve()
+    gc.collect()
+    gc.disable()
+    try:
+        sync_build(project)
+        sync_build(project, force=True)
+        held = []
+        for conn in (o for o in gc.get_objects() if isinstance(o, sqlite3.Connection)):
+            try:
+                path = conn.execute("PRAGMA database_list").fetchone()[2]
+            except sqlite3.ProgrammingError:  # closed
+                continue
+            if Path(path).resolve() == store:
+                held.append(path)
+        assert held == []
+    finally:
+        gc.enable()
 
 
 def test_a_store_of_schema_2_is_rebuilt_by_the_next_build_and_refused_by_readers(tmp_path, kg_env):
