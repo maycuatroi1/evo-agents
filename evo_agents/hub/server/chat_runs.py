@@ -581,7 +581,8 @@ async def post_agent(
 ) -> tuple[int, list[dict]]:
     """Store a message of agent ``profile`` of run ``run_id`` in ``chat``, in the thread of ``root_id``; (its id, its
     mentions). A person it mentions gets the notice. The agent ``target`` names gets the work ``hand`` asks
-    (``_hand_on``), and any other agent it mentions none (AGENT_REPLY_REFUSAL)."""
+    (``_hand_on``), and any other agent it mentions none (AGENT_REPLY_REFUSAL). The agent naming itself ("I am
+    @reviewer"), as the agent of a direct chat does, asks no work of anyone and is refused nothing."""
     from evo_agents.hub.server.chats import resolve_mentions  # its routes hand work through this module
 
     origin = await _principal(conn, chat.user_id)
@@ -591,6 +592,8 @@ async def post_agent(
     )
     for mention in kept:
         if mention["profile_id"] is None or mention["refusal"] is not None:
+            continue
+        if mention["profile_id"] == profile.id and mention["name"] != target:
             continue
         if hand is None or mention["name"] != target:
             mention["refusal"] = AGENT_REPLY_REFUSAL
