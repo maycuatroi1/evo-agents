@@ -6,10 +6,11 @@ then, by names (``evo_agents.hub.server.chat_access``). In the graph of project 
 part of P is:
 
 - the item ``plugin.chats:message:<id>`` of kind ``message``, a ChatMessage node, named by the hub
-  ``#<seq> <login or @handle> <UTC time>``. Its text is the message's body, which search indexes and the link stage
-  reads for mentions; no tool returns it (it is free text). Its props: ``chat``, ``thread`` (the id of the thread's
-  first message), ``seq``, ``author_kind`` (person, agent or hub), ``author`` (a login, an @handle, or hub),
-  ``sent_at`` and, for an agent's, ``run``, the run that posted it. Its parent is its thread.
+  ``#<id> <login or @handle> <UTC time>``: the id chat_message and ``chat show`` call it by, not its seq in the chat.
+  Its text is the message's body, which search indexes and the link stage reads for mentions; no tool returns it (it
+  is free text). Its props: ``chat``, ``thread`` (the id of the thread's first message), ``seq``, ``author_kind``
+  (person, agent or hub), ``author`` (a login, an @handle, or hub), ``sent_at`` and, for an agent's, ``run``, the run
+  that posted it. Its parent is its thread.
 - labelled with P's part (its level, location and integrity), P alone, and the audience ``chat:<id>`` with
   ``grant:<Q>:<level>`` for the part of each other project Q: a reader sees it while they are in the chat and hold
   what ``LabelReader`` asks of who reads it there. A level Q's ladder lacks reads as its highest, as it does there.
@@ -137,7 +138,7 @@ def message_item(source: str, row, label: dict) -> dict:
     item = {
         "id": f"{source}:{MESSAGE}:{row.id}",
         "kind": MESSAGE,
-        "title": f"#{row.seq} {author} {row.created_at.astimezone(UTC).strftime(NAME_TIME)}",
+        "title": f"#{row.id} {author} {row.created_at.astimezone(UTC).strftime(NAME_TIME)}",
         "parent": f"{source}:{THREAD}:{row.chat_id}/{root}",
         "rev_time": utc_text(row.created_at),
         "props": props,

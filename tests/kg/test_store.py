@@ -270,6 +270,37 @@ def test_search_splits_camel_case_reads_d_for_dj_and_indexes_docstrings(tmp_path
     assert any(h.startswith("app:file:docs/long.md") for h in found(store, NEEDLE))  # past 4,000 characters
 
 
+def test_search_ranks_the_three_ways_together_by_score(tmp_path, kg_env):
+    project = make_searchable(tmp_path, kg_env)
+    app = tmp_path / "demo-app"
+    filler = "Notes on the weekly review of the team. " * 80
+    write(app / "docs/tour.md", f"# Tour\n\n{filler}kiwi {filler}rollout {filler}search {filler}outage\n")
+    write(app / "docs/kiwi.md", "# Kiwi rollout outage\n\nThe kiwi rollout outage of last week.\n")
+    commit(app, "a page holding every word once, and one about them")
+    sync_build(project)
+    store = Store.for_project(project)
+    question = "kiwi rollout search outage"
+    assert found(store, question, any_word=False)[0].startswith("app:file:docs/tour.md")  # all words: only there
+    hits = found(store, question)
+    assert hits[0].startswith("app:file:docs/kiwi.md")  # three of the words, in its title, before all four once
+    assert any(h.startswith("app:file:docs/tour.md") for h in hits)  # still found, ranked by its own score
+
+
+def test_the_any_word_query_leaves_out_a_word_the_index_reads_as_a_stop_word():
+    # The tokenizer folds accents: "án" is "an" in the index and "cua" is "của", so either would match all of them.
+    assert text_search.query_words("Phương án A") == ["Phương", "án"]
+    assert list(text_search.fts_queries(["Phương", "án"])) == ['"phương" AND "án"', '"phương"* AND "án"*', '"phương"']
+    assert list(text_search.fts_queries(["loi", "cua", "evo"]))[-1] == '"loi" OR "evo"'
+    assert list(text_search.fts_queries(["kiểm", "thật"]))[0] == '"kiểm" AND "thật"'  # all words: each one kept
+    assert list(text_search.fts_queries(["thật", "án"])) == ['"thật" AND "án"', '"thật"* AND "án"*']
+    assert text_search.phrases('("hubsession" OR ("hub" AND "session")) AND "x"* OR "hub"') == [
+        '"hubsession"',
+        '"hub"',
+        '"session"',
+        '"x"*',
+    ]
+
+
 def test_search_keeps_uris_out_and_filters_kinds_in_the_query(tmp_path, kg_env):
     project = make_searchable(tmp_path, kg_env)
     sync_build(project)

@@ -403,10 +403,11 @@ imports the other, and tasks reads the items of srs through the hub's tables (`e
 **chats** (`evo_agents/core_plugins/chats`) puts the history of the hub's group chats into the knowledge graph of each
 project that enables it, granting what it asks for, `chats:read`. Its only contribution is a source of the graph
 (`kg_sources`). Each build of the project's graph on the hub holds every message whose label has a part of the
-project: the item `plugin.chats:message:<id>` (a `ChatMessage` node named by the hub, `#<seq> <login or @handle> <UTC
-time>`, with the chat, the thread, the author, the time and, for an agent's message, its run), in its thread
-`plugin.chats:thread:<chat>/<root>` (`ChatThread`), in its chat `plugin.chats:chat:<id>` (`Chat`). Search indexes a
-message's text and the link stage reads what it mentions; no tool returns the text. The item carries the project's
+project: the item `plugin.chats:message:<id>` (a `ChatMessage` node named by the hub, `#<id> <login or @handle> <UTC
+time>`, by the id `chat_message` and `chat show` call it by, with the chat, the thread, the author, the time and, for
+an agent's message, its run), in its thread `plugin.chats:thread:<chat>/<root>` (`ChatThread`), in its chat
+`plugin.chats:chat:<id>` (`Chat`). Search indexes a message's text and the link stage reads what it mentions; no tool
+returns the text. The item carries the project's
 part of the message's label and the audience `chat:<id>` plus `grant:<project>:<level>` for the part of each other
 project, so a member sees it only while they are in the chat and could read the message there
 (`evo_agents/kg/policy.py`, the audience of a label). A thread and a chat carry the join of their messages' labels; a
