@@ -632,14 +632,24 @@ and the branch. A chat run that asks nothing ends after its turn.
 
 ### Failure triage
 
-When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PLAN" (of the project when
-the run has no plan) and mentions the project's default agent, which makes a chat run for the run's owner
+When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PROJECT", one chat for the
+failed runs of all the project's plans and its runs with no plan, whose first message names the run's plan and step,
+and mentions the project's default agent, which makes a chat run for the run's owner
 (`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent, and neither does a
 run the hub stopped on a usage limit or a refused login while no account of its owner for that variable is ready: the
 thread says when the first is ready again). The agent reads
 the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
 `evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
 `triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
+
+Everyone in the project's chat clears its label, the project's default label (`evo_agents.hub.server.chat_access`). A
+plan whose label is not at or below it (a higher level or location), or that is no longer on the hub, keeps a chat of
+its own, "Triage: PLAN", as every plan had before: a member of the project's chat whose grant stops below the plan's
+label never reads its failures. A run whose owner the project's chat cannot take (an agent of another project invited
+into it brings a label the owner does not clear, or the chat is full) goes to the chat of its plan too; a run with no
+plan then opens no thread, and its owner gets the notice a failure always had. The triage chats plans had before stay
+as they were. All the threads of the project's chat count in its one budget (`chat_runs.DEFAULT_BUDGET_USD` for 24
+hours unless its creator changed it).
 
 | Command | Route | What |
 | --- | --- | --- |
