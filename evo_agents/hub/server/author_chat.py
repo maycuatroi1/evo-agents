@@ -20,9 +20,9 @@ events of runs that ended EVO_HUB_RUN_LOG_DAYS ago.
 When the worker reports ``waiting`` for an author run (``runs.report_state``), the hub sends its owner the notice
 ``author_waiting`` (``notify_waiting``) with the agent's last message, which the web shows and Telegram sends as its
 label rule lets it: a restricted project's message holds its name, the kind of thing that waits and the link alone
-(``evo_agents.hub.telegram.minimal_message``). The notices of the run its owner has not read yet are read then: one
-waits at a time. A run that moves to waiting with a decision of its own still open sends no notice: the decision's
-notification told its owner already, and Home lists the run through the decision.
+(``minimal_message`` of the core plugin telegram's ``model``). The notices of the run its owner has not read yet are
+read then: one waits at a time. A run that moves to waiting with a decision of its own still open sends no notice: the
+decision's notification told its owner already, and Home lists the run through the decision.
 
 POST /v1/projects/{p}/runs/{id}/finish is the owner's end of the chat (another member 403, a run of another kind 409):
 a parked author run ends ``done`` at once; for one a worker holds, the hub records the ask (``finish_requested_at``),

@@ -1,102 +1,98 @@
 """The Telegram channel: the hub's one bot, a member's linked chat, the messages decisions, proposals and notices go
-out as, and the answers that come back. ``evo_agents.hub.telegram`` holds the model (codes, buttons, what may reach a
-chat, the messages), ``docs/notifications.md`` the design.
+out as, and the answers that come back. ``model`` holds the bot's commands, its buttons and its messages,
+``docs/notifications.md`` the design.
 
 This is the server side of the core plugin telegram (``evo_agents.core_plugins.telegram``), which the hub reaches
-through its manifest only: ``TelegramChannel`` is its contribution to the channels, the three routers its routes,
-which keep the paths they had before Telegram was a plugin.
+through its manifest only, and which reaches the hub through the API of core plugins alone
+(``evo_agents.hub.server.core_plugin_api``): ``TelegramChannel`` is its contribution to the channels, the three routers
+its routes, which keep the paths they had before Telegram was a plugin.
 
-The channel is on when EVO_HUB_TELEGRAM_BOT_TOKEN and EVO_HUB_TELEGRAM_WEBHOOK_SECRET are both set; without them
-linking answers 503, the webhook 404, and a delivery to a Telegram channel fails at once, while everything else runs.
-The Bot API is called with httpx (``BotApi``), never with the token in a log line, an error or the database.
+The channel is on when EVO_HUB_TELEGRAM_BOT_TOKEN and EVO_HUB_TELEGRAM_WEBHOOK_SECRET are both set in the process's
+environment, each of its shape (``settings``, read through ``hub.plugin_environment``); without them linking answers
+503, the webhook 404, and a delivery to a Telegram channel fails at once, while everything else runs. The Bot API is
+called with httpx (``BotApi``), never with the token in a log line, an error or the database.
 
 A member links a chat from a web session, and from nothing else (a machine token gets 403, LINK_FROM_SESSION): POST
-/v1/me/telegram/link makes a one-time code that lives 10 minutes (only its SHA-256 is kept, with the session that made
-it) and answers the link ``https://t.me/<bot>?start=<code>``; Telegram then sends the bot ``/start <code>`` from the
-member's private chat, and the webhook stores a channel of kind ``telegram`` whose config holds the chat id, the
-Telegram user id and username, bound to that session (``token_id``). A used, expired or unknown code, a code whose
-session ended, or a group chat, gets one reply that says only that the link did not work. A member has one Telegram
-channel, and a chat links one member: linking again replaces both. GET /v1/me/telegram says where the member's link
-stands; DELETE /v1/me/telegram unlinks (the channel and the deliveries waiting for it go), and so does ``/stop`` in the
-chat, and a hub admin unlinks any member's chat (DELETE /v1/admin/users/{login}/telegram, `evo-agents hub admin
-telegram-unlink LOGIN`). A message Telegram refuses with 403 (the member blocked the bot) turns the channel off, with
-the reason, until the member links again (``notifications.ChannelGone``).
+/v1/me/telegram/link makes a one-time code that lives 10 minutes (``hub.link_code``: only its SHA-256 is kept, with the
+session that made it) and answers the link ``https://t.me/<bot>?start=<code>``; Telegram then sends the bot ``/start
+<code>`` from the member's private chat, and the webhook links a channel of kind ``telegram`` whose config holds the
+chat id, the Telegram user id and username, bound to that session (``hub.redeem_link_code``, ``hub.link_channel``). A
+used, expired or unknown code, a code whose session ended, or a group chat, gets one reply that says only that the link
+did not work. A member has one Telegram channel, and a chat links one member: linking again replaces both. GET
+/v1/me/telegram says where the member's link stands; DELETE /v1/me/telegram unlinks (the channel and the deliveries
+waiting for it go), and so does ``/stop`` in the chat, and a hub admin unlinks any member's chat (DELETE
+/v1/admin/users/{login}/telegram, `evo-agents hub admin telegram-unlink LOGIN`). A message Telegram refuses with 403
+(the member blocked the bot) turns the channel off, with the reason, until the member links again
+(``hub.ChannelGone``).
 
 The chat lives as long as the web session that linked it. Once that session is signed out, revoked (by its member or
 a hub admin) or expired, the hub sends the chat nothing more (the delivery fails and the channel is turned off with
-``notifications.SESSION_ENDED``) and takes no answer from it, and the member links it again from a live session. A
-chat speaks for its member with no token and never as a hub admin; what it may answer is what that member may answer
-on the web, on the projects they hold a grant on now.
+``hub.SESSION_ENDED``) and takes no answer from it, and the member links it again from a live session. A chat speaks
+for its member with no token and never as a hub admin (``hub.Member``); what it may answer is what that member may
+answer on the web, on the projects they hold a grant on now.
 
 POST /v1/telegram/webhook takes Telegram's updates. It compares the header X-Telegram-Bot-Api-Secret-Token with the
 secret in constant time before it reads the body (403 otherwise), takes at most INBOUND_UPDATES updates from one chat
 in INBOUND_SECONDS and drops the rest unanswered, and answers 200 for anything it does not act on, so Telegram does not
-send it again. A button answers a decision (``decisions.answer_decision``) or a proposal
-(``proposals.answer_proposal_as``) through the same code as the web, as the member the chat is linked to, with no token
-(the audit row ends ``via=telegram``); then the hub answers the button (answerCallbackQuery) and edits the message to
-say what happened, the web's button kept. A reply to a decision's message is its answer in words. Before anything of a
-decision or proposal is read, the hub checks that the member holds a grant on its project: a button or reply naming
-one they do not gets NOT_YOURS, the same words whether it exists or not, and a project whose messages are restricted
-takes no answer from Telegram (RESTRICTED_ANSWER), as its messages carry no buttons.
+send it again. A button answers a decision or a proposal (``hub.answer_decision``, ``hub.answer_proposal``) through the
+same code as the web, as the member the chat is linked to, with no token (the audit row ends ``via=telegram``); then
+the hub answers the button (answerCallbackQuery) and edits the message to say what happened, the web's button kept. A
+reply to a decision's message is its answer in words. Before anything of a decision or proposal is read, the hub checks
+that the member holds a grant on its project: a button or reply naming one they do not gets NOT_YOURS, the same words
+whether it exists or not, and a project whose messages are restricted takes no answer from Telegram
+(RESTRICTED_ANSWER), as its messages carry no buttons. A proposal takes no answer while a hub admin has turned the
+feature curator off, as on the web.
 
-``TelegramChannel`` is the class the plugin's manifest names for channels of kind ``telegram``. It reads the decision,
-the proposal, and the project's ladder and hub sink of a notification (``prepare``), sends the message
-``evo_agents.hub.telegram`` builds, at most one a second to one chat and 30 a second overall (Bot FAQ), and answers the
-chat and Telegram's message_id (``telegram.message_ref``), kept as the delivery's external_id so a reply in that chat
-finds its decision. A decision or proposal that no longer waits by then goes out as ``telegram.closed_message``, never
-with its text. A 429 waits the retry_after Telegram gives without counting a failed try.
+``TelegramChannel`` is the class the plugin's manifest names for channels of kind ``telegram``. What a notification may
+carry to a chat is the hub's to say (``hub.prepare`` with CLEARED, under customer and domestic-only on each project's
+ladder); it sends the message ``model`` builds, at most one a second to one chat and 30 a second overall (Bot FAQ), and
+answers the chat and Telegram's message_id (``model.message_ref``), kept as the delivery's external_id so a reply in
+that chat finds its decision. A decision or proposal that no longer waits by then goes out as ``model.closed_message``,
+never with its text. A 429 waits the retry_after Telegram gives without counting a failed try.
 
 Hub admins see the bot and its webhook (GET /v1/admin/telegram) and register the webhook at the hub's public URL with
-the secret (POST /v1/admin/telegram/webhook): `evo-agents hub admin telegram [--set-webhook]`; they unlink a member's
-chat with DELETE /v1/admin/users/{login}/telegram: `evo-agents hub admin telegram-unlink LOGIN`.
+the secret (POST /v1/admin/telegram/webhook, audited ``telegram.webhook``): `evo-agents hub admin telegram
+[--set-webhook]`; they unlink a member's chat with DELETE /v1/admin/users/{login}/telegram: `evo-agents hub admin
+telegram-unlink LOGIN`.
 """
 
 from __future__ import annotations
 
 import asyncio
-import dataclasses
 import hmac
 import json
 import logging
+import re
 import time
 from collections import deque
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime
 from typing import Any
+from urllib.parse import urlsplit
 
 import httpx
 from fastapi import APIRouter, HTTPException, Request
-from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import and_, delete, exists, func, insert, select, update
-from sqlalchemy.dialects.postgresql import insert as pg_insert
-from sqlalchemy.ext.asyncio import AsyncConnection
+from pydantic import BaseModel, Field
 
-from evo_agents.hub import access, tables, telegram
-from evo_agents.hub.server import audit
-from evo_agents.hub.server.admin import Login
-from evo_agents.hub.server.errors import ErrorBody
-from evo_agents.hub.server.notifications import (
-    SESSION_ENDED,
-    Channel,
-    ChannelGone,
-    Outgoing,
-    RetryAfter,
-    Undeliverable,
-)
-from evo_agents.hub.server.security import WEB, AdminUser, CurrentUser, Principal
+from evo_agents.hub.server import core_plugin_api as hub
+
+from . import model as telegram
 
 log = logging.getLogger(__name__)
 
-KIND = "telegram"  # notification_channels.kind
-VIA = "telegram"  # the principal's kind, and the audit rows' "via=telegram"
+KIND = "telegram"  # notification_channels.kind, and the audit rows' "via=telegram"
 SECRET_HEADER = "X-Telegram-Bot-Api-Secret-Token"
 WEBHOOK_PATH = "/v1/telegram/webhook"
 ALLOWED_UPDATES = ["message", "callback_query"]
 MAX_UPDATE_BYTES = 1024 * 1024
 CALL_TIMEOUT_SECONDS = 10.0
-LINK = "telegram.link"  # a member linked a chat: "telegram user:<login>"
-UNLINK = "telegram.unlink"  # and unlinked it: "telegram user:<login> by=<web|bot|admin>"
 WEBHOOK_SET = "telegram.webhook"  # a hub admin pointed the bot's webhook at the hub: the URL
+TOKEN_VARIABLE, SECRET_VARIABLE = "EVO_HUB_TELEGRAM_BOT_TOKEN", "EVO_HUB_TELEGRAM_WEBHOOK_SECRET"
+API_URL_VARIABLE = "EVO_HUB_TELEGRAM_API_URL"  # where the Bot API is, so tests can point the channel at a fake one
+DEFAULT_API_URL = "https://api.telegram.org"
+BOT_TOKEN = re.compile(r"[0-9]{1,20}:[A-Za-z0-9_-]{20,100}")  # <bot id>:<secret>, as BotFather gives it
+WEBHOOK_SECRET = re.compile(r"[A-Za-z0-9_-]{1,256}")  # what setWebhook takes as secret_token
+CLEARED = hub.Clearance("customer", "domestic-only", below=True)  # what may reach a chat, on each project's ladder
 NOT_SET_UP = "Telegram is not set up on this hub: its admin sets EVO_HUB_TELEGRAM_BOT_TOKEN and _WEBHOOK_SECRET"
 LINK_FROM_SESSION = (
     "a Telegram chat is linked from a web session only, so a token that leaked cannot link a chat of its own: sign in "
@@ -105,13 +101,75 @@ LINK_FROM_SESSION = (
 NOT_YOURS = "The hub has nothing by that for you to answer: it is not of a project you hold a grant on, or not there."
 RESTRICTED_ANSWER = "Answer this on the hub: its project keeps its decisions and proposals off Telegram."
 NOT_THE_HUBS = "This button is not the hub's."
+NOT_LINKED = "This chat is not linked to the hub: link it from the hub's Inbox first."
+NO_LONGER_OPEN = "This is no longer open: it was answered already, or it closed."
+WORDS_FOR_DECISIONS = "Only a decision takes an answer in words: answer a proposal with its buttons."
+TOO_LONG = "That answer is too long for the hub (4 KiB at most): answer on the web."
+THE_HUBS_WORDS = {hub.NOT_YOURS: NOT_YOURS, hub.RESTRICTED_ANSWER: RESTRICTED_ANSWER}  # what this channel says instead
 
 TRANSPORT: httpx.AsyncBaseTransport | None = None  # tests put a fake Bot API here
 pause = asyncio.sleep  # how the channel waits between messages; tests record it instead
 
-me_router = APIRouter(prefix="/v1/me", tags=["telegram"], responses={401: {"model": ErrorBody}})
+me_router = APIRouter(prefix="/v1/me", tags=["telegram"], responses={401: {"model": hub.ErrorBody}})
 webhook_router = APIRouter(prefix="/v1/telegram", tags=["telegram"])
-admin_router = APIRouter(prefix="/v1/admin", tags=["telegram"], responses={401: {"model": ErrorBody}})
+admin_router = APIRouter(prefix="/v1/admin", tags=["telegram"], responses={401: {"model": hub.ErrorBody}})
+
+
+def plugin() -> hub.Plugin:
+    return hub.plugin(__name__)
+
+
+# The bot's settings
+
+
+@dataclass(frozen=True)
+class Settings:
+    """The bot's token, its webhook's secret and where the Bot API is; never logged or returned."""
+
+    token: str | None
+    secret: str | None
+    api_url: str | None
+
+    def missing(self) -> list[str]:
+        """The variables the channel still needs; empty when it is on."""
+        values = ((TOKEN_VARIABLE, self.token), (SECRET_VARIABLE, self.secret), (API_URL_VARIABLE, self.api_url))
+        return [name for name, value in values if not value]
+
+    @property
+    def configured(self) -> bool:
+        return not self.missing()
+
+
+def _shaped(environment, name: str, shape: re.Pattern) -> str | None:
+    """The value of variable ``name``, or None when it is unset or not of its shape, which is logged by name alone."""
+    value = environment.get(name, "").strip() or None
+    if value is not None and not shape.fullmatch(value):
+        log.warning("telegram variable of the wrong shape, so the channel is off", extra={"variable": name})
+        return None
+    return value
+
+
+def _api_url(environment) -> str | None:
+    """EVO_HUB_TELEGRAM_API_URL as an http(s) base URL without a trailing slash, the Bot API's when unset; None for
+    another value, which turns the channel off."""
+    raw = environment.get(API_URL_VARIABLE, "").strip()
+    if not raw:
+        return DEFAULT_API_URL
+    parts = urlsplit(raw)
+    if parts.scheme not in ("http", "https") or not parts.hostname or parts.query or parts.fragment:
+        log.warning("telegram variable of the wrong shape, so the channel is off", extra={"variable": API_URL_VARIABLE})
+        return None
+    return raw.rstrip("/")
+
+
+def settings() -> Settings:
+    """The EVO_HUB_TELEGRAM_* variables of this process, read now."""
+    environment = hub.plugin_environment(plugin())
+    return Settings(
+        _shaped(environment, TOKEN_VARIABLE, BOT_TOKEN),
+        _shaped(environment, SECRET_VARIABLE, WEBHOOK_SECRET),
+        _api_url(environment),
+    )
 
 
 # The Bot API
@@ -134,10 +192,10 @@ class BotApi:
         self._base = f"{api_url.rstrip('/')}/bot{token}/"
 
     @classmethod
-    def from_config(cls, config) -> BotApi | None:
-        if config is None or config.telegram_missing():
+    def from_settings(cls, found: Settings) -> BotApi | None:
+        if not found.configured:
             return None
-        return cls(config.telegram_bot_token, config.telegram_api_url)
+        return cls(found.token, found.api_url)
 
     async def call(self, method: str, **params) -> Any:
         payload = {key: value for key, value in params.items() if value is not None}
@@ -165,7 +223,7 @@ async def bot_username(app) -> str:
     known = getattr(app.state, "telegram_bot", None)
     if known:
         return known
-    bot = BotApi.from_config(app.state.config)
+    bot = BotApi.from_settings(settings())
     if bot is None:
         raise HTTPException(503, NOT_SET_UP)
     try:
@@ -183,18 +241,7 @@ async def bot_username(app) -> str:
 # The channel
 
 
-def _project_rules():
-    """A project's name, ladder and hub sink's clearance (NULL without one): what ``telegram.restricted`` reads."""
-    p, ps = tables.projects, tables.project_sinks
-    hub_sink = and_(ps.c.project_id == p.c.id, ps.c.kind == access.HUB_KIND)
-    return select(p.c.name, p.c.levels, p.c.locations, ps.c.clearance).select_from(p.outerjoin(ps, hub_sink))
-
-
-def _restricted(row) -> bool:
-    return row is None or telegram.restricted(row.clearance, row.levels, row.locations)
-
-
-class TelegramChannel(Channel):
+class TelegramChannel(hub.Channel):
     """Sends notifications to members' Telegram chats, paced as the Bot FAQ asks."""
 
     needs_session = True  # a chat lives as long as the web session that linked it
@@ -204,37 +251,12 @@ class TelegramChannel(Channel):
         self._last: dict[int, float] = {}
         self._recent: deque[float] = deque(maxlen=telegram.MESSAGES_PER_SECOND)
 
-    async def prepare(self, conn: AsyncConnection, notification: Outgoing) -> Outgoing:
+    async def prepare(self, conn, notification: hub.Outgoing) -> hub.Outgoing:
         # A decision or proposal always has a project; one that names none is restricted (fail closed).
-        restricted = notification.kind in ("decision", "proposal")
-        if notification.project is not None:
-            query = _project_rules().where(tables.projects.c.name == notification.project)
-            restricted = _restricted((await conn.execute(query)).one_or_none())
-        extra: dict = {"restricted": restricted}
-        if notification.decision_id is not None:
-            d, r = tables.decisions, tables.runs
-            query = select(
-                d.c.question,
-                d.c.category,
-                d.c.plan_id,
-                d.c.step_key,
-                d.c.options,
-                d.c.state,
-                r.c.kind.label("run_kind"),
-                r.c.title.label("run_title"),
-            ).join_from(d, r, r.c.id == d.c.run_id)
-            row = (await conn.execute(query.where(d.c.id == notification.decision_id))).one_or_none()
-            extra["decision"] = None if row is None else dict(row._mapping)
-        if notification.proposal_id is not None:
-            p = tables.proposals
-            query = select(p.c.title, p.c.tier, p.c.kind, p.c.lens, p.c.evidence_count, p.c.state)
-            row = (await conn.execute(query.where(p.c.id == notification.proposal_id))).one_or_none()
-            extra["proposal"] = None if row is None else dict(row._mapping)
-        return dataclasses.replace(notification, extra=extra)
+        return await hub.prepare(conn, notification, CLEARED)
 
-    def message(self, notification: Outgoing) -> telegram.Message:
-        public_url = getattr(self.config, "public_url", None)
-        url = telegram.web_url(public_url, notification.link)
+    def message(self, notification: hub.Outgoing) -> telegram.Message:
+        url = hub.web_url(self.config, notification.link)
         extra = notification.extra or {}
         if extra.get("restricted", True):
             return telegram.minimal_message(
@@ -298,13 +320,13 @@ class TelegramChannel(Channel):
         self._last[chat_id] = stamp
         self._recent.append(stamp)
 
-    async def send(self, notification: Outgoing, config: dict) -> str | None:
-        bot = BotApi.from_config(self.config)
+    async def send(self, notification: hub.Outgoing, config: dict) -> str | None:
+        bot = BotApi.from_settings(settings())
         if bot is None:
-            raise Undeliverable(NOT_SET_UP)
+            raise hub.Undeliverable(NOT_SET_UP)
         chat_id = config.get("chat_id")
         if not isinstance(chat_id, int):
-            raise ChannelGone("the channel names no Telegram chat: link it again")
+            raise hub.ChannelGone("the channel names no Telegram chat: link it again")
         message = self.message(notification)
         await self._pace(chat_id)
         try:
@@ -318,9 +340,9 @@ class TelegramChannel(Channel):
             )
         except BotApiError as exc:
             if exc.code == 429:
-                raise RetryAfter(exc.retry_after or 5, str(exc)) from None
+                raise hub.RetryAfter(exc.retry_after or 5, str(exc)) from None
             if exc.code == 403 or (exc.code == 400 and "chat not found" in exc.description.lower()):
-                raise ChannelGone(f"Telegram refused the chat ({exc.description}): link it again") from None
+                raise hub.ChannelGone(f"Telegram refused the chat ({exc.description}): link it again") from None
             raise
         message_id = sent.get("message_id") if isinstance(sent, dict) else None
         return telegram.message_ref(chat_id, message_id) if isinstance(message_id, int) else None
@@ -345,118 +367,54 @@ class TelegramLink(BaseModel):
     expires_at: datetime = Field(description="10 minutes after it was made; it links one chat, once")
 
 
-def _live_session(channel_or_link):
-    """The web session ``channel_or_link`` (a row of notification_channels or channel_link_codes) is bound to is live: of
-    the same member, neither revoked nor expired."""
-    t = tables.tokens
-    return exists().where(
-        t.c.id == channel_or_link.c.token_id,
-        t.c.user_id == channel_or_link.c.user_id,
-        t.c.kind == WEB,
-        t.c.revoked_at.is_(None),
-        t.c.expires_at > func.now(),
-    )
-
-
-def _channel_of(user_id: int):
-    c = tables.notification_channels
-    live = _live_session(c).label("session_live")
-    return select(c.c.id, c.c.config, c.c.enabled, c.c.created_at, live).where(c.c.user_id == user_id, c.c.kind == KIND)
-
-
-def _disabled_reason(row) -> str | None:
-    if row is None or (row.enabled and row.session_live):
-        return None
-    if not row.enabled:
-        return str(dict(row.config).get("disabled_reason") or "turned off")
-    return SESSION_ENDED
-
-
-async def _status(conn: AsyncConnection, request: Request, user_id: int) -> TelegramStatus:
-    row = (await conn.execute(_channel_of(user_id))).one_or_none()
-    config = dict(row.config) if row is not None else {}
-    username = config.get("username")
+async def _status(conn, request: Request, user: hub.Session) -> TelegramStatus:
+    found = await hub.linked_channel(conn, plugin(), user, KIND)
+    username = None if found is None else found.config.get("username")
     return TelegramStatus(
-        configured=not request.app.state.config.telegram_missing(),
-        linked=row is not None,
-        enabled=bool(row is not None and row.enabled and row.session_live),
+        configured=settings().configured,
+        linked=found is not None,
+        enabled=found is not None and found.enabled,
         username=username if isinstance(username, str) else None,
-        linked_at=None if row is None else row.created_at,
-        disabled_reason=_disabled_reason(row),
+        linked_at=None if found is None else found.linked_at,
+        disabled_reason=None if found is None else found.disabled_reason,
         bot=getattr(request.app.state, "telegram_bot", None),
     )
 
 
 @me_router.get("/telegram", response_model=TelegramStatus)
-async def show(request: Request, user: CurrentUser) -> TelegramStatus:
+async def show(request: Request, user: hub.Caller) -> TelegramStatus:
     """Whether the hub has a bot, and whether a chat of the caller's is linked to it."""
-    async with request.app.state.engine.begin() as conn:
-        return await _status(conn, request, user.user_id)
+    async with hub.begin(request) as conn:
+        return await _status(conn, request, user)
 
 
 @me_router.post(
     "/telegram/link",
     status_code=201,
     response_model=TelegramLink,
-    responses={403: {"model": ErrorBody}, 502: {"model": ErrorBody}, 503: {"model": ErrorBody}},
+    responses={403: {"model": hub.ErrorBody}, 502: {"model": hub.ErrorBody}, 503: {"model": hub.ErrorBody}},
 )
-async def make_link(request: Request, user: CurrentUser) -> TelegramLink:
+async def make_link(request: Request, user: hub.Caller) -> TelegramLink:
     """A one-time link that links the Telegram chat it is opened in to the caller, for 10 minutes; from a web session
     only, which the chat then lives no longer than. It replaces the caller's links not used yet."""
-    if request.app.state.config.telegram_missing():
+    if not settings().configured:
         raise HTTPException(503, NOT_SET_UP)
-    if user.kind != WEB:
+    if not user.web:
         raise HTTPException(403, LINK_FROM_SESSION)
     bot = await bot_username(request.app)
-    code = telegram.new_code()
-    links = tables.channel_link_codes
-    async with request.app.state.engine.begin() as conn:
-        await conn.execute(
-            delete(links).where(
-                links.c.kind == KIND,
-                (links.c.user_id == user.user_id) | (links.c.expires_at < func.now() - timedelta(days=1)),
-                links.c.used_at.is_(None) | (links.c.used_at < func.now() - timedelta(days=1)),
-            )
-        )
-        made = (
-            insert(links)
-            .values(
-                user_id=user.user_id,
-                kind=KIND,
-                code_hash=telegram.code_hash(code),
-                expires_at=func.now() + timedelta(seconds=telegram.LINK_SECONDS),
-                token_id=user.token_id,
-            )
-            .returning(links.c.expires_at)
-        )
-        expires_at = (await conn.execute(made)).scalar_one()
+    async with hub.begin(request) as conn:
+        made = await hub.link_code(conn, plugin(), user, KIND)
     log.info("telegram link made", extra={"login": user.login})
-    return TelegramLink(url=telegram.link_url(bot, code), bot=bot, expires_at=expires_at)
-
-
-async def _unlink(conn: AsyncConnection, user_id: int, login: str, by: str, *, actor: Principal | None = None) -> bool:
-    """Delete member ``user_id``'s Telegram channel and the deliveries waiting for it, audited as done ``by`` the
-    member (``web`` or ``bot``) or by ``actor``, a hub admin (``admin``)."""
-    c = tables.notification_channels
-    gone = (await conn.execute(delete(c).where(c.c.user_id == user_id, c.c.kind == KIND).returning(c.c.id))).all()
-    if gone:
-        await audit.record(
-            conn,
-            actor_id=user_id if actor is None else actor.user_id,
-            token_id=None if actor is None else actor.token_id,
-            action=UNLINK,
-            target=f"telegram user:{login} by={by}",
-        )
-    return bool(gone)
+    return TelegramLink(url=telegram.link_url(bot, made.code), bot=bot, expires_at=made.expires_at)
 
 
 @me_router.delete("/telegram", response_model=TelegramStatus)
-async def unlink(request: Request, user: CurrentUser) -> TelegramStatus:
+async def unlink(request: Request, user: hub.Caller) -> TelegramStatus:
     """Unlink the caller's Telegram chat: the channel and the deliveries waiting for it go."""
-    async with request.app.state.engine.begin() as conn:
-        if await _unlink(conn, user.user_id, user.login, "web"):
+    async with hub.begin(request) as conn:
+        if await hub.unlink_channel(conn, plugin(), KIND, user.user_id, by="web"):
             log.info("telegram unlinked", extra={"login": user.login, "by": "web"})
-        return await _status(conn, request, user.user_id)
+        return await _status(conn, request, user)
 
 
 # The webhook
@@ -492,66 +450,16 @@ def inbound(app) -> InboundLimit:
     return limit
 
 
-@dataclass(frozen=True)
-class Member:
-    user_id: int
-    login: str
-
-
-def _principal(member: Member) -> Principal:
-    """The member a linked chat speaks for, as the answer routes check them: no token, of kind telegram, and never a
-    hub admin, whoever the member is."""
-    return Principal(
-        user_id=member.user_id,
-        login=member.login,
-        admin=False,
-        token_id=None,
-        kind=VIA,
-        token_hash="",
-    )
-
-
-async def _member_of(conn: AsyncConnection, chat_id: int, sender_id: int, *, live: bool = True) -> Member | None:
+async def _member_of(conn, chat_id: int, sender_id: int, *, live: bool = True) -> hub.Member | None:
     """The member chat ``chat_id`` of Telegram user ``sender_id`` is linked to; with ``live``, only while the web
     session that linked it lives (an answer), without it whatever became of that session (``/stop``)."""
-    c, u = tables.notification_channels, tables.users
-    query = (
-        select(u.c.id, u.c.login)
-        .join_from(c, u, u.c.id == c.c.user_id)
-        .where(c.c.kind == KIND, c.c.config.contains({"chat_id": chat_id, "user_id": sender_id}))
-    )
-    if live:
-        query = query.where(_live_session(c))
-    row = (await conn.execute(query.limit(1))).one_or_none()
-    return None if row is None else Member(row.id, row.login)
+    return await hub.find_member(conn, plugin(), KIND, {"chat_id": chat_id, "user_id": sender_id}, live=live)
 
 
-def _answerable(kind: str, item_id: int, user_id: int):
-    """The project of decision or proposal ``item_id`` with its ladder and hub sink, when member ``user_id`` holds a
-    grant on it: no row for one of another project, as for none."""
-    item = tables.decisions if kind == "decision" else tables.proposals
-    p, g, ps = tables.projects, tables.grants, tables.project_sinks
-    return (
-        select(p.c.name, p.c.levels, p.c.locations, ps.c.clearance)
-        .select_from(
-            item.join(p, p.c.id == item.c.project_id)
-            .join(g, and_(g.c.project_id == p.c.id, g.c.user_id == user_id))
-            .outerjoin(ps, and_(ps.c.project_id == p.c.id, ps.c.kind == access.HUB_KIND))
-        )
-        .where(item.c.id == item_id)
-    )
-
-
-async def _answerable_project(conn: AsyncConnection, member: Member, kind: str, item_id: int) -> str:
-    """The name of the project of what a button or a reply answers, once the member may answer it from Telegram:
-    NOT_YOURS (404) without a grant on it, the same as for nothing by that id, and RESTRICTED_ANSWER (403) for a
-    restricted project. Checked before anything of the decision or proposal is read."""
-    row = (await conn.execute(_answerable(kind, item_id, member.user_id))).one_or_none()
-    if row is None:
-        raise HTTPException(404, NOT_YOURS)
-    if _restricted(row):
-        raise HTTPException(403, RESTRICTED_ANSWER)
-    return row.name
+def _words(exc: HTTPException) -> str:
+    """What the hub refused, in this channel's words when it has its own for them."""
+    detail = exc.detail
+    return THE_HUBS_WORDS.get(detail, str(detail)) if isinstance(detail, str) else str(detail)
 
 
 LINK_FAILED = (
@@ -565,46 +473,18 @@ HELP = (
 )
 
 
-async def _link(conn: AsyncConnection, code: str, chat: dict, sender: dict) -> Member | None:
+async def _link(conn, code: str, chat: dict, sender: dict) -> hub.Member | None:
     """Use link code ``code`` for ``chat``: the member it was made for, now linked, or None when it does not link."""
     if chat.get("type") != "private" or not isinstance(sender.get("id"), int):
         return None
-    links, users, channels = tables.channel_link_codes, tables.users, tables.notification_channels
-    query = (
-        select(links.c.id, links.c.user_id, links.c.token_id, users.c.login)
-        .join_from(links, users, users.c.id == links.c.user_id)
-        .where(
-            links.c.code_hash == telegram.code_hash(code),
-            links.c.kind == KIND,
-            links.c.used_at.is_(None),
-            links.c.expires_at > func.now(),
-            _live_session(links),  # the web session that made the code still lives
-        )
-        .with_for_update(of=links)
-    )
-    row = (await conn.execute(query)).one_or_none()
-    if row is None:
+    session = await hub.redeem_link_code(conn, plugin(), KIND, code)
+    if session is None:
         return None
-    await conn.execute(update(links).values(used_at=func.now()).where(links.c.id == row.id))
     config = {"chat_id": chat["id"], "user_id": sender["id"]}
     if isinstance(sender.get("username"), str):
         config["username"] = sender["username"][:64]
     # A chat speaks for one member: another member's link to it goes.
-    await conn.execute(
-        delete(channels).where(
-            channels.c.kind == KIND,
-            channels.c.user_id != row.user_id,
-            channels.c.config.contains({"chat_id": chat["id"]}),
-        )
-    )
-    bound = {"config": config, "enabled": True, "token_id": row.token_id}
-    linked = pg_insert(channels).values(user_id=row.user_id, kind=KIND, **bound)
-    linked = linked.on_conflict_do_update(
-        constraint="notification_channels_user_id_kind_key", set_={**bound, "created_at": func.now()}
-    )
-    await conn.execute(linked)
-    await audit.record(conn, actor_id=row.user_id, token_id=None, action=LINK, target=f"telegram user:{row.login}")
-    return Member(row.user_id, row.login)
+    return await hub.link_channel(conn, plugin(), session, KIND, config, unique_on=("chat_id",))
 
 
 def _object(value) -> dict:
@@ -615,11 +495,11 @@ def _object(value) -> dict:
 class Updates:
     """What the webhook does with one update."""
 
-    def __init__(self, app):
-        self.app = app
-        self.config = app.state.config
-        self.engine = app.state.engine
-        self.bot = BotApi.from_config(self.config)
+    def __init__(self, request: Request, bot: BotApi):
+        self.request = request
+        self.app = request.app
+        self.config = hub.hub_config(request)
+        self.bot = bot
 
     async def say(self, chat_id: int, text: str, *, reply_to: int | None = None) -> None:
         try:
@@ -655,84 +535,76 @@ class Updates:
         sender, chat = _object(message.get("from")), _object(message.get("chat"))
         found = telegram.command(text)
         if found is not None and found[0] == "start":
-            code = telegram.start_code(text)
-            if code is None and found[1] is None:
-                await self.say(chat_id, HELP)
-                return "help"
-            member = None
-            if code is not None:
-                async with self.engine.begin() as conn:
-                    member = await _link(conn, code, chat, sender)
-            if member is None:
-                await self.say(chat_id, LINK_FAILED)
-                return "link_failed"
-            log.info("telegram linked", extra={"login": member.login})
-            hub = self.config.public_url or "Evo Agent Hub"
-            await self.say(
-                chat_id,
-                f"Linked to {hub} as {member.login}. Decisions, proposals and notices for you come here; /stop "
-                "unlinks this chat.",
-            )
-            return "linked"
+            return await self.start(chat_id, telegram.start_code(text), found[1], chat, sender)
         if found is not None and found[0] == "stop":
-            sender_id = sender.get("id")
-            async with self.engine.begin() as conn:
-                found = isinstance(sender_id, int)
-                member = await _member_of(conn, chat_id, sender_id, live=False) if found else None
-                if member is not None:
-                    await _unlink(conn, member.user_id, member.login, "bot")
-            if member is not None:
-                log.info("telegram unlinked", extra={"login": member.login, "by": "bot"})
-            await self.say(
-                chat_id, "This chat is unlinked from the hub: nothing more comes here until you link it again."
-            )
-            return "unlinked"
+            return await self.stop(chat_id, sender)
         replied = message.get("reply_to_message")
         if found is None and text.strip() and isinstance(replied, dict) and isinstance(replied.get("message_id"), int):
             return await self.reply(message, chat_id, sender, replied["message_id"], text)
         await self.say(chat_id, HELP)
         return "help"
 
+    async def start(self, chat_id: int, code: str | None, argument: str | None, chat: dict, sender: dict) -> str:
+        """``/start``: help without an argument, else the link of ``code``."""
+        if code is None and argument is None:
+            await self.say(chat_id, HELP)
+            return "help"
+        member = None
+        if code is not None:
+            async with hub.begin(self.request) as conn:
+                member = await _link(conn, code, chat, sender)
+        if member is None:
+            await self.say(chat_id, LINK_FAILED)
+            return "link_failed"
+        log.info("telegram linked", extra={"login": member.login})
+        where = (hub.web_url(self.config, "/") or "").rstrip("/") or "Evo Agent Hub"
+        await self.say(
+            chat_id,
+            f"Linked to {where} as {member.login}. Decisions, proposals and notices for you come here; /stop "
+            "unlinks this chat.",
+        )
+        return "linked"
+
+    async def stop(self, chat_id: int, sender: dict) -> str:
+        """``/stop``: unlink the chat, whatever became of the web session that linked it."""
+        sender_id = sender.get("id")
+        member = None
+        async with hub.begin(self.request) as conn:
+            if isinstance(sender_id, int):
+                member = await _member_of(conn, chat_id, sender_id, live=False)
+            if member is not None:
+                await hub.unlink_channel(conn, plugin(), KIND, member.user_id, by="bot")
+        if member is not None:
+            log.info("telegram unlinked", extra={"login": member.login, "by": "bot"})
+        await self.say(chat_id, "This chat is unlinked from the hub: nothing more comes here until you link it again.")
+        return "unlinked"
+
     async def reply(self, message: dict, chat_id: int, sender: dict, replied_id: int, text: str) -> str:
         """A reply to a message the hub sent in this chat: the answer in words to its decision."""
-        n, dl, c = tables.notifications, tables.notification_deliveries, tables.notification_channels
         sender_id = sender.get("id")
-        outcome = None
         try:
-            async with self.engine.begin() as conn:
+            async with hub.begin(self.request) as conn:
                 member = await _member_of(conn, chat_id, sender_id) if isinstance(sender_id, int) else None
                 if member is None:
-                    outcome = "This chat is not linked to the hub: link it from the hub's Inbox first."
+                    outcome = NOT_LINKED
                 else:
-                    query = (
-                        select(n.c.kind, n.c.decision_id)
-                        .select_from(dl.join(n, n.c.id == dl.c.notification_id).join(c, c.c.id == dl.c.channel_id))
-                        .where(
-                            c.c.kind == KIND,
-                            c.c.user_id == member.user_id,
-                            dl.c.external_id == telegram.message_ref(chat_id, replied_id),
-                            n.c.user_id == member.user_id,
-                        )
-                    )
-                    row = (await conn.execute(query.limit(1))).one_or_none()
-                    if row is None or row.kind != "decision" or row.decision_id is None:
-                        outcome = "Only a decision takes an answer in words: answer a proposal with its buttons."
+                    found = await hub.delivered_notification(conn, member, telegram.message_ref(chat_id, replied_id))
+                    if found is None or found.kind != "decision" or found.decision_id is None:
+                        outcome = WORDS_FOR_DECISIONS
                     else:
-                        outcome = await self._answer_in_words(conn, member, row.decision_id, text)
+                        outcome = await self._answer_in_words(conn, member, found.decision_id, text)
         except HTTPException as exc:
-            outcome = f"The hub did not take that answer: {exc.detail}"
+            outcome = f"The hub did not take that answer: {_words(exc)}"
         await self.say(chat_id, outcome, reply_to=message.get("message_id"))
         return "replied"
 
-    async def _answer_in_words(self, conn: AsyncConnection, member: Member, decision_id: int, text: str) -> str:
-        from evo_agents.hub.server.decisions import AnswerIn, answer_decision
-
-        project = await _answerable_project(conn, member, "decision", decision_id)
+    async def _answer_in_words(self, conn, member: hub.Member, decision_id: int, text: str) -> str:
         try:
-            body = AnswerIn(text=text)
-        except ValidationError:
-            return "That answer is too long for the hub (4 KiB at most): answer on the web."
-        answered = await answer_decision(conn, _principal(member), project, decision_id, body, via=VIA)
+            answered = await hub.answer_decision(conn, member, decision_id, CLEARED, text=text)
+        except hub.Refused as exc:
+            if exc.status_code == 422:  # the one body check words fail: their length
+                return TOO_LONG
+            raise
         return f"Your answer to decision #{decision_id} went to run #{answered.inbox_run}."
 
     async def button(self, callback: dict, chat_id: int) -> str:
@@ -745,19 +617,22 @@ class Updates:
             toast = NOT_THE_HUBS
         else:
             try:
-                async with self.engine.begin() as conn:
+                async with hub.begin(self.request) as conn:
                     member = await _member_of(conn, chat_id, sender_id) if isinstance(sender_id, int) else None
                     if member is None:
-                        toast = "This chat is not linked to the hub: link it from the hub's Inbox first."
+                        toast = NOT_LINKED
                     else:
                         settled = await self._answer(conn, member, data)
                         toast, word = settled, "answered"
             except HTTPException as exc:
-                toast = str(exc.detail)
+                toast = _words(exc)
                 if exc.status_code == 409:
-                    settled = "This is no longer open: it was answered already, or it closed."
-            except ValidationError:  # data the hub's buttons never carry, though it parsed
-                toast = NOT_THE_HUBS
+                    settled = NO_LONGER_OPEN
+        await self.settle(callback, chat_id, message, toast, settled)
+        return word
+
+    async def settle(self, callback: dict, chat_id: int, message: dict, toast: str | None, settled: str | None) -> None:
+        """Answer the button with ``toast``, and edit its message to end with ``settled``, its web button kept."""
         try:
             await self.bot.call(
                 "answerCallbackQuery",
@@ -777,26 +652,16 @@ class Updates:
                 )
         except BotApiError as exc:
             log.warning("telegram answer to a button failed", extra={"code": exc.code})
-        return word
 
-    async def _answer(self, conn: AsyncConnection, member: Member, data: telegram.Callback) -> str:
-        """Answer what ``data`` names as ``member``, in ``conn``, once ``_answerable_project`` let it through; what the
-        message says it became."""
-        principal = _principal(member)
-        project = await _answerable_project(conn, member, data.kind, data.id)
+    async def _answer(self, conn, member: hub.Member, data: telegram.Callback) -> str:
+        """Answer what ``data`` names as ``member``, in ``conn``; what the message says it became. The hub checks the
+        member's grant on its project and the project's clearance before it reads anything of it."""
         if data.kind == "decision":
-            from evo_agents.hub.server.decisions import AnswerIn, answer_decision
-
-            answered = await answer_decision(conn, principal, project, data.id, AnswerIn(option=data.value), via=VIA)
-            chosen = next((option for option in answered.decision.options if option.key == data.value), None)
-            label = chosen.label if chosen else data.value
+            answered = await hub.answer_decision(conn, member, data.id, CLEARED, option=data.value)
+            label = answered.option_label if answered.option_label is not None else data.value
             return f"Answered by {member.login}: {label}"
-        from evo_agents.hub.server.proposals import ProposalAnswer, answer_proposal_as
-
-        proposal = await answer_proposal_as(
-            conn, principal, project, data.id, ProposalAnswer(action=data.value), via=VIA
-        )
-        return f"Proposal #{proposal.id} {proposal.state} by {member.login}"
+        proposal = await hub.answer_proposal(conn, member, data.id, CLEARED, data.value)
+        return f"Proposal #{proposal.proposal_id} {proposal.state} by {member.login}"
 
 
 class WebhookAnswer(BaseModel):
@@ -807,16 +672,17 @@ class WebhookAnswer(BaseModel):
 @webhook_router.post(
     "/webhook",
     response_model=WebhookAnswer,
-    responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}, 413: {"model": ErrorBody}},
+    responses={403: {"model": hub.ErrorBody}, 404: {"model": hub.ErrorBody}, 413: {"model": hub.ErrorBody}},
 )
 async def webhook(request: Request) -> WebhookAnswer:
     """Telegram's updates for the hub's bot, with the secret token setWebhook was given in the header
     X-Telegram-Bot-Api-Secret-Token."""
-    config = request.app.state.config
-    if config.telegram_missing():
+    found = settings()
+    bot = BotApi.from_settings(found)
+    if bot is None:
         raise HTTPException(404, NOT_SET_UP)
     given = request.headers.get(SECRET_HEADER, "")
-    if not hmac.compare_digest(given.encode(), config.telegram_webhook_secret.encode()):
+    if not hmac.compare_digest(given.encode(), found.secret.encode()):
         log.warning("telegram update refused: the secret token is wrong")
         raise HTTPException(403, f"the header {SECRET_HEADER} does not hold this webhook's secret")
     raw = await request.body()
@@ -828,7 +694,7 @@ async def webhook(request: Request) -> WebhookAnswer:
         return WebhookAnswer(outcome="ignored")
     if not isinstance(update, dict):
         return WebhookAnswer(outcome="ignored")
-    return WebhookAnswer(outcome=await Updates(request.app).handle(update))
+    return WebhookAnswer(outcome=await Updates(request, bot).handle(update))
 
 
 # The bot and its webhook, for hub admins
@@ -844,33 +710,33 @@ class TelegramWebhook(BaseModel):
     last_error_message: str | None
 
 
-def _expected(config) -> str | None:
-    return f"{config.public_url}{WEBHOOK_PATH}" if config.public_url else None
+def _expected(request: Request) -> str | None:
+    return hub.web_url(hub.hub_config(request), WEBHOOK_PATH)
 
 
 async def _webhook_view(request: Request) -> TelegramWebhook:
-    config = request.app.state.config
-    if config.telegram_missing():
+    bot = BotApi.from_settings(settings())
+    if bot is None:
         return TelegramWebhook(
             configured=False,
             bot=None,
-            expected_url=_expected(config),
+            expected_url=_expected(request),
             url=None,
             pending_update_count=None,
             last_error_date=None,
             last_error_message=None,
         )
-    bot = await bot_username(request.app)
+    username = await bot_username(request.app)
     try:
-        info = await BotApi.from_config(config).call("getWebhookInfo")
+        info = await bot.call("getWebhookInfo")
     except BotApiError as exc:
         raise HTTPException(502, f"Telegram did not say where its webhook is: {exc}") from None
     info = info if isinstance(info, dict) else {}
     when = info.get("last_error_date")
     return TelegramWebhook(
         configured=True,
-        bot=bot,
-        expected_url=_expected(config),
+        bot=username,
+        expected_url=_expected(request),
         url=info.get("url") or None,
         pending_update_count=info.get("pending_update_count"),
         last_error_date=datetime.fromtimestamp(when, UTC) if isinstance(when, int) else None,
@@ -878,8 +744,8 @@ async def _webhook_view(request: Request) -> TelegramWebhook:
     )
 
 
-@admin_router.get("/telegram", response_model=TelegramWebhook, responses={403: {"model": ErrorBody}})
-async def show_webhook(request: Request, user: AdminUser) -> TelegramWebhook:
+@admin_router.get("/telegram", response_model=TelegramWebhook, responses={403: {"model": hub.ErrorBody}})
+async def show_webhook(request: Request, user: hub.HubAdmin) -> TelegramWebhook:
     """The hub's bot and where Telegram sends its updates."""
     return await _webhook_view(request)
 
@@ -888,28 +754,27 @@ async def show_webhook(request: Request, user: AdminUser) -> TelegramWebhook:
     "/telegram/webhook",
     response_model=TelegramWebhook,
     responses={
-        403: {"model": ErrorBody},
-        409: {"model": ErrorBody},
-        502: {"model": ErrorBody},
-        503: {"model": ErrorBody},
+        403: {"model": hub.ErrorBody},
+        409: {"model": hub.ErrorBody},
+        502: {"model": hub.ErrorBody},
+        503: {"model": hub.ErrorBody},
     },
 )
-async def set_webhook(request: Request, user: AdminUser) -> TelegramWebhook:
+async def set_webhook(request: Request, user: hub.HubAdmin) -> TelegramWebhook:
     """Point the bot's webhook at this hub (EVO_HUB_PUBLIC_URL + /v1/telegram/webhook) with the secret token."""
-    config = request.app.state.config
-    if config.telegram_missing():
+    found = settings()
+    bot = BotApi.from_settings(found)
+    if bot is None:
         raise HTTPException(503, NOT_SET_UP)
-    url = _expected(config)
+    url = _expected(request)
     if url is None:
         raise HTTPException(409, "the hub has no EVO_HUB_PUBLIC_URL, so Telegram has nowhere to send updates")
     try:
-        await BotApi.from_config(config).call(
-            "setWebhook", url=url, secret_token=config.telegram_webhook_secret, allowed_updates=ALLOWED_UPDATES
-        )
+        await bot.call("setWebhook", url=url, secret_token=found.secret, allowed_updates=ALLOWED_UPDATES)
     except BotApiError as exc:
         raise HTTPException(502, f"Telegram did not set the webhook: {exc}") from None
-    async with request.app.state.engine.begin() as conn:
-        await audit.record(conn, actor_id=user.user_id, token_id=user.token_id, action=WEBHOOK_SET, target=url)
+    async with hub.begin(request) as conn:
+        await hub.audit(conn, plugin(), user, WEBHOOK_SET, url)
     log.info("telegram webhook set", extra={"login": user.login})
     return await _webhook_view(request)
 
@@ -922,17 +787,12 @@ class TelegramUnlinked(BaseModel):
 @admin_router.delete(
     "/users/{login}/telegram",
     response_model=TelegramUnlinked,
-    responses={403: {"model": ErrorBody}, 404: {"model": ErrorBody}},
+    responses={403: {"model": hub.ErrorBody}, 404: {"model": hub.ErrorBody}},
 )
-async def unlink_member(request: Request, login: Login, user: AdminUser) -> TelegramUnlinked:
+async def unlink_member(request: Request, login: hub.Login, user: hub.HubAdmin) -> TelegramUnlinked:
     """Unlink a member's Telegram chat, whatever its session: the channel and the deliveries waiting for it go."""
-    u = tables.users
-    async with request.app.state.engine.begin() as conn:
-        named = select(u.c.id, u.c.login).where(func.lower(u.c.login) == func.lower(login))
-        found = (await conn.execute(named)).one_or_none()
-        if found is None:
-            raise HTTPException(404, f"the hub has no user {login}")
-        unlinked = await _unlink(conn, found.id, found.login, "admin", actor=user)
-    if unlinked:
-        log.info("telegram unlinked", extra={"login": found.login, "by": "admin", "admin": user.login})
-    return TelegramUnlinked(login=found.login, unlinked=unlinked)
+    async with hub.begin(request) as conn:
+        done = await hub.unlink_by_login(conn, plugin(), KIND, login, actor=user)
+    if done.unlinked:
+        log.info("telegram unlinked", extra={"login": done.login, "by": "admin", "admin": user.login})
+    return TelegramUnlinked(login=done.login, unlinked=done.unlinked)

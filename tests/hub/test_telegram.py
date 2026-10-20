@@ -65,8 +65,12 @@ updates = itertools.count(1)
 
 @pytest.fixture
 def bot(monkeypatch):
-    """The fake Bot API in place of Telegram's, and the waits of the channel's pacing recorded instead of slept."""
+    """The fake Bot API in place of Telegram's, the bot's two variables in the process's environment, where the plugin
+    reads them (``hub.plugin_environment``), and the waits of the channel's pacing recorded instead of slept."""
     fake = FakeTelegram()
+    monkeypatch.setenv(server_telegram.TOKEN_VARIABLE, TOKEN)
+    monkeypatch.setenv(server_telegram.SECRET_VARIABLE, SECRET)
+    monkeypatch.delenv(server_telegram.API_URL_VARIABLE, raising=False)
     monkeypatch.setattr(server_telegram, "TRANSPORT", fake.transport())
     waits: list[float] = []
 
@@ -297,7 +301,8 @@ def test_the_webhook_takes_at_most_5_updates_from_one_chat_in_10_seconds(client,
     assert [limit.allow(1, now) for now in (0.0, 1.0, 2.0, 10.5, 10.8, 11.5)] == [True, True, False, True, False, True]
 
 
-def test_without_its_variables_the_channel_is_off_and_the_hub_runs(hub_db, tmp_path, github, bot):
+def test_without_its_variables_the_channel_is_off_and_the_hub_runs(hub_db, tmp_path, github, bot, monkeypatch):
+    monkeypatch.delenv(server_telegram.TOKEN_VARIABLE)  # the environment the config below is read from
     config = live.hub_config(hub_db, tmp_path, github, **live.web_changes(github), telegram_webhook_secret=SECRET)
     assert config.telegram_missing() == ["EVO_HUB_TELEGRAM_BOT_TOKEN"]
     with TestClient(create_app(config), base_url="https://hub.test") as client:
