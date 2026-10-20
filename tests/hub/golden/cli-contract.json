@@ -34483,6 +34483,70 @@
           }
         }
       },
+      "/v1/chats/people": {
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "List Candidates",
+          "description": "The people the caller may add to a chat, by login, each with why they could not be in it with ``agents``.",
+          "operationId": "list_candidates_v1_chats_people_get",
+          "parameters": [
+            {
+              "name": "agents",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "maxItems": 10,
+                "description": "a handle of the chat's agents, @ left out; repeat it",
+                "default": [],
+                "title": "Agents"
+              },
+              "description": "a handle of the chat's agents, @ left out; repeat it"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/ChatCandidate"
+                    },
+                    "title": "Response List Candidates V1 Chats People Get"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats": {
         "get": {
           "tags": [
@@ -44319,6 +44383,45 @@
           ],
           "title": "ChatAuthor",
           "description": "Who wrote a message or put a reaction: a person, an agent or the hub itself."
+        },
+        "ChatCandidate": {
+          "properties": {
+            "login": {
+              "type": "string",
+              "title": "Login"
+            },
+            "avatar_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avatar Url",
+              "description": "their GitHub avatar; null for a login that never signed in"
+            },
+            "why": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Why",
+              "description": "why they could not be in a chat with the agents given, as the hub's refusal says it; null when they could"
+            }
+          },
+          "type": "object",
+          "required": [
+            "login",
+            "avatar_url",
+            "why"
+          ],
+          "title": "ChatCandidate"
         },
         "ChatCreate": {
           "properties": {

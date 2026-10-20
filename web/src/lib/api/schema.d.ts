@@ -4408,6 +4408,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/chats/people": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List Candidates
+         * @description The people the caller may add to a chat, by login, each with why they could not be in it with ``agents``.
+         */
+        get: operations["list_candidates_v1_chats_people_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/chats": {
         parameters: {
             query?: never;
@@ -7280,6 +7300,21 @@ export interface components {
              * @description a person's GitHub avatar; null for a login that never signed in, an agent or the hub
              */
             avatar_url?: string | null;
+        };
+        /** ChatCandidate */
+        ChatCandidate: {
+            /** Login */
+            login: string;
+            /**
+             * Avatar Url
+             * @description their GitHub avatar; null for a login that never signed in
+             */
+            avatar_url: string | null;
+            /**
+             * Why
+             * @description why they could not be in a chat with the agents given, as the hub's refusal says it; null when they could
+             */
+            why: string | null;
         };
         /** ChatCreate */
         ChatCreate: {
@@ -34928,6 +34963,47 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+        };
+    };
+    list_candidates_v1_chats_people_get: {
+        parameters: {
+            query?: {
+                /** @description a handle of the chat's agents, @ left out; repeat it */
+                agents?: string[];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ChatCandidate"][];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
