@@ -374,6 +374,21 @@ def test_cli_exit_code_reflects_errors(harness: Path, capsys):
     assert "FAIL" in capsys.readouterr().out
 
 
+def test_cli_warns_of_a_verify_that_is_not_shell_on_a_step_not_done(harness: Path, capsys):
+    path = harness / "plans/active/demo-plan.yaml"
+    plan = load_yaml(path)
+    plan["steps"][0]["verify"] = "Thủ công: đã kiểm"  # done: the hub checks it no more
+    plan["steps"][1]["verify"] = "Thủ công, với chat C: ghi link của run vào evidence"
+    plan["steps"].append({"id": 3, "what": "third", "status": "pending", "verify": "pytest -q && ruff check ."})
+    path.write_text(yaml.safe_dump(plan, allow_unicode=True, sort_keys=False), encoding="utf-8")
+    assert validate_harness(harness)[-1].issues == []  # the check belongs to the CLI, which passes it in
+
+    assert main(["harness", "validate", str(harness)]) == 0  # a warning: the hub may hold this plan already
+    out = capsys.readouterr().out
+    assert "warning: steps[1].verify: the verify of step 2 runs `Thủ` as a program" in out
+    assert "one shell command line" in out and "steps[0].verify" not in out and "steps[2]" not in out
+
+
 HUB_SINK = "    - id: hub\n      kind: hub\n      clearance: {level: internal}\n"
 DIGEST = "sha256:" + "0" * 64
 

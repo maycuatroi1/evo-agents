@@ -17,6 +17,18 @@ WORKER_ON_WINDOWS = (
 )
 
 
+def _verify_issues(plan: dict) -> list:
+    """A warning for each step not done whose verify cannot be one shell command line, as the hub refuses a new one
+    (``evo_agents.hub.plans.unrunnable_verify``); a warning, since a plan the hub holds keeps an older one."""
+    from evo_agents.hub.plans import VERIFY_RULE, unrunnable_verify
+    from evo_agents.schema import Issue
+
+    return [
+        Issue(f"steps[{index}].verify", f"the verify of step {key} {why}. {VERIFY_RULE}", "warning")
+        for index, key, why in unrunnable_verify(None, plan)
+    ]
+
+
 def _harness_validate(args) -> int:
     from evo_agents.harness import validate_harness
     from evo_agents.schema import errors
@@ -24,7 +36,7 @@ def _harness_validate(args) -> int:
     targets = args.paths or [str(Path.cwd())]
     reports = []
     for target in targets:
-        reports.extend(validate_harness(target))
+        reports.extend(validate_harness(target, _verify_issues))
     failed = [r for r in reports if not r.ok]
     if args.json:
         print(json.dumps({"ok": not failed, "files": [r.to_json() for r in reports]}, ensure_ascii=False, indent=2))

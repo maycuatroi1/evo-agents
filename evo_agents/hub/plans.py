@@ -9,13 +9,18 @@ string keys, arrays, strings without NUL, finite numbers, booleans and null.
 ``update_item`` is ``_mutate.update_item`` of evo-cli on data instead of text: the item at ``index`` of ``section``
 must be a mapping, every key of ``updates`` is set on it, and the result must still be a valid plan. Only the keys
 evo-cli writes may be set: the status, its date (``done_at``, ``fixed_at``, ``answered_at``, ``merged_at``),
-``note``, and ``evidence``, which ``evo harness step --evidence`` adds. Standard library only.
+``note``, and ``evidence``, which ``evo harness step --evidence`` adds.
+
+A step's verify is one shell command line a worker runs. ``unrunnable_verify`` finds the new verify values of a write
+that cannot be one by their shape (``evo_agents.hub.verify_words.shell_problem``), which the hub refuses with
+``verify_refusal``; ``evo-agents harness validate`` warns of them. Standard library only.
 """
 
 from __future__ import annotations
 
 import math
 
+from evo_agents.hub.verify_words import shell_problem
 from evo_agents.kg.protocol import canonical_json
 
 SECTIONS = ("steps", "repos", "tech_debt", "open_questions")  # what evo harness step, repo, debt, question set
@@ -158,6 +163,48 @@ def undone_steps(body: dict) -> list[str]:
         for index, step in enumerate(steps)
         if not (isinstance(step, dict) and step.get("status") in CLOSED_STEP_STATUSES)
     ]
+
+
+def _verify(step) -> str:
+    verify = step.get("verify") if isinstance(step, dict) else None
+    return verify.strip() if isinstance(verify, str) else ""
+
+
+def unrunnable_verify(old: dict | None, new: dict) -> list[tuple[int, str, str]]:
+    """(index, ``step_key``, why) for each step of ``new`` not done whose verify cannot be one shell command line by
+    its shape (``shell_problem``), among the verify values that are new: each of a new plan (``old`` None), else the
+    verify of a step ``old`` lacks or held with another verify. A plan stored before the hub checked this keeps its
+    prose verify through every write that leaves that verify as it was, such as marking another step done."""
+    held: dict[str, str] = {}
+    if isinstance(old, dict) and isinstance(old.get("steps"), list):
+        held = {step_key(step, index): _verify(step) for index, step in enumerate(old["steps"])}
+    steps = new.get("steps") if isinstance(new, dict) and isinstance(new.get("steps"), list) else []
+    found = []
+    for index, step in enumerate(steps):
+        if not isinstance(step, dict) or step.get("status") == "done":
+            continue
+        key, verify = step_key(step, index), _verify(step)
+        if not verify or held.get(key) == verify:
+            continue
+        why = shell_problem(verify)
+        if why is not None:
+            found.append((index, key, why))
+    return found
+
+
+VERIFY_RULE = (
+    "A step's verify is one shell command line, which a worker runs: a manual check goes in the step's note, and its "
+    "verify checks something machine-readable instead, such as an answered hub decision "
+    "(evo-agents hub decision show N --json | jq -e '.state == \"answered\"') or a line in a report file "
+    "(grep -q 'Result: passed' reports/x.md)"
+)
+
+
+def verify_refusal(plan_id: str, problems: list[tuple[int, str, str]]) -> str:
+    """The message of a write refused for the steps ``unrunnable_verify`` found: each step and its fault, then what
+    to do instead."""
+    listed = "; ".join(f"the verify of step {key} {why}" for _, key, why in problems)
+    return f"plan {plan_id}: {listed}. {VERIFY_RULE}. Nothing was written"
 
 
 def _changed_paths(old, new, where: str) -> list[str]:
