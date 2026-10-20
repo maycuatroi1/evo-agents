@@ -62,6 +62,8 @@ RUN_MESSAGE = "run.message"  # the owner sent the run's agent a message; the tar
 RUN_TAKEOVER = "run.takeover"  # the owner asked to drive the run's agent in a terminal
 RUN_HANDBACK = "run.handback"  # the owner asked to let the run's agent go on headless
 RUN_FINISH = "run.finish"  # the owner ended the chat of an author run: "<project>/author run:<id>"
+# The worker of a chat run added a repo of the project to it, as its agent asked: "<project>/chat run:<id> repo=<name>"
+RUN_OPEN_REPO = "run.open_repo"
 # Decisions and notifications; a target names the decision or the notifications by id, and an answer's option, never
 # the question, the answer's text or a notification's title.
 DECISION_ANSWER = "decision.answer"  # the owner answered: "<project>/<plan>[#<step>] decision:<id> run:<id> option=<k>"
@@ -94,6 +96,8 @@ CHAT_ADD = "chat.add"  # a member added a person or an agent
 CHAT_REMOVE = "chat.remove"  # a member removed one, or left
 CHAT_MESSAGE = "chat.message"  # a member sent a message, or the agent of a run did for its dispatcher
 CHAT_BUDGET = "chat.budget"  # the creator of a chat changed what its agents' runs may cost a day
+# A member set the image of a group chat or took it off: "chat:<id> image:<the first 16 of its SHA-256>|none".
+CHAT_IMAGE = "chat.image"
 # The hub's store of plugins (evo_agents.hub.server.plugin_store), outside any project; the target is
 # "plugin:<name>@<version>", never a manifest, a bundle or a signature.
 PLUGIN_PUBLISH = "plugin.publish"  # a hub admin published a signed version, which the hub now holds

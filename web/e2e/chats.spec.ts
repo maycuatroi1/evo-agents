@@ -1,20 +1,27 @@
 import type { Page } from "@playwright/test";
 
-import { createAgentByApi } from "./support/agents";
+import { createAgentByApi, PIXEL_PNG } from "./support/agents";
 import {
   agentAnswers,
   agentAsks,
+  agentSays,
+  agentStarts,
   chatPageOf,
   chatPath,
   chatsOf,
   chatWorker,
   claimChatRun,
+  claimOnly,
   createChatByApi,
+  openDirectByApi,
+  putChatImageByApi,
   reactByApi,
   sendByApi,
+  setupNote,
   signedInPerson,
+  takeInbox,
 } from "./support/chats";
-import { expect, isDeployed, test } from "./support/fixtures";
+import { expect, GITHUB_AVATARS, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { open } from "./support/plans";
 import { runsOf } from "./support/runs";
@@ -26,8 +33,10 @@ import { toast } from "./support/toast";
  * agent's eyes, its reply in the thread with the run and the draft pull request, the check mark); reactions put and
  * taken off, and another member's arriving live; a thread opened from a link to a reply, answered in place, and the
  * hub's answer to a mention it refuses; the members sheet adding and taking out an agent and a person, the budget,
- * and leaving. The specs are the worker: they claim the chat run and post the agent's reply as the daemon does, so no
- * model is asked anything. Pages render in English.
+ * and leaving; the row of agents opening a direct chat, each chat's face and last message in the list, and a group's
+ * image changed from its head; a direct chat drawn as a chat app, the member's messages on the right and the agent's
+ * answers in the line under them, Reply going on in the session. The specs are the worker: they claim the chat run
+ * and post the agent's reply as the daemon does, so no model is asked anything. Pages render in English.
  */
 test.skip(isDeployed, "makes chats through the local stack");
 
@@ -42,6 +51,69 @@ function main(page: Page) {
 function messageOf(page: Page, text: string) {
   return main(page).getByTestId("chat-log").getByTestId("chat-message").filter({ has: page.getByTestId("message-body").filter({ hasText: text }) });
 }
+
+test("under a mention the thread says at once that the agent got it, then each step of its run's setup, until its reply", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
+  const workerName = uniqueName("mini");
+  const live = await chatWorker(me, project, workerName);
+  const chat = await createChatByApi(me, { title: "Setup talk", agents: [handle] });
+  await open(page, chatPath(chat.id));
+
+  // The answer to the message already says the agent got it and the worker its run waits for: a still, neutral dot.
+  const box = main(page).getByTestId("chat-composer-text");
+  await box.fill(`@${handle} is the wait test flaky?`);
+  await box.press("Control+Enter");
+  const asked = messageOf(page, "is the wait test flaky?");
+  const line = asked.getByTestId("message-progress-step");
+  await expect(line).toHaveText(`@${handle} got it, waiting for worker ${workerName}`);
+  await expect(line).toHaveAttribute("data-step", "waiting");
+  await expect(line).toHaveRole("status");
+  await expect(line.locator(".animate-live-ping")).toHaveCount(0);
+  const runId = Number(await line.getAttribute("data-run-id"));
+  await expect(asked.getByTestId("mention-run-link")).toHaveAttribute("data-run-id", String(runId));
+
+  // Each step its worker notes replaces the one before, live, with the running dot; no message comes with them.
+  await claimOnly(live, runId);
+  await expect(line).toHaveText(`@${handle}: worker ${workerName} claimed the run`);
+  await expect(line.locator(".animate-live-ping")).toHaveCount(1);
+  const steps: [string, string | undefined, string][] = [
+    ["checking", undefined, `@${handle} is checking access to the repos`],
+    ["opening", "evo-agents-harness", `@${handle} is opening evo-agents-harness`],
+    ["starting", undefined, `@${handle} is starting up`],
+  ];
+  for (const [index, [setup, repo, said]] of steps.entries()) {
+    await setupNote(live, runId, index + 1, setup, repo);
+    await expect(line).toHaveText(said);
+    await expect(asked.getByTestId("message-progress-step")).toHaveCount(1);
+  }
+  await agentStarts(live, runId);
+  await expect(line).toHaveText(`@${handle} is working on it`);
+  await expect(main(page).getByTestId("chat-log").getByTestId("chat-message")).toHaveCount(1);
+
+  // A message in the thread while the agent works waits in the inbox of that turn, until the agent takes it.
+  await asked.hover(); // React and Reply in thread show while the pointer is over the message
+  await asked.getByTestId("message-reply").click();
+  const thread = page.getByTestId("chat-thread");
+  await expect(thread).toHaveAttribute("data-state", "ready");
+  await thread.getByTestId("thread-composer-text").fill(`@${handle} and the retries?`);
+  await thread.getByTestId("thread-composer-text").press("Control+Enter");
+  const more = thread.getByTestId("chat-message").filter({ hasText: "and the retries?" }).getByTestId("message-progress-step");
+  await expect(more).toHaveText(`@${handle} got it, in the inbox of the running turn`);
+  await expect(more.locator(".animate-live-ping")).toHaveCount(0);
+
+  // The agent's reply ends the line under the first message; the one it took next works until its own answer.
+  await agentSays(live, runId, "Not flaky: it waits on the clock.");
+  await expect(asked.getByTestId("message-progress")).toHaveCount(0);
+  await expect(more).toHaveText(`@${handle} got it, in the inbox of the running turn`);
+  await takeInbox(live, runId);
+  await expect(more).toHaveText(`@${handle} is working on it`);
+  await agentAnswers(live, runId, "Retries are bounded too.");
+  await expect(thread.getByTestId("message-progress")).toHaveCount(0);
+  await expect(asked.locator(`[data-testid="reaction-chip"][data-emoji="${CHECK}"]`)).toHaveAccessibleName(`Check mark: 1, by @${handle}`);
+});
 
 test("a member makes a chat, mentions its agent through the suggestions and follows its run live to the reply and the check mark", async ({ page, member }) => {
   const me = await member([{ role: "admin", maxLevel: "internal" }]);
@@ -304,4 +376,233 @@ test("a chat run's decision shows under the agent's message in its thread and is
   await card.getByTestId("decision-send").click();
   await expect(card).toHaveAttribute("data-state", "answered");
   await expect(card.getByTestId("decision-answer-option")).toHaveAttribute("data-key", "retry");
+});
+
+test("the row of agents opens the member's direct chat with an agent, its composer focused, and the same chat on the next press", async ({ page, member }) => {
+  const me = await member([
+    { role: "admin", maxLevel: "internal" },
+    { role: "reader", maxLevel: "internal" },
+  ]);
+  const [project, readOnly] = me.projects;
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
+
+  // The agents of the project the member writes to, its default first; none of the project it only reads.
+  await open(page, "/chats");
+  const strip = main(page).getByTestId("agent-strip");
+  await expect(strip).toHaveAttribute("data-state", "ready");
+  const agents = strip.getByTestId("agent-strip-agent");
+  await expect(agents).toHaveCount(2);
+  expect(await agents.evaluateAll((items) => items.map((item) => item.getAttribute("data-handle")))).toEqual([project, handle]);
+  await expect(strip.locator(`[data-project="${readOnly}"]`)).toHaveCount(0);
+  const reviewer = strip.locator(`[data-testid="agent-strip-agent"][data-handle="${handle}"]`);
+  await expect(reviewer).toHaveAccessibleName(`Chat with Code reviewer, @${handle} of ${project}`);
+  await expect(reviewer).toContainText("Code reviewer");
+  await reviewer.hover();
+  await expect(page.getByRole("tooltip")).toContainText(`@${handle}, ${project}`);
+
+  // Pressing it opens the direct chat, its composer focused: the agent's head, no members to add or take out.
+  await reviewer.click();
+  await page.waitForURL(/\/chats\/[0-9]+$/);
+  const chatId = Number(new URL(page.url()).pathname.split("/").at(-1));
+  const box = main(page).getByTestId("chat-composer-text");
+  await expect(box).toBeFocused();
+  await expect(box).toHaveAttribute("placeholder", "Message Code reviewer");
+  await expect(main(page).getByTestId("chat-composer-hint")).toHaveText("Every message goes to Code reviewer, no @ needed: it answers under your message.");
+  const head = main(page).getByTestId("chat-head");
+  await expect(head).toHaveAttribute("data-kind", "direct");
+  await expect(main(page).getByRole("heading", { level: 1 })).toHaveText("Code reviewer");
+  await expect(head.getByTestId("chat-avatar")).toHaveAttribute("data-face", "agent");
+  await expect(head.getByTestId("chat-agent-link")).toHaveText(`@${handle}`);
+  await expect(head.getByTestId("chat-agent-link")).toHaveAttribute("href", `/p/${project}/agents/${handle}`);
+  await expect(head.getByTestId("chat-agent-project")).toContainText(project);
+  await expect(head.getByTestId("chat-members-open")).toHaveCount(0);
+  await expect(head.getByTestId("chat-image-button")).toHaveCount(0);
+  await expect(reviewer).toHaveAttribute("aria-current", "true");
+
+  // Its row: the agent's face and name, nothing said yet.
+  const row = main(page).locator(`[data-testid="chat-row"][data-chat-id="${chatId}"]`);
+  await expect(row).toHaveAttribute("data-kind", "direct");
+  await expect(row.getByTestId("chat-row-name")).toHaveText("Code reviewer");
+  await expect(row.getByTestId("chat-avatar")).toHaveAttribute("data-face", "agent");
+  await expect(row.getByTestId("chat-row-last")).toHaveText("No messages yet");
+
+  // Details: the agent and the member for good, and the budget.
+  await head.getByTestId("chat-details-open").click();
+  const sheet = page.getByTestId("chat-members");
+  await expect(sheet.getByRole("heading", { name: "Details" })).toBeVisible();
+  await expect(sheet.getByTestId("chat-direct-note")).toContainText("start a group chat with New chat");
+  for (const control of ["chat-add-agent-select", "chat-add-person-login", "chat-remove-agent", "chat-remove-person", "chat-leave"]) {
+    await expect(sheet.getByTestId(control)).toHaveCount(0);
+  }
+  await expect(sheet.getByTestId("chat-budget-input")).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(sheet).toBeHidden();
+
+  // From another page, Enter on the agent opens the same chat again; the hub holds one.
+  await open(page, "/chats");
+  await expect(strip).toHaveAttribute("data-state", "ready");
+  await reviewer.focus();
+  await page.keyboard.press("Enter");
+  await page.waitForURL(`**/chats/${chatId}`);
+  await expect(box).toBeFocused();
+  expect((await openDirectByApi(me, handle)).id).toBe(chatId);
+  expect((await chatsOf(me)).filter((item) => item.kind === "direct").map((item) => item.id)).toEqual([chatId]);
+});
+
+test("each chat's row shows its face, name and last message; a member changes a group's image from its head, with its errors said", async ({ page, member }) => {
+  const me = await member([{ role: "writer", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const mai = await signedInPerson("mai", [project]);
+  const lan = await signedInPerson("lan", [project]);
+  const release = await createChatByApi(me, { title: "Release talk", people: [mai.login], agents: [project] });
+  const pair = await createChatByApi(me, { title: "Just us", people: [lan.login] });
+  const direct = await openDirectByApi(me, project);
+  await sendByApi(me, pair.id, "Lunch at noon?");
+  await sendByApi(mai, release.id, "The **docs** are up for review.");
+  // Lan's GitHub avatar fails to load: their initials stand in.
+  await page.route(`${GITHUB_AVATARS}/u/${lan.id}*`, (route) => route.abort());
+
+  await open(page, "/chats");
+  const rowOf = (id: number) => main(page).locator(`[data-testid="chat-row"][data-chat-id="${id}"]`);
+  // A group: two of its other members (Mai with her GitHub avatar, the agent), the last message as "author: text", unread in bold.
+  const releaseRow = rowOf(release.id);
+  await expect(releaseRow.getByTestId("chat-avatar")).toHaveAttribute("data-face", "members");
+  await expect(releaseRow.getByTestId("person-avatar").locator("img")).toHaveAttribute("src", new RegExp(`^${GITHUB_AVATARS}/u/${mai.id}\\?`));
+  await expect(releaseRow.getByTestId("agent-avatar")).toHaveCount(1);
+  await expect(releaseRow.getByTestId("chat-row-last")).toHaveText(`${mai.login}: The docs are up for review.`);
+  await expect(releaseRow).toHaveAccessibleName("Release talk, 1 unread message");
+  await expect(releaseRow).toHaveAccessibleDescription(`${mai.login}: The docs are up for review.`);
+  await expect(releaseRow.getByTestId("chat-row-name")).toHaveCSS("font-weight", "600");
+  await expect(releaseRow.getByTestId("chat-row-time")).toHaveAttribute("datetime", /.+/);
+  // One other member: that member's face, here their initials since their avatar failed; the member's own message.
+  const pairRow = rowOf(pair.id);
+  await expect(pairRow.getByTestId("person-avatar")).toHaveCount(1);
+  await expect(pairRow.getByTestId("person-avatar")).toHaveText("EL"); // e2e-lan-...
+  await expect(pairRow.getByTestId("person-avatar").locator("img")).toHaveCount(0);
+  await expect(pairRow.getByTestId("chat-row-last")).toHaveText("You: Lunch at noon?");
+  await expect(pairRow.getByTestId("chat-row-name")).toHaveCSS("font-weight", "500");
+  // A direct chat: its agent's face and name.
+  await expect(rowOf(direct.id).getByTestId("chat-avatar")).toHaveAttribute("data-face", "agent");
+
+  // The group's head: its face is the button that changes its image; the menu says what it takes.
+  await releaseRow.click();
+  await page.waitForURL(`**/chats/${release.id}`);
+  const head = main(page).getByTestId("chat-head");
+  const face = head.getByTestId("chat-image-button");
+  await expect(face).toHaveAccessibleName("Chat image: upload one");
+  await expect(face.getByTestId("chat-avatar")).toHaveAttribute("data-face", "members");
+  await face.click();
+  const menu = page.getByTestId("chat-image-menu");
+  await expect(menu).toContainText("PNG, JPEG or WebP, at most 512 KiB.");
+  await expect(menu.getByTestId("chat-image-remove")).toHaveCount(0);
+  await page.keyboard.press("Escape");
+
+  // A file of another type, then one over 512 KiB: each refused under the head before anything is sent.
+  const input = head.getByTestId("chat-image-input");
+  await input.setInputFiles({ name: "face.gif", mimeType: "image/gif", buffer: Buffer.from("GIF89a") });
+  await expect(head.getByTestId("chat-image-problem")).toHaveText("Pick a PNG, JPEG or WebP image.");
+  await input.setInputFiles({ name: "big.png", mimeType: "image/png", buffer: Buffer.concat([PIXEL_PNG, Buffer.alloc(512 * 1024)]) });
+  await expect(head.getByTestId("chat-image-problem")).toHaveText("The image is over 512 KiB.");
+  expect((await chatPageOf(me, release.id)).chat.image_url).toBeNull();
+
+  // A PNG: the head and the row show it, and Mai's list has it too.
+  await input.setInputFiles({ name: "face.png", mimeType: "image/png", buffer: PIXEL_PNG });
+  await expect(toast(page, "Chat image changed")).toBeVisible();
+  await expect(head.getByTestId("chat-image-problem")).toHaveCount(0);
+  await expect(face.getByTestId("chat-avatar")).toHaveAttribute("data-face", "image");
+  await expect(face.getByTestId("chat-image")).toBeVisible();
+  await expect(face).toHaveAccessibleName("Chat image: change or remove it");
+  await expect(releaseRow.getByTestId("chat-avatar")).toHaveAttribute("data-face", "image");
+  expect((await chatsOf(mai)).find((item) => item.id === release.id)?.image_url).toMatch(new RegExp(`^/v1/chats/${release.id}/image\\?`));
+
+  // Removed after a confirmation: the members' faces again.
+  await face.click();
+  await menu.getByTestId("chat-image-remove").click();
+  const confirm = page.getByTestId("chat-image-remove-confirm");
+  await expect(confirm.getByRole("heading", { name: "Remove the image of Release talk?" })).toBeVisible();
+  await confirm.getByRole("button", { name: "Remove image" }).click();
+  await expect(toast(page, "Chat image removed")).toBeVisible();
+  await expect(face.getByTestId("chat-avatar")).toHaveAttribute("data-face", "members");
+
+  // Mai sets one: it arrives live, without a reload.
+  await putChatImageByApi(mai, release.id, PIXEL_PNG);
+  await expect(face.getByTestId("chat-avatar")).toHaveAttribute("data-face", "image");
+  await expect(face.getByTestId("chat-image")).toBeVisible();
+});
+
+test("a direct chat reads as a chat app: the member's messages on the right, the agent's answers under them, and Reply goes on in the session", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer", color: "#16a34a" });
+  const live = await chatWorker(me, project, uniqueName("mini"), 2);
+  const chat = await openDirectByApi(me, handle);
+  await open(page, chatPath(chat.id));
+  await expect(main(page).getByTestId("chat-empty")).toContainText("every message goes to Code reviewer, and its answer shows right under yours");
+
+  // A message without @: the member's own, on the right with no face; the agent took it as a new task.
+  const box = main(page).getByTestId("chat-composer-text");
+  await box.fill("Is the wait test flaky?");
+  await box.press("Control+Enter");
+  const asked = messageOf(page, "Is the wait test flaky?");
+  await expect(asked).toHaveAttribute("data-mine", "true");
+  await expect(asked.getByTestId("person-avatar")).toHaveCount(0);
+  const runId = Number(await asked.getByTestId("mention-run-link").getAttribute("data-run-id"));
+  await claimChatRun(live, runId);
+  await agentAnswers(live, runId, "Not flaky: it waits on the clock.");
+
+  // The answer arrives live in the chat's own line, right under the message: the agent's face and name, no thread.
+  const answer = messageOf(page, "Not flaky: it waits on the clock.");
+  await expect(answer).toHaveAttribute("data-author", "agent");
+  await expect(answer).toHaveAttribute("data-mine", "false");
+  await expect(answer.getByTestId("agent-avatar")).toBeVisible();
+  await expect(answer).toContainText("Code reviewer");
+  await expect(answer.getByTestId("message-quote")).toHaveCount(0);
+  await expect(main(page).getByTestId("thread-summary")).toHaveCount(0);
+  const line = main(page).getByTestId("chat-log").getByTestId("chat-message");
+  const askedId = Number(await asked.getAttribute("data-message-id"));
+  const answerId = Number(await answer.getAttribute("data-message-id"));
+  expect(await line.evaluateAll((items) => items.map((item) => Number(item.getAttribute("data-message-id"))))).toEqual([askedId, answerId]);
+  const log = (await main(page).getByTestId("chat-log").boundingBox())!;
+  const mine = (await asked.getByTestId("message-bubble").boundingBox())!;
+  const theirs = (await answer.getByTestId("message-bubble").boundingBox())!;
+  expect(log.x + log.width - (mine.x + mine.width), "the member's bubble ends at the right").toBeLessThan(32);
+  expect(theirs.x - log.x, "the agent's bubble starts after its face, at the left").toBeLessThan(80);
+  expect(theirs.y).toBeGreaterThan(mine.y);
+
+  // Reply on the answer: the composer says what it answers and takes the focus; the reply goes on in the session.
+  await answer.hover();
+  await answer.getByTestId("message-reply").click();
+  const replying = main(page).getByTestId("chat-composer-replying");
+  await expect(replying).toContainText("Replying to Code reviewer");
+  await expect(replying).toContainText("Not flaky: it waits on the clock.");
+  await expect(box).toBeFocused();
+  await expect(main(page).getByTestId("chat-composer-hint")).toHaveText("Your reply goes on in the same session, so Code reviewer picks up where it left off.");
+  await box.press("Escape");
+  await expect(replying).toHaveCount(0);
+  await answer.hover();
+  await answer.getByTestId("message-reply").click();
+  await box.fill("And the retries?");
+  await box.press("Control+Enter");
+  await expect(replying).toHaveCount(0);
+  const followUp = messageOf(page, "And the retries?");
+  await expect(followUp).toHaveAttribute("data-mine", "true");
+  const thread = (await chatPageOf(me, chat.id, askedId)).messages;
+  expect(thread.map((item) => item.body)).toEqual(["Is the wait test flaky?", "Not flaky: it waits on the clock.", "And the retries?"]);
+  expect(thread[2].mentions.map((mention) => [mention.handle, mention.via])).toEqual([[handle, "thread"]]);
+  const followRun = thread[2].mentions[0].run_id as number;
+
+  // A new task while that turn waits; the turn's answer then comes after it, so it quotes the reply it answers.
+  await box.fill("Check the docs too?");
+  await box.press("Control+Enter");
+  await expect(messageOf(page, "Check the docs too?")).toBeVisible();
+  await claimChatRun(live, followRun);
+  await agentAnswers(live, followRun, "Retries are bounded too.");
+  const late = messageOf(page, "Retries are bounded too.");
+  const quote = late.getByTestId("message-quote");
+  await expect(quote).toHaveAccessibleName("Show the message this answers, by You: And the retries?");
+  await quote.click();
+  await expect(followUp).toHaveAttribute("data-highlighted", "true");
+  await expect(followUp).toBeFocused();
 });

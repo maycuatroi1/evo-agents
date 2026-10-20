@@ -180,6 +180,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker chat mention",
         "worker chat post",
         "worker chat react",
+        "worker chat read",
         "worker finding",
         "worker notify",
         "worker plan",
@@ -189,6 +190,7 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
         "worker playbook retire",
         "worker propose",
         "worker put",
+        "worker repo open",
         "worker step",
         "worker triage invite",
         "worker triage plan",
@@ -199,6 +201,9 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert [(p["name"], p.get("choices")) for p in printed["worker playbook retire"]["positionals"]] == [
         ("entry", None)
     ]
+    opened = printed["worker repo open"]
+    assert [(p["name"], p["required"]) for p in opened["positionals"]] == [("repo", True)]
+    assert opened["options"] == [] and opened["json"] is None, "it prints the worktree's path alone"
     put = printed["worker put"]
     assert [p["name"] for p in put["positionals"]] == ["file"]
     assert [o["flags"] for o in put["options"] if o["flags"] != ["--json"]] == [["--if-revision"]]
@@ -225,6 +230,9 @@ def test_the_commands_of_a_plan_runs_agent_are_in_the_contract():
     assert notify["--kind"]["choices"] == ["push_default_branch", "merge_default_branch"]
     assert printed["worker plan"]["json"]["schema"] == "Plan"
     assert all(printed[f"worker {name}"]["json"] is None for name in ("step", "ask", "notify"))
+    read = printed["worker chat read"]
+    assert [p["name"] for p in read["positionals"]] == ["message"] and read["json"] is None
+    assert [o["flags"] for o in read["options"]] == [["--thread"]]
 
 
 def test_the_commands_the_prompt_of_a_plan_run_names_are_in_the_contract():

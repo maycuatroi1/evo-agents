@@ -6,7 +6,7 @@ import { AgentAvatar } from "@/components/data/agent-avatar";
 import type { MentionTarget } from "@/lib/chats";
 import { cn } from "@/lib/utils";
 
-import { AuthorAvatar } from "./author";
+import { PersonAvatar } from "./faces";
 
 const GROUPS = ["agent", "project", "person"] as const;
 
@@ -68,7 +68,7 @@ export function MentionMenu({
                 )}
               >
                 {target.kind === "person" ? (
-                  <AuthorAvatar author={{ kind: "person", login: target.name, name: target.name }} size="sm" />
+                  <PersonAvatar login={target.name} src={target.avatarUrl} size="sm" />
                 ) : (
                   <AgentAvatar agent={target.agent} size="sm" />
                 )}

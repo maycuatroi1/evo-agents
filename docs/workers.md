@@ -481,22 +481,91 @@ plan it wrote or revises. A run of another kind has no chat (404). The chat live
 ## Chat runs
 
 A chat run (kind `chat`, `evo_agents.hub.chat_runs`) is one turn of an agent mentioned in a group chat (`docs/hub.md`,
-Group chats): the hub queues it, pinned to the worker of the person who mentioned the agent that it picked, with no
-plan (`plan_id` empty), its chat, the message that started it (`chat_message_id`), its hop, the branch `chat/<id>` of
-the first run of its session and the repos of its project the worker has a checkout of (none when it has none of
-them). Only that worker claims it, with `chat` in its heartbeat's `run_kinds`, and the claim hands the prompt the hub
-builds then (`chat_runs.build_chat_prompt`): the rules, the chat and its members, the repos, a snapshot of the chat of
-at most 12 KiB (the first message of the thread, the 30 latest of the thread, the 10 of the chat before it, the oldest
-left out first, as the reader clears their labels) and the message that started the run, whole. Its budget is what is
-left of the chat's for 24 hours, and 30 minutes of agent time. It ends `done` with its agent's turn, without verify
-results, never waits and is never rerun (409); a lost one is tried again with its chat. The worker posts the agent's
-last message of each turn with `POST /v1/worker/runs/{id}/chat`, which the hub keeps as the agent's message in the
-thread (and in the run's log). A message to the agent in the thread while the run is queued or held goes to its inbox;
-one that comes once it ended done, or that it ended without taking, queues the run that goes on in its session
-(`resume_of_run_id`, the session, the branch and repos, pinned to its worker), with the message in its inbox.
+Group chats): the hub queues it, pinned to the worker of the person who mentioned the agent that it picked, with no plan
+(`plan_id` empty), its chat, the message that started it (`chat_message_id`), its hop, the branch `chat/<id>` of the
+first run of its session and the repos of its project the worker has a checkout of (none when it has none of them; on a
+daemon with the feature `lazy_chat_repos`, the project's harness alone: [Repos a chat run
+opens](#repos-a-chat-run-opens)). Only that worker claims it, with `chat` in its heartbeat's `run_kinds`, and the claim
+hands the prompt the hub builds then (`chat_runs.build_chat_prompt`): the rules, the chat and its members, the repos, a
+snapshot of the chat of at most 12 KiB (the first message of the thread, the 30 latest of the thread, the 10 of the chat
+before it, or in a direct chat the 30 latest of its earlier threads, the person's messages and the agent's answers, the
+oldest left out first, as the reader clears their labels; a line counts those left out and says how to find them:
+`kg_search` with kinds `ChatMessage`, then `chat_message`, `chat_thread` or `evo-agents worker chat read`) and the
+message that started the run, whole. Its budget is what is left of the chat's for 24 hours, and 30 minutes of
+agent time. It ends `done` with its agent's turn, without verify results, never waits and is never rerun (409); a lost
+one is tried again with its chat. The worker posts the agent's last message of each turn with `POST
+/v1/worker/runs/{id}/chat`, which the hub keeps as the agent's message in the thread (and in the run's log). A message
+to the agent in the thread while the run is queued or held goes to its inbox; one that comes once it ended done, or that
+it ended without taking, queues the run that goes on in its session (`resume_of_run_id`, the session, the branch and
+repos, pinned to its worker), with the message in its inbox. A run that failed because origin declined the push at its
+end (`push_declined`, [Preflight and failure causes](#preflight-and-failure-causes)) is gone on from the same way
+(`chat_runs.GO_ON_AFTER`): the thread says why it failed, its commits wait on `chat/<id>` in the worktree, and the next
+run of the session pushes them. After any other failure the next message opens a new session.
 
-The agent of a chat run, and of a step, plan or author run, talks in chats with the worker's token
-(`evo_agents.hub.server.chat_agents`), its profile being of the run's project (409 otherwise):
+**Turns of a session.** Each run of a session is a turn of it, titled by the message that woke it
+(`chat_runs.turn_title`, `@handle in <chat>: <text>`, one line): the person's message for the first, then the
+message that woke the session, the first one the run before left untaken in its inbox, or the answer or reply that
+resumed a parked run; with no text, a run keeps the title of the run before. The session's title is its first run's,
+which the pull requests of its branch take. A run carries `session_run_id` (the id of the session's first run, which
+`chat/<id>` names), `session_turn` (1 for the first run), `session_turns` and `session_title`, read from the branch with
+no column of their own, all null for a run of another kind. `GET /v1/projects/{p}/runs` takes `group=session`, each
+session once as its latest run, and `session_run_id`, the turns of one session ([Reading runs](#reading-runs)). The
+web's Runs page shows a session as one row that opens into its turns, and a turn's page names its session.
+
+**Progress in the thread.** The daemon's notes of a chat run's setup name the step each starts, in the field `setup`
+(`chat_runs.SETUP_FIELD`): `claimed` on the claim, `checking` before the preflight ("Checking access of the run:
+..."), `opening` with `repo` on each repo's fetch, `starting` once the worktrees are ready ("The run's worktrees are
+ready: starting <runtime>."), then `opening` again for a repo the agent asks for ("The agent asks to open X.") and
+`working` once it is open or refused. The hub reads the step from the run's state and those notes, by rule
+(`chat_runs.progress_step`), and the thread shows it under the message the run took (`docs/hub.md`, Group chats,
+Progress); a note without `setup` changes nothing there.
+
+### Repos a chat run opens
+
+A daemon whose heartbeat lists `lazy_chat_repos` (`runs.LAZY_CHAT_REPOS`) gets the first run of a session with the
+project's harness alone in its `repos` (`{"repo": <harness>, "branch": "chat/<id>"}`), when its worker has a checkout
+of the harness, else with none, as for a project without a harness; the hub still picks the worker with a checkout of
+more of the project's repos first. Its prompt lists every repo of the project within 3 KiB (`chat_runs.ranked_repos`):
+those open first, then those the message that woke the run or a message of the thread the prompt shows names (as a
+whole word, in any case), then the others, each saying whether it is open, whether the worker has a checkout of it,
+and the command that opens it. The agent opens a repo before it reads or changes its code:
+
+```sh
+evo-agents worker repo open evo-agents
+# /Users/me/.evo/worker/worktrees/evo-agents-128/evo-agents
+```
+
+`evo-agents worker repo open REPO` prints the path of the repo's worktree and nothing else, the same path again for a
+repo open already. It holds no token and calls no hub: it reads `EVO_RUN_ID` and the run's record, refuses any run
+but a chat run, and asks the daemon on the run's socket, waiting up to 600 seconds. The daemon does the rest
+(`ChatRun.open_for_agent`), one repo at a time and only while the agent's turns run: it refuses a repo this worker has
+no checkout of before it asks the hub, asks the hub to add the repo to the run (`POST
+/v1/worker/runs/{id}/chat/repos`, `{"repo": NAME}`), takes the run's leases again so they cover its origin, fetches its
+checkout with them under the checkout's lock, and makes its worktree in the run's directory on `chat/<id>`, from
+origin's branch when the session pushed it, else from the default branch. It notes each repo opened ("The agent
+opened X: its worktree is P, on B.") and each refusal ("The agent asked to open X, which the run did not: ..."); a
+refusal prints one `error:` line and exits 1. When the fetch or the worktree fails after the hub added the repo, the
+agent gets the error and the run goes on; the next run of the session makes that worktree after a preflight, as a
+first turn does. The end of the turns waits for an open in flight, then the push takes the run's first repos and those
+opened, and the run that goes on in the session gets them all from the hub and adopts their worktrees.
+
+The hub's route answers 200 with `{repo, branch, added, repos}`: `added` is false, and nothing changes, for a repo the
+run works in already, and `repos` lists the run's repos as they are now, those it started with first. It answers 404
+for a run the worker does not hold or a run of another kind, 422 for a repo the project does not list (naming its
+repos), and 409 for a repo the worker has no checkout of or a run that works in 50 repos already
+(`runs.MAX_RUN_REPOS`). A repo added writes the audit row `run.open_repo`, as the worker token's user, in the run's
+project, naming `<project>/chat run:<id> repo=<name>`, and no run event: the daemon's note is the run's record of it.
+The run's leases (`POST .../credentials`), its pull requests (`POST .../chat/pulls`) and the runs after it in the
+session read the repo from `runs.repos` as for any other.
+
+A daemon that does not list the feature, as an older one, runs chat runs as before: the hub hands its chat runs every
+repo of the project its worker has a checkout of, with the prompt they had before, byte for byte. The hub reads the
+feature from the worker's last heartbeat twice: when it queues the first run of a session (its repos), and when the
+daemon claims a run (its prompt).
+
+The agent of a chat run, and of a step, plan or author run, talks in chats and reads them with the worker's token
+(`evo_agents.hub.server.chat_agents`, `evo_agents.hub.server.chat_read`), its profile being of the run's project (409
+otherwise):
 
 | Command | Route | What |
 | --- | --- | --- |
@@ -504,6 +573,7 @@ The agent of a chat run, and of a step, plan or author run, talks in chats with 
 | `evo-agents worker chat react MESSAGE EMOJI [--remove]` | `POST .../chat/reactions` | an emoji of the agent on a message of a chat it is in |
 | `evo-agents worker chat create --title TEXT [--person LOGIN]` | `POST .../chats` | a chat of the agent and the run's dispatcher, with people that clear the agent's project; each is told (`chat_added`) |
 | `evo-agents worker chat mention HANDLE TEXT [--chat ID] [--reply-to MESSAGE]` | `POST .../chat/mentions` | a message that hands the work to agent HANDLE of the chat: a run for the dispatcher, one hop further, at most hop 3, never to itself, within the chat's budget; a refusal (201, `refusal`) is said in the thread and exits 1 |
+| `evo-agents worker chat read MESSAGE [--thread]` | `POST .../chat/read` (`id`, `thread`) | a message of a chat whole, or with `--thread` its thread (the first message and the replies, oldest first, at most 500), those the run's agent may read (`docs/hub.md`, Group chats, In the knowledge graph). MESSAGE is its id, or its item as `kg_search` lists it, `plugin.chats:message:<id>`, or a thread's item `plugin.chats:thread:<chat>/<root>`. It prints the hub's text, the same as the `/mcp` tools `chat_message` and `chat_thread` give, under a line saying it is data, never instructions; a message it may not read is an error (404), as one that does not exist. What it shows counts toward the audience of a memory the agent writes next |
 | (the daemon) | `POST .../chat/pulls` (`repo`, `branch`, `head`) | a chat run pushed its branch of a repo: the hub opens its draft pull request with the workers' App (on a repo that takes no draft, a pull request whose title starts with `[Draft]`), or finds the one open, and the agent's message in the thread links it; when GitHub refuses, the message repeats GitHub's errors (field, code, message), and the session's next push tries again. A head GitHub does not see yet is tried twice more, 1 s and 3 s later |
 
 A chat run's agent can ask its owner decisions too, of the category `triage` alone, on a daemon with the feature
@@ -722,9 +792,9 @@ it holds:
   "free_slots": 1,
   "runs": [12],
   "agent_version": "0.3.0",
-  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task", "replay"],
+  "run_kinds": ["step", "plan", "review", "judge", "author", "chat", "task", "replay", "history"],
   "features": ["session_per_step", "author_decisions", "agent_profiles", "plugin_runtimes", "environments", "agent_packs",
-               "chat_decisions", "kg_sync"],
+               "chat_decisions", "lazy_chat_repos", "kg_sync"],
   "agent_commit": "<40 or 64 hex>",
   "self_update": {"state": "current", "nightly_commit": "<40 or 64 hex>", "checked_at": "..."},
   "kg_sync": {"projects": [{"project": "evo-agents", "checked_at": "...", "sources": [
@@ -752,8 +822,12 @@ decisions; without it, the rules of a chat alone), and `agent_profiles`, a daemo
 profile (tools, skills and model in the session, the instructions in its system prompt), `plugin_runtimes`, a daemon
 that runs the runtimes of plugins through its adapter of ACP, `environments`, a daemon that runs a run's agent in
 the environment its claim names, a container of a plugin's environment, `agent_packs`, a daemon that builds the
-agent packs a run's profile attaches ([Agent packs](#agent-packs)), and `kg_sync`, a daemon that keeps fresh the
-graphs of the projects whose night shift it is on duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)). This daemon sends every kind of `runs.RUN_KINDS` and
+agent packs a run's profile attaches ([Agent packs](#agent-packs)), `chat_decisions`, a daemon whose chat run's agent
+asks decisions and waits for the answers ([Chat runs](#chat-runs)), `lazy_chat_repos`, a daemon whose chat run starts
+with the project's harness alone and whose agent opens each other repo it needs with `evo-agents worker repo open`
+([Repos a chat run opens](#repos-a-chat-run-opens)); the hub hands a daemon without it every repo the worker has a
+checkout of, as before; and `kg_sync`, a daemon that keeps fresh the graphs of the projects whose night shift it is on
+duty for ([Keeping the graph fresh](#keeping-the-graph-fresh)). This daemon sends every kind of `runs.RUN_KINDS` and
 every feature of `runs.WORKER_FEATURES`. The hub keeps those it knows, `GET /v1/workers/{id}` shows them as
 `features`, and a heartbeat without it says the daemon does none of them. `agent_commit`, optional, is the commit of
 evo-agents the daemon's install was built from, 40 or 64 lowercase hexadecimal digits, and `self_update`, optional,
@@ -906,6 +980,7 @@ For the worker, with an `evw_` token and the version header:
 | `POST /v1/worker/runs/{id}/decisions` | asks the owner of a plan run or an author run it holds a decision; answers its id (404 for a step, review or judge run) |
 | `POST /v1/worker/runs/{id}/notices` | sends the plan run's owner a notice, such as a push to a default branch |
 | `POST /v1/worker/runs/{id}/chat` | posts the last message of a turn of the agent of an author run it holds to the run's chat |
+| `POST /v1/worker/runs/{id}/chat/repos` | adds a repo of the project its agent opened to a chat run it holds ([Repos a chat run opens](#repos-a-chat-run-opens)) |
 | `POST /v1/worker/runs/{id}/events` | sends a batch of events |
 | `POST /v1/worker/runs/{id}/inbox` | acknowledges messages handed to the agent, takes the waiting ones |
 | `POST /v1/worker/runs/{id}/uploads`, `/blobs` | uploads the run's log and diff, records them on the run |
@@ -1004,16 +1079,20 @@ A member with a grant on the project reads its runs, of the plans it may read th
 (`X-Evo-Sink`, the project's hub sink without one), by the plan's label as the hub holds it now: a run of a plan it
 may not read, or of a plan no longer on the hub, reads as no run (404), and a hub admin without a grant gets 403.
 
-`GET /v1/projects/{p}/runs` lists runs newest first. It takes `state` (repeated for several), `plan_id`, `step` (a
-step key), `worker_id`, `dispatched_by` (a login, in any case) and `q`, text found in the step's title, the step key,
-the plan, the repo, the branch, the worker's name, the dispatcher's login or the error (`%` and `_` taken literally),
-or a run number such as `#12`; and `limit` (1 to 200, 50 by default) and `offset`. The answer has the page of
-`runs`, the `total` that match every filter, and `counts`, the runs in each of the ten states that match the other
-filters, every state present: what the summary cards and the state facet show, so picking a state does not change
-the counts beside it. `GET .../runs/{id}` shows one run. A run carries the step's `title`, `last_seq` (its latest
-event, 0 before the first), `log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`,
-`takeover_requested_at`, `handback_requested_at`). A queued attempt whose run before it was lost on a worker that is
-not steady has `steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)).
+`GET /v1/projects/{p}/runs` lists runs newest first. It takes `state` (repeated for several), `plan_id`, `step` (a step
+key), `worker_id`, `dispatched_by` (a login, in any case) and `q`, text found in the step's title, the step key, the
+plan, the repo, the branch, the worker's name, the dispatcher's login or the error (`%` and `_` taken literally), or a
+run number such as `#12`; `session_run_id`, the turns of the chat session that run started, and `group`, whose one value
+`session` lists each chat session once, as its latest run, when any of its turns matches `q` (the state filter, the
+counts and the total read that run's state; every other run is listed as it is); and `limit` (1 to 200, 50 by default)
+and `offset`. The answer has the page of `runs`, the `total` that match every filter, and `counts`, the runs in each of
+the ten states that match the other filters, every state present: what the summary cards and the state facet show, so
+picking a state does not change the counts beside it. `GET .../runs/{id}` shows one run. A chat run carries its session,
+`session_run_id`, `session_turn`, `session_turns` and `session_title` ([Chat runs](#chat-runs), Turns of a session),
+null for any other run. A run carries the step's `title`, `last_seq` (its latest event, 0 before the first),
+`log_sha256` and `diff_sha256`, and the owner's open asks (`cancel_requested_at`, `takeover_requested_at`,
+`handback_requested_at`). A queued attempt whose run before it was lost on a worker that is not steady has
+`steady_wait`, `{worker_id, worker, steady_at}`, and null otherwise (see [Run states](#run-states)).
 
 `GET /v1/projects/{p}/runs/stats` counts, for the web's charts, the runs of the same plans that ended on each of the
 last `days` UTC days, today included (7 to 90, 30 by default; 422 outside). Each day of `by_day`, oldest first, and
@@ -1614,8 +1693,8 @@ codex-cli 0.153.4, each listing the skills and connecting the MCP servers of a p
    in the worktree, and are named in a `system` event of the run (`left_out`); a copy the agent edited is its work
    and is committed. The daemon then refuses to push a detached HEAD, a branch the agent switched to, or a default
    branch; and pushes `HEAD` to the plan's branch on origin, never forced and never merged. A push the remote refuses
-   (not a fast-forward, say: failure_cause `push_conflict`) fails the run; one it refuses for its credential, on an
-   origin a lease covers, is tried
+   (not a fast-forward, say: failure_cause `push_conflict`; declined by a hook or a rule of origin: `push_declined`)
+   fails the run; one it refuses for its credential, on an origin a lease covers, is tried
    once more after the daemon took the run's leases again (see [docs/credentials.md](credentials.md)).
 5. Once every event of the run is acknowledged, it reports `done` (approval `auto`) or `review`, with the commit,
    the diffstat, the verify results, the agent's summary and its usage. It then uploads the run's log and diff
@@ -1972,8 +2051,23 @@ A chat run (kind `chat`, Chat runs above) runs headless; the daemon fails it in 
 repo of its claim it has no checkout of (the prompt names them), takes the run's leases for the others, checks it can
 read each, and makes the run's directory with a writable worktree of each on the branch `chat/<id>`, from origin's
 branch when the session pushed it already, else from origin's default branch (`evo-run/<run>/<repo>` when the branch is
-checked out elsewhere; the push still goes to it). A run that goes on in the session of an earlier one adopts that
-run's directory, worktrees and session. The agent starts there with `EVO_RUN_KIND=chat`; on Claude Code its prompt is
+checked out elsewhere; the push still goes to it). The preflight asks the origins, and the fetches and worktrees are
+made, several repos at a time, at most 8 (`runner/parallel.py`, `GIT_AT_ONCE`), as for every kind of run ([Preflight
+and failure causes](#preflight-and-failure-causes)).
+
+A run that goes on in the session of an earlier one adopts that run's directory, worktrees and session, and starts
+lighter. It takes leases of its own, but asks no origin before its agent starts: for each repo whose worktree it
+adopted, the preflight leaves out `git ls-remote` ("Preflight passed: N repo(s) (K left to their fetch: the run goes
+on in their worktrees)."), and the fetch of the checkout under its lock, several at a time ("Fetching origin of the N
+repos the run goes on in, K at a time."), is the check that git reads it; only the push at the run's end asks origin
+to take a push, as on every turn. A fetch that
+fails fails the run with the cause `credentials` or `checkout`, as on a first turn. The adopted worktree itself is not
+changed. A repo whose worktree is gone, or that the run has no adopted worktree of, gets the preflight and a new
+worktree, as on a first turn; the other checks of the preflight (a repo the project lists no origin for, the
+environment) still run on every turn. On a daemon with `lazy_chat_repos` the agent opens the other repos it needs
+([Repos a chat run opens](#repos-a-chat-run-opens)).
+
+The agent starts there with `EVO_RUN_KIND=chat`; on Claude Code its prompt is
 delivered verbatim (`verbatim_prompts`, so an `@path` in the chat's words never makes it read a file) and
 AskUserQuestion is in `--disallowedTools`. After each turn the daemon posts the agent's last message, and the messages
 of the thread that came while it worked and that it did not take start another turn in the same session
@@ -1981,7 +2075,10 @@ of the thread that came while it worked and that it did not take start another t
 <title>`, pushes the branch of each repo whose HEAD moved from where the worktree started (`gitops.check_push`, kind
 `chat`: the branch `chat/<n>` alone, never a default branch, never forced), tells the hub of each push that moved the
 branch (`POST .../chat/pulls`), and reports `done`. The worktrees stay on the branch for the next run of the session,
-until the cleanup of runs older than 7 days removes them.
+until the cleanup of runs older than 7 days removes them. The commit comes before the push, so a push origin refuses
+fails the run and leaves the commit on `chat/<n>` in the worktree; when origin declined it by a rule of its own (a
+hook, a protected branch, a ruleset), the cause is `push_declined` and the next message of the thread goes on in the
+session, whose next run pushes the commit again.
 
 ### The Curator's runs on the machine
 
@@ -2093,8 +2190,15 @@ seconds reads as a sleep too, which only delays claims.
 
 ### Preflight and failure causes
 
-Every run (of one step, plan, review, judge and author) checks what it needs once it holds its leases, before it
-fetches anything and before its agent starts (`evo_agents.worker.preflight`):
+Every run (of one step, plan, review, judge, author, chat and task) checks what it needs once it holds its leases,
+before it fetches anything and before its agent starts (`evo_agents.worker.preflight`). It asks the origins of its
+repos several at a time, at most 8 (`runner/parallel.py`, `GIT_AT_ONCE`), each repo's git commands one after the
+other, so a run has at most 8 git processes at once; the fetches and worktrees of a run of several repos are made the
+same way ("Making the worktrees of N repos, K at a time."), each under the lock of its checkout. The repos start in
+the run's order, a cancel or the timeout is checked before each, and once one fails no other starts, those started
+finish and the error of the first in the run's order is the run's, as when they went one by one. A chat run that goes
+on in a session's worktrees leaves git's checks of those repos to their fetch ([A chat run on the
+machine](#a-chat-run-on-the-machine)). The checks:
 
 - each repo of the run has an origin in the project: a repo the hub's answer for the leases names missing with no
   origin is one the project lists none for, and no credential can be leased for it;
@@ -2135,6 +2239,7 @@ The causes a failed run's report gives (`failure_cause`, `runs.FAILURE_CAUSES`):
 | `missing_tool` | a program a verify command or a hidden check calls is not on PATH (preflight), or a verify command exited 127 |
 | `environment` | the run's claim names a plugin's environment, a container, that the worker cannot run its agent in: no container engine, one that does not answer, an image it cannot pull, a kind or mode of run a container does not take (preflight) |
 | `push_conflict` | the remote branch moved on and the run's own commits could not go on top of it: on a default branch the plan names, they did not rebase or their verify failed after the rebase, and are on `evo-run/<run>`; on another branch, the remote refused the push |
+| `push_declined` | origin declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset: git's `[remote rejected]`), neither for its credential nor because the branch moved on; the error ends with origin's reason, and the commits are still in the run's worktree. A chat run that failed so goes on in its session at the next message, whose run pushes again ([Chat runs](#chat-runs)); a triage agent asks the owner rather than rerun it |
 | `verify_failed` | a verify command the daemon ran again exited other than 0 |
 | `timeout` | it ran past its timeout |
 | `cost_cap`, `turn_cap`, `time_cap` | the agent stopped at that cap of the run's budget |

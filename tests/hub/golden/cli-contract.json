@@ -1079,7 +1079,9 @@
           "restricted",
           "last_seq",
           "last_read_seq",
-          "budget_usd"
+          "budget_usd",
+          "kind",
+          "image_url"
         ],
         "schema": "Chat"
       }
@@ -1107,7 +1109,12 @@
           "last_seq",
           "unread",
           "people",
-          "agents"
+          "agents",
+          "kind",
+          "image_url",
+          "direct_agent",
+          "faces",
+          "last_message"
         ],
         "schema": "ChatSummary"
       }
@@ -1168,7 +1175,8 @@
           "mentions",
           "reactions",
           "label",
-          "created_at"
+          "created_at",
+          "progress"
         ],
         "schema": "GroupMessage"
       }
@@ -1230,7 +1238,8 @@
           "mentions",
           "reactions",
           "label",
-          "created_at"
+          "created_at",
+          "progress"
         ],
         "schema": "GroupMessage"
       }
@@ -5343,7 +5352,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5510,7 +5523,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5610,7 +5627,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -5927,7 +5948,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6027,7 +6052,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6127,7 +6156,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6520,7 +6553,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6636,7 +6673,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6785,7 +6826,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -6885,7 +6930,11 @@
           "last_activity_at",
           "chat_id",
           "chat_message_id",
-          "hop"
+          "hop",
+          "session_run_id",
+          "session_turn",
+          "session_turns",
+          "session_title"
         ],
         "schema": "Run"
       }
@@ -8784,6 +8833,28 @@
       ],
       "json": null
     },
+    "worker chat read": {
+      "positionals": [
+        {
+          "name": "message",
+          "metavar": "MESSAGE",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [
+        {
+          "flags": [
+            "--thread"
+          ],
+          "value": null,
+          "required": false,
+          "repeatable": false
+        }
+      ],
+      "json": null
+    },
     "worker finding": {
       "positionals": [],
       "options": [
@@ -9224,6 +9295,19 @@
         ],
         "schema": "evo_agents__hub__server__plans__Written"
       }
+    },
+    "worker repo open": {
+      "positionals": [
+        {
+          "name": "repo",
+          "metavar": "REPO",
+          "value": "string",
+          "required": true,
+          "repeatable": false
+        }
+      ],
+      "options": [],
+      "json": null
     },
     "worker step": {
       "positionals": [
@@ -12820,6 +12904,126 @@
               "description": "the sink reading the memories (read rule)"
             }
           ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__memories__Written"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/evo_agents__hub__server__memories__Conflict"
+                  }
+                }
+              },
+              "description": "Conflict"
+            }
+          }
+        }
+      },
+      "/v1/memories/{memory_id}/audience": {
+        "put": {
+          "tags": [
+            "memories"
+          ],
+          "summary": "Lower Audience",
+          "description": "Lower the audience of memory ``memory_id`` by hand, to a part of it: an admin of its project who reads it\nalone, with the audit row ``memory.audience``. Any other write keeps or raises it (``put``).",
+          "operationId": "lower_audience_v1_memories__memory_id__audience_put",
+          "parameters": [
+            {
+              "name": "memory_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Memory Id"
+              }
+            },
+            {
+              "name": "sink",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 100,
+                "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+                "description": "the sink reading the memories (read rule)",
+                "default": "claude-code@anthropic",
+                "title": "Sink"
+              },
+              "description": "the sink reading the memories (read rule)"
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AudienceIn"
+                }
+              }
+            }
+          },
           "responses": {
             "200": {
               "description": "Successful Response",
@@ -16958,6 +17162,45 @@
                 "default": 0,
                 "title": "Offset"
               }
+            },
+            {
+              "name": "session_run_id",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "maximum": 9223372036854775807,
+                    "minimum": 1
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "only the runs of the chat session this run started (Run.session_run_id)",
+                "title": "Session Run Id"
+              },
+              "description": "only the runs of the chat session this run started (Run.session_run_id)"
+            },
+            {
+              "name": "group",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "const": "session",
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "session: each chat session once, as its latest run, listed when any of its runs matches the search; the state filter, the counts and the total read that run's state. Every other run as it is",
+                "title": "Group"
+              },
+              "description": "session: each chat session once, as its latest run, listed when any of its runs matches the search; the state filter, the counts and the total read that run's state. Every other run as it is"
             },
             {
               "name": "X-Evo-Sink",
@@ -35071,6 +35314,102 @@
           }
         }
       },
+      "/v1/chats/direct/{handle}": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Open Direct",
+          "description": "The caller's direct chat with agent ``handle``: the one there is (200), or one made now (201).",
+          "operationId": "open_direct_v1_chats_direct__handle__put",
+          "parameters": [
+            {
+              "name": "handle",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{0,99}$",
+                "description": "an agent's handle, @ left out",
+                "title": "Handle"
+              },
+              "description": "an agent's handle, @ left out"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "201": {
+              "description": "the direct chat, made now",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/people/{login}": {
         "put": {
           "tags": [
@@ -35441,13 +35780,313 @@
           }
         }
       },
+      "/v1/chats/{chat_id}/image": {
+        "put": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Put Image",
+          "description": "Set the group chat's image, a PNG, JPEG or WebP image: its members see it in their list and its header.",
+          "operationId": "put_image_v1_chats__chat_id__image_put",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AvatarUpload"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "413": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Request Entity Too Large"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            }
+          }
+        },
+        "delete": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Delete Image",
+          "description": "Take the group chat's image off: the web draws the faces of its members again.",
+          "operationId": "delete_image_v1_chats__chat_id__image_delete",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/Chat"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        },
+        "get": {
+          "tags": [
+            "chats"
+          ],
+          "summary": "Get Image",
+          "description": "The group chat's image, for its members; 404 when it has none.",
+          "operationId": "get_image_v1_chats__chat_id__image_get",
+          "parameters": [
+            {
+              "name": "chat_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Chat Id"
+              }
+            },
+            {
+              "name": "if-none-match",
+              "in": "header",
+              "required": false,
+              "schema": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ],
+                "description": "the ETag of the image the browser holds",
+                "title": "If-None-Match"
+              },
+              "description": "the ETag of the image the browser holds"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "image/png": {},
+                "image/jpeg": {},
+                "image/webp": {}
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "304": {
+              "description": "the image the browser holds, named by If-None-Match, is the chat's still"
+            },
+            "403": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Forbidden"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "503": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Service Unavailable"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
       "/v1/chats/{chat_id}/events": {
         "get": {
           "tags": [
             "chats"
           ],
           "summary": "List Events",
-          "description": "The chat's events after ``after``, oldest first; ``more`` when there are later ones.",
+          "description": "The chat's events after ``after``, oldest first; ``more`` when there are later ones. With ``progress``, the\nprogress of the agents' runs on their way under the messages they took, as the reader may read them.",
           "operationId": "list_events_v1_chats__chat_id__events_get",
           "parameters": [
             {
@@ -35486,6 +36125,18 @@
                 "default": 500,
                 "title": "Limit"
               }
+            },
+            {
+              "name": "progress",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)",
+                "default": false,
+                "title": "Progress"
+              },
+              "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)"
             }
           ],
           "responses": {
@@ -35558,7 +36209,7 @@
             "chats"
           ],
           "summary": "Stream",
-          "description": "The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no\nlonger read the chat. A ``: ping`` comment keeps an idle stream open.",
+          "description": "The chat's events as server-sent events, each with its seq as id; an ``end`` event once the reader may no\nlonger read the chat. A ``: ping`` comment keeps an idle stream open. With ``progress``, a ``progress`` event too\n(``ChatProgressNow``, no id): at once, then each time the progress of the agents' runs under their messages\nchanged.",
           "operationId": "stream_v1_chats__chat_id__stream_get",
           "parameters": [
             {
@@ -35585,6 +36236,18 @@
                 "title": "After"
               },
               "description": "where a first connection starts"
+            },
+            {
+              "name": "progress",
+              "in": "query",
+              "required": false,
+              "schema": {
+                "type": "boolean",
+                "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)",
+                "default": false,
+                "title": "Progress"
+              },
+              "description": "also the progress of the agents' runs on their way under the messages they took (ChatProgress)"
             },
             {
               "name": "Last-Event-ID",
@@ -36097,6 +36760,176 @@
                 }
               },
               "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat/repos": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Open Repo",
+          "description": "The worker opened repo ``repo`` of the project in the chat run, as its agent asked: the hub adds it to the run's\nrepos on the run's branch (see the module's docstring).",
+          "operationId": "open_repo_v1_worker_runs__run_id__chat_repos_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ChatRepoIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatRepo"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unprocessable Entity"
+            }
+          }
+        }
+      },
+      "/v1/worker/runs/{run_id}/chat/read": {
+        "post": {
+          "tags": [
+            "worker protocol"
+          ],
+          "summary": "Read Chat",
+          "description": "A message of a chat, or its thread, whole, as the agent of the run may read it (see the module's docstring).",
+          "operationId": "read_chat_v1_worker_runs__run_id__chat_read_post",
+          "parameters": [
+            {
+              "name": "run_id",
+              "in": "path",
+              "required": true,
+              "schema": {
+                "type": "integer",
+                "maximum": 9223372036854775807,
+                "minimum": 1,
+                "title": "Run Id"
+              }
+            }
+          ],
+          "requestBody": {
+            "required": true,
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AgentReadIn"
+                }
+              }
+            }
+          },
+          "responses": {
+            "200": {
+              "description": "Successful Response",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ChatReading"
+                  }
+                }
+              }
+            },
+            "401": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Unauthorized"
+            },
+            "404": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Not Found"
+            },
+            "409": {
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/ErrorBody"
+                  }
+                }
+              },
+              "description": "Conflict"
+            },
+            "422": {
+              "description": "Validation Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/HTTPValidationError"
+                  }
+                }
+              }
             }
           }
         }
@@ -40930,6 +41763,28 @@
           ],
           "title": "AgentReactionIn"
         },
+        "AgentReadIn": {
+          "properties": {
+            "id": {
+              "type": "string",
+              "maxLength": 64,
+              "pattern": "^(?:(?:plugin\\.chats:message:)?[1-9][0-9]{0,18}|plugin\\.chats:thread:[1-9][0-9]{0,18}/[1-9][0-9]{0,18})$",
+              "title": "Id",
+              "description": "a message's id, plugin.chats:message:<id>, or a thread's item plugin.chats:thread:<chat>/<root>"
+            },
+            "thread": {
+              "type": "boolean",
+              "title": "Thread",
+              "description": "the message's thread: its first message and the replies",
+              "default": false
+            }
+          },
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "title": "AgentReadIn"
+        },
         "AgentType": {
           "properties": {
             "plugin": {
@@ -41306,6 +42161,34 @@
           ],
           "title": "ArmResult",
           "description": "What one arm of a replay found: whether the step's verify passed on the agent's work, and what the agent took."
+        },
+        "AudienceIn": {
+          "properties": {
+            "audience": {
+              "items": {
+                "type": "string",
+                "maxLength": 200,
+                "pattern": "^(chat:[1-9][0-9]*|grant:[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.-]*)$"
+              },
+              "type": "array",
+              "maxItems": 256,
+              "title": "Audience",
+              "description": "what the memory's audience becomes: a part of it, [] for none"
+            },
+            "if_revision": {
+              "type": "integer",
+              "maximum": 2147483647.0,
+              "minimum": 1.0,
+              "title": "If Revision",
+              "description": "the revision last seen"
+            }
+          },
+          "type": "object",
+          "required": [
+            "audience",
+            "if_revision"
+          ],
+          "title": "AudienceIn"
         },
         "AuditCounts": {
           "properties": {
@@ -43222,6 +44105,27 @@
               "type": "number",
               "title": "Budget Usd",
               "description": "what the runs of its agents may cost in 24 hours, as their usage says; its creator changes it"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "group",
+                "direct"
+              ],
+              "title": "Kind",
+              "description": "group: members are added and removed; direct: one person and one agent, for good"
+            },
+            "image_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Image Url",
+              "description": "the image its members set, on this hub; null for none, and always for a direct chat"
             }
           },
           "type": "object",
@@ -43236,7 +44140,9 @@
             "restricted",
             "last_seq",
             "last_read_seq",
-            "budget_usd"
+            "budget_usd",
+            "kind",
+            "image_url"
           ],
           "title": "Chat"
         },
@@ -43391,6 +44297,18 @@
               "title": "Deleted",
               "description": "an agent deleted since: it takes no new work, and keeps its name",
               "default": false
+            },
+            "avatar_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avatar Url",
+              "description": "a person's GitHub avatar; null for a login that never signed in, an agent or the hub"
             }
           },
           "type": "object",
@@ -43450,7 +44368,8 @@
                 "reaction_added",
                 "reaction_removed",
                 "member_added",
-                "member_removed"
+                "member_removed",
+                "image_changed"
               ],
               "title": "Kind"
             },
@@ -43489,6 +44408,17 @@
                   "type": "null"
                 }
               ]
+            },
+            "image": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatImageChange"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "an image_changed event's image"
             }
           },
           "type": "object",
@@ -43515,6 +44445,21 @@
             "more": {
               "type": "boolean",
               "title": "More"
+            },
+            "progress": {
+              "anyOf": [
+                {
+                  "items": {
+                    "$ref": "#/components/schemas/ChatProgress"
+                  },
+                  "type": "array"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Progress",
+              "description": "with progress=true: the progress of every message of the chat whose run is on its way now"
             }
           },
           "type": "object",
@@ -43524,6 +44469,88 @@
             "more"
           ],
           "title": "ChatEvents"
+        },
+        "ChatImageChange": {
+          "properties": {
+            "image_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Image Url",
+              "description": "the chat's image now; null once it was taken off"
+            },
+            "by": {
+              "type": "string",
+              "title": "By",
+              "description": "the person who set it or took it off"
+            }
+          },
+          "type": "object",
+          "required": [
+            "image_url",
+            "by"
+          ],
+          "title": "ChatImageChange"
+        },
+        "ChatLastMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "thread_root_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Thread Root Id"
+            },
+            "author": {
+              "$ref": "#/components/schemas/ChatAuthor"
+            },
+            "preview": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Preview",
+              "description": "its text as one line without markdown, at most 140 characters, an ellipsis last when cut; null when the reader does not clear its label"
+            },
+            "hidden": {
+              "type": "boolean",
+              "title": "Hidden",
+              "description": "the reader does not clear its label: its text is left out"
+            },
+            "created_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Created At"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "thread_root_id",
+            "author",
+            "preview",
+            "hidden",
+            "created_at"
+          ],
+          "title": "ChatLastMessage",
+          "description": "The latest message of a chat's main line, as its list shows it: the messages that start no thread, and in a\ndirect chat its threads too, whose answers the web shows under the message they answer."
         },
         "ChatMemberChange": {
           "properties": {
@@ -43566,7 +44593,8 @@
                     "login",
                     "handle",
                     "project",
-                    "thread"
+                    "thread",
+                    "direct"
                   ]
                 },
                 {
@@ -43766,13 +44794,26 @@
               "type": "string",
               "format": "date-time",
               "title": "Added At"
+            },
+            "avatar_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Avatar Url",
+              "description": "their GitHub avatar; null for a login that never signed in"
             }
           },
           "type": "object",
           "required": [
             "login",
             "added_by",
-            "added_at"
+            "added_at",
+            "avatar_url"
           ],
           "title": "ChatPerson"
         },
@@ -43810,6 +44851,79 @@
             "seq"
           ],
           "title": "ChatPosted"
+        },
+        "ChatProgress": {
+          "properties": {
+            "message_id": {
+              "type": "integer",
+              "title": "Message Id",
+              "description": "the message the run took: it started the run, or waits in its inbox"
+            },
+            "run_id": {
+              "type": "integer",
+              "title": "Run Id"
+            },
+            "handle": {
+              "type": "string",
+              "title": "Handle",
+              "description": "the agent's, @ left out"
+            },
+            "step": {
+              "type": "string",
+              "enum": [
+                "waiting",
+                "claimed",
+                "checking",
+                "opening",
+                "starting",
+                "working",
+                "inbox"
+              ],
+              "title": "Step",
+              "description": "waiting: for its worker; claimed: by its worker; checking: access to the run's repos; opening: a repo; starting: the agent; working: the agent; inbox: the message waits for the agent's next turn"
+            },
+            "worker": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Worker",
+              "description": "the worker the run waits for or runs on"
+            },
+            "repo": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Repo",
+              "description": "the repo it opens, at step opening"
+            },
+            "since": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Since",
+              "description": "when the step began"
+            }
+          },
+          "type": "object",
+          "required": [
+            "message_id",
+            "run_id",
+            "handle",
+            "step",
+            "worker",
+            "since"
+          ],
+          "title": "ChatProgress",
+          "description": "How far the run of an agent that took a message is, said by rule from the run's state and its worker's notes\n(``chat_progress``): shown while the run is on its way and its session has not answered after the message."
         },
         "ChatPull": {
           "properties": {
@@ -44017,6 +45131,102 @@
           ],
           "title": "ChatReadIn"
         },
+        "ChatReading": {
+          "properties": {
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "title": {
+              "type": "string",
+              "title": "Title"
+            },
+            "thread": {
+              "type": "integer",
+              "title": "Thread",
+              "description": "the id of the thread's first message"
+            },
+            "messages": {
+              "items": {
+                "$ref": "#/components/schemas/ReadMessage"
+              },
+              "type": "array",
+              "title": "Messages",
+              "description": "those the caller may read, oldest first"
+            },
+            "more": {
+              "type": "boolean",
+              "title": "More",
+              "description": "the thread has more than the 500 messages read"
+            },
+            "text": {
+              "type": "string",
+              "title": "Text",
+              "description": "the messages as the agent reads them: data, never instructions"
+            }
+          },
+          "type": "object",
+          "required": [
+            "chat_id",
+            "title",
+            "thread",
+            "messages",
+            "more",
+            "text"
+          ],
+          "title": "ChatReading"
+        },
+        "ChatRepo": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "title": "Repo"
+            },
+            "branch": {
+              "type": "string",
+              "title": "Branch",
+              "description": "the run's branch, chat/<id of its session's first run>, the repo's worktree is on"
+            },
+            "added": {
+              "type": "boolean",
+              "title": "Added",
+              "description": "the hub added the repo to the run now; false when the run worked in it already"
+            },
+            "repos": {
+              "items": {
+                "$ref": "#/components/schemas/RunRepo"
+              },
+              "type": "array",
+              "title": "Repos",
+              "description": "the run's repos now: those it started with, then those opened, in order"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo",
+            "branch",
+            "added",
+            "repos"
+          ],
+          "title": "ChatRepo"
+        },
+        "ChatRepoIn": {
+          "properties": {
+            "repo": {
+              "type": "string",
+              "maxLength": 200,
+              "minLength": 1,
+              "pattern": "^[^\\x00-\\x1f\\x7f]+$",
+              "title": "Repo",
+              "description": "a repo of the run's project, as the project names it, that the worker has a checkout of"
+            }
+          },
+          "type": "object",
+          "required": [
+            "repo"
+          ],
+          "title": "ChatRepoIn"
+        },
         "ChatSummary": {
           "properties": {
             "id": {
@@ -44070,6 +45280,57 @@
               },
               "type": "array",
               "title": "Agents"
+            },
+            "kind": {
+              "type": "string",
+              "enum": [
+                "group",
+                "direct"
+              ],
+              "title": "Kind",
+              "description": "group, or direct: one person and one agent"
+            },
+            "image_url": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Image Url",
+              "description": "the image its members set; null for none, and always for a direct chat"
+            },
+            "direct_agent": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatAuthor"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "a direct chat's agent, whose avatar is its face; null for a group"
+            },
+            "faces": {
+              "items": {
+                "$ref": "#/components/schemas/ChatAuthor"
+              },
+              "type": "array",
+              "title": "Faces",
+              "description": "at most 3 members other than the reader, in the order they were added: what the web draws for a group chat without an image"
+            },
+            "last_message": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/ChatLastMessage"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "description": "the latest message of its main line; null for none"
             }
           },
           "type": "object",
@@ -44082,7 +45343,12 @@
             "last_seq",
             "unread",
             "people",
-            "agents"
+            "agents",
+            "kind",
+            "image_url",
+            "direct_agent",
+            "faces",
+            "last_message"
           ],
           "title": "ChatSummary"
         },
@@ -47284,6 +48550,14 @@
               "type": "string",
               "format": "date-time",
               "title": "Created At"
+            },
+            "progress": {
+              "items": {
+                "$ref": "#/components/schemas/ChatProgress"
+              },
+              "type": "array",
+              "title": "Progress",
+              "description": "the agents' runs that took it and are on their way, as the reader may read those runs, when it was read; a stream asked for progress keeps it current. Empty in what the worker's routes answer"
             }
           },
           "type": "object",
@@ -50280,6 +51554,24 @@
               ],
               "title": "If Revision",
               "description": "the revision last seen; left out to create the memory"
+            },
+            "audience": {
+              "anyOf": [
+                {
+                  "items": {
+                    "type": "string",
+                    "maxLength": 200,
+                    "pattern": "^(chat:[1-9][0-9]*|grant:[a-z0-9][a-z0-9_.-]*:[A-Za-z0-9][A-Za-z0-9_.-]*)$"
+                  },
+                  "type": "array",
+                  "maxItems": 256
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Audience",
+              "description": "what the writer read, chat:<id> and grant:<project>:<level>: added to the memory's audience"
             }
           },
           "type": "object",
@@ -55899,6 +57191,71 @@
           ],
           "title": "RateLimitReport"
         },
+        "ReadMessage": {
+          "properties": {
+            "id": {
+              "type": "integer",
+              "title": "Id"
+            },
+            "chat_id": {
+              "type": "integer",
+              "title": "Chat Id"
+            },
+            "seq": {
+              "type": "integer",
+              "title": "Seq"
+            },
+            "thread": {
+              "type": "integer",
+              "title": "Thread",
+              "description": "the id of its thread's first message, its own for the first"
+            },
+            "author_kind": {
+              "type": "string",
+              "title": "Author Kind",
+              "description": "person, agent or hub"
+            },
+            "author": {
+              "type": "string",
+              "title": "Author",
+              "description": "a login, an @handle, or hub"
+            },
+            "run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Run Id",
+              "description": "the run of an agent's message"
+            },
+            "sent_at": {
+              "type": "string",
+              "format": "date-time",
+              "title": "Sent At"
+            },
+            "body": {
+              "type": "string",
+              "title": "Body"
+            }
+          },
+          "type": "object",
+          "required": [
+            "id",
+            "chat_id",
+            "seq",
+            "thread",
+            "author_kind",
+            "author",
+            "run_id",
+            "sent_at",
+            "body"
+          ],
+          "title": "ReadMessage"
+        },
         "ReadRequest": {
           "properties": {
             "ids": {
@@ -57906,6 +59263,54 @@
               ],
               "title": "Hop",
               "description": "a chat run's hop: 1 for a person's mention, one more for each agent's mention after it (at most 3); null for any other run"
+            },
+            "session_run_id": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Run Id",
+              "description": "a chat run's session: the id of its first run, which its branch chat/<id> names (the run's own id for the first); null for any other run"
+            },
+            "session_turn": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Turn",
+              "description": "a chat run's turn in its session: 1 for its first run, one more for each after it; null for any other run"
+            },
+            "session_turns": {
+              "anyOf": [
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Turns",
+              "description": "the runs of a chat run's session so far; null for another run"
+            },
+            "session_title": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Session Title",
+              "description": "the title of a chat run's session, its first run's, which the pull requests of its branch take; each run after it is titled by the message that woke it. Null for any other run"
             },
             "machine": {
               "anyOf": [

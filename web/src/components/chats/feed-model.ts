@@ -1,4 +1,4 @@
-import type { ChatAuthor, ChatEvent, ChatPage, ChatReaction, GroupMessage } from "@/lib/chats";
+import type { ChatAuthor, ChatEvent, ChatImageChange, ChatPage, ChatProgress, ChatReaction, GroupMessage } from "@/lib/chats";
 
 /**
  * A chat's messages as the page holds them: what the first page, older pages and threads read, kept current by the
@@ -116,13 +116,36 @@ export function withReactions(feed: Feed, message: GroupMessage): Feed {
   return { ...feed, entries };
 }
 
-/** What applying events changed beyond the messages: whether a member was added or removed. */
-export type Applied = { feed: Feed; members: boolean };
+const sameStep = (a: ChatProgress, b: ChatProgress) =>
+  a.run_id === b.run_id && a.step === b.step && a.worker === b.worker && (a.repo ?? null) === (b.repo ?? null) && a.since === b.since;
+
+/**
+ * `feed` with the progress the chat's stream (or a read of its events) sent: that of every message of the chat whose
+ * agent's run is on its way, so a message held that it leaves out has none now. A message read or brought after it
+ * carries its own. Only the messages whose progress changed are replaced.
+ */
+export function withProgress(feed: Feed, progress: readonly ChatProgress[]): Feed {
+  const byMessage = new Map<number, ChatProgress[]>();
+  for (const item of progress) byMessage.set(item.message_id, [...(byMessage.get(item.message_id) ?? []), item]);
+  let entries: Map<number, FeedEntry> | null = null;
+  for (const [id, entry] of feed.entries) {
+    const held = entry.message.progress ?? [];
+    const next = byMessage.get(id) ?? [];
+    if (held.length === next.length && held.every((item, at) => sameStep(item, next[at]))) continue;
+    entries ??= new Map(feed.entries);
+    entries.set(id, { ...entry, message: { ...entry.message, progress: next } });
+  }
+  return entries ? { ...feed, entries } : feed;
+}
+
+/** What applying events changed beyond the messages: whether a member was added or removed, and the chat's image now. */
+export type Applied = { feed: Feed; members: boolean; image: ChatImageChange | null };
 
 /** `feed` with the chat's events after its last one; an event at or before it is a repeat and changes nothing. */
 export function applyEvents(feed: Feed, events: readonly ChatEvent[], me: string | null): Applied {
   let next = feed;
   let members = false;
+  let image: ChatImageChange | null = null;
   for (const event of events) {
     if (event.seq <= next.lastSeq) continue;
     next = { ...next, lastSeq: event.seq };
@@ -137,9 +160,11 @@ export function applyEvents(feed: Feed, events: readonly ChatEvent[], me: string
       next = { ...next, entries };
     } else if (event.kind === "member_added" || event.kind === "member_removed") {
       members = true;
+    } else if (event.kind === "image_changed" && event.image) {
+      image = event.image; // the latest of the batch is the image now
     }
   }
-  return { feed: next, members };
+  return { feed: next, members, image };
 }
 
 const bySeq = (a: GroupMessage, b: GroupMessage) => a.seq - b.seq;

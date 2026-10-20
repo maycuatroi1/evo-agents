@@ -107,6 +107,9 @@ FAILURE_CAUSES = (
     "rate_limit",  # the agent's account hit its usage limit and the run could not move to another one
     "account_auth",  # the agent's account failed to authenticate (its token refused) and the run could not move
     "environment",  # preflight: the worker cannot run the agent in the environment its claim names (no container engine)
+    # the remote declined the push of the run's branch by a rule of its own (a hook, a protected branch, a ruleset),
+    # not for its credential nor because the branch moved on: the run's commits are still in its worktree
+    "push_declined",
 )
 PREFLIGHT_CAUSES = ("origin", "credentials", "missing_tool", "environment")  # what a run checks before its agent starts
 FAILURE_CAUSE = r"^[a-z][a-z0-9_]{0,31}$"  # a cause a worker may send, known to this hub or not
@@ -115,6 +118,7 @@ MAX_BATCH_EVENTS = 500  # events in one POST of a run's events
 MAX_BATCH_BYTES = 1024 * 1024  # body of that POST
 MAX_EVENT_BODY_BYTES = 64 * 1024  # one event's body as JSON; a longer one is cut and marked truncated
 MAX_RUN_EVENTS = 20_000  # events the hub keeps for one run
+MAX_RUN_REPOS = 50  # the repos of one run (runs.repos, as schema 0010 bounds it)
 MAX_MESSAGE_BYTES = 8 * 1024  # one message from the owner to a running agent
 MAX_PROMPT_BYTES = 32 * 1024  # the prompt build_prompt, build_plan_prompt or build_step_session_prompt returns
 
@@ -151,6 +155,10 @@ CHAT_DECISIONS = "chat_decisions"
 # sources whose ref is origin/<branch>, fetching it first, and pushes their runs with its own token, no model involved
 # (evo_agents.worker.kg_sync); the heartbeat answer names those projects (kg_sync) only to a daemon that says it
 KG_SYNC = "kg_sync"
+# a daemon whose chat run starts with the project's harness alone and whose agent opens each other repo it needs
+# (`evo-agents worker repo open`, POST /v1/worker/runs/{id}/chat/repos); the hub hands any other daemon's chat run
+# every repo of the project the worker has a checkout of (evo_agents.hub.chat_runs)
+LAZY_CHAT_REPOS = "lazy_chat_repos"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -161,6 +169,7 @@ WORKER_FEATURES = (
     AGENT_PACKS,
     CHAT_DECISIONS,
     KG_SYNC,
+    LAZY_CHAT_REPOS,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>

@@ -61,10 +61,13 @@ def cut(text: str, limit: int) -> str:
 
 def push_cause(exc: Exception) -> str | None:
     """The failure_cause of a push git failed: credentials when the remote refused its credential, push_conflict when
-    it refused a push that is no fast-forward (the branch moved on), else none."""
+    it refused a push that is no fast-forward (the branch moved on), push_declined when it declined it by a rule of its
+    own (a hook, a protected branch, a ruleset), else none."""
     if isinstance(exc, gitops.GitAuthError):
         return "credentials"
-    return "push_conflict" if gitops.rejected(exc) else None
+    if gitops.rejected(exc):
+        return "push_conflict"
+    return "push_declined" if isinstance(exc, gitops.PushDeclined) else None
 
 
 def json_size(value) -> int:

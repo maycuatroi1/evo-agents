@@ -250,7 +250,7 @@ incompatible, and turns it off if a hub upgrade drops it. This release serves ve
 | `jobs` | `name`, `cron` | an async function of the `job` params | method `job` |
 | `events` | `name`, `on` | an async function of the `event` params | method `event` |
 | `tables` | `name` | a table of the hub's schema the plugin owns | (core only) |
-| `kg_sources` | `name` (at most one) | an async function of `{source, project}` that answers the kg/1 items and code patterns of the source `plugin.<id>` of each build of the project's knowledge graph (`evo_agents.hub.kg_sources`) | (core only) |
+| `kg_sources` | `name` (at most one) | an async function of `{source, project}` that answers the kg/1 items and code patterns of the source `plugin.<id>` of each build of the project's knowledge graph, and optionally its cursor (`evo_agents.hub.kg_sources`). An item's label is its row's, as the hub stores labels: one naming another project in `projects` leaves the item out, and its `audience` is kept, so only a reader who is every principal of it sees the item | (core only) |
 | `pages` | `name`, `title`, `icon`, `menu`, `entry` (isolated) | a native page of the hub's web, at `/p/<project>/x/<id>/<name>` | an HTML file of the bundle under `pages/`, framed in a sandbox (section Pages) |
 | `runtimes` | `name`, `title`, `acp`, `models`, `secrets`, or `python` (core) | an ACP agent (`acp`), or an adapter class of a runtime of the core, which replaces its built-in adapter on the worker (`python`) | an ACP agent (section Runtimes) |
 | `environments` | `name`, `title`, `image`, `network`, `mounts` | a container image a run's agent runs in, chosen by the environment axis of its agent profile | the same (section Environments) |
@@ -397,6 +397,23 @@ Two more core plugins keep a project's requirements and work in the hub's databa
 
 Import-linter keeps each in its own package (contracts srs-plugin-own-package and tasks-plugin-own-package): neither
 imports the other, and tasks reads the items of srs through the hub's tables (`evo_agents.hub.tables_srs`).
+
+### Chat history
+
+**chats** (`evo_agents/core_plugins/chats`) puts the history of the hub's group chats into the knowledge graph of each
+project that enables it, granting what it asks for, `chats:read`. Its only contribution is a source of the graph
+(`kg_sources`). Each build of the project's graph on the hub holds every message whose label has a part of the
+project: the item `plugin.chats:message:<id>` (a `ChatMessage` node named by the hub, `#<seq> <login or @handle> <UTC
+time>`, with the chat, the thread, the author, the time and, for an agent's message, its run), in its thread
+`plugin.chats:thread:<chat>/<root>` (`ChatThread`), in its chat `plugin.chats:chat:<id>` (`Chat`). Search indexes a
+message's text and the link stage reads what it mentions; no tool returns the text. The item carries the project's
+part of the message's label and the audience `chat:<id>` plus `grant:<project>:<level>` for the part of each other
+project, so a member sees it only while they are in the chat and could read the message there
+(`evo_agents/kg/policy.py`, the audience of a label). A thread and a chat carry the join of their messages' labels; a
+message sent while its chat had no agent is in no graph. A new message queues a build of each project its label names
+whose graph holds its chats, which joins one that waits; a build of such a project shows no totals in `GET
+/v1/kg/{project}/builds`, since they count messages most members may not read, and kg_status names the newest message
+the build read. Import-linter keeps it in its own package (contract chats-plugin-own-package).
 
 ## Runtimes
 

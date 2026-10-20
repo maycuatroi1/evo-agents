@@ -1,7 +1,7 @@
 "use client";
 
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { FolderKanban, LogOut, Star, UserRoundMinus, X } from "lucide-react";
+import { FolderKanban, Lock, LogOut, Star, UserRoundMinus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { type ReactNode, useState } from "react";
@@ -17,7 +17,7 @@ import { browserApi } from "@/lib/api/browser";
 import { addChatAgent, addChatPerson, chatKeys, removeChatAgent, removeChatPerson, setChatBudget } from "@/lib/chat-queries";
 import { type Chat, chatsHref, MAX_AGENTS, MAX_PEOPLE } from "@/lib/chats";
 
-import { AuthorAvatar } from "./author";
+import { PersonAvatar } from "./faces";
 import { useChatFailure } from "./hooks";
 import { AddAgentForm, AddPersonForm, BudgetForm } from "./member-forms";
 
@@ -46,7 +46,9 @@ function Section({ title, count, children, testId }: { title: string; count: str
  * The chat's members in a sheet (web/DESIGN.md, Chats): its agents (any member adds one of a project they write to,
  * or takes one out), its people (any member adds one; the creator takes others out; each may leave), and the budget of
  * its agents' runs, which only its creator changes. The hub checks every change again: a refusal shows at the top of
- * the sheet with the hub's words, a change made is a toast, and the chat's stream tells the other members.
+ * the sheet with the hub's words, a change made is a toast, and the chat's stream tells the other members. A direct
+ * chat's sheet is its Details: its agent and its person, for good (nobody is added, taken out or leaves; a note says to
+ * start a group chat for that), and the budget.
  */
 export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me: string | null; open: boolean; onOpenChange: (open: boolean) => void }) {
   const t = useTranslations("chats.members");
@@ -56,6 +58,7 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
   const [error, setError] = useState<WriteFailure | null>(null);
   const [leaving, setLeaving] = useState(false);
   const creator = !!me && chat.created_by.toLowerCase() === me.toLowerCase();
+  const direct = chat.kind === "direct";
 
   const write = useMutation({
     mutationFn: async (change: Write): Promise<Chat | null> => {
@@ -91,8 +94,10 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
       <SheetContent side="right" showCloseButton={false} className="gap-0 p-0 data-[side=right]:w-full data-[side=right]:sm:max-w-md" data-testid="chat-members">
         <SheetHeader className="flex-row items-start gap-3 border-b p-4">
           <div className="flex min-w-0 flex-1 flex-col gap-1">
-            <SheetTitle className="text-[15px] leading-[22px] font-semibold">{t("title")}</SheetTitle>
-            <SheetDescription className="text-[13px] leading-[18px]">{t("description", { title: chat.title })}</SheetDescription>
+            <SheetTitle className="text-[15px] leading-[22px] font-semibold">{direct ? t("detailsTitle") : t("title")}</SheetTitle>
+            <SheetDescription className="text-[13px] leading-[18px]">
+              {direct ? t("directDescription", { name: chat.agents[0]?.name ?? chat.title }) : t("description", { title: chat.title })}
+            </SheetDescription>
           </div>
           <Button type="button" variant="ghost" size="icon-sm" aria-label={t("close")} onClick={() => onOpenChange(false)}>
             <X aria-hidden="true" />
@@ -100,7 +105,13 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
         </SheetHeader>
         <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-4">
           {error ? <InlineError text={error.text} detail={error.detail} requestId={error.requestId} /> : null}
-          <Section title={t("agents")} count={t("countOf", { count: chat.agents.length, max: MAX_AGENTS })} testId="chat-members-agents">
+          {direct ? (
+            <p className="flex items-start gap-2.5 rounded-md border bg-surface-sunken px-3 py-2.5 text-[13px] leading-[18px] text-pretty text-muted-foreground" data-testid="chat-direct-note">
+              <Lock className="mt-px size-3.5 shrink-0" aria-hidden="true" />
+              {t("directNote")}
+            </p>
+          ) : null}
+          <Section title={t("agents")} count={direct ? "" : t("countOf", { count: chat.agents.length, max: MAX_AGENTS })} testId="chat-members-agents">
             {chat.agents.length ? (
               <ul className="flex flex-col gap-0.5">
                 {chat.agents.map((agent) => (
@@ -123,40 +134,42 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
                         <span className="truncate">{agent.project}</span>
                       </span>
                     </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={t("removeAgent", { handle: agent.handle })}
-                      title={t("removeAgent", { handle: agent.handle })}
-                      busy={write.isPending && write.variables?.kind === "removeAgent" && write.variables.handle === agent.handle}
-                      onClick={() => write.mutate({ kind: "removeAgent", handle: agent.handle })}
-                      data-testid="chat-remove-agent"
-                    >
-                      <X aria-hidden="true" />
-                    </Button>
+                    {direct ? null : (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        aria-label={t("removeAgent", { handle: agent.handle })}
+                        title={t("removeAgent", { handle: agent.handle })}
+                        busy={write.isPending && write.variables?.kind === "removeAgent" && write.variables.handle === agent.handle}
+                        onClick={() => write.mutate({ kind: "removeAgent", handle: agent.handle })}
+                        data-testid="chat-remove-agent"
+                      >
+                        <X aria-hidden="true" />
+                      </Button>
+                    )}
                   </li>
                 ))}
               </ul>
             ) : (
               <p className="text-[13px] text-muted-foreground">{t("noAgentsYet")}</p>
             )}
-            <AddAgentForm chat={chat} pending={pendingOf("addAgent")} onAdd={(handle) => write.mutate({ kind: "addAgent", handle })} />
+            {direct ? null : <AddAgentForm chat={chat} pending={pendingOf("addAgent")} onAdd={(handle) => write.mutate({ kind: "addAgent", handle })} />}
           </Section>
-          <Section title={t("people")} count={t("countOf", { count: chat.people.length, max: MAX_PEOPLE })} testId="chat-members-people">
+          <Section title={t("people")} count={direct ? "" : t("countOf", { count: chat.people.length, max: MAX_PEOPLE })} testId="chat-members-people">
             <ul className="flex flex-col gap-0.5">
               {chat.people.map((person) => {
                 const self = person.login.toLowerCase() === me?.toLowerCase();
                 const madeIt = person.login.toLowerCase() === chat.created_by.toLowerCase();
                 return (
                   <li key={person.login} className={ROW} data-testid="chat-member-person" data-login={person.login}>
-                    <AuthorAvatar author={{ kind: "person", login: person.login, name: person.login }} />
+                    <PersonAvatar login={person.login} src={person.avatar_url} />
                     <span className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
                       <span className="truncate text-sm font-medium">{person.login}</span>
                       {self ? <span className="text-xs text-fg-subtle">{t("you")}</span> : null}
                       {madeIt ? <Tag>{t("creator")}</Tag> : null}
                     </span>
-                    {self ? (
+                    {direct ? null : self ? (
                       <Button type="button" variant="quiet-danger" size="sm" onClick={() => setLeaving(true)} data-testid="chat-leave">
                         <LogOut aria-hidden="true" />
                         {t("leave")}
@@ -179,7 +192,7 @@ export function MembersSheet({ chat, me, open, onOpenChange }: { chat: Chat; me:
                 );
               })}
             </ul>
-            <AddPersonForm chat={chat} me={me} pending={pendingOf("addPerson")} onAdd={(login) => write.mutate({ kind: "addPerson", login })} />
+            {direct ? null : <AddPersonForm chat={chat} me={me} pending={pendingOf("addPerson")} onAdd={(login) => write.mutate({ kind: "addPerson", login })} />}
           </Section>
           <Section title={t("budget")} count="" testId="chat-members-budget">
             <BudgetForm key={chat.budget_usd} chat={chat} creator={creator} pending={pendingOf("budget")} onSave={(usd) => write.mutate({ kind: "budget", usd })} />

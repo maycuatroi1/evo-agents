@@ -12,7 +12,9 @@ the run ended write its tool figures again (``tool_stats.record``). The hub numb
 ``user_message`` for each message), under the run's row lock, so a reader never sees a number before the ones below
 it. A body whose JSON is over MAX_EVENT_BODY_BYTES is cut (``runs.fit_event_body``) and
 the event marked truncated. A run keeps at most MAX_RUN_EVENTS events of the worker and the owner: a batch that would
-pass it stores nothing and gets 413 with the ack in its detail; the hub's state events are written past it.
+pass it stores nothing and gets 413 with the ack in its detail; the hub's state events are written past it. A note
+that names a step of a chat run's setup (``chat_runs.SETUP_FIELD``) wakes its chat's streams, as the worker taking the
+run's inbox does, since the thread shows that step (``chat_progress``).
 
 Readers of the project read a run's events (GET .../runs/{id}/events?after=SEQ) and stream them (GET
 .../runs/{id}/stream), for the runs of plans they may read (``runs.readable_run``). The stream is server-sent events
@@ -57,12 +59,13 @@ from pydantic import UUID4, AwareDatetime, BaseModel, Field, model_validator
 from sqlalchemy import DateTime, and_, bindparam, func, insert, select, update
 from sqlalchemy.ext.asyncio import AsyncConnection
 
-from evo_agents.hub import runs, tables
+from evo_agents.hub import chat_runs, runs, tables
 from evo_agents.hub.blobs import GET_TTL
 from evo_agents.hub.server import audit, tool_stats
 from evo_agents.hub.server import plans as plan_routes
 from evo_agents.hub.server.admin import ProjectName
 from evo_agents.hub.server.blobs import Mismatch, UploadItem, Uploads, blob_store, commit_uploads, issue_uploads
+from evo_agents.hub.server.chat_store import wake_run_chat
 from evo_agents.hub.server.errors import ErrorBody, error_response
 from evo_agents.hub.server.listen import Listener
 from evo_agents.hub.server.run_state import EVENTS_CHANNEL, next_seq, notify_events
@@ -378,6 +381,8 @@ async def store_events(
     await conn.execute(count.where(r.c.id == run_id))
     if state in runs.TERMINAL_STATES:  # the spool's last events, after the end: the figures take them in
         await tool_stats.record(conn, run_id)
+    if any(event.kind == "system" and chat_runs.SETUP_FIELD in event.body for event in fresh):
+        await wake_run_chat(conn, run_id)  # a step of a chat run's setup: its thread shows it (chat_progress)
     await notify_events(conn, run_id)
     cut = sum(1 for row in rows if row["truncated"])
     log.debug("run events stored", extra={"run_id": run_id, "stored": len(fresh), "truncated": cut})
@@ -431,6 +436,7 @@ async def take_inbox(request: Request, run_id: RunId, user: CurrentUser, body: I
             raise HTTPException(404, NOT_HELD.format(id=run_id))
         if ack is not None:
             await conn.execute(deliver(run_id, ack))
+            await wake_run_chat(conn, run_id)  # a chat message the agent took leaves step inbox (chat_progress)
         rows = (await conn.execute(undelivered(run_id))).all()
     return Inbox(messages=[InboxMessage(**row._mapping) for row in rows])
 
@@ -640,7 +646,8 @@ async def send_message(request: Request, project: ProjectName, run_id: RunId, bo
         if resumes:
             from evo_agents.hub.server.decisions import resume_parked  # it reads runs through this module
 
-            inbox_run = await resume_parked(conn, user, run_id, f"as {user.login} replied in its chat")
+            why = f"as {user.login} replied in its chat"
+            inbox_run = await resume_parked(conn, user, run_id, why, woken_by=body.text)
         inbox = tables.run_inbox
         left = (
             insert(inbox)

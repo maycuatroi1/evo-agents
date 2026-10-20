@@ -24,10 +24,13 @@ RUN_BRANCH = "evo-run/{id}"
 RUN_REPO_BRANCH = "evo-run/{id}/{folder}"  # a plan run's worktree of a repo whose branch is checked out elsewhere
 
 
-async def fetch(run: Run, checkout: Path) -> None:
-    """Fetch origin in ``checkout`` with the run's credentials; RunFailed when git cannot, with the cause
-    credentials when the remote refused it for want of a credential, else checkout."""
-    run.note(f"Fetching origin in {checkout}.")
+async def fetch(run: Run, checkout: Path, *, repo: str | None = None, setup: str | None = None) -> None:
+    """Fetch origin in ``checkout`` (of ``repo``, which the note names, for a run whose repos are fetched several at a
+    time) with the run's credentials; RunFailed when git cannot, with the cause credentials when the remote refused it
+    for want of a credential, else checkout. ``setup`` is the step of the run's setup the note starts
+    (``chat_runs.SETUP_FIELD``), for a run whose thread shows it."""
+    extra = {"repo": repo} if repo else {}
+    run.note(f"Fetching origin in {checkout}.", **extra, **({"setup": setup} if setup else {}))
     try:
         with run.credentials.ticketed(run.daemon.env) as env:
             await gitops.fetch(checkout, env=env)

@@ -2,7 +2,7 @@
 
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import type { Agent } from "@/lib/agents";
-import { agentInitial, inkOn } from "@/lib/agent-rules";
+import { agentInitial, inkOn } from "@/lib/avatars";
 import { cn } from "@/lib/utils";
 
 type Size = "sm" | "default" | "lg" | "xl";

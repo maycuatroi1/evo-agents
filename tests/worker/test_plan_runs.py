@@ -87,15 +87,15 @@ def run_repos(body: dict) -> list[dict]:
 
 
 class Machine:
-    """A worker's machine: a checkout of alpha and of beta, each cloned from a bare origin with one commit on main,
-    the worker's state directory, and the files of the fake runtime."""
+    """A worker's machine: a checkout of each of ``repos`` (alpha and beta), each cloned from a bare origin with one
+    commit on main, the worker's state directory, and the files of the fake runtime."""
 
-    def __init__(self, tmp: Path):
+    def __init__(self, tmp: Path, repos: tuple[str, ...] = REPOS):
         self.tmp = tmp
-        self.origins = {name: tmp / f"{name}.git" for name in REPOS}
-        self.checkouts = {name: tmp / "ws" / name for name in REPOS}
+        self.origins = {name: tmp / f"{name}.git" for name in repos}
+        self.checkouts = {name: tmp / "ws" / name for name in repos}
         self.seeds: dict[str, str] = {}
-        for name in REPOS:
+        for name in repos:
             seed = tmp / "seed" / name
             seed.mkdir(parents=True)
             git("init", "--quiet", "--initial-branch", "main", cwd=seed)
@@ -1127,6 +1127,7 @@ def test_session_per_step_runs_each_step_in_a_new_session_with_its_handoff(machi
             "agent_packs",
             "chat_decisions",
             "kg_sync",
+            "lazy_chat_repos",
         ]
         run_id = hub.queue_plan_run(PLAN, run_repos(plan_body()), session_per_step=True)
         assert await hub.wait_state(run_id, "done", "failed") == "done", (hub.runs[run_id], hub.texts(run_id))

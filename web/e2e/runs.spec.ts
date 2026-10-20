@@ -1,5 +1,7 @@
 import type { Page } from "@playwright/test";
 
+import { createAgentByApi } from "./support/agents";
+import { chatSession, chatWorker } from "./support/chats";
 import { expect, isDeployed, test } from "./support/fixtures";
 import { uniqueName } from "./support/hub";
 import { open } from "./support/plans";
@@ -22,7 +24,8 @@ import { toast } from "./support/toast";
  * The Runs pages against the real API: the sidebar entry and the empty project; the Dispatch dialog offering only
  * ready steps (the others listed with their reason), saying which worker matches, and queueing runs the API then
  * holds as queued; the list following a worker's claim within one 5-second refresh; its facets and search; the plan
- * step page's Run this step button and runs; and a worker's page with the runs it took. Pages render in English.
+ * step page's Run this step button and runs; a chat session listed once, as its latest turn, opening into its turns;
+ * and a worker's page with the runs it took. Pages render in English.
  */
 test.skip(isDeployed, "dispatches runs through the local stack");
 
@@ -226,6 +229,70 @@ test("a plan step's page runs the step, and lists its runs", async ({ page, memb
   await expect(runRow(page, run.id, "step-runs-table")).toContainText(me.login);
   await expect(section.getByTestId("step-readiness")).toHaveText(`Not ready to run: Run #${run.id} is Queued, dispatched by ${me.login}.`);
   await expect(section.getByTestId("step-run")).toHaveAttribute("aria-disabled", "true");
+});
+
+test("a chat session is one row, as its latest turn, and opens into its turns, each under the words that woke it", async ({ page, member }) => {
+  const me = await member([{ role: "admin", maxLevel: "internal" }]);
+  const project = me.projects[0];
+  const handle = uniqueName("reviewer");
+  await createAgentByApi(me, project, { handle, name: "Code reviewer" });
+  const live = await chatWorker(me, project, uniqueName("mini"));
+  const asks = ["please fix the flaky wait test", "one more thing: the retries", "and the docs?"];
+  const {
+    runs: [first, second, third],
+  } = await chatSession(me, handle, live, asks);
+  const session = `@${handle} in Release talk: @${handle} ${asks[0]}`;
+  expect((await runsOf(me, project)).map((run) => [run.id, run.title, run.session_run_id, run.session_turn])).toEqual([
+    [third, `@${handle} in Release talk: @${handle} ${asks[2]}`, first, 3],
+    [second, `@${handle} in Release talk: @${handle} ${asks[1]}`, first, 2],
+    [first, session, first, 1],
+  ]);
+
+  // One row: the session's title, whose session it is, how many turns, and the state of the latest.
+  await open(page, `/p/${project}/runs`);
+  const table = main(page).getByTestId("runs-table");
+  await expect(table.locator("tbody tr")).toHaveCount(1);
+  await expect(main(page).getByTestId("runs-list-summary")).toHaveText("1 run");
+  const row = runRow(page, third);
+  await expect(row.getByRole("link", { name: session, exact: true })).toHaveAttribute("href", `/p/${project}/runs/${third}`);
+  await expect(row.getByTestId("run-where")).toHaveText(`Session of ${me.login} with @${handle} in a group chat`);
+  await expect(row.getByTestId("run-state")).toHaveText("Running");
+
+  // Opened, the row shows its turns in order, each titled by its own message, linked to its page.
+  const toggle = row.getByTestId("runs-session-toggle");
+  await expect(toggle).toHaveText("3 turns");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(toggle).toBeFocused();
+  const turns = main(page).getByRole("list", { name: `Turns of the session ${session}` });
+  const items = turns.getByTestId("session-turn");
+  await expect(items).toHaveCount(3);
+  expect(await items.evaluateAll((nodes) => nodes.map((node) => node.getAttribute("data-turn-run-id")))).toEqual([first, second, third].map(String));
+  await expect(items.nth(1)).toContainText("Turn 2");
+  await expect(items.nth(1).getByTestId("session-turn-link")).toHaveText(`@${handle} ${asks[1]}`);
+  await expect(items.nth(1).getByTestId("run-state")).toHaveText("Done");
+  await expect(items.nth(2).getByTestId("run-state")).toHaveText("Running");
+
+  // The facets and the search read the session as its latest turn, and find it by any of its turns.
+  const facets = main(page).getByTestId("runs-facets");
+  await facets.getByRole("button", { name: /^Done/ }).click();
+  await expect(main(page).getByTestId("state-empty")).toContainText("No run matches");
+  await facets.getByRole("button", { name: /^Active/ }).click();
+  await expect(table.locator("tbody tr").filter({ has: page.getByTestId("runs-session-toggle") })).toHaveCount(1);
+  await facets.getByRole("button", { name: /^All/ }).click();
+  await main(page).getByTestId("runs-search").fill("one more thing");
+  await expect(page).toHaveURL(/\?q=one\+more\+thing$/);
+  await expect(main(page).getByTestId("runs-list-summary")).toHaveText("1 run matches");
+  await expect(runRow(page, third)).toBeVisible();
+
+  // A turn of the list opens its own page. The empty list of Done closed the row, which opens again.
+  await main(page).getByTestId("runs-search").fill("");
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await toggle.click();
+  await turns.getByTestId("session-turn-link").nth(1).click();
+  await page.waitForURL(`**/p/${project}/runs/${second}`);
+  await expect(main(page).getByTestId("run-turn")).toHaveText("Turn 2 of 3");
 });
 
 test.describe("in Vietnamese", () => {

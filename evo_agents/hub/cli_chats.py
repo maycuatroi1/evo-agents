@@ -33,8 +33,25 @@ CHAT_KEYS = (
     "last_seq",
     "last_read_seq",
     "budget_usd",
+    "kind",
+    "image_url",
 )
-SUMMARY_KEYS = ("id", "title", "created_by", "created_at", "last_message_at", "last_seq", "unread", "people", "agents")
+SUMMARY_KEYS = (
+    "id",
+    "title",
+    "created_by",
+    "created_at",
+    "last_message_at",
+    "last_seq",
+    "unread",
+    "people",
+    "agents",
+    "kind",
+    "image_url",
+    "direct_agent",
+    "faces",
+    "last_message",
+)
 MESSAGE_KEYS = (
     "id",
     "chat_id",
@@ -48,6 +65,7 @@ MESSAGE_KEYS = (
     "reactions",
     "label",
     "created_at",
+    "progress",
 )
 PAGE_KEYS = ("chat", "messages", "more")
 

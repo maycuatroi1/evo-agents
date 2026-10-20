@@ -823,3 +823,137 @@ def test_a_hub_that_refuses_or_does_not_answer_leaves_the_run_to_the_machines_cr
     assert down.asks == 2
     assert old_hub.given_back == [], "nothing was leased by a hub that refused"
     assert refused.git_vars == {} and unanswered.agent_vars == {}
+
+
+# A repo a chat run's agent opens
+
+
+@needs_worker
+def test_a_repo_opened_takes_the_leases_again_and_a_guarded_runs_agent_gets_no_credential_of_it(machine):
+    harness, app = sample("glpat-harness-"), sample("glpat-app-")
+    first = {"leases": [git_lease(1, f"{GITLAB}/harness", harness), env_lease(2, "OPENAI_API_KEY", sample("sk-"))]}
+    second = {"leases": [*first["leases"], git_lease(3, f"{GITLAB}/app", app)]}
+    origins = {"harness": [f"{GITLAB}/harness.git"]}
+    request = {"op": "git", "protocol": "https", "host": "git.example.org", "path": "group/app.git"}
+
+    async def go():
+        plain, guarded = (
+            machine.leases(),
+            RunCredentials(RUN + 1, machine.worker, machine.env, machine.note, guarded=True),
+        )
+        found = {}
+        for name, leases in (("plain", plain), ("guarded", guarded)):
+            hub = StubHub(first, second)
+            await leases.take(hub, origins)
+            before = dict(leases.agent_vars)
+            await leases.add("app", [f"{GITLAB}/app.git"])
+            asked = await asyncio.to_thread(credentials.ask, machine.worker, leases.run_id, request)
+            with leases.ticketed(machine.env) as env:
+                ticket = env.get(credentials.TICKET_VARIABLE)
+                daemon = await asyncio.to_thread(
+                    credentials.ask, machine.worker, leases.run_id, {**request, "ticket": ticket}
+                )
+            found[name] = (hub.asks, before, dict(leases.agent_vars), dict(leases.git_vars), asked, daemon)
+            found[name] += (leases.covers("app"),)
+            await leases.release()
+        return found
+
+    found = asyncio.run(go())
+    asks, before, agent, git_vars, asked, daemon, covered = found["plain"]
+    app_helper = f"credential.{GITLAB}/app.git.helper"
+    assert asks == 2 and covered, "the hub was asked again, and its leases cover the repo opened"
+    assert app_helper in git_vars.values() and app_helper in agent.values(), "the run's git reaches it with the lease"
+    assert asked == {"username": "oauth2", "password": app}
+    asks, before, agent, git_vars, asked, daemon, covered = found["guarded"]
+    assert asks == 2 and covered
+    assert agent == before, "a guarded run's agent gets nothing more from a repo opened"
+    assert not any("git-credential" in value or value == app for value in agent.values())
+    assert app_helper in git_vars.values(), "only the daemon's own git reaches it, with a ticket"
+    assert asked == {}, "the socket answers a guarded run's agent nothing without a ticket"
+    assert daemon == {"username": "oauth2", "password": app}
+    assert [text for text, _ in machine.notes] == [], "every origin is covered: nothing to note"
+
+
+@needs_worker
+def test_a_repo_opened_the_hub_leases_nothing_for_keeps_the_machines_credentials(machine):
+    from evo_agents.worker.hubapi import Refused, Unreachable
+
+    token = sample("ghs_")
+    leased = {"leases": [app_lease(1, "acme", token, minutes=50)]}
+    origins = {"harness": ["https://github.com/acme/harness.git"]}
+    no_answer = Unreachable("no answer from the hub")
+
+    async def go():
+        found = []
+        for run_id, problem in ((RUN, Refused("run 7 is not held by this worker", 404)), (RUN + 1, no_answer)):
+            leases = machine.leases(run_id)
+            await leases.take(StubHub(leased, problem), origins)
+            await leases.add("app", ["https://github.com/acme/app.git"])
+            found.append((leases.unleased, dict(leases.git_vars), leases.covers("app"), leases.asked))
+            await leases.release()
+        return found
+
+    (refused, refused_vars, refused_covers, refused_asked), (_, unanswered_vars, _, unanswered_asked) = asyncio.run(
+        go()
+    )
+    assert set(refused) == {"app"} and refused["app"].startswith("the hub did not lease the run its credentials again")
+    for git_vars in (refused_vars, unanswered_vars):
+        assert "credential.https://github.com/acme/app.git.helper" not in git_vars.values(), (
+            "the owner's token was made for the harness alone: git uses this machine's own for the repo opened"
+        )
+        assert "credential.https://github.com/acme/harness.git.helper" in git_vars.values()
+    assert not refused_covers
+    assert refused_asked and unanswered_asked, "the leases of the first ask are still given back"
+    texts = [text for text, _ in machine.notes]
+    assert texts[0] == MISSING_NOTE.format(
+        origin="https://github.com/acme/app.git",
+        reason="the hub did not lease the run its credentials again (run 7 is not held by this worker)",
+    )
+    assert texts[1] == MISSING_NOTE.format(
+        origin="https://github.com/acme/app.git",
+        reason="the hub did not lease the run its credentials again (no answer from the hub)",
+    )
+    assert len(texts) == 2, "the harness, which the token covers, is not noted"
+
+
+@needs_worker
+def test_op_open_asks_the_chat_runs_opener_on_a_socket_it_opens_without_leases(machine):
+    opened: list[str] = []
+
+    async def opener(repo: str) -> dict:
+        opened.append(repo)
+        return {"repo": repo, "path": f"/runs/{RUN}/{repo}", "opened": True}
+
+    record = {"id": RUN, "kind": "chat", "finished_at": None}
+    command = [sys.executable, "-m", "evo_agents", "worker", "repo", "open"]
+    env = {**machine.env, "EVO_RUN_ID": str(RUN)}
+
+    async def go():
+        leases, other = machine.leases(), machine.leases(RUN + 1)
+        leases.opener = opener
+        await leases.take(StubHub({"leases": []}), {})
+        await other.take(StubHub({"leases": []}), {})
+        exists = credentials.socket_path(machine.worker, RUN).exists()
+        answer = await asyncio.to_thread(credentials.ask_open, machine.worker, RUN, "app")
+        blank = await asyncio.to_thread(credentials.ask, machine.worker, RUN, {"op": "open", "repo": " "})
+        machine.worker.save_run(record)
+        printed = await run([*command, "app"], env)
+        machine.worker.save_run({**record, "kind": "plan"})
+        plan = await run([*command, "app"], env)
+        await leases.release()
+        machine.worker.save_run(record)
+        gone = await run([*command, "app"], env)
+        none = await asyncio.to_thread(credentials.ask_open, machine.worker, RUN + 1, "app")
+        return exists, answer, blank, printed, plan, gone, none
+
+    exists, answer, blank, printed, plan, gone, none = asyncio.run(go())
+    assert exists, "a chat run's socket opens with no lease, for its agent's repo open"
+    assert answer == {"repo": "app", "path": f"/runs/{RUN}/app", "opened": True}
+    assert blank == {"error": "name the repo to open"}
+    assert printed.returncode == 0 and printed.stdout == f"/runs/{RUN}/app\n" and printed.stderr == ""
+    assert opened == ["app", "app"]
+    assert plan.returncode == 1 and plan.stdout == ""
+    assert plan.stderr.startswith(f"error: run {RUN} is a plan run: only the agent of a chat run opens a repo")
+    assert gone.returncode == 1
+    assert gone.stderr == f"error: run {RUN} holds no socket on this worker to open a repo\n"
+    assert none == {"error": f"run {RUN + 1} holds no socket on this worker to open a repo"}, "no opener: no socket"

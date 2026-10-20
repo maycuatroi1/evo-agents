@@ -22,14 +22,16 @@ import { AgentHistory, DeleteAgent } from "./agent-history";
 import { AgentPacks } from "./agent-packs";
 import { AgentPermissions } from "./agent-permissions";
 import { AvatarCard } from "./avatar-card";
+import { ChatWithAgent } from "./chat-button";
 import { useAgentAdmin } from "./hooks";
 import { AgentBadges, ReadOnlyNote } from "./parts";
 
 /**
  * One agent of a project (web/DESIGN.md, Agents): its face, name and @handle, what it is for and the instructions its
  * runs get, its eight axes and the agent packs it attaches, its versions, and the runs that went under it (`runs`,
- * which the route composes from the runs feature). An admin of the project edits it, changes its avatar and deletes
- * it (never the default); everyone else reads it. A deleted agent reads as before, under a note.
+ * which the route composes from the runs feature). Chat opens the visitor's direct chat with it (for one who writes to
+ * the project). An admin of the project edits it, changes its avatar and deletes it (never the default); everyone else
+ * reads it. A deleted agent reads as before, under a note.
  */
 export function AgentDetail({ project, handle, initialError, runs }: { project: string; handle: string; initialError: ApiErrorInfo | null; runs: ReactNode }) {
   const t = useTranslations("agents.detail");
@@ -76,20 +78,23 @@ function AgentPage({ project, agent, runs }: { project: string; agent: Agent; ru
         }
         sub={t("sub", { login: agent.created_by, date: created })}
         actions={
-          admin && live ? (
-            <>
-              <Button variant="outline" onClick={() => setEditing(true)} data-testid="agent-edit">
-                <Pencil aria-hidden="true" />
-                {t("edit")}
-              </Button>
-              {agent.is_default ? null : (
-                <Button variant="quiet-danger" onClick={() => setDeleting(true)} data-testid="agent-delete">
-                  <Trash2 aria-hidden="true" />
-                  {t("delete.button")}
+          <>
+            <ChatWithAgent agent={agent} />
+            {admin && live ? (
+              <>
+                <Button variant="outline" onClick={() => setEditing(true)} data-testid="agent-edit">
+                  <Pencil aria-hidden="true" />
+                  {t("edit")}
                 </Button>
-              )}
-            </>
-          ) : null
+                {agent.is_default ? null : (
+                  <Button variant="quiet-danger" onClick={() => setDeleting(true)} data-testid="agent-delete">
+                    <Trash2 aria-hidden="true" />
+                    {t("delete.button")}
+                  </Button>
+                )}
+              </>
+            ) : null}
+          </>
         }
       />
       {live ? null : (

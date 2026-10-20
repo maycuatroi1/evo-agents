@@ -24,6 +24,12 @@ describe("contentSecurityPolicy", () => {
     expect(policy.has("upgrade-insecure-requests")).toBe(false);
   });
 
+  it("loads images from the web itself and GitHub's avatars, nowhere else", () => {
+    const policy = directives(contentSecurityPolicy({ nonce: "n" }));
+    expect(policy.get("img-src")).toEqual(["'self'", "data:", "blob:", "https://avatars.githubusercontent.com"]);
+    expect(directives(contentSecurityPolicy({ nonce: "n", dev: true, https: true })).get("img-src")).toEqual(policy.get("img-src"));
+  });
+
   it("adds eval and websockets only for next dev, and the upgrade only over https", () => {
     expect(contentSecurityPolicy({ nonce: "n" })).not.toContain("'unsafe-eval'");
     expect(directives(contentSecurityPolicy({ nonce: "n" })).get("connect-src")).not.toContain("ws:");

@@ -17,6 +17,7 @@ import { QueryView, useHubQuery } from "@/components/states/query-view";
 import { TableSkeleton } from "@/components/states/states";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useCanChat } from "@/hooks/use-direct-chat";
 import { agentHref, agentsQuery } from "@/lib/agent-queries";
 import type { Agent } from "@/lib/agents";
 import { browserApi } from "@/lib/api/browser";
@@ -24,6 +25,7 @@ import type { ApiErrorInfo } from "@/lib/api/errors";
 
 import { AgentDialog } from "./agent-dialog";
 import { AxisTags } from "./axis";
+import { ChatWithAgent } from "./chat-button";
 import { useAgentAdmin } from "./hooks";
 import { AgentBadges, ReadOnlyNote } from "./parts";
 
@@ -33,8 +35,16 @@ type Show = "active" | "deleted";
 
 function AgentsTable({ project, agents, deleted }: { project: string; agents: Agent[]; deleted: boolean }) {
   const t = useTranslations("agents.list");
+  // Chat opens the visitor's direct chat with an agent: for one who writes to the project, on the active agents.
+  const chat = useCanChat(project) && !deleted;
   const columns = useMemo(() => {
     const helper = dataTableColumns<Agent>();
+    const actions = helper.display({
+      id: "actions",
+      header: () => <span className="sr-only">{t("columns.actions")}</span>,
+      meta: { actions: true },
+      cell: (info) => <ChatWithAgent agent={info.row.original} compact />,
+    });
     return helper.columns([
       helper.accessor("name", {
         header: () => t("columns.agent"),
@@ -74,8 +84,9 @@ function AgentsTable({ project, agents, deleted }: { project: string; agents: Ag
         meta: { numeric: true },
         cell: (info) => <When value={deleted ? info.row.original.deleted_at : info.row.original.updated_at} short />,
       }),
+      ...(chat ? [actions] : []),
     ]);
-  }, [t, project, deleted]);
+  }, [t, project, deleted, chat]);
 
   return (
     <DataTable
@@ -93,6 +104,7 @@ function AgentsTable({ project, agents, deleted }: { project: string; agents: Ag
         status: <AgentAvatar agent={agent} size="sm" />,
         meta: <span className="font-mono">@{agent.handle}</span>,
         metaText: `@${agent.handle}`,
+        actions: chat ? <ChatWithAgent agent={agent} compact /> : undefined,
         data: { "agent-handle": agent.handle },
       })}
     />
