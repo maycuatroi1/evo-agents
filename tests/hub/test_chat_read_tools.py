@@ -93,7 +93,7 @@ def test_kg_search_finds_a_message_by_its_words_with_or_without_accents_and_neve
         result = tool_ok(hub, "kg_search", {"query": typed, "kinds": ["ChatMessage"]})
         assert [n["id"] for n in result["structuredContent"]["results"]] == [found], typed
         line = next(line for line in result["content"][0]["text"].splitlines() if found in line)
-        assert f"[{found}] ChatMessage '#{fixed['seq']} alice 20" in line  # its author and time are its name
+        assert f"[{found}] ChatMessage '#{fixed['id']} alice 20" in line  # its id, author and time are its name
         assert f"chat={said.two} thread={said.m3['id']}" in line
         assert all(word not in result["content"][0]["text"] for word in UNTYPED)  # the query is printed back
     for tool, arguments in (("kg_node", {"id": found}), ("kg_context", {"ids": [found], "depth": 1})):
