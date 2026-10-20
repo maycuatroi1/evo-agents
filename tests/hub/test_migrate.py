@@ -95,6 +95,7 @@ TABLES |= pg.KG_HEALTH_TABLES  # migration 0055
 TABLES |= pg.REPLAY_TABLES  # migration 0056
 TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
+TABLES |= pg.NIGHTLY_TABLES  # migration 0065
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -169,8 +170,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_one_tables(hub_db):
-    assert len(TABLES) == 101  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_two_tables(hub_db):
+    assert len(TABLES) == 102  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1209,6 +1210,50 @@ def test_0064_lets_a_version_in_review_be_withdrawn_and_going_back_makes_it_a_dr
     assert query(hub_db, select(s.versions.c.state, s.versions.c.decided_at)) == [("draft", None)]
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0064") :]
+
+
+def test_0065_adds_the_read_of_nightly_and_the_update_now_of_a_worker_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0064")
+    workers, nightly = hub_tables.workers, hub_tables.hub_nightly
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        token_id = one(
+            conn, _token(ids, kind="worker", token_hash="4" * 64, host="mac").returning(hub_tables.tokens.c.id)
+        )
+        worker = one(conn, _worker_row(ids, token_id, "mac", 1))
+    move_to(hub_db, "0065")
+    added = {"update_requested_at", "update_ended_at", "update_outcome", "update_reason"}
+    assert added <= columns(hub_db, "workers")
+    assert columns(hub_db, "hub_nightly") == {"id", "commit_sha", "read_at"}
+    shown = select(*(workers.c[name] for name in sorted(added))).where(workers.c.id == worker)
+    assert query(hub_db, shown) == [(None, None, None, None)]
+    asked, ended = {"update_requested_at": func.now()}, {"update_ended_at": func.now()}
+    bad_requests = (
+        ended | {"update_outcome": "current"},  # an end without a request
+        asked | ended,  # an end without an outcome
+        asked | {"update_outcome": "current"},  # an outcome without an end
+        asked | ended | {"update_outcome": "stuck"},
+        asked | {"update_reason": "why"},  # a reason without an outcome
+    )
+    with live.connect(hub_db) as conn:
+        for bad in bad_requests:
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(update(workers).values(**bad).where(workers.c.id == worker))
+        conn.execute(update(workers).values(**asked).where(workers.c.id == worker))
+        done = ended | {"update_outcome": "failed", "update_reason": "pip exited 1"}
+        conn.execute(update(workers).values(**done).where(workers.c.id == worker))
+        for bad in ({"id": 2, "commit_sha": "a" * 40}, {"commit_sha": "ca3e9af"}, {"commit_sha": "A" * 40}):
+            with pytest.raises(errors.CheckViolation):
+                conn.execute(insert(nightly).values(read_at=func.now(), **bad))
+        conn.execute(insert(nightly).values(commit_sha="b" * 40, read_at=func.now()))
+        with pytest.raises(errors.UniqueViolation):
+            conn.execute(insert(nightly).values(commit_sha="c" * 64, read_at=func.now()))
+    assert query(hub_db, select(workers.c.update_outcome, workers.c.update_reason)) == [("failed", "pip exited 1")]
+    assert query(hub_db, select(nightly.c.id, nightly.c.commit_sha)) == [(1, "b" * 40)]
+    move_to(hub_db, "0064", down=True)
+    assert not added & columns(hub_db, "workers")
+    assert not columns(hub_db, "hub_nightly")
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0065") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):

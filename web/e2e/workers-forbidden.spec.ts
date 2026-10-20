@@ -2,7 +2,7 @@ import { call } from "../src/lib/api/client";
 
 import { expect, isDeployed, test } from "./support/fixtures";
 import { ADMIN_ACCOUNT, type Account, bearerClient, type HubAdmin, machineToken, newAccount, uniqueName } from "./support/hub";
-import { AGENT_COMMIT, csrfHeader, heartbeat, registerWorker, workersOf } from "./support/workers";
+import { AGENT_COMMIT, csrfHeader, heartbeat, NIGHTLY_COMMIT, registerWorker, workersOf } from "./support/workers";
 
 /**
  * A worker belongs to the member who registered it because the API says so, not because the web hides it: another
@@ -50,6 +50,8 @@ test("another member sees nothing of my worker, on the pages or through the API"
     { method: "PATCH", path: `/v1/workers/${worker.id}`, data: { version_locked: true } },
     { method: "POST", path: `/v1/workers/${worker.id}/drain` },
     { method: "POST", path: `/v1/workers/${worker.id}/undrain` },
+    { method: "POST", path: `/v1/workers/${worker.id}/update-now` },
+    { method: "POST", path: `/v1/workers/${worker.id}/update-now/cancel` },
     { method: "POST", path: `/v1/workers/${worker.id}/revoke` },
     { method: "GET", path: `/v1/workers/pairings/${pairing.id}` },
   ];
@@ -150,4 +152,27 @@ test("a hub admin sees the evo-agents a worker runs and its lock, but only its o
   expect(refused.status()).toBe(403);
   expect((await refused.json()).message).toContain(`only ${owner.login}`);
   expect((await workersOf(owner)).find((w) => w.id === worker.id)?.version_locked).toBe(true);
+});
+
+test("a hub admin reads an open Update now of a worker, but the page offers it to its owner only", async ({ page, admin, signInAs }) => {
+  const { owner, worker } = await ownerWithWorker(admin);
+  const ownerApi = bearerClient(await machineToken(owner));
+  await heartbeat(worker.id, {
+    agentCommit: AGENT_COMMIT,
+    features: ["update_now"],
+    selfUpdate: { state: "waiting", nightly_commit: NIGHTLY_COMMIT },
+  });
+  await signInAs(ADMIN_ACCOUNT);
+
+  const main = page.locator("#main");
+  await page.goto(`/workers/${worker.id}`);
+  await expect(main.getByTestId("worker-as-admin")).toBeVisible();
+  await expect(main.getByTestId("worker-updates")).toContainText("Waiting for an idle moment to install def5678");
+  await expect(main.getByTestId("update-now")).toHaveCount(0); // nothing open, and nothing offered
+
+  await call(ownerApi.POST("/v1/workers/{worker_id}/update-now", { params: { path: { worker_id: worker.id } } }));
+  await page.reload();
+  await expect(main.getByTestId("update-now-status")).toHaveText(/Update now asked: its daemon takes it at its next heartbeat\./);
+  await expect(main.getByTestId("update-now-cancel")).toHaveCount(0);
+  await expect(main.getByTestId("update-now-button")).toHaveCount(0);
 });

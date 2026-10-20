@@ -1938,7 +1938,10 @@
         "updatingTo": "Đang cài",
         "since": "Từ {time}",
         "unsupported": "Không tự cập nhật."
-      }
+      },
+      "nightlyLabel": "Nightly",
+      "nightlyUnread": "Hub chưa đọc lần nào.",
+      "nightlyStale": "Đọc {time}: từ đó hub chưa tới được GitHub, nên các daemon tự đọc tag."
     },
     "versionLock": {
       "label": "Khoá phiên bản",
@@ -1971,6 +1974,35 @@
         "waitingNext": "Worker chỉ cập nhật khi không daemon nào của cùng bản cài giữ run.",
         "waitingOwner": "Worker chỉ cập nhật khi không daemon nào của cùng bản cài giữ run. Muốn cập nhật sớm hơn, cho worker ngừng nhận việc, rồi cho nhận việc lại khi trang hiện commit mới."
       }
+    },
+    "updateNow": {
+      "button": "Cập nhật ngay",
+      "pending": "Đang yêu cầu…",
+      "cancel": "Huỷ",
+      "cancelPending": "Đang huỷ…",
+      "ready": "Worker đang chạy commit khác nightly. Cập nhật ngay: worker không nhận run mới, chờ các run đang giữ chạy xong, cập nhật, rồi nhận việc lại.",
+      "readyFailed": "Lần cập nhật gần nhất bị lỗi. Cập nhật ngay thử lại liền: worker không nhận run mới, chờ các run đang giữ chạy xong, rồi cập nhật.",
+      "blocked": {
+        "locked": "Phiên bản đang bị khoá. Mở khoá trong Cài đặt để cập nhật.",
+        "unsupported": "Daemon không tự cập nhật được, nên phải cập nhật bằng tay.",
+        "tooOld": "Daemon quá cũ để Cập nhật ngay. Nó vẫn tự cập nhật lên nightly khi rảnh."
+      },
+      "phase": {
+        "offline": "Đã yêu cầu cập nhật ngay: chờ worker online trở lại.",
+        "installing": "Cập nhật ngay: đang cài nightly, rồi khởi động lại trên bản đó.",
+        "runs": "Cập nhật ngay: worker không nhận run mới và chờ {count, plural, other {# run đang giữ}} chạy xong.",
+        "asked": "Đã yêu cầu cập nhật ngay: daemon nhận yêu cầu ở heartbeat kế tiếp.",
+        "starting": "Cập nhật ngay: worker cập nhật khi không daemon nào của bản cài còn giữ run."
+      },
+      "requested": "Đã yêu cầu",
+      "impossible": "Lần Cập nhật ngay trước không thực hiện được: {reason}",
+      "asked": "{name} sẽ cập nhật ngay",
+      "askedText": "Worker không nhận run mới, chờ các run đang giữ chạy xong, cập nhật lên nightly, rồi nhận việc lại.",
+      "cancelled": "Đã huỷ Cập nhật ngay của {name}",
+      "cancelledText": "Worker nhận run trở lại và tự cập nhật khi rảnh.",
+      "askFailed": "Không yêu cầu {name} cập nhật ngay được",
+      "cancelFailed": "Không huỷ được Cập nhật ngay của {name}",
+      "refused": "Hub từ chối, lý do ở dưới. Trang vừa được tải lại."
     }
   },
   "secrets": {

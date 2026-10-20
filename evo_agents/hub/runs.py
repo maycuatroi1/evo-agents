@@ -159,6 +159,10 @@ KG_SYNC = "kg_sync"
 # (`evo-agents worker repo open`, POST /v1/worker/runs/{id}/chat/repos); the hub hands any other daemon's chat run
 # every repo of the project the worker has a checkout of (evo_agents.hub.chat_runs)
 LAZY_CHAT_REPOS = "lazy_chat_repos"
+# a daemon that acts on its owner's Update now (update_now of the heartbeat answer): it claims no new run, lets the
+# ones it holds end, updates itself to the tag nightly and claims again, and reports in self_update.update_now how a
+# request it could not carry out ended; the hub takes such a request for no other (evo_agents.hub.server.update_now)
+UPDATE_NOW = "update_now"
 # what this package's daemon says it does besides its kinds of run (features of its heartbeat)
 WORKER_FEATURES = (
     SESSION_PER_STEP,
@@ -170,6 +174,7 @@ WORKER_FEATURES = (
     CHAT_DECISIONS,
     KG_SYNC,
     LAZY_CHAT_REPOS,
+    UPDATE_NOW,
 )
 HUB_FEATURES = WORKER_FEATURES  # the features a heartbeat may name that the hub keeps
 RUNTIMES = ("claude-code", "opencode", "codex")  # the runtimes of the core; a plugin's is <plugin>/<name>
@@ -315,6 +320,16 @@ KG_SYNC_STATES = ("ok", "failed", "skipped")
 KG_SYNC_ERROR_CHARS = 500  # the most characters of an error of kg_sync a heartbeat carries
 MAX_KG_SYNC_PROJECTS = 50  # the projects of kg_sync in one heartbeat
 MAX_KG_SYNC_SOURCES = 50  # and the sources of one project
+# The repository and the tag the daemons update themselves to, and whose commit the hub reads once a minute and hands
+# every daemon in its heartbeat answer (nightly; evo_agents.hub.nightly).
+NIGHTLY_REPO_URL = "https://github.com/maycuatroi1/evo-agents"
+NIGHTLY_TAG = "nightly"
+# How an owner's Update now of a worker ended (workers.update_outcome): current, its daemon runs the commit of nightly
+# the hub read; cancelled, the owner or a hub admin cancelled it; failed, the install failed (self_update.error says
+# how); impossible, the daemon cannot update itself (locked, an install it cannot update, a daemon of its install
+# locked or run by hand; self_update.reason says why). A daemon reports the last two in self_update.update_now.
+UPDATE_NOW_OUTCOMES = ("current", "cancelled", "failed", "impossible")
+UPDATE_NOW_DAEMON_ENDS = ("failed", "impossible")  # the outcomes a daemon reports
 
 ACP_EVENT_KINDS = (  # the session/update kinds of the Agent Client Protocol
     "agent_message_chunk",

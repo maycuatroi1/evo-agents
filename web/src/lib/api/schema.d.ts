@@ -1336,6 +1336,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/workers/{worker_id}/update-now": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Ask Update Now
+         * @description Ask the worker's daemon to update itself to nightly now: it claims no new run, lets the held ones end, updates
+         *     and claims again. 409 with why when its version is locked, its daemon is too old, or it runs nightly already.
+         */
+        post: operations["ask_update_now_v1_workers__worker_id__update_now_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/workers/{worker_id}/update-now/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel Update Now
+         * @description Withdraw the worker's open Update now; the daemon claims runs again.
+         */
+        post: operations["cancel_update_now_v1_workers__worker_id__update_now_cancel_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/workers/{worker_id}/dispatch-from": {
         parameters: {
             query?: never;
@@ -9331,6 +9372,10 @@ export interface components {
              * @description for a daemon that says kg_sync: the projects it serves whose night shift names it and whose graph is on, whose git sources it syncs and pushes (evo_agents.worker.kg_sync); empty otherwise
              */
             kg_sync?: components["schemas"]["KgDuty"][];
+            /** @description the commit the tag nightly pointed to when the hub last read it, and when: a daemon may take it instead of reading the tag itself. Absent until the hub has read it once, and from a hub before schema 0065 */
+            nightly?: components["schemas"]["NightlyRead"] | null;
+            /** @description the owner asked the daemon to update itself now: claim no new run, let the held ones end, update to nightly and claim again. Absent when no request is open; sent only to a daemon that says update_now */
+            update_now?: components["schemas"]["UpdateNowRequest"] | null;
         };
         /** HeartbeatRequest */
         HeartbeatRequest: {
@@ -10871,6 +10916,20 @@ export interface components {
              * @description curator.collect counted the night's figures
              */
             figures: boolean;
+        };
+        /**
+         * NightlyRead
+         * @description Where the tag nightly of evo-agents pointed when the hub last read it (evo_agents.hub.nightly).
+         */
+        NightlyRead: {
+            /** Commit */
+            commit: string;
+            /**
+             * Read At
+             * Format: date-time
+             * @description when the hub read it; the hub reads it once a minute
+             */
+            read_at: string;
         };
         /** NodeDetail */
         NodeDetail: {
@@ -15262,6 +15321,8 @@ export interface components {
              * @description when that attempt failed
              */
             error_at?: string | null;
+            /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
+            update_now?: components["schemas"]["UpdateNowReport"] | null;
         };
         /**
          * SessionDigest
@@ -18132,6 +18193,35 @@ export interface components {
              */
             link: string;
         };
+        /**
+         * UpdateNowReport
+         * @description Where the daemon stands with its owner's Update now (update_now of the heartbeat answer).
+         */
+        UpdateNowReport: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description the request it is about: requested_at of the answer's update_now
+             */
+            requested_at: string;
+            /**
+             * Ended
+             * @description null while the daemon carries it out; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself (self_update.reason says why). The hub ends the request with either, and with a value it does not know ends nothing
+             */
+            ended?: string | null;
+        };
+        /**
+         * UpdateNowRequest
+         * @description An Update now of the worker's owner, open until the daemon runs nightly's commit or the request ends.
+         */
+        UpdateNowRequest: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when it was asked for; it names the request in self_update.update_now
+             */
+            requested_at: string;
+        };
         /** UploadItem */
         UploadItem: {
             /**
@@ -18413,6 +18503,10 @@ export interface components {
             self_update: components["schemas"]["WorkerSelfUpdate"] | null;
             /** @description what its daemon last said of keeping fresh the graphs of the projects whose night shift it is on duty for: each project and git source, with the error of a sync that failed; null when its last heartbeat said nothing of it */
             kg_sync?: components["schemas"]["KgSyncReport"] | null;
+            /** @description the last Update now its owner or a hub admin asked for, open or ended; null when none was */
+            update_now: components["schemas"]["WorkerUpdateNow"] | null;
+            /** @description where the tag nightly pointed when the hub last read it, the same for every worker; null until the hub has read it once */
+            nightly: components["schemas"]["NightlyRead"] | null;
             /** Projects */
             projects: string[];
             /**
@@ -18627,6 +18721,8 @@ export interface components {
              * @description when that attempt failed
              */
             error_at?: string | null;
+            /** @description for a daemon that says update_now in its features, where it stands with the owner's Update now the answer carried; null when it carries none */
+            update_now?: components["schemas"]["UpdateNowReport"] | null;
             /**
              * Since
              * @description when the hub first got this state, in an unbroken line of heartbeats that said it: how long the daemon has been waiting, for one
@@ -18687,6 +18783,33 @@ export interface components {
              * @description true: it also takes the runs of every member who holds writer on a project it serves; false: its owner's runs alone, every worker's default
              */
             shared?: boolean | null;
+        };
+        /**
+         * WorkerUpdateNow
+         * @description The last Update now of a worker: open while ended_at is null (POST /v1/workers/{id}/update-now).
+         */
+        WorkerUpdateNow: {
+            /**
+             * Requested At
+             * Format: date-time
+             * @description when its owner or a hub admin asked for it
+             */
+            requested_at: string;
+            /**
+             * Ended At
+             * @description when it ended; null while the daemon carries it out
+             */
+            ended_at: string | null;
+            /**
+             * Outcome
+             * @description how it ended: current, the daemon runs the commit of nightly the hub read; cancelled; failed, the install failed (self_update.error says how); impossible, the daemon cannot update itself; null while open
+             */
+            outcome: ("current" | "cancelled" | "failed" | "impossible") | null;
+            /**
+             * Reason
+             * @description why it failed or was impossible, as the daemon or the hub said
+             */
+            reason: string | null;
         };
         /** Conflict */
         evo_agents__hub__server__memories__Conflict: {
@@ -23432,6 +23555,140 @@ export interface operations {
         };
     };
     undrain_v1_workers__worker_id__undrain_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    ask_update_now_v1_workers__worker_id__update_now_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                worker_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Worker"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorBody"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    cancel_update_now_v1_workers__worker_id__update_now_cancel_post: {
         parameters: {
             query?: never;
             header?: never;
