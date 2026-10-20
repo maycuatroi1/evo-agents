@@ -10,6 +10,11 @@ the thread). A run has one thread: ``run_triage`` holds it, so a second call fin
 open none, so the failure of a chat run of triage starts no triage. The switch of a project is
 ``projects.triage_enabled``; the hub's ``chats`` feature must be on.
 
+A run the hub stopped on a usage limit or a refused login (cause ``rate_limit`` or ``account_auth``, an ``account_event``
+stop in its log) while no account of its owner for that variable is ready for the project gets the thread and the facts,
+and no agent: the chat run of the agent would take the same accounts (``account_choice``) and fail at once. The thread
+says when the first of them is ready again.
+
 ``on_failed`` does it in a savepoint of the caller's transaction: whatever goes wrong inside (a label the owner does
 not clear, a full chat, a database error) rolls back to it and leaves the run failed with the notice it always had.
 """
@@ -18,11 +23,13 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from datetime import UTC, datetime
 
 from sqlalchemy import exists, func, insert, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from evo_agents.hub import chats, features, runs, tables, triage_rules
+from evo_agents.hub.accounts import account_state
 from evo_agents.hub.server import audit, hub_settings
 from evo_agents.hub.server.chat_access import chat_access
 from evo_agents.hub.server.chat_members import label_now, label_problems, put_agent, put_person
@@ -92,6 +99,41 @@ async def _inferred(conn: AsyncConnection, run_id: int) -> bool:
     return bool(
         (await conn.execute(select(exists().where(e.c.run_id == run_id, e.c.kind == "system", guessed)))).scalar()
     )
+
+
+async def _no_account(conn: AsyncConnection, found: RunStep) -> str | None:
+    """The line that says why no agent is asked, when the hub stopped run ``found`` on the accounts of a variable and
+    none of its owner's accounts for it is ready for the project now (expired, paused or cooling); None otherwise."""
+    if found.failure_cause not in triage_rules.NEW_ACCOUNT:
+        return None
+    e = tables.run_events
+    stopped = e.c.body["account_event"].astext == "stop"
+    names = select(e.c.body["env_var"].astext).where(e.c.run_id == found.run_id, e.c.kind == "system", stopped)
+    s, a, b = tables.secrets, tables.accounts, tables.secret_bindings
+    bound = exists().where(b.c.secret_id == s.c.id, b.c.project_id == found.project_id)
+    now = datetime.now(UTC)
+    for env_var in sorted({name for name in (await conn.execute(names)).scalars() if name}):
+        rows = await conn.execute(
+            select(s.c.expires_at, a.c.paused_at, a.c.cooldown_until)
+            .outerjoin_from(s, a, a.c.secret_id == s.c.id)
+            .where(
+                s.c.owner_id == found.dispatcher_id,
+                s.c.kind == "env",
+                s.c.env_var == env_var,
+                s.c.deleted_at.is_(None),
+                bound,
+            )
+        )
+        states = [(account_state(r.paused_at, r.cooldown_until, r.expires_at, now), r.cooldown_until) for r in rows]
+        if not states or any(state == "ready" for state, _ in states):
+            continue
+        cooling = [until for state, until in states if state == "cooling"]
+        when = f"before {min(cooling).isoformat()}" if cooling else "until the owner resumes or renews one"
+        return (
+            f"No account of the owner for {env_var} is ready {when}: the hub asks no agent, whose run would take "
+            "the same accounts. Run it again once one is ready, or on another runtime."
+        )
+    return None
 
 
 async def _person(conn: AsyncConnection, user_id: int) -> Principal:
@@ -301,7 +343,8 @@ async def _ask_agent(
 async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
     """Open the thread of failed run ``found`` (the caller holds its row locked, and a savepoint to undo this); the
     thread it already has, or None when the run is not due one. A run that ends a chain of automatic reruns that is
-    full (``triage_rules.RERUN_CAP``) gets the thread and the facts, and no agent: the owner decides."""
+    full (``triage_rules.RERUN_CAP``) gets the thread and the facts, and no agent: the owner decides. So does one the
+    hub stopped on accounts of which none is ready (``_no_account``)."""
     existing = await thread_of(conn, found.run_id)
     if existing is not None or not await _due(conn, found.project_id):
         return existing
@@ -310,6 +353,7 @@ async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
     inferred = await _inferred(conn, found.run_id)
     depth, _ = await chain_of(conn, found.run_id)
     full = depth >= triage_rules.RERUN_CAP
+    waiting = None if full else await _no_account(conn, found)
     lines = _head(found, inferred)
     lines += await _candidates(conn, found, await _role(conn, owner.user_id, found.project_id), chat)
     if full:
@@ -317,9 +361,12 @@ async def open_thread(conn: AsyncConnection, found: RunStep) -> Thread | None:
             f"The hub ran this step again {depth} times by itself already, the most: it asks no agent, and the "
             "owner decides."
         )
-    body = runs.clip("\n".join(lines), chats.MAX_MESSAGE_BYTES - 200) + ("" if full else f"\n\n@{profile.handle}")
+    elif waiting is not None:
+        lines.append(waiting)
+    ask = not full and waiting is None
+    body = runs.clip("\n".join(lines), chats.MAX_MESSAGE_BYTES - 200) + (f"\n\n@{profile.handle}" if ask else "")
     message_id, _ = await insert_message(conn, chat, body, thread_root_id=None)
-    agent_run = None if full else await _ask_agent(conn, found, chat, profile, owner, message_id, body)
+    agent_run = await _ask_agent(conn, found, chat, profile, owner, message_id, body) if ask else None
     await conn.execute(
         insert(tables.run_triage).values(
             run_id=found.run_id,

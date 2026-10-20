@@ -634,7 +634,9 @@ and the branch. A chat run that asks nothing ends after its turn.
 
 When a run of kind step, plan or author fails, the hub opens a thread in the chat "Triage: PLAN" (of the project when
 the run has no plan) and mentions the project's default agent, which makes a chat run for the run's owner
-(`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent). The agent reads
+(`projects.triage_enabled` false opens none; a chain that was rerun twice already starts no agent, and neither does a
+run the hub stopped on a usage limit or a refused login while no account of its owner for that variable is ready: the
+thread says when the first is ready again). The agent reads
 the run and acts inside a frame the hub enforces on each call (`evo_agents.hub.triage_rules`,
 `evo_agents.hub.server.triage_actions`), whatever its instructions say; the instructions are the skill
 `triaging-failed-runs`. Outside the frame it asks the owner a decision of the category `triage`.
