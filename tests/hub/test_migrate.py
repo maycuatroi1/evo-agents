@@ -96,6 +96,7 @@ TABLES |= pg.REPLAY_TABLES  # migration 0056
 TABLES |= pg.HISTORY_TABLES  # migration 0059
 TABLES |= pg.SEARCH_TABLES  # migration 0060
 TABLES |= pg.NIGHTLY_TABLES  # migration 0065
+TABLES |= pg.CANVAS_TABLES  # migration 0067
 ALL = revisions()  # every revision the package ships, in order
 HEAD = ALL[-1]
 # The catalogs the tests read, as much of each as they use.
@@ -170,8 +171,8 @@ def tables(db) -> set[str]:
     return {row[0] for row in query(db, select(INFO_TABLES.c.table_name).where(INFO_TABLES.c.table_schema == "public"))}
 
 
-def test_a_fresh_database_gets_the_one_hundred_and_two_tables(hub_db):
-    assert len(TABLES) == 102  # the name of this test counts them: a new table renames it
+def test_a_fresh_database_gets_the_one_hundred_and_six_tables(hub_db):
+    assert len(TABLES) == 106  # the name of this test counts them: a new table renames it
     result = migrate(hub_db.dsn)
     assert result.before == ()
     assert result.applied == ALL and result.after == (head_revision(),) == (HEAD,)
@@ -1286,6 +1287,35 @@ def test_0066_adds_the_sealed_oauth_columns_to_accounts_all_set_or_all_null_and_
     move_to(hub_db, "0065", down=True)
     assert query(hub_db, SNAPSHOT) == before
     assert migrate(hub_db.dsn).applied == ALL[ALL.index("0066") :]
+
+
+def test_0067_keeps_canvases_claims_revs_and_evidence_and_going_back_drops_them(hub_db):
+    move_to(hub_db, "0067")
+    k = hub_tables.canvas
+    with live.connect(hub_db) as conn:
+        ids = seed(conn)
+        owner = {"project_id": ids["project"], "created_by": ids["user"]}
+        canvas = one(
+            conn,
+            insert(k.canvases).values(slug="northwind", name="Northwind", label={}, **owner).returning(k.canvases.c.id),
+        )
+        claim = {"canvas_id": canvas, "number": 1, "cell": "problem", "text": "Shops run out", "label": {}, **owner}
+        claim_id = one(conn, insert(k.claims).values(**claim).returning(k.claims.c.id))
+        with pytest.raises(errors.UniqueViolation):  # a claim's number is the project's, never given twice
+            conn.execute(insert(k.claims).values(**{**claim, "cell": "solution"}))
+        with pytest.raises(errors.CheckViolation):  # nine cells, no tenth
+            conn.execute(insert(k.claims).values(**{**claim, "number": 2, "cell": "moon"}))
+        rev = {"claim_id": claim_id, "rev": 1, "content": {"cell": "problem"}, "change": "create", "actor": "person"}
+        conn.execute(insert(k.revs).values(**rev, user_id=ids["user"]))
+        with pytest.raises(errors.CheckViolation):  # a person's rev names the person
+            conn.execute(insert(k.revs).values(**{**rev, "rev": 2}))
+        piece = {"claim_id": claim_id, "kind": "simulation", "direction": "supports", "summary": "x", "label": {}}
+        with pytest.raises(errors.CheckViolation):  # a simulation is synthetic
+            conn.execute(insert(k.evidence).values(**piece, actor="hub"))
+        conn.execute(insert(k.evidence).values(**piece, actor="hub", synthetic=True))
+    move_to(hub_db, "0066", down=True)
+    assert not pg.CANVAS_TABLES & tables(hub_db)
+    assert migrate(hub_db.dsn).applied == ALL[ALL.index("0067") :]
 
 
 def test_downgrade_to_base_removes_everything_and_upgrade_restores_it(hub_db):
