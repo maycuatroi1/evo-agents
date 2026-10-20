@@ -16,7 +16,7 @@ Status: early prototype. Interfaces will change.
 ```sh
 uv tool install 'evo-ak[graphify]'   # or: pip install 'evo-ak[graphify]' (PyPI name; the command is evo-agents)
 uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents'   # unreleased main
-uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents@nightly'   # main as of last night, its ci green
+uv tool install 'evo-ak[graphify] @ git+https://github.com/maycuatroi1/evo-agents@nightly'   # main as of last night
 # or, from a checkout: python -m pip install -e '.[test,graphify]'
 ```
 
@@ -112,8 +112,8 @@ evo-agents kg query kg_impact --arg 'paths=["app:src/search.py"]'
 evo-agents kg eval questions.jsonl   # Recall@k, MRR and tokens of kg_search, kg_context and grep (docs/kg-eval.md)
 ```
 
-A harness's CI runs `harness validate` with the evo-agents of the tag `nightly`, the newest commit of main whose CI
-passed, which a workflow moves every night:
+A harness's CI runs `harness validate` with the evo-agents of the tag `nightly`, the tip of main, which a workflow
+moves every night:
 
 ```yaml
       - name: Install evo-agents
